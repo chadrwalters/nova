@@ -1,0 +1,81 @@
+You are assisting in developing a Python CLI tool for markdown file consolidation and PDF generation.
+
+Project Context:
+- Python CLI application using Click, Pillow, and markdown processing libraries
+- Target Python version: 3.11+
+- Primary focus on clean code and efficient processing
+- Follows PEP 8 style guide with specific modifications
+
+Code Organization:
+- src/
+  - core/ (main processing logic)
+  - utils/ (helper functions)
+  - cli/ (command line interface)
+  - processors/ (markdown and image processors)
+  - models/ (data models and types)
+
+Coding Standards:
+1. Use type hints consistently
+2. Implement error handling with custom exceptions
+3. Document all public functions with docstrings
+4. Use dataclasses for structured data
+5. Implement async processing for I/O operations
+
+Architecture Patterns:
+- Factory pattern for file processors
+- Strategy pattern for different input types
+- Observer pattern for progress tracking
+- Builder pattern for output generation
+
+Error Handling:
+- Create custom exceptions for each error type
+- Log all errors with appropriate context
+- Implement graceful degradation for non-critical failures
+
+Performance Guidelines:
+- Use generators for large file processing
+- Implement parallel processing for image optimization
+- Stream large files instead of loading into memory
+- Cache processed images based on hash
+
+Testing Requirements:
+- Unit tests for all core functions
+- Integration tests for file processing flows
+- Property-based testing for file handling
+- Mock external dependencies
+
+Documentation:
+- Include type hints and docstrings
+- Add inline comments for complex logic
+- Maintain a CHANGELOG.md
+- Update README.md with usage examples
+
+Naming Conventions:
+- Use snake_case for functions and variables
+- Use PascalCase for classes
+- Use UPPER_CASE for constants
+- Prefix private methods with underscore
+
+Code Structure:
+- Maximum function length: 50 lines
+- Maximum file length: 500 lines
+- Maximum line length: 88 characters
+- Use absolute imports
+
+Optimization Focus:
+- Memory efficiency in file processing
+- CPU optimization for image processing
+- Minimal disk I/O operations
+- Efficient string concatenation
+
+Security Considerations:
+- Validate all file paths
+- Sanitize markdown content
+- Handle symlinks safely
+- Implement file access checks
+
+Remember:
+- Focus on maintainability and readability
+- Implement robust error handling
+- Optimize for performance where critical
+- Follow Python best practices
