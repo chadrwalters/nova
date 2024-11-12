@@ -36,6 +36,58 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 - Handles cleanup and organization of files
 - Maintains consistent directory structure
 
+## Using Nova with Claude
+
+### Initial Setup in Claude
+
+1. Create a new project:
+   - Open Claude
+   - Click "Create Project"
+   - Name it "Nova"
+
+2. Add the Nova prompt:
+   - Go to Custom Instructions in the project settings
+   - Copy the entire contents of `prompts/Nova.prompt`
+   - Paste it into the Custom Instructions field
+   - Save the changes
+
+3. Add your consolidated data:
+   - Go to Project Files
+   - Upload your generated PDF (`_Nova/output.pdf`)
+
+### Updating Your Data
+
+When you have new notes or journal entries:
+
+1. Generate new consolidated PDF:
+   ```bash
+   ./consolidate.sh
+   ```
+
+2. Update Claude project:
+   - Open your Nova project in Claude
+   - Go to Project Files
+   - Delete the existing PDF
+   - Upload the new PDF from `_Nova/output.pdf`
+
+### Best Practices
+
+- Keep your data current by updating regularly
+- Remove old PDFs before uploading new ones
+- Verify PDF upload was successful
+- Maintain consistent markdown formatting in your notes
+- Use clear section headers for better organization
+- Consider weekly updates or when significant content is added
+
+### Troubleshooting
+
+If Nova seems to be missing context:
+- Confirm the PDF was successfully uploaded
+- Verify the old PDF was completely removed
+- Check that the consolidation process completed without errors
+- Review the PDF content to ensure all data was included
+- Try clearing Claude's conversation history
+
 ## Installation
 
 1. Clone this repository:
