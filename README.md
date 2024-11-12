@@ -92,7 +92,7 @@ If Nova seems to be missing context:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/chadrwalters/nova.git
+   git clone https://github.com/chadwalt/nova.git
    cd nova
    ```
 
@@ -109,11 +109,13 @@ If Nova seems to be missing context:
 4. Edit `.env` file with your paths:
    ```bash
    # Example .env configuration
-   ICLOUD_BASE="/Users/username/Library/Mobile Documents/com~apple~CloudDocs"
-   NOVA_INPUT_DIR="${ICLOUD_BASE}/_NovaIndividualMarkdown"
-   NOVA_CONSOLIDATED_DIR="${ICLOUD_BASE}/_NovaConsolidatedMarkdown"
-   NOVA_OUTPUT_DIR="${ICLOUD_BASE}/_Nova"
+   SYNC_BASE="/Users/username/path/to/your/synced/folder"
+   NOVA_INPUT_DIR="${SYNC_BASE}/_NovaIndividualMarkdown"
+   NOVA_CONSOLIDATED_DIR="${SYNC_BASE}/_NovaConsolidatedMarkdown"
+   NOVA_OUTPUT_DIR="${SYNC_BASE}/_Nova"
    ```
+
+   Note: The `SYNC_BASE` should point to a directory that's synced across your devices. This could be iCloud Drive, Dropbox, Google Drive, or any other cloud storage solution you use. For example, if you use Bear notes with iCloud sync, this might be your iCloud Drive folder.
 
 5. Create required directories:
    ```bash
@@ -125,10 +127,21 @@ If Nova seems to be missing context:
 ### Environment Setup
 The following environment variables must be configured in your `.env` file:
 
-- `ICLOUD_BASE`: Base path to your cloud storage
+- `SYNC_BASE`: Base path to your synced notes or cloud storage directory
 - `NOVA_INPUT_DIR`: Where your markdown files are stored
 - `NOVA_CONSOLIDATED_DIR`: Where the consolidated markdown will be saved
 - `NOVA_OUTPUT_DIR`: Where the final PDF will be generated
+
+### Sync Setup
+Nova is designed to work with markdown files that are synced across your devices. This allows you to write notes on your phone, tablet, or computer and have them automatically available for processing.
+
+Popular note-taking apps that support this workflow include:
+- Bear (uses iCloud for sync)
+- Obsidian (can use iCloud, Dropbox, or other cloud storage)
+- Typora (when used with a cloud-synced folder)
+- Any text editor when used with a synced folder (iCloud Drive, Dropbox, Google Drive, etc.)
+
+Ensure your chosen note-taking app is set up to save files in the directory specified by `NOVA_INPUT_DIR`.
 
 ### Styling Options
 - `config/default_config.yaml`: PDF configuration options
