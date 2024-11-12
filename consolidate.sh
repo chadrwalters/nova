@@ -46,16 +46,39 @@ cleanup_previous() {
     rm -f "$FINAL_PDF"
 }
 
+# Function to print status messages
+print_status() {
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "$1"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
 # Function to run the markdown consolidation
 consolidate_markdown() {
-    echo "Consolidating markdown files..."
+    print_status "Starting Markdown Consolidation..."
     python markdown_consolidator.py "$NOVA_INPUT_DIR" "$CONSOLIDATED_MD"
+    echo "✓ Markdown consolidated successfully"
+    echo "  Location: $CONSOLIDATED_MD"
+    echo
 }
 
 # Function to convert to PDF
 convert_to_pdf() {
-    echo "Converting to PDF..."
-    python markdown_to_pdf_converter.py "$CONSOLIDATED_MD" "$FINAL_PDF"
+    print_status "Converting to PDF..."
+    if ! python markdown_to_pdf_converter.py "$CONSOLIDATED_MD" "$FINAL_PDF"; then
+        echo "✗ PDF conversion failed"
+        exit 1
+    fi
+
+    # Verify PDF was created
+    if [ ! -f "$FINAL_PDF" ]; then
+        echo "✗ PDF file was not created"
+        exit 1
+    fi
+
+    echo "✓ PDF generated successfully"
+    echo "  Location: $FINAL_PDF"
+    echo
 }
 
 # Main execution
@@ -71,10 +94,10 @@ main() {
     consolidate_markdown
     convert_to_pdf
     
-    echo "Processing complete!"
-    echo "Output files:"
+    print_status "Process Complete"
+    echo "Output Files:"
     echo "  Markdown: $CONSOLIDATED_MD"
-    echo "  PDF: $FINAL_PDF"
+    echo "  PDF:      $FINAL_PDF"
 }
 
 # Execute main function
