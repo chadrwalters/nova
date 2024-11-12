@@ -8,11 +8,14 @@
 set -e  # Exit on error
 set -u  # Exit on undefined variable
 
-# Define base paths to make the script more maintainable
-ICLOUD_BASE="/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs"
-NOVA_INPUT_DIR="$ICLOUD_BASE/_NovaIndividualMarkdown"
-NOVA_CONSOLIDATED_DIR="$ICLOUD_BASE/_NovaConsolidatedMarkdown"
-NOVA_OUTPUT_DIR="$ICLOUD_BASE/_Nova"
+# Load environment variables
+if [ ! -f .env ]; then
+    echo "Error: .env file not found"
+    echo "Please copy .env.template to .env and update the values"
+    exit 1
+fi
+
+source .env
 
 # Define output files
 CONSOLIDATED_MD="$NOVA_CONSOLIDATED_DIR/output.md"
@@ -83,7 +86,7 @@ convert_to_pdf() {
 
 # Main execution
 main() {
-    echo "Starting Nova markdown processing..."
+    print_status "Starting Nova markdown processing..."
     
     # Run pre-flight checks
     check_python
