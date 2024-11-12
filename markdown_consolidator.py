@@ -27,28 +27,25 @@ logging.basicConfig(
 )
 
 # Global Variables
-SUPPORTED_MARKDOWN_EXTENSIONS = ['.md', '.markdown']
+SUPPORTED_MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkdn', '.mkd', '.mdwn', '.mdtxt', '.mdtext', '.text', '.txt']
 SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.heic', '.heif']
 console = Console()
 
 register_heif_opener()  # Register HEIF/HEIC support with Pillow
 
 def process_input(input_path: Union[str, List[str]], recursive: bool = False) -> List[Path]:
-    """
-    Convert input (directory/wildcard/file list) to a list of files to process.
-    Sort files alphabetically, validate file types and permissions.
-    Return a list of Path objects to process.
-    """
+    """Convert input to list of files to process."""
     files = []
     if isinstance(input_path, str):
-        path = Path(input_path)
+        clean_path = input_path.replace('\\ ', ' ')
+        path = Path(clean_path)
+        
         if path.is_dir():
-            pattern = '**/*' if recursive else '*'
-            files = sorted(path.glob(f'{pattern}'))
+            files = [f for f in path.rglob('*') if f.is_file()]
         elif path.is_file():
             files = [path]
         else:
-            files = sorted(Path().glob(input_path))
+            files = sorted(Path().glob(clean_path))
     elif isinstance(input_path, list):
         files = [Path(f) for f in input_path]
     else:
@@ -57,14 +54,15 @@ def process_input(input_path: Union[str, List[str]], recursive: bool = False) ->
 
     valid_files = []
     for file in files:
-        if file.suffix.lower() in SUPPORTED_MARKDOWN_EXTENSIONS:
+        if file.is_file() and file.suffix.lower() in SUPPORTED_MARKDOWN_EXTENSIONS:
             if os.access(file, os.R_OK):
                 valid_files.append(file)
             else:
                 logging.error(f"Permission denied: {file}")
-                sys.exit(1)
         else:
-            logging.warning(f"Unsupported file type: {file}")
+            if file.is_file():
+                logging.warning(f"Unsupported file type: {file}")
+    
     valid_files.sort()
     return valid_files
 
@@ -361,37 +359,21 @@ def format_path(path: Path) -> str:
 @click.option('--log-file', type=str, help='Custom log file location')
 @click.option('--verbose', is_flag=True, help='Increase output verbosity')
 def main(input_path, output_file, recursive, log_file, verbose):
-    """
-    Combine multiple markdown files into one optimized file.
-    """
-    # Convert output_file to Path and create media directory
-    output_path = Path(output_file)
-    media_dir = get_media_dir(output_path)
-    
-    # Configure Logging
-    if log_file:
-        logging.getLogger().handlers = []
-        logging.basicConfig(
-            filename=log_file,
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
-    if verbose:
-        console.log("[bold blue]Verbose mode activated.[/]")
-        logging.getLogger().setLevel(logging.DEBUG)
+    """Combine multiple markdown files into one optimized file."""
+    try:
+        output_path = Path(output_file)
+        media_dir = get_media_dir(output_path)
+        
+        start_time = datetime.now()
+        files_to_process = process_input(input_path, recursive)
+        
+        if not files_to_process:
+            console.print("[bold red]No valid markdown files found to process.[/]")
+            sys.exit(1)
 
-    start_time = datetime.now()
-    console.rule("[bold blue]Starting Markdown Consolidation[/]")
+        console.print(f"\nFound [bold green]{len(files_to_process)}[/] files to process.\n")
 
-    files_to_process = process_input(input_path, recursive)
-    if not files_to_process:
-        console.print("[bold red]No valid markdown files found to process.[/]")
-        sys.exit(1)
-
-    console.print(f"\nFound [bold green]{len(files_to_process)}[/] files to process.\n")
-
-    processed_files = []
-    with console.status("[bold green]Processing files...") as status:
+        processed_files = []
         for idx, file_path in enumerate(files_to_process, 1):
             formatted_path = format_path(file_path)
             console.print(f"[{idx}/{len(files_to_process)}] [bold cyan]{formatted_path}[/]")
@@ -400,24 +382,29 @@ def main(input_path, output_file, recursive, log_file, verbose):
                 processed = process_markdown(content, file_path, media_dir)
                 processed_files.append(processed)
 
-    if not processed_files:
-        console.print("[bold red]No files were processed successfully.[/]")
-        sys.exit(1)
+        if not processed_files:
+            console.print("[bold red]No files were processed successfully.[/]")
+            sys.exit(1)
 
-    console.print("\n[bold green]Generating consolidated output...[/]")
-    consolidated_content = combine_files(processed_files, start_time)
-    try:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(consolidated_content)
-        console.print(f"[bold green]✓[/] Output saved to: [bold cyan]{format_path(Path(output_file))}[/]")
-        logging.info(f"Successfully wrote consolidated file to {output_file}")
+        console.print("\n[bold green]Generating consolidated output...[/]")
+        consolidated_content = combine_files(processed_files, start_time)
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(consolidated_content)
+                f.flush()
+                os.fsync(f.fileno())
+            console.print(f"✓ Output saved to: [bold cyan]{format_path(Path(output_file))}[/]")
+            logging.info(f"Successfully wrote consolidated file to {output_file}")
+            sys.exit(0)
+        except Exception as e:
+            console.print(f"[bold red]✗ Failed to write output file: {e}[/]")
+            logging.error(f"Failed to write output file: {e}")
+            sys.exit(1)
+
     except Exception as e:
-        console.print(f"[bold red]✗ Failed to write output file: {e}[/]")
-        logging.error(f"Failed to write output file: {e}")
-
-    duration = datetime.now() - start_time
-    console.rule("[bold blue]Processing Complete[/]")
-    console.print(f"[bold green]Total time: {duration.total_seconds():.2f} seconds[/]")
+        console.print(f"[bold red]✗ Failed to process markdown files: {e}[/]")
+        logging.error(f"Failed to process markdown files: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

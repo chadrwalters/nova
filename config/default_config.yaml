@@ -1,6 +1,6 @@
 style:
   page_size: 'A4'
-  margin: '1in'
+  margin: '0.5in'
   font_family: 'Arial'
   font_size: '11pt'
   line_height: '1.5'
