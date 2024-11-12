@@ -101,15 +101,34 @@ If Nova seems to be missing context:
    pip install -r requirements.txt
    ```
 
+3. Set up your environment:
+   ```bash
+   cp .env.template .env
+   ```
+
+4. Edit `.env` file with your paths:
+   ```bash
+   # Example .env configuration
+   ICLOUD_BASE="/Users/username/Library/Mobile Documents/com~apple~CloudDocs"
+   NOVA_INPUT_DIR="${ICLOUD_BASE}/_NovaIndividualMarkdown"
+   NOVA_CONSOLIDATED_DIR="${ICLOUD_BASE}/_NovaConsolidatedMarkdown"
+   NOVA_OUTPUT_DIR="${ICLOUD_BASE}/_Nova"
+   ```
+
+5. Create required directories:
+   ```bash
+   mkdir -p "$NOVA_INPUT_DIR" "$NOVA_CONSOLIDATED_DIR" "$NOVA_OUTPUT_DIR"
+   ```
+
 ## Configuration
 
-### Directory Setup
-Edit `consolidate.sh` to configure your directories:
-```bash
-NOVA_INPUT_DIR="/path/to/your/markdown/files"
-NOVA_CONSOLIDATED_DIR="/path/to/consolidated/output"
-NOVA_OUTPUT_DIR="/path/to/final/output"
-```
+### Environment Setup
+The following environment variables must be configured in your `.env` file:
+
+- `ICLOUD_BASE`: Base path to your cloud storage
+- `NOVA_INPUT_DIR`: Where your markdown files are stored
+- `NOVA_CONSOLIDATED_DIR`: Where the consolidated markdown will be saved
+- `NOVA_OUTPUT_DIR`: Where the final PDF will be generated
 
 ### Styling Options
 - `config/default_config.yaml`: PDF configuration options
@@ -118,7 +137,7 @@ NOVA_OUTPUT_DIR="/path/to/final/output"
 
 ## Usage
 
-1. Export your markdown files to the input directory
+1. Export your markdown files to your configured input directory (`$NOVA_INPUT_DIR`)
 
 2. Run the consolidation script:
    ```bash
@@ -126,8 +145,8 @@ NOVA_OUTPUT_DIR="/path/to/final/output"
    ```
 
 3. Find your output files:
-   - Consolidated markdown: `_NovaConsolidatedMarkdown/output.md`
-   - Final PDF: `_Nova/output.pdf`
+   - Consolidated markdown: `$NOVA_CONSOLIDATED_DIR/output.md`
+   - Final PDF: `$NOVA_OUTPUT_DIR/output.pdf`
 
 4. Use the generated PDF with the Nova prompt in your AI platform
 
@@ -144,6 +163,8 @@ NOVA_OUTPUT_DIR="/path/to/final/output"
 │   └── default_template.html    # HTML template
 ├── markdown_to_pdf_converter.py # PDF conversion script
 ├── consolidate.sh              # Main automation script
+├── .env.template               # Environment template
+├── .env                        # Local environment configuration (not in git)
 └── requirements.txt            # Python dependencies
 ```
 
