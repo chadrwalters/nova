@@ -1,0 +1,22 @@
+style:
+  page_size: 'A4'
+  margin: '1in'
+  font_family: 'Arial'
+  font_size: '11pt'
+  line_height: '1.5'
+  colors:
+    text: '#333333'
+    headings: '#000000'
+    links: '#0066cc'
+header:
+  enabled: false
+  content: ''
+  page_numbers: false
+footer:
+  enabled: false
+  content: ''
+  page_numbers: false
+toc:
+  enabled: false
+  depth: 2
+  title: 'Table of Contents'
