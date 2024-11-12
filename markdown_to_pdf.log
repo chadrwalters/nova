@@ -86,3 +86,39 @@
 2024-11-12 10:07:45,673 - INFO - Generated PDF at /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_Nova/output.pdf
 2024-11-12 10:07:45,673 - INFO - Applied metadata to PDF at /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_Nova/output.pdf
 2024-11-12 10:07:45,673 - INFO - Conversion process completed successfully.
+2024-11-12 10:36:28,277 - INFO - Starting conversion process.
+2024-11-12 10:36:28,279 - INFO - Loaded default configuration
+2024-11-12 10:36:28,279 - INFO - Read markdown file: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
+2024-11-12 10:36:28,351 - INFO - Processed markdown content
+2024-11-12 10:36:28,354 - INFO - Using default styles
+2024-11-12 10:36:28,354 - INFO - Generated HTML content
+2024-11-12 10:36:28,407 - ERROR - Failed to load image at 'file:///Users/chadwalters/Library/Mobile%20Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/placeholder.jpg': URLError: <urlopen error [Errno 2] No such file or directory: '/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/placeholder.jpg'>
+2024-11-12 10:36:28,688 - ERROR - PDF generation error: Got ' \u2029' between two lines. Expected nothing or a preserved line break
+2024-11-12 10:39:08,860 - INFO - Starting conversion process.
+2024-11-12 10:39:08,862 - INFO - Loaded default configuration
+2024-11-12 10:39:08,862 - INFO - Read markdown file: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
+2024-11-12 10:39:08,951 - INFO - Processed markdown content
+2024-11-12 10:39:08,954 - INFO - Using default styles
+2024-11-12 10:39:08,954 - INFO - Generated HTML content
+2024-11-12 10:39:09,009 - ERROR - Failed to load image at 'file:///Users/chadwalters/Library/Mobile%20Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/placeholder.jpg': URLError: <urlopen error [Errno 2] No such file or directory: '/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/placeholder.jpg'>
+2024-11-12 10:39:09,296 - ERROR - PDF generation error: Got ' \u2029' between two lines. Expected nothing or a preserved line break
+2024-11-12 10:41:46,900 - INFO - Starting conversion process.
+2024-11-12 10:41:46,902 - INFO - Loaded default configuration
+2024-11-12 10:41:46,902 - INFO - Read markdown file: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
+2024-11-12 10:41:46,982 - INFO - Processed markdown content
+2024-11-12 10:41:46,986 - INFO - Using default styles
+2024-11-12 10:41:46,986 - INFO - Generated HTML content
+2024-11-12 10:41:47,048 - ERROR - Failed to load image at 'file:///Users/chadwalters/Library/Mobile%20Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/placeholder.jpg': URLError: <urlopen error [Errno 2] No such file or directory: '/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/placeholder.jpg'>
+2024-11-12 10:41:49,994 - ERROR - No anchor #20241031---bookedby-initial-stepsmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241031---email-to-seanmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241101---email-to-ivanmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241101---journalmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241102---journalmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241103---journalmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241104---journalmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241105---journalmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241105---keep-aware-interviewmd for internal URI reference
+2024-11-12 10:41:49,995 - ERROR - No anchor #20241112---journalmd for internal URI reference
+2024-11-12 10:41:50,986 - INFO - Generated PDF at /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_Nova/output.pdf
+2024-11-12 10:41:50,986 - INFO - Applied metadata to PDF at /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_Nova/output.pdf
+2024-11-12 10:41:50,986 - INFO - Conversion process completed successfully.

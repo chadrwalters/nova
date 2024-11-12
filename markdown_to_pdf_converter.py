@@ -11,6 +11,7 @@ import os
 from rich import print
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+import sys
 
 # Get the directory where the script is located
 SCRIPT_DIR = Path(__file__).parent
@@ -43,6 +44,11 @@ def read_markdown_file(file_path: Path, logger: logging.Logger) -> str:
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
+        # Clean problematic Unicode characters
+        content = content.replace('\u2029', '\n')  # Replace paragraph separator
+        content = content.replace('\u2028', '\n')  # Replace line separator
+        # Normalize line endings
+        content = '\n'.join(line.rstrip() for line in content.splitlines())
         logger.info(f"Read markdown file: {file_path}")
         return content
     except Exception as e:
@@ -147,6 +153,11 @@ def generate_pdf(html_content: str, output_path: Path, config: dict, logger: log
             config['style']['margin']
         ))
         html.write_pdf(target=str(output_path), stylesheets=[css])
+        
+        # Verify PDF was created and has content
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise RuntimeError("PDF generation failed: Output file is empty or not created")
+            
         logger.info(f"Generated PDF at {output_path}")
     except Exception as e:
         logger.error(f"PDF generation error: {e}")
@@ -263,9 +274,18 @@ def main(input_file, output_file, config, style, toc, verbose):
 
     try:
         converter.convert()
+        if not output_path.exists():
+            print(f"[red]Error: PDF generation failed - output file not created[/red]")
+            sys.exit(1)
+        
+        if output_path.stat().st_size == 0:
+            print(f"[red]Error: PDF generation failed - output file is empty[/red]")
+            sys.exit(1)
+            
         print(f"[green]PDF generated successfully at {output_path}[/green]")
     except Exception as e:
         print(f"[red]Error: {e}[/red]")
+        sys.exit(1)
 
 # Entry Point
 

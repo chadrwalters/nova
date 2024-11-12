@@ -278,3 +278,63 @@
 2024-11-12 10:07:43,645 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_5b36857f.jpg
 2024-11-12 10:07:43,649 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_364aaf1e.jpg
 2024-11-12 10:07:43,817 - INFO - Successfully wrote consolidated file to /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
+2024-11-12 10:36:24,706 - WARNING - Unsupported file type: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/.DS_Store
+2024-11-12 10:36:24,707 - WARNING - Unsupported file type: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241105 - Sergey Response.pdf
+2024-11-12 10:36:25,750 - ERROR - Image file not found: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241104%20-%20Journal/5f95bba5f7ce54a86b1111e6046772992939f511.heic
+2024-11-12 10:36:25,750 - ERROR - Image file not found: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241104%20-%20Journal/f47a6a5cadefaf6568b922e040616d21f54b130f.heic
+2024-11-12 10:36:26,849 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_21852c05.jpg
+2024-11-12 10:36:26,886 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_297f7dac.jpg
+2024-11-12 10:36:26,892 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_3fcc26c8.jpg
+2024-11-12 10:36:26,934 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_ba7af890.jpg
+2024-11-12 10:36:26,960 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_9e47d43a.jpg
+2024-11-12 10:36:26,961 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_8ab9ad18.jpg
+2024-11-12 10:36:26,978 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_01f21341.jpg
+2024-11-12 10:36:27,083 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b744c02d.jpg
+2024-11-12 10:36:27,093 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_0a493144.jpg
+2024-11-12 10:36:27,141 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b79c98ad.jpg
+2024-11-12 10:36:27,154 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_7424c817.jpg
+2024-11-12 10:36:27,161 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b79c98ad.jpg
+2024-11-12 10:36:27,196 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_997816b6.jpg
+2024-11-12 10:36:27,197 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_5b36857f.jpg
+2024-11-12 10:36:27,218 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_364aaf1e.jpg
+2024-11-12 10:36:27,479 - INFO - Successfully wrote consolidated file to /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
+2024-11-12 10:39:05,280 - WARNING - Unsupported file type: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/.DS_Store
+2024-11-12 10:39:05,281 - WARNING - Unsupported file type: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241105 - Sergey Response.pdf
+2024-11-12 10:39:06,225 - ERROR - Image file not found: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241104%20-%20Journal/5f95bba5f7ce54a86b1111e6046772992939f511.heic
+2024-11-12 10:39:06,226 - ERROR - Image file not found: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241104%20-%20Journal/f47a6a5cadefaf6568b922e040616d21f54b130f.heic
+2024-11-12 10:39:07,440 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_21852c05.jpg
+2024-11-12 10:39:07,444 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_297f7dac.jpg
+2024-11-12 10:39:07,447 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_3fcc26c8.jpg
+2024-11-12 10:39:07,491 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_9e47d43a.jpg
+2024-11-12 10:39:07,494 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_ba7af890.jpg
+2024-11-12 10:39:07,518 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_8ab9ad18.jpg
+2024-11-12 10:39:07,533 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_01f21341.jpg
+2024-11-12 10:39:07,625 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b744c02d.jpg
+2024-11-12 10:39:07,632 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_0a493144.jpg
+2024-11-12 10:39:07,648 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_7424c817.jpg
+2024-11-12 10:39:07,659 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b79c98ad.jpg
+2024-11-12 10:39:07,670 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b79c98ad.jpg
+2024-11-12 10:39:07,715 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_997816b6.jpg
+2024-11-12 10:39:07,719 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_5b36857f.jpg
+2024-11-12 10:39:07,767 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_364aaf1e.jpg
+2024-11-12 10:39:08,021 - INFO - Successfully wrote consolidated file to /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
+2024-11-12 10:41:43,320 - WARNING - Unsupported file type: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/.DS_Store
+2024-11-12 10:41:43,321 - WARNING - Unsupported file type: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241105 - Sergey Response.pdf
+2024-11-12 10:41:44,373 - ERROR - Image file not found: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241104%20-%20Journal/5f95bba5f7ce54a86b1111e6046772992939f511.heic
+2024-11-12 10:41:44,373 - ERROR - Image file not found: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown/20241104%20-%20Journal/f47a6a5cadefaf6568b922e040616d21f54b130f.heic
+2024-11-12 10:41:45,488 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_3fcc26c8.jpg
+2024-11-12 10:41:45,524 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_297f7dac.jpg
+2024-11-12 10:41:45,542 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_21852c05.jpg
+2024-11-12 10:41:45,568 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_9e47d43a.jpg
+2024-11-12 10:41:45,570 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_ba7af890.jpg
+2024-11-12 10:41:45,601 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_8ab9ad18.jpg
+2024-11-12 10:41:45,659 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_01f21341.jpg
+2024-11-12 10:41:45,707 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b744c02d.jpg
+2024-11-12 10:41:45,720 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_7424c817.jpg
+2024-11-12 10:41:45,726 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_0a493144.jpg
+2024-11-12 10:41:45,734 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b79c98ad.jpg
+2024-11-12 10:41:45,757 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_b79c98ad.jpg
+2024-11-12 10:41:45,782 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_997816b6.jpg
+2024-11-12 10:41:45,788 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_5b36857f.jpg
+2024-11-12 10:41:45,851 - INFO - Processed base64 image saved as /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/_media/base64_image_364aaf1e.jpg
+2024-11-12 10:41:46,092 - INFO - Successfully wrote consolidated file to /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown/output.md
