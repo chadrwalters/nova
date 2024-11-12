@@ -1,4 +1,4 @@
-# Nova AI Assistant System
+# Nova Personal and Professional Assistant 
 
 ## Overview
 
