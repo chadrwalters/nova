@@ -19,6 +19,8 @@ import pillow_heif
 import base64
 import io
 
+from colors import Colors, console
+
 # Logging Configuration
 logging.basicConfig(
     filename='markdown_consolidator.log',
@@ -29,7 +31,6 @@ logging.basicConfig(
 # Global Variables
 SUPPORTED_MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkdn', '.mkd', '.mdwn', '.mdtxt', '.mdtext', '.text', '.txt']
 SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.heic', '.heif']
-console = Console()
 
 register_heif_opener()  # Register HEIF/HEIC support with Pillow
 
@@ -39,9 +40,13 @@ def process_input(input_path: Union[str, List[str]], recursive: bool = False) ->
     if isinstance(input_path, str):
         clean_path = input_path.replace('\\ ', ' ')
         path = Path(clean_path)
+        Colors.info(f"Checking path: {path}")
+        Colors.info(f"Path exists: {path.exists()}")
+        Colors.info(f"Path is dir: {path.is_dir()}")
         
         if path.is_dir():
             files = [f for f in path.rglob('*') if f.is_file()]
+            Colors.info(f"Found {len(files)} files in directory")
         elif path.is_file():
             files = [path]
         else:
@@ -49,7 +54,7 @@ def process_input(input_path: Union[str, List[str]], recursive: bool = False) ->
     elif isinstance(input_path, list):
         files = [Path(f) for f in input_path]
     else:
-        logging.error("Invalid input path provided.")
+        Colors.error("Invalid input path provided.")
         sys.exit(1)
 
     valid_files = []
@@ -57,11 +62,12 @@ def process_input(input_path: Union[str, List[str]], recursive: bool = False) ->
         if file.is_file() and file.suffix.lower() in SUPPORTED_MARKDOWN_EXTENSIONS:
             if os.access(file, os.R_OK):
                 valid_files.append(file)
+                Colors.success(f"Added file: {file.name}")
             else:
-                logging.error(f"Permission denied: {file}")
+                Colors.error(f"Permission denied: {file}")
         else:
             if file.is_file():
-                logging.warning(f"Unsupported file type: {file}")
+                Colors.warning(f"Skipping unsupported file: {file.name}")
     
     valid_files.sort()
     return valid_files
@@ -365,44 +371,51 @@ def main(input_path, output_file, recursive, log_file, verbose):
         media_dir = get_media_dir(output_path)
         
         start_time = datetime.now()
+        Colors.header("Analyzing Input Files")
         files_to_process = process_input(input_path, recursive)
         
         if not files_to_process:
-            console.print("[bold red]No valid markdown files found to process.[/]")
+            Colors.error("No valid markdown files found to process.")
             sys.exit(1)
 
-        console.print(f"\nFound [bold green]{len(files_to_process)}[/] files to process.\n")
+        Colors.success(f"Found {len(files_to_process)} files to process.")
+        Colors.header("\nProcessing Files")
 
         processed_files = []
         for idx, file_path in enumerate(files_to_process, 1):
             formatted_path = format_path(file_path)
-            console.print(f"[{idx}/{len(files_to_process)}] [bold cyan]{formatted_path}[/]")
+            Colors.info(f"[{idx}/{len(files_to_process)}] Processing: {formatted_path}")
             content = read_markdown_file(file_path)
             if content:
                 processed = process_markdown(content, file_path, media_dir)
                 processed_files.append(processed)
 
         if not processed_files:
-            console.print("[bold red]No files were processed successfully.[/]")
+            Colors.error("No files were processed successfully.")
             sys.exit(1)
 
-        console.print("\n[bold green]Generating consolidated output...[/]")
+        Colors.header("\nGenerating Output")
+        Colors.info("Consolidating content...")
         consolidated_content = combine_files(processed_files, start_time)
+        
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(consolidated_content)
                 f.flush()
                 os.fsync(f.fileno())
-            console.print(f"✓ Output saved to: [bold cyan]{format_path(Path(output_file))}[/]")
+            Colors.success(f"Output saved to: {format_path(Path(output_file))}")
             logging.info(f"Successfully wrote consolidated file to {output_file}")
+            
+            duration = datetime.now() - start_time
+            Colors.success(f"Processing complete in {duration.total_seconds():.2f} seconds")
             sys.exit(0)
         except Exception as e:
-            console.print(f"[bold red]✗ Failed to write output file: {e}[/]")
+            Colors.error(f"Failed to write output file: {e}")
             logging.error(f"Failed to write output file: {e}")
             sys.exit(1)
 
     except Exception as e:
-        console.print(f"[bold red]✗ Failed to process markdown files: {e}[/]")
+        Colors.error(f"Failed to process markdown files: {e}")
         logging.error(f"Failed to process markdown files: {e}")
         sys.exit(1)
 
