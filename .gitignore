@@ -52,4 +52,7 @@ Thumbs.db
 # Project specific
 _media/
 output.md
-output.pdf 
+output.pdf
+
+# Environment files
+.env
