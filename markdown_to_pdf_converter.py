@@ -247,6 +247,46 @@ class MarkdownToPDFConverter:
 
 # CLI Interface
 
+def convert_markdown_to_pdf(input_path: Path, output_path: Path, config_path: Optional[Path], style_path: Optional[Path]) -> None:
+    """Convert markdown to PDF with minimal console output."""
+    try:
+        # Setup logging
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        
+        # Load configuration
+        config = load_config(config_path, logger)
+        
+        # Read and process markdown
+        content = read_markdown_file(input_path, logger)
+        html_body, metadata, md = process_markdown(content, config, logger, input_path.parent)
+        
+        # Get template path
+        template_path = config.get('template_path', SCRIPT_DIR / 'templates/default_template.html')
+        if isinstance(template_path, str):
+            template_path = Path(template_path)
+        
+        # Generate HTML
+        html_content = generate_html(
+            content=html_body,
+            template_path=template_path,
+            config=config,
+            metadata=metadata,
+            md=md,
+            style_path=style_path,
+            logger=logger
+        )
+        
+        # Generate PDF
+        generate_pdf(html_content, output_path, config, logger)
+        
+        # Apply metadata
+        apply_pdf_metadata(output_path, metadata, logger)
+        
+    except Exception as e:
+        logger.error(f"Conversion error: {e}")
+        raise e
+
 @click.command()
 @click.argument('input_file', type=click.Path(exists=True))
 @click.argument('output_file', type=click.Path(), required=False)
@@ -255,39 +295,28 @@ class MarkdownToPDFConverter:
 @click.option('--toc/--no-toc', default=None, help='Enable/disable table of contents')
 @click.option('--verbose', is_flag=True, help='Increase output verbosity')
 def main(input_file, output_file, config, style, toc, verbose):
-    """
-    Converts a Markdown file to a professionally formatted PDF.
-    """
-    input_path = Path(input_file)
-    output_path = Path(output_file) if output_file else input_path.with_suffix('.pdf')
-    config_path = Path(config) if config else None
-    style_path = Path(style) if style else None
-
-    converter = MarkdownToPDFConverter(
-        input_path=input_path,
-        output_path=output_path,
-        config_path=config_path,
-        style_path=style_path,
-        toc_enabled=toc,
-        verbose=verbose
-    )
-
+    """Converts a Markdown file to a professionally formatted PDF."""
     try:
-        converter.convert()
-        if not output_path.exists():
-            print(f"[red]Error: PDF generation failed - output file not created[/red]")
-            sys.exit(1)
+        # Setup paths
+        input_path = Path(input_file)
+        output_path = Path(output_file) if output_file else input_path.with_suffix('.pdf')
+        config_path = Path(config) if config else None
+        style_path = Path(style) if style else None
+
+        # Convert to PDF
+        convert_markdown_to_pdf(input_path, output_path, config_path, style_path)
         
-        if output_path.stat().st_size == 0:
-            print(f"[red]Error: PDF generation failed - output file is empty[/red]")
+        # Verify output
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            print(f"[red]✗ Error: PDF generation failed[/red]")
             sys.exit(1)
             
-        print(f"[green]PDF generated successfully at {output_path}[/green]")
+        print(f"[green]✓ PDF generated successfully at {output_path}[/green]")
+        
     except Exception as e:
-        print(f"[red]Error: {e}[/red]")
+        print(f"[red]✗ Error: {str(e)}[/red]")
         sys.exit(1)
 
 # Entry Point
-
 if __name__ == '__main__':
     main()
