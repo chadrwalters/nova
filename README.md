@@ -40,7 +40,7 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/chadwalt/nova.git
+   git clone https://github.com/chadrwalters/nova.git
    cd nova
    ```
 
