@@ -12,6 +12,7 @@ from rich import print
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import sys
+from colors import Colors, console
 
 # Get the directory where the script is located
 SCRIPT_DIR = Path(__file__).parent
@@ -250,23 +251,24 @@ class MarkdownToPDFConverter:
 def convert_markdown_to_pdf(input_path: Path, output_path: Path, config_path: Optional[Path], style_path: Optional[Path]) -> None:
     """Convert markdown to PDF with minimal console output."""
     try:
+        Colors.header("Converting Markdown to PDF")
+        
         # Setup logging
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.INFO)
         
-        # Load configuration
+        Colors.info("Loading configuration...")
         config = load_config(config_path, logger)
         
-        # Read and process markdown
+        Colors.info("Processing markdown content...")
         content = read_markdown_file(input_path, logger)
         html_body, metadata, md = process_markdown(content, config, logger, input_path.parent)
         
-        # Get template path
+        Colors.info("Generating HTML...")
         template_path = config.get('template_path', SCRIPT_DIR / 'templates/default_template.html')
         if isinstance(template_path, str):
             template_path = Path(template_path)
         
-        # Generate HTML
         html_content = generate_html(
             content=html_body,
             template_path=template_path,
@@ -277,13 +279,15 @@ def convert_markdown_to_pdf(input_path: Path, output_path: Path, config_path: Op
             logger=logger
         )
         
-        # Generate PDF
+        Colors.info("Creating PDF...")
         generate_pdf(html_content, output_path, config, logger)
         
-        # Apply metadata
-        apply_pdf_metadata(output_path, metadata, logger)
+        Colors.success("PDF created successfully")
+        Colors.info(f"Location: {output_path}")
+        Colors.info(f"Size: {output_path.stat().st_size / 1024:.1f}KB")
         
     except Exception as e:
+        Colors.error(f"Conversion error: {str(e)}")
         logger.error(f"Conversion error: {e}")
         raise e
 
@@ -297,24 +301,22 @@ def convert_markdown_to_pdf(input_path: Path, output_path: Path, config_path: Op
 def main(input_file, output_file, config, style, toc, verbose):
     """Converts a Markdown file to a professionally formatted PDF."""
     try:
-        # Setup paths
         input_path = Path(input_file)
         output_path = Path(output_file) if output_file else input_path.with_suffix('.pdf')
         config_path = Path(config) if config else None
         style_path = Path(style) if style else None
 
-        # Convert to PDF
         convert_markdown_to_pdf(input_path, output_path, config_path, style_path)
         
-        # Verify output
         if not output_path.exists() or output_path.stat().st_size == 0:
-            print(f"[red]✗ Error: PDF generation failed[/red]")
+            Colors.error("PDF generation failed")
             sys.exit(1)
             
-        print(f"[green]✓ PDF generated successfully at {output_path}[/green]")
+        Colors.success(f"PDF generated successfully at {output_path}")
+        Colors.info(f"Size: {output_path.stat().st_size / 1024:.1f}KB")
         
     except Exception as e:
-        print(f"[red]✗ Error: {str(e)}[/red]")
+        Colors.error(f"Error: {str(e)}")
         sys.exit(1)
 
 # Entry Point
