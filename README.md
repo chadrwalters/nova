@@ -5,10 +5,11 @@
 Nova is an advanced AI assistant designed to be your personal analytics and growth partner. This repository contains both the Nova system prompt and a set of tools designed to help prepare your personal data for use with Nova.
 
 The primary workflow involves:
-1. Exporting markdown files from Bear.app (or similar note-taking apps)
-2. Consolidating these files into a single markdown document
-3. Converting the consolidated markdown into a PDF
-4. Using the PDF with the Nova prompt in your preferred AI platform
+1. Converting PDFs to markdown (if needed)
+2. Exporting markdown files from Bear.app (or similar note-taking apps)
+3. Consolidating these files into a single markdown document
+4. Converting the consolidated markdown into a PDF
+5. Using the PDF with the Nova prompt in your preferred AI platform
 
 This workflow helps overcome file number limitations in AI platforms while maintaining the context and structure of your personal data.
 
@@ -25,6 +26,12 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 
 ### Supporting Tools
 
+#### PDF to Markdown Converter
+- Extracts text and images from PDF files
+- Performs OCR on images to extract text
+- Saves images to a media directory
+- Maintains directory structure and relationships
+
 #### Markdown Consolidator and PDF Generator
 - Combines multiple markdown files into a single document
 - Handles image processing and path resolution
@@ -32,9 +39,164 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 - Configurable styling and layout options
 
 #### Automation Script
-- Streamlines the consolidation and conversion process
+- Streamlines the entire conversion and consolidation process
 - Handles cleanup and organization of files
 - Maintains consistent directory structure
+- Processes both PDF and markdown inputs
+
+## Installation
+
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/chadwalt/nova.git
+   cd nova
+   ```
+
+2. Install system dependencies:
+
+   On macOS:
+   ```bash
+   brew install tesseract  # For OCR support
+   brew install python@3.11
+   ```
+
+   On Ubuntu/Debian:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y \
+       tesseract-ocr \
+       python3.11 \
+       python3-pip \
+       build-essential \
+       python3-dev \
+       python3-setuptools \
+       python3-wheel \
+       python3-cffi \
+       libcairo2 \
+       libpango-1.0-0 \
+       libpangocairo-1.0-0 \
+       libgdk-pixbuf2.0-0 \
+       libffi-dev \
+       shared-mime-info
+   ```
+
+   On Windows:
+   - Install Python 3.11+ from python.org
+   - Install Tesseract from https://github.com/UB-Mannheim/tesseract/wiki
+   - Add Tesseract to your system PATH
+
+3. Install required Python packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Set up your environment:
+   ```bash
+   cp .env.template .env
+   ```
+
+5. Edit `.env` file with your paths:
+   ```bash
+   # Example .env configuration
+   SYNC_BASE="/Users/username/path/to/your/synced/folder"
+   NOVA_INPUT_DIR="${SYNC_BASE}/_NovaIndividualMarkdown"
+   NOVA_CONSOLIDATED_DIR="${SYNC_BASE}/_NovaConsolidatedMarkdown"
+   NOVA_OUTPUT_DIR="${SYNC_BASE}/_Nova"
+   ```
+
+6. Create required directories:
+   ```bash
+   mkdir -p "$NOVA_INPUT_DIR" "$NOVA_CONSOLIDATED_DIR" "$NOVA_OUTPUT_DIR"
+   ```
+
+## Usage
+
+### Converting PDFs to Markdown
+
+1. Place your PDF files in the input directory (`$NOVA_INPUT_DIR`)
+2. Run the consolidation script:
+   ```bash
+   ./consolidate.sh
+   ```
+   The script will:
+   - Find all PDF files in the input directory
+   - Convert them to markdown with images in `_media` directory
+   - Maintain the original directory structure
+   - Extract text from images using OCR when possible
+
+### Processing Markdown Files
+
+1. Export your markdown files to your configured input directory (`$NOVA_INPUT_DIR`)
+2. Run the consolidation script:
+   ```bash
+   ./consolidate.sh
+   ```
+
+### Output Files
+
+After running the script, you'll find:
+- Converted markdown files: In the same directory as the source PDFs
+- Media files: In `_media` directory within the input directory
+- Consolidated markdown: `$NOVA_CONSOLIDATED_DIR/output.md`
+- Final PDF: `$NOVA_OUTPUT_DIR/output.pdf`
+
+## Project Structure
+```
+.
+├── prompts/
+│   └── Nova.prompt                 # Core Nova AI system prompt
+├── config/
+│   └── default_config.yaml         # PDF configuration
+├── styles/
+│   └── default_style.css           # PDF styling
+├── templates/
+│   └── default_template.html       # HTML template
+├── pdf_to_markdown_converter.py    # PDF to Markdown conversion script
+├── markdown_to_pdf_converter.py    # PDF generation script
+├── markdown_consolidator.py        # Markdown consolidation script
+├── consolidate.sh                 # Main automation script
+├── .env.template                  # Environment template
+├── .env                          # Local environment configuration (not in git)
+└── requirements.txt              # Python dependencies
+```
+
+## Requirements
+
+### System Requirements
+- Python 3.11+
+- Tesseract OCR
+- Cairo graphics library
+- Pango text layout engine
+- GDK-PixBuf image loading library
+
+### Python Dependencies
+- PyMuPDF (for PDF processing)
+- pytesseract (for OCR)
+- Pillow (for image processing)
+- Click (for CLI interface)
+- WeasyPrint (for PDF generation)
+- Rich (for console output)
+- Additional dependencies in `requirements.txt`
+
+## Troubleshooting
+
+### PDF Conversion Issues
+- Ensure Tesseract is properly installed and in your PATH
+- Check PDF permissions and accessibility
+- Verify sufficient disk space for image extraction
+- Look for errors in the conversion log
+
+### Image Processing Issues
+- Verify image file permissions
+- Check available memory for large images
+- Ensure media directory is writable
+- Review image optimization settings if needed
+
+### General Issues
+- Check log files for detailed error messages
+- Verify all dependencies are installed
+- Ensure proper file permissions
+- Confirm sufficient disk space
 
 ## Using Nova with Claude
 
@@ -88,40 +250,6 @@ If Nova seems to be missing context:
 - Review the PDF content to ensure all data was included
 - Try clearing Claude's conversation history
 
-## Installation
-
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/chadwalt/nova.git
-   cd nova
-   ```
-
-2. Install required Python packages:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Set up your environment:
-   ```bash
-   cp .env.template .env
-   ```
-
-4. Edit `.env` file with your paths:
-   ```bash
-   # Example .env configuration
-   SYNC_BASE="/Users/username/path/to/your/synced/folder"
-   NOVA_INPUT_DIR="${SYNC_BASE}/_NovaIndividualMarkdown"
-   NOVA_CONSOLIDATED_DIR="${SYNC_BASE}/_NovaConsolidatedMarkdown"
-   NOVA_OUTPUT_DIR="${SYNC_BASE}/_Nova"
-   ```
-
-   Note: The `SYNC_BASE` should point to a directory that's synced across your devices. This could be iCloud Drive, Dropbox, Google Drive, or any other cloud storage solution you use. For example, if you use Bear notes with iCloud sync, this might be your iCloud Drive folder.
-
-5. Create required directories:
-   ```bash
-   mkdir -p "$NOVA_INPUT_DIR" "$NOVA_CONSOLIDATED_DIR" "$NOVA_OUTPUT_DIR"
-   ```
-
 ## Configuration
 
 ### Environment Setup
@@ -147,45 +275,6 @@ Ensure your chosen note-taking app is set up to save files in the directory spec
 - `config/default_config.yaml`: PDF configuration options
 - `styles/default_style.css`: PDF styling
 - `templates/default_template.html`: HTML template structure
-
-## Usage
-
-1. Export your markdown files to your configured input directory (`$NOVA_INPUT_DIR`)
-
-2. Run the consolidation script:
-   ```bash
-   ./consolidate.sh
-   ```
-
-3. Find your output files:
-   - Consolidated markdown: `$NOVA_CONSOLIDATED_DIR/output.md`
-   - Final PDF: `$NOVA_OUTPUT_DIR/output.pdf`
-
-4. Use the generated PDF with the Nova prompt in your AI platform
-
-## Project Structure
-```
-.
-├── prompts/
-│   └── Nova.prompt              # Core Nova AI system prompt
-├── config/
-│   └── default_config.yaml      # PDF configuration
-├── styles/
-│   └── default_style.css        # PDF styling
-├── templates/
-│   └── default_template.html    # HTML template
-├── markdown_to_pdf_converter.py # PDF conversion script
-├── consolidate.sh              # Main automation script
-├── .env.template               # Environment template
-├── .env                        # Local environment configuration (not in git)
-└── requirements.txt            # Python dependencies
-```
-
-## Requirements
-
-- Python 3.11+
-- Dependencies listed in `requirements.txt`
-- Unix-like environment (for shell script)
 
 ## Contributing
 
