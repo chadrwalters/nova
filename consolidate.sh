@@ -211,43 +211,35 @@ print()
     fi
 }
 
-# Function to convert PDF files to markdown
+# Function to convert PDFs to markdown
 convert_pdfs_to_markdown() {
     print_header "Converting PDF files to Markdown"
     
-    # Use find with print0 and process with while read to handle spaces correctly
-    local count=0
-    while IFS= read -r -d '' pdf_file; do
-        ((count++))
-    done < <(find "$NOVA_INPUT_DIR" -name "*.pdf" -print0)
-    
-    if [ $count -eq 0 ]; then
-        print_info "No PDF files found to convert"
-        return 0
-    fi
-    
-    print_info "Found $count PDF files to convert"
-    
-    # Create media directory
-    local media_dir="$NOVA_INPUT_DIR/_media"
-    mkdir -p "$media_dir"
-    
-    # Process files
-    while IFS= read -r -d '' pdf_file; do
-        # Create output path maintaining directory structure
-        local rel_path="${pdf_file#$NOVA_INPUT_DIR/}"
-        local md_file="$NOVA_INPUT_DIR/${rel_path%.pdf}.md"
+    # First, find all markdown files that might have associated PDFs
+    while IFS= read -r -d '' md_file; do
+        # Get the base directory and filename without extension
+        base_dir=$(dirname "$md_file")
+        base_name=$(basename "$md_file" .md)
+        attachment_dir="$base_dir/$base_name"
         
-        # Create directory structure if it doesn't exist
-        mkdir -p "$(dirname "$md_file")"
-        
-        print_info "Converting: $(normalize_path "$pdf_file")"
-        
-        if ! python pdf_to_markdown_converter.py "$pdf_file" "$md_file" --media-dir "$media_dir"; then
-            print_error "Failed to convert PDF: $(normalize_path "$pdf_file")"
-            return 1
+        # Check if there's a matching directory with PDFs
+        if [ -d "$attachment_dir" ]; then
+            print_info "Processing attachments for: $(normalize_path "$md_file")"
+            
+            # Process each PDF in the attachment directory
+            while IFS= read -r -d '' pdf_file; do
+                pdf_name=$(basename "$pdf_file" .pdf)
+                md_output="$attachment_dir/$pdf_name.md"
+                
+                print_info "  Converting attachment: $(basename "$pdf_file")"
+                
+                if ! python pdf_to_markdown_converter.py "$pdf_file" "$md_output" --media-dir "$attachment_dir/_media"; then
+                    print_error "Failed to convert PDF: $(normalize_path "$pdf_file")"
+                    return 1
+                fi
+            done < <(find "$attachment_dir" -maxdepth 1 -name "*.pdf" -print0)
         fi
-    done < <(find "$NOVA_INPUT_DIR" -name "*.pdf" -print0)
+    done < <(find "$NOVA_INPUT_DIR" -type f -name "*.md" -print0)
     
     print_success "PDF conversion complete"
     return 0

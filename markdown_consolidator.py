@@ -45,7 +45,23 @@ def process_input(input_path: Union[str, List[str]], recursive: bool = False) ->
         Colors.info(f"Path is dir: {path.is_dir()}")
         
         if path.is_dir():
-            files = [f for f in path.rglob('*') if f.is_file()]
+            # Only process markdown files in the root directory and subdirectories that aren't attachment directories
+            for file_path in path.rglob('*') if recursive else path.glob('*'):
+                # Skip _media directories and their contents
+                if '_media' in file_path.parts:
+                    continue
+                    
+                # Skip files in attachment directories (directories with the same name as a markdown file)
+                parent_is_attachment = (
+                    file_path.parent.name.endswith('.md') or 
+                    file_path.parent.with_suffix('.md').exists()
+                )
+                if parent_is_attachment:
+                    continue
+                
+                if file_path.is_file():
+                    files.append(file_path)
+                    
             Colors.info(f"Found {len(files)} files in directory")
         elif path.is_file():
             files = [path]
@@ -87,234 +103,55 @@ def read_markdown_file(file_path: Path) -> str:
         logging.error(f"Error reading {file_path}: {e}")
         return ""
 
-def process_markdown(content: str, file_path: Path, media_dir: Path) -> dict:
-    """
-    Parse markdown content, update internal links, handle duplicate headers.
-    Return processed content and metadata.
-    """
-    file_identifier = file_path.name
-
-    # Handle duplicate headers by adding file context
-    content = add_file_context_to_headers(content, file_identifier)
-
-    # Update internal links to anchor links
-    content = update_internal_links(content)
-
-    # Process images and collect embedded media
-    embedded_media = []
-    content = process_images_in_markdown(content, embedded_media, file_path, media_dir)
-
+def process_markdown_with_attachments(file_path: Path, media_dir: Path) -> dict:
+    """Process a markdown file and its attachments."""
+    # Get the potential attachment directory
+    attachment_dir = file_path.parent / file_path.stem
+    
+    content = []
+    attachments = []
+    
+    # Read main markdown content
+    main_content = read_markdown_file(file_path)
+    content.append(main_content)
+    
+    # Process attachments if they exist
+    if attachment_dir.is_dir():
+        attachment_files = sorted(attachment_dir.glob('*.md'))
+        if attachment_files:
+            content.append("\n### Attachments\n")
+            
+            for attachment in attachment_files:
+                # Skip if it's the same as the main file
+                if attachment.stem == file_path.stem:
+                    continue
+                    
+                # Add attachment header (clean up the filename for display)
+                attachment_title = attachment.stem
+                # Remove any timestamp suffixes
+                if attachment_title.endswith(('-201124-160745', '-201124-160841')):
+                    attachment_title = attachment_title.rsplit('-', 2)[0]
+                # Remove duplicate numbering
+                if attachment_title.endswith(' 2'):
+                    attachment_title = attachment_title[:-2]
+                
+                content.append(f"\n#### {attachment_title}\n")
+                
+                # Read and append attachment content
+                attachment_content = read_markdown_file(attachment)
+                content.append(attachment_content)
+                
+                # Track attachment for TOC
+                attachments.append(attachment_title)
+    
     return {
-        "file_identifier": str(file_identifier),
-        "content": content,
-        "embedded_media": embedded_media
+        'file_identifier': file_path.stem,
+        'content': '\n'.join(content),
+        'attachments': attachments
     }
 
-def add_file_context_to_headers(content: str, file_identifier: str) -> str:
-    """
-    Add '[from filename.md]' suffix to headers to handle duplicates.
-    """
-    header_pattern = r'^(#{1,6}\s*)(.+)$'
-    def replace_header(match):
-        header_level = match.group(1)
-        header_text = match.group(2)
-        new_header = f"{header_level}{header_text} [from {file_identifier}]"
-        return new_header
-
-    return re.sub(header_pattern, replace_header, content, flags=re.MULTILINE)
-
-def update_internal_links(content: str) -> str:
-    """
-    Convert internal markdown links to anchor links.
-    """
-    link_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
-    def replace_link(match):
-        text = match.group(1)
-        link = match.group(2)
-        if link.startswith('#'):
-            anchor = link.lower().replace(' ', '-').replace('#', '')
-            return f'[{text}](#{anchor})'
-        else:
-            return match.group(0)
-    return re.sub(link_pattern, replace_link, content)
-
-def process_images_in_markdown(content: str, embedded_media: list, file_path: Path, media_dir: Path) -> str:
-    """
-    Find all images in markdown content, process them, and update paths.
-    """
-    image_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
-    images_to_process = []
-
-    def replace_image(match):
-        alt_text = match.group(1)
-        image_path = match.group(2)
-        images_to_process.append((alt_text, image_path))
-        return f'![{alt_text}]({image_path})'  # Placeholder, will be replaced later
-
-    content = re.sub(image_pattern, replace_image, content)
-
-    # Process images in parallel
-    with Pool() as pool:
-        results = pool.starmap(
-            process_single_image, 
-            [(alt_text, image_path, file_path, media_dir) 
-             for alt_text, image_path in images_to_process]
-        )
-
-    # Replace placeholders with processed image paths
-    for idx, (alt_text, processed_path) in enumerate(results):
-        if processed_path:
-            embedded_media.append(str(processed_path))
-            try:
-                # Try to create relative path
-                relative_path = processed_path.relative_to(Path.cwd())
-            except ValueError:
-                # If that fails, just use the filename with _media prefix
-                relative_path = Path('_media') / processed_path.name
-            
-            content = content.replace(
-                f'![{alt_text}]({images_to_process[idx][1]})', 
-                f'![{alt_text}]({relative_path})'
-            )
-        else:
-            content = content.replace(
-                f'![{alt_text}]({images_to_process[idx][1]})', 
-                f'![{alt_text}](placeholder.jpg)'
-            )
-
-    return content
-
-def process_single_image(alt_text: str, image_path: str, file_path: Path, media_dir: Path) -> tuple:
-    """
-    Helper function to process a single image.
-    Handles three types of images:
-    1. Local files
-    2. Remote URLs
-    3. Base64 encoded images
-    """
-    try:
-        # Handle Base64 encoded images
-        if image_path.startswith('data:image'):
-            return process_base64_image(alt_text, image_path, media_dir)
-        # Handle remote images
-        elif image_path.startswith('http'):
-            processed_image_path = handle_external_image(image_path, media_dir)
-        # Handle local images
-        else:
-            image_full_path = (file_path.parent / image_path).resolve()
-            processed_image_path = process_image(image_full_path, media_dir)
-        return alt_text, processed_image_path
-    except Exception as e:
-        logging.error(f"Error processing image: {e}")
-        return alt_text, None
-
-def process_base64_image(alt_text: str, base64_string: str, media_dir: Path) -> tuple:
-    """Process a Base64 encoded image."""
-    try:
-        # Extract the actual base64 data
-        header, base64_data = base64_string.split(',', 1)
-        
-        # Decode base64 to binary
-        binary_data = base64.b64decode(base64_data)
-        
-        # Create a file-like object from the binary data
-        image_data = io.BytesIO(binary_data)
-        
-        # Generate a hash of the image data
-        hash_digest = hashlib.sha256(binary_data).hexdigest()[:8]
-        
-        # Create new filename
-        new_filename = f"base64_image_{hash_digest}.jpg"
-        new_image_path = media_dir / new_filename
-        
-        # Open and process with Pillow
-        with Image.open(image_data) as img:
-            # Convert to RGB if needed
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            
-            # Resize if needed
-            img.thumbnail((2000, 2000), Image.LANCZOS)
-            
-            # Save as JPEG
-            img.save(new_image_path, 'JPEG', quality=85, progressive=True)
-            
-        logging.info(f"Processed base64 image saved as {new_image_path}")
-        return alt_text, new_image_path
-        
-    except Exception as e:
-        logging.error(f"Error processing base64 image: {e}")
-        return alt_text, None
-
-def process_image(image_path: Path, media_dir: Path) -> Union[Path, None]:
-    """Process and optimize image."""
-    if not image_path.exists():
-        logging.error(f"Image file not found: {image_path}")
-        return None
-
-    if image_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
-        logging.warning(f"Unsupported image type: {image_path}")
-        return None
-
-    try:
-        # Read image bytes for hashing
-        image_bytes = image_path.read_bytes()
-        hash_digest = hashlib.sha256(image_bytes).hexdigest()[:8]
-        
-        # Always convert to JPEG for consistency
-        new_filename = f"{image_path.stem}_{hash_digest}.jpg"
-        new_image_path = media_dir / new_filename
-
-        with Image.open(image_path) as img:
-            # Convert HEIC/HEIF to RGB mode
-            if image_path.suffix.lower() in ['.heic', '.heif']:
-                img = img.convert('RGB')
-            
-            # Handle other formats that might need RGB conversion
-            elif img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            
-            # Resize if needed
-            img.thumbnail((2000, 2000), Image.LANCZOS)
-            
-            # Save as JPEG
-            img.save(new_image_path, 'JPEG', quality=85, progressive=True)
-            
-        logging.info(f"Processed image saved as {new_image_path}")
-        return new_image_path
-        
-    except Exception as e:
-        logging.warning(f"Image processing error for {image_path}: {e}")
-        return None
-
-def handle_external_image(url: str, media_dir: Path) -> Union[Path, None]:
-    """Download and process external image."""
-    try:
-        response = requests.get(url, stream=True, timeout=10)
-        if response.status_code == 200:
-            temp_image_path = media_dir / 'temp_image'
-            with open(temp_image_path, 'wb') as f:
-                for chunk in response.iter_content(1024):
-                    f.write(chunk)
-            processed_image = process_image(temp_image_path, media_dir)
-            temp_image_path.unlink()  # Remove temporary file
-            return processed_image
-        else:
-            logging.warning(f"Failed to download image from {url}")
-            return None
-    except Exception as e:
-        logging.warning(f"Exception while downloading image {url}: {e}")
-        return None
-
 def combine_files(processed_files: List[dict], start_time: datetime) -> str:
-    """
-    Combine all processed content:
-    1. Add metadata header.
-    2. Generate table of contents.
-    3. Add file identifiers as headers.
-    4. Combine content.
-    Return consolidated markdown string.
-    """
+    """Combine all processed content with improved TOC structure."""
     end_time = datetime.now()
     processing_duration = (end_time - start_time).total_seconds()
     metadata = {
@@ -326,12 +163,23 @@ def combine_files(processed_files: List[dict], start_time: datetime) -> str:
     # Generate Table of Contents
     toc = []
     combined_content = []
+    
     for file_data in processed_files:
-        file_header = f"## {file_data['file_identifier']}"
+        # Add main file to TOC
+        file_id = file_data['file_identifier']
+        toc.append(f"- [{file_id}](#{file_id.lower().replace(' ', '-').replace('.', '')})")
+        
+        # Add attachments to TOC if any
+        if file_data['attachments']:
+            toc.extend([
+                f"  - [{attachment}](#{attachment.lower().replace(' ', '-').replace('.', '')})"
+                for attachment in file_data['attachments']
+            ])
+        
+        # Add content
+        file_header = f"## {file_id}"
         combined_content.append(file_header)
         combined_content.append(file_data['content'])
-        toc.append(f"- [{file_data['file_identifier']}]"
-                   f"(#{file_data['file_identifier'].lower().replace(' ', '-').replace('.', '')})")
 
     metadata_block = '\n'.join([f"{k}: {v}" for k, v in metadata.items()])
     toc_block = '\n'.join(toc)
@@ -387,7 +235,7 @@ def main(input_path, output_file, recursive, log_file, verbose):
             Colors.info(f"[{idx}/{len(files_to_process)}] Processing: {formatted_path}")
             content = read_markdown_file(file_path)
             if content:
-                processed = process_markdown(content, file_path, media_dir)
+                processed = process_markdown_with_attachments(file_path, media_dir)
                 processed_files.append(processed)
 
         if not processed_files:
