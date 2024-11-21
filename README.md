@@ -295,3 +295,42 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+## Raycast Integration
+
+### Prerequisites
+- macOS (Raycast is macOS only)
+- [Raycast](https://www.raycast.com/) installed
+- Raycast Pro subscription (required for AI features)
+- [Raycast Browser Extension](https://www.raycast.com/browser-extension) (optional but recommended)
+
+### Installing Raycast AI Chat Presets
+
+1. Open Raycast (default: `⌘ Space`)
+2. Search for "Import AI Chat Presets"
+3. Select the command and import the following presets from the `prompts/raycast prompts` directory:
+   - `convertJournal.prompt`: Transforms voice memos into structured journal entries
+   - `convertMeeting.prompt`: Processes meeting transcripts into organized summaries
+   - `convertWebpageTomarkdown.prompt`: Converts web content to markdown format
+
+### Using the Presets
+
+#### Journal Conversion
+1. Record your voice memos using your preferred method
+2. Open Raycast and select the "Journal Conversion" preset
+3. Paste your transcribed voice memo
+4. The AI will structure and format your thoughts for use with Nova
+
+#### Meeting Transcripts
+1. After a meeting, copy your meeting transcript
+2. Open Raycast and select the "Meeting Conversion" preset
+3. Paste your meeting transcript
+4. The AI will organize the content with proper attribution, action items, and insights
+
+#### Webpage to Markdown
+1. Install the Raycast Browser Extension
+2. On any webpage, use the extension shortcut (default: `⌘ K`)
+3. Select "Convert to Markdown"
+4. The AI will convert the page content to clean markdown format
+
+These formatted documents can then be processed through Nova's consolidation workflow for comprehensive personal analytics.
