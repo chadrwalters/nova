@@ -1,7 +1,10 @@
-# Log files
-*.log
-markdown_to_pdf.log
-markdown_consolidator.log
+# OS generated files
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
 # Python
 __pycache__/
@@ -41,14 +44,10 @@ env/
 .pydevproject
 .settings/
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Log files
+*.log
+markdown_to_pdf.log
+markdown_consolidator.log
 
 # Project specific
 _media/
@@ -57,5 +56,3 @@ output.pdf
 
 # Environment files
 .env
-.DS_Store
-.DS_Store
