@@ -88,7 +88,7 @@ check_python() {
 
 # Function to check required scripts
 check_scripts() {
-    local scripts=("markdown_consolidator.py" "markdown_to_pdf_converter.py" "pdf_to_markdown_converter.py")
+    local scripts=("markdown_consolidator.py" "markdown_to_pdf_converter.py" "src/processors/pdf_to_markdown_converter.py")
     for script in $scripts; do
         if [[ ! -f $script ]]; then
             python -c "from rich import print; print(f'[red]✗ Error:[/] Required Python script \"$script\" not found')"
