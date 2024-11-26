@@ -5,7 +5,7 @@
 Nova is an advanced AI assistant designed to be your personal analytics and growth partner. This repository contains both the Nova system prompt and a set of tools designed to help prepare your personal data for use with Nova.
 
 The primary workflow involves:
-1. Converting PDFs to markdown (if needed)
+1. Converting PDFs and Word documents to markdown (if needed)
 2. Exporting markdown files from Bear.app (or similar note-taking apps)
 3. Consolidating these files into a single markdown document
 4. Converting the consolidated markdown into a PDF
@@ -26,8 +26,9 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 
 ### Supporting Tools
 
-#### PDF to Markdown Converter
+#### PDF and Word Document Converter
 - Extracts text and images from PDF files
+- Converts Word documents (.doc, .docx) to markdown
 - Performs OCR on images to extract text
 - Saves images to a media directory
 - Maintains directory structure and relationships
@@ -111,23 +112,27 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 
 ## Usage
 
-### Converting PDFs to Markdown
+### Converting Documents to Markdown
 
-1. Place your PDF files in the input directory (`$NOVA_INPUT_DIR`)
+1. Place your PDF or Word files in the input directory (`$NOVA_INPUT_DIR`)
 2. Run the consolidation script:
    ```bash
    ./consolidate.sh
    ```
    The script will:
-   - Find all PDF files in the input directory
+   - Find all PDF and Word files in the input directory
    - Convert them to markdown with images in `_media` directory
    - Maintain the original directory structure
-   - Extract text from images using OCR when possible
+   - Extract text from images using OCR when possible (for PDFs)
 
 ### Processing Markdown Files
 
 1. Export your markdown files to your configured input directory (`$NOVA_INPUT_DIR`)
-2. Run the consolidation script:
+2. For files with attachments:
+   - Create a directory with the same name as your markdown file
+   - Place PDF or Word attachments in this directory
+   - They will be automatically converted and included
+3. Run the consolidation script:
    ```bash
    ./consolidate.sh
    ```
@@ -168,9 +173,12 @@ After running the script, you'll find:
 - Cairo graphics library
 - Pango text layout engine
 - GDK-PixBuf image loading library
+- Microsoft Word file support libraries
 
 ### Python Dependencies
 - PyMuPDF (for PDF processing)
+- python-docx (for Word document processing)
+- mammoth (for Word to markdown conversion)
 - pytesseract (for OCR)
 - Pillow (for image processing)
 - Click (for CLI interface)
