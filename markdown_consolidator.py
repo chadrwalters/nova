@@ -20,6 +20,8 @@ import base64
 import io
 
 from colors import Colors, console
+from src.processors.word_to_markdown_converter import WordConverter
+from src.processors.pdf_to_markdown_converter import PDFConverter
 
 # Logging Configuration
 logging.basicConfig(
@@ -31,6 +33,7 @@ logging.basicConfig(
 # Global Variables
 SUPPORTED_MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.mdown', '.mkdn', '.mkd', '.mdwn', '.mdtxt', '.mdtext', '.text', '.txt']
 SUPPORTED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.heic', '.heif']
+SUPPORTED_ATTACHMENT_EXTENSIONS = ['.pdf', '.docx', '.doc']
 
 register_heif_opener()  # Register HEIF/HEIC support with Pillow
 
@@ -117,28 +120,64 @@ def process_markdown_with_attachments(file_path: Path, media_dir: Path) -> dict:
     
     # Process attachments if they exist
     if attachment_dir.is_dir():
-        attachment_files = sorted(attachment_dir.glob('*.md'))
-        if attachment_files:
-            content.append("\n### Attachments\n")
-            
-            for attachment in attachment_files:
+        # Process all supported attachments
+        for ext in SUPPORTED_ATTACHMENT_EXTENSIONS:
+            # Use rglob to find files in subdirectories
+            for attachment in sorted(attachment_dir.rglob(f'*{ext}')):
                 # Skip if it's the same as the main file
                 if attachment.stem == file_path.stem:
                     continue
                     
-                # Add attachment header (clean up the filename for display)
+                # Skip if the attachment is actually a directory
+                if not attachment.is_file():
+                    Colors.warning(f"Skipping directory that ends with {ext}: {attachment}")
+                    continue
+                
+                # Skip files in _media directories
+                if '_media' in attachment.parts:
+                    continue
+                
+                # Convert attachment based on type
+                attachment_md = attachment.parent / f"{attachment.stem}.md"
+                
+                if not attachment_md.exists():
+                    try:
+                        if ext in ['.doc', '.docx']:
+                            converter = WordConverter(
+                                attachment, 
+                                attachment_md,
+                                media_dir=attachment.parent / '_media',
+                                verbose=True
+                            )
+                            if not converter.convert():
+                                Colors.error(f"Failed to convert Word document: {attachment}")
+                                continue
+                        elif ext == '.pdf':
+                            # Existing PDF conversion logic
+                            converter = PDFConverter(
+                                attachment,
+                                attachment_md,
+                                media_dir=attachment.parent / '_media',
+                                verbose=True
+                            )
+                            if not converter.convert():
+                                Colors.error(f"Failed to convert PDF: {attachment}")
+                                continue
+                    except Exception as e:
+                        Colors.error(f"Error converting {attachment}: {str(e)}")
+                        continue
+                
+                # Add attachment header
                 attachment_title = attachment.stem
-                # Remove any timestamp suffixes
                 if attachment_title.endswith(('-201124-160745', '-201124-160841')):
                     attachment_title = attachment_title.rsplit('-', 2)[0]
-                # Remove duplicate numbering
                 if attachment_title.endswith(' 2'):
                     attachment_title = attachment_title[:-2]
                 
                 content.append(f"\n#### {attachment_title}\n")
                 
                 # Read and append attachment content
-                attachment_content = read_markdown_file(attachment)
+                attachment_content = read_markdown_file(attachment_md)
                 content.append(attachment_content)
                 
                 # Track attachment for TOC

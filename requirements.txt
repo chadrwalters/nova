@@ -14,3 +14,5 @@ PyYAML>=6.0
 beautifulsoup4>=4.10.0
 PyMuPDF>=1.19.0
 pytesseract>=0.3.8
+python-docx>=0.8.11
+mammoth>=1.6.0
