@@ -1,32 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>{{ metadata.title }}</title>
-    <style>{{ styles }}</style>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
 </head>
 <body>
-    {% if config.header.enabled %}
     <header>
-        {{ config.header.content }}
+        <h1>{{ title }}</h1>
+        <p class="date">Generated: {{ date }}</p>
     </header>
-    {% endif %}
-
-    {% if config.toc.enabled %}
-    <nav id="toc">
-        <h1>{{ config.toc.title }}</h1>
-        {{ toc }}
+    {% if toc %}
+    <nav class="toc">
+        <h2>Table of Contents</h2>
+        {{ toc | safe }}
     </nav>
     {% endif %}
-
     <main>
-        {{ content }}
+        {{ content | safe }}
     </main>
-
-    {% if config.footer.enabled %}
-    <footer>
-        {{ config.footer.content }}
-    </footer>
-    {% endif %}
 </body>
 </html>

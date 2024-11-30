@@ -9,80 +9,49 @@ import mammoth
 import docx
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from colors import Colors, console
+from colors import NovaConsole
 
 class WordConverter:
-    def __init__(self, input_path: Path, output_path: Path, media_dir: Optional[Path] = None, verbose: bool = False):
-        self.input_path = input_path
-        self.output_path = output_path
-        self.media_dir = media_dir or output_path.parent / '_media'
+    def __init__(self, input_file: Path, output_file: Path, media_dir: Optional[Path] = None, verbose: bool = False):
+        self.input_file = input_file
+        self.output_file = output_file
+        self.media_dir = media_dir
         self.verbose = verbose
-        self.logger = self.setup_logging()
+        self.console = NovaConsole()
         
-    def setup_logging(self) -> logging.Logger:
-        logger = logging.getLogger(__name__)
-        if self.verbose:
-            logger.setLevel(logging.DEBUG)
-        return logger
-
     def convert(self) -> bool:
         """Convert Word document to Markdown."""
         try:
-            Colors.info(f"Converting Word document: {self.input_path}")
-            
-            # Ensure media directory exists
-            self.media_dir.mkdir(parents=True, exist_ok=True)
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console
-            ) as progress:
-                task = progress.add_task("Converting Word document...", total=1)
-                
-                # Configure image handling
-                image_handler = mammoth.images.inline(lambda image: {
-                    "src": self._save_image(image)
-                })
-                
-                # Convert document
-                with open(self.input_path, "rb") as docx_file:
-                    result = mammoth.convert_to_markdown(
-                        docx_file,
-                        convert_image=image_handler
-                    )
-                
-                # Write markdown content
-                self.output_path.write_text(result.value, encoding='utf-8')
-                
-                # Log any warnings
-                for warning in result.messages:
-                    self.logger.warning(warning)
-                
-                progress.update(task, advance=1)
-                
-                Colors.success(f"Conversion complete: {self.output_path}")
-                self.logger.info(f"Successfully converted {self.input_path} to {self.output_path}")
-                return True
-                
-        except Exception as e:
-            Colors.error(f"Conversion failed: {e}")
-            self.logger.error(f"Conversion failed: {e}")
-            return False
+            if self.verbose:
+                self.console.info(f"Converting {self.input_file.name}")
 
-    def _save_image(self, image):
-        """Save embedded image and return its relative path."""
-        try:
-            image_filename = f"image_{hash(image.bytes)}_{image.content_type.split('/')[-1]}"
-            image_path = self.media_dir / image_filename
-            
-            with open(image_path, 'wb') as f:
-                f.write(image.bytes)
-            
-            return f"_media/{image_filename}"
+            # Create media directory if needed
+            if self.media_dir:
+                self.media_dir.mkdir(parents=True, exist_ok=True)
+                if self.verbose:
+                    self.console.info(f"Media directory: {self.media_dir}")
+
+            # Convert document
+            with open(self.input_file, 'rb') as docx_file:
+                result = mammoth.convert_to_markdown(docx_file)
+                markdown = result.value
+                messages = result.messages
+
+            # Log any warnings
+            if messages and self.verbose:
+                for message in messages:
+                    self.console.warning(str(message))
+
+            # Write output
+            self.output_file.write_text(markdown, encoding='utf-8')
+            if self.verbose:
+                self.console.success(f"Created {self.output_file.name}")
+
+            return True
+
         except Exception as e:
-            self.logger.error(f"Failed to save image: {e}")
-            return ""
+            self.console.error(f"Failed to convert {self.input_file.name}: {str(e)}")
+            return False
 
 if __name__ == '__main__':
     import click
@@ -105,7 +74,7 @@ if __name__ == '__main__':
             sys.exit(0 if success else 1)
             
         except Exception as e:
-            Colors.error(f"Error: {str(e)}")
+            print(f"Error: {str(e)}")
             sys.exit(1)
 
     main() 
