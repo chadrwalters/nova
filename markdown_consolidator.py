@@ -153,15 +153,14 @@ def process_markdown_with_attachments(file_path: Path, media_dir: Path) -> dict:
                                 Colors.error(f"Failed to convert Word document: {attachment}")
                                 continue
                         elif ext == '.pdf':
-                            # Existing PDF conversion logic
-                            converter = PDFConverter(
-                                attachment,
-                                attachment_md,
-                                media_dir=attachment.parent / '_media',
-                                verbose=True
-                            )
-                            if not converter.convert():
-                                Colors.error(f"Failed to convert PDF: {attachment}")
+                            try:
+                                converter = PDFConverter()
+                                markdown_content = converter.convert_pdf_to_markdown(
+                                    pdf_path=attachment,
+                                    output_path=attachment_md
+                                )
+                            except PDFConversionError as e:
+                                Colors.error(f"Failed to convert PDF: {attachment} - {str(e)}")
                                 continue
                     except Exception as e:
                         Colors.error(f"Error converting {attachment}: {str(e)}")
