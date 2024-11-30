@@ -16,3 +16,4 @@ PyMuPDF>=1.19.0
 pytesseract>=0.3.8
 python-docx>=0.8.11
 mammoth>=1.6.0
+pypdf>=3.0.0
