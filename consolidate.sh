@@ -44,11 +44,9 @@ FINAL_PDF="$NOVA_OUTPUT_DIR/output.pdf"
 print_header() {
     local title="$1"
     python3 -c '
-from rich.console import Console
-console = Console()
-console.print()
-console.rule(f"[header]'"$title"'[/]", style="divider")
-console.print()
+from colors import NovaConsole
+console = NovaConsole()
+console.section('"\"$title\""')
 '
 }
 

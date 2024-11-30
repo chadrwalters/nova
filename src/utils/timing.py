@@ -1,9 +1,9 @@
 from functools import wraps
 from datetime import datetime
-from typing import Callable, Any, Optional
-from rich.console import Console
+from typing import Callable, Any
+from colors import NovaConsole
 
-console = Console()
+nova_console = NovaConsole()
 
 class Timer:
     def __init__(self):
@@ -34,13 +34,14 @@ def timed_section(section_name: str) -> Callable:
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
-            console.rule(f"[bold cyan]{section_name}[/]")
+            nova_console.section(section_name)
+            
             start_time = datetime.now()
-            
             result = func(*args, **kwargs)
-            
             duration = (datetime.now() - start_time).total_seconds()
-            console.print(f"[green]✓[/] {section_name} completed in [cyan]{format_duration(duration)}[/]\n")
+            
+            nova_console.console.print(f"[bright_green]✓[/] {section_name} completed in [bright_cyan]{format_duration(duration)}[/]")
+            nova_console.console.print()
             return result
         return wrapper
     return decorator 
