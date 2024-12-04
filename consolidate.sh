@@ -264,7 +264,7 @@ console = NovaConsole()
 console.process_item('$pdf_file')
                 "
                 
-                if ! python pdf_to_markdown_converter.py "$pdf_file" "$md_output" --media-dir "$attachment_dir/_media"; then
+                if ! python -m src.processors.pdf_to_markdown_converter "$pdf_file" "$md_output" --media-dir "$attachment_dir/_media"; then
                     python3 -c "
 from colors import NovaConsole
 console = NovaConsole()

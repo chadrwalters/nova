@@ -62,11 +62,11 @@ class PDFConverter:
         return self.clean_content(content)
         
     @timed_section("Converting markdown")
-    def convert_markdown(self, content: str) -> tuple[str, str]:
-        """Convert markdown to HTML and generate TOC."""
-        md = markdown.Markdown(extensions=['extra', 'toc', 'tables', 'fenced_code'])
+    def convert_markdown(self, content: str) -> str:
+        """Convert markdown to HTML."""
+        md = markdown.Markdown(extensions=['extra', 'tables', 'fenced_code'])
         html = md.convert(content)
-        return html, md.toc
+        return html
         
     @timed_section("Generating PDF")
     def generate_pdf(self, html: str, output_file: Path, css: CSS) -> None:
@@ -84,15 +84,14 @@ class PDFConverter:
             
             # Load and convert content
             content = self.load_content(input_file)
-            html, toc = self.convert_markdown(content)
+            html = self.convert_markdown(content)
             
             # Generate PDF
             template = self.template_env.get_template(self.config['template'])
             context = {
                 'content': html,
                 'title': input_file.stem,
-                'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'toc': toc
+                'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             
             rendered = template.render(**context)
