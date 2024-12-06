@@ -1,7 +1,7 @@
 from functools import wraps
 from datetime import datetime
 from typing import Callable, Any
-from colors import NovaConsole
+from src.utils.colors import NovaConsole
 
 nova_console = NovaConsole()
 
