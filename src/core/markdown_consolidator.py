@@ -288,60 +288,72 @@ def process_input(input_path: Path, recursive: bool = False) -> List[Path]:
         files.append(input_path)
     return sorted(files)
 
-@app.command()
-def consolidate(
-    input_path: Path = typer.Argument(..., help="Input markdown files path"),
-    output_file: Path = typer.Argument(..., help="Output consolidated file path"),
-    recursive: bool = typer.Option(False, "--recursive", "-r", help="Process directories recursively"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Increase output verbosity")
-) -> None:
-    """Consolidate multiple markdown files into a single document."""
-    try:
-        # Find markdown files
-        nova_console.process_start("markdown consolidation", str(input_path))
-        files = process_input(input_path, recursive)
+class MarkdownConsolidator:
+    """A class to consolidate multiple markdown files into a single file."""
+    
+    def __init__(self):
+        """Initialize the markdown consolidator."""
+        self.console = NovaConsole()
         
-        if not files:
-            nova_console.error("No markdown files found")
-            raise typer.Exit(1)
+    def consolidate(self, input_files: List[Path], output_file: Path) -> None:
+        """
+        Consolidate multiple markdown files into a single file.
         
-        # Create media directory
-        media_dir = output_file.parent / "_media"
-        media_dir.mkdir(parents=True, exist_ok=True)
+        Args:
+            input_files: List of input markdown file paths
+            output_file: Output file path
+            
+        Raises:
+            ValueError: If input_files is empty
+            FileNotFoundError: If any input file doesn't exist
+        """
+        if not input_files:
+            raise ValueError("No input files provided")
+            
+        for file in input_files:
+            if not file.exists():
+                raise FileNotFoundError(f"Input file not found: {file}")
         
-        # Process each file
-        processed_files = []
-        total_media_files = []
+        with timed_section("Consolidating markdown files"):
+            # Create output directory if it doesn't exist
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Process each file
+            with output_file.open('w', encoding='utf-8') as outfile:
+                for input_file in input_files:
+                    self._process_file(input_file, outfile)
+    
+    def _process_file(self, input_file: Path, outfile) -> None:
+        """Process a single markdown file and write its contents to the output file."""
+        content = input_file.read_text(encoding='utf-8')
         
-        for file_path in files:
-            nova_console.process_item(f"Processing file: {file_path}")
-            markdown_file = process_file(file_path, media_dir)
-            processed_files.append(markdown_file)
-            total_media_files.extend(markdown_file.media_files)
+        # Process any image references
+        content = self._process_images(content, input_file.parent)
         
-        # Sort files by date
-        processed_files.sort(key=lambda x: x.date)
+        # Write to output file
+        outfile.write(f"\n\n{content}\n\n")
+    
+    def _process_images(self, content: str, base_path: Path) -> str:
+        """Process image references in the markdown content."""
+        def replace_image(match):
+            alt_text = match.group(1)
+            image_path = match.group(2)
+            
+            # Convert relative path to absolute
+            if not os.path.isabs(image_path):
+                image_path = base_path / image_path
+            
+            # Verify image exists
+            if not Path(image_path).exists():
+                return match.group(0)
+            
+            # Copy image to output directory if needed
+            # For now, just return the original reference
+            return f"![{alt_text}]({image_path})"
         
-        # Combine content
-        combined_content = "\n\n".join(f.content for f in processed_files)
-        
-        # Write output
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_text(combined_content, encoding='utf-8')
-        
-        # Print summary
-        file_size = output_file.stat().st_size / (1024 * 1024)  # Convert to MB
-        summary = (
-            f"Files: {len(files)} processed\n"
-            f"Media: {len(set(total_media_files))} files\n"
-            f"Output: {output_file}\n"
-            f"Size: {file_size:.1f}MB"
-        )
-        nova_console.success("markdown consolidation complete", summary)
-        
-    except Exception as e:
-        nova_console.error(f"Failed to consolidate files", str(e))
-        raise typer.Exit(1)
+        # Find and replace image references
+        image_pattern = r'!\[(.*?)\]\((.*?)\)'
+        return re.sub(image_pattern, replace_image, content)
 
 if __name__ == "__main__":
     app()

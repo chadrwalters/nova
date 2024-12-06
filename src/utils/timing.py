@@ -1,6 +1,7 @@
 from functools import wraps
 from datetime import datetime
 from typing import Callable, Any
+from contextlib import contextmanager
 from src.utils.colors import NovaConsole
 
 nova_console = NovaConsole()
@@ -18,30 +19,21 @@ class Timer:
         return duration
         
     def total(self) -> float:
-        """Get total duration in seconds."""
+        """Get total duration since timer started."""
         return (datetime.now() - self.start_time).total_seconds()
 
-def format_duration(seconds: float) -> str:
-    """Format duration in a human-readable way."""
-    if seconds < 60:
-        return f"{seconds:.2f}s"
-    minutes = int(seconds / 60)
-    seconds = seconds % 60
-    return f"{minutes}m {seconds:.2f}s"
-
-def timed_section(section_name: str) -> Callable:
-    """Decorator to time and log section execution."""
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            nova_console.section(section_name)
-            
-            start_time = datetime.now()
-            result = func(*args, **kwargs)
-            duration = (datetime.now() - start_time).total_seconds()
-            
-            nova_console.console.print(f"[bright_green]✓[/] {section_name} completed in [bright_cyan]{format_duration(duration)}[/]")
-            nova_console.console.print()
-            return result
-        return wrapper
-    return decorator 
+@contextmanager
+def timed_section(name: str):
+    """
+    Context manager for timing a section of code.
+    
+    Args:
+        name: Name of the section being timed
+    """
+    start_time = datetime.now()
+    nova_console.process_start(name)
+    try:
+        yield
+    finally:
+        duration = (datetime.now() - start_time).total_seconds()
+        nova_console.process_end(f"{name} completed in {duration:.2f}s")
