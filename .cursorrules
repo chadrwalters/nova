@@ -5,6 +5,7 @@ Project Context:
 - Target Python version: 3.11+
 - Primary focus on clean code and efficient processing
 - Follows PEP 8 style guide with specific modifications
+- Uses modern Python features (match/case, TypeAlias, etc.)
 
 Code Organization:
 - src/
@@ -13,69 +14,120 @@ Code Organization:
   - cli/ (command line interface)
   - processors/ (markdown and image processors)
   - models/ (data models and types)
+  - config/ (configuration management)
+  - resources/ (templates, styles, prompts)
+  - exceptions/ (custom exception classes)
+  - tests/ (test files and fixtures)
+
+Development Environment:
+- Use poetry for dependency management
+- Maintain .env files for environment variables
+- Include pre-commit hooks for code quality
+- Use pytest for testing framework
 
 Coding Standards:
-1. Use type hints consistently
+1. Use type hints consistently with typing module
 2. Implement error handling with custom exceptions
-3. Document all public functions with docstrings
-4. Use dataclasses for structured data
+3. Document all public functions with docstrings (Google style)
+4. Use dataclasses and Pydantic models for data validation
 5. Implement async processing for I/O operations
+6. Use pathlib for file path operations
+7. Implement logging with structlog
 
 Architecture Patterns:
 - Factory pattern for file processors
 - Strategy pattern for different input types
 - Observer pattern for progress tracking
 - Builder pattern for output generation
+- Repository pattern for data access
+- Dependency injection for better testability
 
 Error Handling:
 - Create custom exceptions for each error type
 - Log all errors with appropriate context
 - Implement graceful degradation for non-critical failures
+- Include error recovery mechanisms
+- Provide user-friendly error messages
 
 Performance Guidelines:
 - Use generators for large file processing
-- Implement parallel processing for image optimization
+- Implement parallel processing with asyncio
 - Stream large files instead of loading into memory
 - Cache processed images based on hash
+- Use connection pooling for external services
+- Implement rate limiting where necessary
 
 Testing Requirements:
-- Unit tests for all core functions
+- Unit tests for all core functions (min 80% coverage)
 - Integration tests for file processing flows
 - Property-based testing for file handling
 - Mock external dependencies
+- Performance benchmarks
+- Security testing
+- API testing where applicable
 
 Documentation:
 - Include type hints and docstrings
 - Add inline comments for complex logic
 - Maintain a CHANGELOG.md
 - Update README.md with usage examples
+- Include API documentation
+- Document configuration options
+- Maintain architecture decision records (ADRs)
 
 Naming Conventions:
 - Use snake_case for functions and variables
 - Use PascalCase for classes
 - Use UPPER_CASE for constants
 - Prefix private methods with underscore
+- Use descriptive names that reflect purpose
 
 Code Structure:
 - Maximum function length: 50 lines
 - Maximum file length: 500 lines
-- Maximum line length: 88 characters
+- Maximum line length: 88 characters (black formatter)
 - Use absolute imports
+- Group imports according to isort standards
+- Separate concerns into appropriate modules
 
 Optimization Focus:
 - Memory efficiency in file processing
 - CPU optimization for image processing
 - Minimal disk I/O operations
 - Efficient string concatenation
+- Database query optimization
+- Resource cleanup and management
 
 Security Considerations:
 - Validate all file paths
 - Sanitize markdown content
 - Handle symlinks safely
 - Implement file access checks
+- Secure handling of environment variables
+- Input validation and sanitization
+- OWASP security guidelines compliance
+- Regular dependency security updates
+
+CI/CD Requirements:
+- Automated testing on push
+- Code quality checks
+- Security scanning
+- Automated deployment
+- Version tagging
+- Release automation
+
+Monitoring and Logging:
+- Structured logging
+- Performance metrics
+- Error tracking
+- Usage analytics
+- Health checks
+- Resource monitoring
 
 Remember:
 - Focus on maintainability and readability
 - Implement robust error handling
 - Optimize for performance where critical
 - Follow Python best practices
+- Consider backwards compatibility
+- Document breaking changes

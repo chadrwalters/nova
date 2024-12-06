@@ -18,6 +18,11 @@ import hashlib
 import base64
 import tempfile
 from pypdf import PdfMerger
+from PIL import Image
+import io
+from tqdm import tqdm
+import time
+import structlog
 
 from src.utils.colors import NovaConsole
 from src.utils.timing import timed_section
@@ -25,6 +30,20 @@ from src.utils.path_utils import normalize_path, format_path
 
 # Initialize console
 nova_console = NovaConsole()
+
+# Configure structlog
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer(indent=2)
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+)
+
+logger = structlog.get_logger()
 
 class TimeoutError(Exception):
     pass
@@ -190,6 +209,9 @@ class PDFConverter:
             html_size_mb = len(html) / (1024 * 1024)
             print(f"\nProcessing {html_size_mb:.1f}MB of HTML content...")
             
+            # Optimize images before PDF generation
+            html = self.optimize_images(html)
+            
             # Split large documents into chunks if needed
             if html_size_mb > 10:  # Split if larger than 10MB
                 print("Large document detected - processing in chunks...")
@@ -230,6 +252,19 @@ class PDFConverter:
     def convert(self, input_file: Path, output_file: Path) -> bool:
         """Convert markdown to PDF."""
         try:
+            # Configure logging
+            structlog.configure(
+                processors=[
+                    structlog.processors.add_log_level,
+                    structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+                    structlog.dev.ConsoleRenderer(colors=True)
+                ],
+                wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+                context_class=dict,
+                logger_factory=structlog.PrintLoggerFactory(),
+                cache_logger_on_first_use=False
+            )
+            
             # Ensure output directory exists
             output_file.parent.mkdir(parents=True, exist_ok=True)
             
@@ -443,6 +478,127 @@ class PDFConverter:
         except Exception as e:
             print(f"\n⚠️  Error merging PDFs: {str(e)}")
             raise
+
+    def optimize_images(self, html_content: str) -> str:
+        """Optimize images in HTML content with detailed timing logs."""
+        start_time = time.time()
+        soup = BeautifulSoup(html_content, 'html.parser')
+        images = soup.find_all('img')
+        
+        nova_console.process_item(f"Starting image optimization - Found {len(images)} images")
+        
+        # Get the media directory from the environment
+        consolidated_dir = Path(os.getenv('NOVA_CONSOLIDATED_DIR', '.'))
+        media_dir = consolidated_dir / '_media'
+        nova_console.process_item(f"Using media directory: {media_dir}")
+        
+        for idx, img in enumerate(images, 1):
+            try:
+                img_start = time.time()
+                image_path = img['src']
+                
+                # Skip already embedded images
+                if image_path.startswith('data:image'):
+                    nova_console.process_item(f"Skipping already embedded image {idx}/{len(images)}")
+                    continue
+                
+                # Handle file:// protocol
+                if image_path.startswith('file://'):
+                    image_path = image_path[7:]
+                
+                # Convert relative path to absolute
+                if not Path(image_path).is_absolute():
+                    if image_path.startswith('_media/'):
+                        image_path = str(media_dir / Path(image_path).name)
+                    else:
+                        image_path = str(media_dir / image_path)
+                    nova_console.process_item(f"Resolved image path: {image_path}")
+
+                # Check if file exists before processing
+                if not os.path.exists(image_path):
+                    nova_console.warning(f"Image not found at path: {image_path}")
+                    continue
+                
+                # Get original file info
+                original_bytes = os.path.getsize(image_path)
+                
+                # Try to optimize the image
+                try:
+                    with Image.open(image_path) as img_file:
+                        original_size = img_file.size
+                        
+                        # Convert to RGB if needed
+                        if img_file.mode in ('RGBA', 'LA'):
+                            background = Image.new('RGB', img_file.size, (255, 255, 255))
+                            if img_file.mode == 'RGBA':
+                                background.paste(img_file, mask=img_file.split()[3])
+                            else:
+                                background.paste(img_file, mask=img_file.split()[1])
+                            img_file = background
+                        elif img_file.mode != 'RGB':
+                            img_file = img_file.convert('RGB')
+                        
+                        # Resize if too large
+                        if img_file.size[0] > 1500 or img_file.size[1] > 1500:
+                            img_file.thumbnail((1500, 1500))
+                        
+                        # Try optimizing
+                        buffer = io.BytesIO()
+                        img_file.save(buffer, format='JPEG', quality=85, optimize=True)
+                        compressed_bytes = len(buffer.getvalue())
+                        
+                        # Only use optimized version if it's smaller
+                        if compressed_bytes < original_bytes:
+                            base64_img = base64.b64encode(buffer.getvalue()).decode()
+                            img['src'] = f"data:image/jpeg;base64,{base64_img}"
+                            
+                            img_time = time.time() - img_start
+                            nova_console.process_item(
+                                f"Image {idx}/{len(images)} optimized: "
+                                f"{original_size[0]}x{original_size[1]}, "
+                                f"{original_bytes/1024:.1f}KB → {compressed_bytes/1024:.1f}KB "
+                                f"({(compressed_bytes/original_bytes)*100:.1f}%), "
+                                f"{img_time:.2f}s"
+                            )
+                        else:
+                            # Use original if optimization didn't help
+                            with open(image_path, 'rb') as f:
+                                base64_img = base64.b64encode(f.read()).decode()
+                                img['src'] = f"data:image/jpeg;base64,{base64_img}"
+                            
+                            img_time = time.time() - img_start
+                            nova_console.process_item(
+                                f"Image {idx}/{len(images)} embedded without optimization: "
+                                f"{original_size[0]}x{original_size[1]}, "
+                                f"{original_bytes/1024:.1f}KB (optimization skipped), "
+                                f"{img_time:.2f}s"
+                            )
+                
+                except Exception as e:
+                    # If optimization fails, try to use original file
+                    try:
+                        with open(image_path, 'rb') as f:
+                            base64_img = base64.b64encode(f.read()).decode()
+                            img['src'] = f"data:image/jpeg;base64,{base64_img}"
+                        nova_console.warning(
+                            f"Failed to optimize image {idx}/{len(images)}, using original: {str(e)}"
+                        )
+                    except Exception as e2:
+                        nova_console.warning(
+                            f"Failed to process image {idx}/{len(images)}: {str(e2)}"
+                        )
+                    
+            except Exception as e:
+                nova_console.warning(f"Failed to process image {idx}/{len(images)}: {str(e)}")
+                continue
+        
+        total_time = time.time() - start_time
+        nova_console.process_item(
+            f"Image optimization complete: {len(images)} images in {total_time:.2f}s "
+            f"(avg {total_time/len(images):.2f}s per image)"
+        )
+                
+        return str(soup)
 
 def main():
     """CLI entry point."""
