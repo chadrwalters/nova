@@ -593,10 +593,13 @@ class PDFConverter:
                 continue
         
         total_time = time.time() - start_time
-        nova_console.process_item(
-            f"Image optimization complete: {len(images)} images in {total_time:.2f}s "
-            f"(avg {total_time/len(images):.2f}s per image)"
-        )
+        if images:
+            nova_console.process_item(
+                f"Image optimization complete: {len(images)} images in {total_time:.2f}s "
+                f"(avg {total_time/len(images):.2f}s per image)"
+            )
+        else:
+            nova_console.process_item("No images found to optimize")
                 
         return str(soup)
 
