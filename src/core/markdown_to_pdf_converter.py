@@ -67,51 +67,93 @@ def timeout(seconds: int):
     finally:
         signal.alarm(0)
 
-class PDFConverter:
-    def __init__(self):
-        """Initialize the PDF converter."""
-        self.media_dir = None
-        self.template_dir = None
-        self.template_env = None
-        self.template = None
+class MarkdownToPDFConverter:
+    """A class to convert markdown files to PDF."""
+    
+    def __init__(self, template_path: Optional[Path] = None, css_path: Optional[Path] = None):
+        """
+        Initialize the PDF converter.
         
-    def setup(self, media_dir: Path, template_dir: Path):
-        """Set up the converter with media and template directories."""
-        self.media_dir = media_dir
-        self.template_dir = template_dir
-        self.template_env = self._setup_jinja_env()
-        try:
-            self.template = self.template_env.get_template('default.html')
-            nova_console.process_item(f"Successfully loaded template: default.html")
-        except jinja2.TemplateNotFound:
-            nova_console.error(f"Template 'default.html' not found in {self.template_dir}")
-            raise
-        except Exception as e:
-            nova_console.error(f"Failed to load template: {str(e)}")
-            raise
-
-    def _setup_jinja_env(self) -> jinja2.Environment:
+        Args:
+            template_path: Optional path to a custom HTML template
+            css_path: Optional path to a custom CSS file
+        """
+        self.template_path = template_path
+        self.css_path = css_path
+        self._setup_jinja()
+        
+    def _setup_jinja(self):
         """Set up the Jinja2 environment."""
-        try:
-            if not self.template_dir.exists():
-                nova_console.error(f"Template directory not found: {self.template_dir}")
-                raise FileNotFoundError(f"Template directory not found: {self.template_dir}")
-
-            # Create Jinja2 environment with absolute path
-            env = jinja2.Environment(
-                loader=jinja2.FileSystemLoader(str(self.template_dir.absolute())),
-                autoescape=True
-            )
+        template_dir = Path(__file__).parent.parent / "resources" / "templates"
+        self.jinja_env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(template_dir))
+        )
+        
+    def convert(self, input_file: Path, output_file: Path) -> None:
+        """
+        Convert a markdown file to PDF.
+        
+        Args:
+            input_file: Input markdown file path
+            output_file: Output PDF file path
             
-            # Add custom filters
-            env.filters['format_date'] = lambda d: d.strftime('%Y-%m-%d') if d else ''
+        Raises:
+            FileNotFoundError: If input file doesn't exist
+        """
+        if not input_file.exists():
+            raise FileNotFoundError(f"Input file not found: {input_file}")
             
-            nova_console.process_item(f"Loading templates from: {self.template_dir.absolute()}")
-            return env
+        # Create output directory if needed
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Convert markdown to HTML
+        md = markdown.Markdown(extensions=['extra'])
+        with input_file.open('r', encoding='utf-8') as f:
+            content = f.read()
+            html_content = md.convert(content)
+        
+        # Apply template
+        template = self._get_template()
+        html = template.render(
+            title=input_file.stem,
+            content=html_content
+        )
+        
+        # Convert to PDF
+        css = self._get_css()
+        HTML(string=html).write_pdf(
+            output_file,
+            stylesheets=css if css else []
+        )
+        
+    def _get_template(self) -> jinja2.Template:
+        """
+        Get the HTML template to use.
+        
+        Raises:
+            FileNotFoundError: If template_path is provided but doesn't exist
+        """
+        if self.template_path:
+            if not self.template_path.exists():
+                raise FileNotFoundError(f"Template file not found: {self.template_path}")
+            with self.template_path.open('r', encoding='utf-8') as f:
+                return jinja2.Template(f.read())
+        return self.jinja_env.get_template('default.html')
+        
+    def _get_css(self) -> Optional[List[CSS]]:
+        """Get CSS stylesheets to use."""
+        css_files = []
+        
+        # Add custom CSS if provided
+        if self.css_path and self.css_path.exists():
+            css_files.append(CSS(filename=str(self.css_path)))
             
-        except Exception as e:
-            nova_console.error(f"Failed to setup Jinja environment: {str(e)}")
-            raise
+        # Add default CSS
+        default_css = Path(__file__).parent.parent / "resources" / "styles" / "default.css"
+        if default_css.exists():
+            css_files.append(CSS(filename=str(default_css)))
+            
+        return css_files if css_files else None
 
 def resolve_image_path(image_path: str, base_dir: Path, media_dir: Path) -> Optional[Path]:
     """Resolve image path to actual file location."""
@@ -234,8 +276,7 @@ def convert_markdown_to_pdf(
         template_path = Path(template_dir)
         
         # Initialize and setup PDF converter
-        converter = PDFConverter()
-        converter.setup(media_path, template_path)
+        converter = MarkdownToPDFConverter(template_path, None)
         
         # Read markdown content
         content = input_path.read_text(encoding='utf-8')
@@ -257,7 +298,7 @@ def convert_markdown_to_pdf(
         }
         
         # Render template
-        rendered_html = converter.template.render(**template_vars)
+        rendered_html = converter._get_template().render(**template_vars)
         
         # Convert to PDF using WeasyPrint 59.0 compatible initialization
         html_doc = HTML(string=rendered_html, base_url=str(media_path.absolute()))

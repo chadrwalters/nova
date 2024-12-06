@@ -18,9 +18,43 @@ NOVA_THEME = Theme({
 })
 
 class NovaConsole:
+    """Console wrapper for consistent styling."""
+    
     def __init__(self):
-        """Initialize the console with rich formatting."""
+        """Initialize the console with Nova theme."""
         self.console = Console(theme=NOVA_THEME)
+        
+    def process_start(self, name: str, detail: Optional[str] = None) -> None:
+        """Start a process with a header."""
+        self.console.print(f"\n► Starting {name}", style="header")
+        if detail:
+            self.console.print(f"  {detail}", style="detail")
+            
+    def process_item(self, message: str) -> None:
+        """Print a process item."""
+        self.console.print(f"  {message}", style="value")
+        
+    def process_end(self, message: str) -> None:
+        """End a process with a success message."""
+        self.console.print(f"✓ {message}", style="success")
+        
+    def error(self, message: str, detail: Optional[str] = None) -> None:
+        """Print an error message."""
+        self.console.print(f"✗ {message}", style="error")
+        if detail:
+            self.console.print(f"  {detail}", style="detail")
+            
+    def success(self, message: str, detail: Optional[str] = None) -> None:
+        """Print a success message."""
+        self.console.print(f"✓ {message}", style="success")
+        if detail:
+            self.console.print(f"  {detail}", style="detail")
+            
+    def warning(self, message: str, detail: Optional[str] = None) -> None:
+        """Print a warning message."""
+        self.console.print(f"! {message}", style="warning")
+        if detail:
+            self.console.print(f"  {detail}", style="detail")
     
     def section(self, text: str) -> None:
         """Print a section header with consistent styling."""
@@ -31,35 +65,6 @@ class NovaConsole:
     def header(self, text: str) -> None:
         """Print a section header with consistent spacing."""
         self.section(text)
-    
-    def process_start(self, process: str, details: Optional[str] = None) -> None:
-        """Print process start message with consistent formatting."""
-        self.console.print()
-        msg = f"[info]►[/] Starting [bright_white]{process}[/]"
-        if details:
-            msg += f"\n  [path]{self._normalize_path(details)}[/]"
-        self.console.print(msg)
-    
-    def process_item(self, item: str) -> None:
-        """Print item processing message."""
-        self.console.print(f"[info]ℹ[/] Processing: [path]{self._normalize_path(item)}[/]")
-    
-    def warning(self, text: str) -> None:
-        """Print warning message."""
-        self.console.print(f"[warning]⚠[/] {text}")
-    
-    def error(self, title: str, details: Optional[str] = None) -> None:
-        """Print error message with optional details."""
-        self.console.print(f"[error]✗[/] {title}")
-        if details:
-            self.console.print(f"  [detail]{details}[/]")
-    
-    def success(self, title: str, details: str = "") -> None:
-        """Print a success message with optional details."""
-        self.console.print(f"[success]✓[/] {title}")
-        if details:
-            for line in details.split('\n'):
-                self.console.print(f"  [value]{line}[/]")
     
     def _normalize_path(self, path: str) -> str:
         """Normalize path for display."""
