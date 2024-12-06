@@ -2,27 +2,38 @@
 
 ## Overview
 
-Nova is a Python-based CLI tool for efficient markdown file processing, consolidation, and PDF conversion. It provides robust tools for converting between markdown and PDF formats while maintaining document structure and styling.
+Nova is a Python-based CLI tool for efficient markdown file processing, consolidation, and PDF conversion. It provides robust tools for consolidating multiple markdown files into a single document while preserving images and formatting.
 
 ## Features
 
-- **Markdown to PDF Conversion**
-  - Custom template support
-  - Configurable CSS styling
-  - Image processing and optimization
-  - Memory-efficient chunk processing for large documents
-  - Async processing capabilities
-
-- **PDF to Markdown Conversion**
-  - Clean text extraction
-  - Structure preservation
-  - Basic formatting conversion
-
 - **Markdown Consolidation**
-  - Multiple file merging
+  - Multiple file merging with date-based sorting
+  - Intelligent image handling and path resolution
+  - Support for HEIC/HEIF image conversion
+  - Base64 image processing
   - Directory structure preservation
-  - Image handling and optimization
-  - Base64 content processing
+  - Unicode character normalization
+
+- **PDF Generation**
+  - Custom HTML template support
+  - Configurable CSS styling
+  - Automatic image path resolution
+  - WeasyPrint integration
+  - Memory-efficient processing
+
+- **Image Processing**
+  - Automatic image format detection
+  - HEIC/HEIF to PNG conversion
+  - Path resolution across multiple directories
+  - Duplicate image handling
+  - Image deduplication via content hashing
+
+## Requirements
+
+- Python 3.11+
+- Poetry (Python package manager)
+- System dependencies for WeasyPrint 59.0
+- pillow-heif for HEIC/HEIF support
 
 ## Installation
 
@@ -59,111 +70,100 @@ Nova is a Python-based CLI tool for efficient markdown file processing, consolid
    - Install Python 3.11+ from python.org
    - Install the required system libraries for WeasyPrint
 
-3. Install required Python packages:
+3. Run the setup script:
    ```bash
-   pip install -r requirements.txt
+   ./setup.sh
    ```
+   This will:
+   - Install Poetry if not already installed
+   - Install project dependencies
+   - Set up pre-commit hooks
+   - Create necessary directories
 
-4. Set up your environment:
+4. Activate the Poetry shell:
    ```bash
-   cp .env.template .env
+   poetry shell
    ```
 
 ## Usage
 
-### Converting Markdown to PDF
+### Basic Usage
 
 ```bash
-# Basic conversion
-python -m src.cli convert md-to-pdf --input input.md --output output.pdf
-
-# With custom template
-python -m src.cli convert md-to-pdf --input input.md --output output.pdf --template custom.html
-
-# With custom styling
-python -m src.cli convert md-to-pdf --input input.md --output output.pdf --style custom.css
+# Process markdown files using the consolidate script
+./consolidate.sh
 ```
 
-### Converting PDF to Markdown
+The script will:
+1. Clean up previous output files
+2. Create necessary directories
+3. Consolidate markdown files from the input directory
+4. Process and copy images to the media directory
+5. Generate a PDF using the consolidated markdown
 
-```bash
-# Basic conversion
-python -m src.cli convert pdf-to-md --input input.pdf --output output.md
+### Directory Structure
 
-# With media directory for extracted content
-python -m src.cli convert pdf-to-md --input input.pdf --output output.md --media-dir ./media
-```
+The script uses the following directory structure:
+- `_NovaIndividualMarkdown/`: Source markdown files
+- `_NovaConsolidatedMarkdown/`: Consolidated output and media files
+- `_Nova/`: Generated PDF files
 
-### Consolidating Markdown Files
+### Image Support
 
-```bash
-# Basic consolidation
-python -m src.cli consolidate --input-dir ./docs --output-file output.md
+The tool supports various image formats:
+- PNG, JPG, JPEG, GIF, WEBP
+- HEIC/HEIF (automatically converted to PNG)
+- SVG
+- Base64 encoded images
 
-# With image optimization
-python -m src.cli consolidate --input-dir ./docs --output-file output.md --optimize-images
-```
+## Development
 
-## Project Structure
+### Code Style
+
+The project uses:
+- Black for code formatting (line length: 88)
+- isort for import sorting
+- mypy for type checking
+- flake8 for linting
+
+### Project Structure
 
 ```
 src/
-├── core/
-│   ├── markdown_to_pdf_converter.py
-│   ├── pdf_to_markdown_converter.py
-│   └── markdown_consolidator.py
-├── utils/
-│   ├── colors.py
-│   └── timing.py
-├── resources/
-│   ├── templates/
-│   ├── styles/
-│   └── prompts/
-└── cli/
+├── core/           # Core processing logic
+│   ├── markdown_consolidator.py
+│   └── markdown_to_pdf_converter.py
+├── utils/          # Helper utilities
+│   └── colors.py
+├── resources/      # Templates and assets
+│   └── templates/
+│       ├── default.html
+│       └── pdf_template.html
+└── cli.py         # Command-line interface
 ```
 
-## Configuration
+### Templates
 
-### Environment Variables
-
-- `NOVA_CONSOLIDATED_DIR`: Directory for consolidated markdown files
-- `PDF_TIMEOUT`: Timeout for PDF generation (default: 300 seconds)
-- `PDF_CHUNK_SIZE`: Size of chunks for processing large files (in MB)
-
-### Customization
-
-- Templates: Add custom HTML templates in `src/resources/templates/`
-- Styles: Add custom CSS files in `src/resources/styles/`
-- Configuration: Modify default settings in `config/default_config.yaml`
-
-## Dependencies
-
-### Core Dependencies
-- Python 3.11+
-- WeasyPrint (PDF generation)
-- Click (CLI interface)
-- Rich (console output)
-- Pillow (image processing)
-- PyPDF (PDF processing)
-- BeautifulSoup4 (HTML processing)
-- Jinja2 (template rendering)
-- PyYAML (configuration)
+The project includes two HTML templates:
+- `default.html`: Basic template with minimal styling
+- `pdf_template.html`: Enhanced template with better typography and image handling
 
 ## Troubleshooting
 
 ### PDF Generation Issues
-- Check available memory for large documents
-- Increase PDF_TIMEOUT for complex documents
-- Verify template and style file paths
-- Check file permissions
+- Ensure WeasyPrint 59.0 is installed (required for compatibility)
+- Check template paths are correct
+- Verify media directory permissions
+- Check for special characters in filenames
 
 ### Image Processing Issues
-- Verify image file permissions
-- Check available memory for large images
+- Verify HEIC/HEIF support is installed
+- Check image file permissions
 - Ensure media directory is writable
+- Look for image path resolution warnings in output
 
-### General Issues
-- Check console output for error messages
-- Verify all dependencies are installed
-- Confirm sufficient disk space
-- Check file permissions
+### Common Solutions
+- Run `poetry install` to update dependencies
+- Check console output for warning messages
+- Verify directory permissions
+- Ensure input files use UTF-8 encoding

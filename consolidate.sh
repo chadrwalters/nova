@@ -1,355 +1,77 @@
-#!/bin/zsh
+#!/bin/bash
 
-# nova-process.sh
-# Script to process Nova markdown files and generate consolidated output
-# Created: November 2024
+# Set up colors for output
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-# Set strict error handling
-set -e  # Exit on error
-set -u  # Exit on undefined variable
+# Configuration
+INPUT_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown"
+CONSOLIDATED_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown"
+PDF_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+MEDIA_DIR="$CONSOLIDATED_DIR/_media"
+TEMPLATE_DIR="src/resources/templates"
 
-# Function to normalize path display
-normalize_path() {
-    local path="$1"
-    echo "\"${path/#$HOME/~}\""
+# Print section header
+print_section() {
+    printf "\n\n%s\n\n" "$(printf '%.s─' {1..100})"
+    printf "%s%*s%s\n\n" "$(printf '%.s─' {1..35})" $((30)) "$1" "$(printf '%.s─' {1..35})"
 }
 
-# Function to clean path (remove trailing slashes and normalize)
-clean_path() {
-    local path="$1"
-    path="${path%/}"
-    path="${path//\\ / }"
-    echo "$path"
-}
+# Print configuration
+print_section "Nova Markdown Processing"
+echo "Current Configuration:"
+echo "  Input Directory:      $INPUT_DIR"
+echo "  Consolidated Output:  $CONSOLIDATED_DIR"
+echo "  PDF Output:          $PDF_DIR"
+echo "  Media Directory:     $MEDIA_DIR"
+echo "  Template Directory:  $TEMPLATE_DIR"
 
-# Load environment variables
-if [ ! -f .env ]; then
-    python -c "from rich import print; print('[red]✗ Error:[/] .env file not found\nPlease copy .env.template to .env and update the values')"
-    exit 1
-fi
-
-source .env
-
-# Clean and normalize paths
-NOVA_INPUT_DIR=$(clean_path "$NOVA_INPUT_DIR")
-NOVA_CONSOLIDATED_DIR=$(clean_path "$NOVA_CONSOLIDATED_DIR")
-NOVA_OUTPUT_DIR=$(clean_path "$NOVA_OUTPUT_DIR")
-
-# Define output files
-CONSOLIDATED_MD="$NOVA_CONSOLIDATED_DIR/output.md"
-MEDIA_DIR="$NOVA_CONSOLIDATED_DIR/_media"
-FINAL_PDF="$NOVA_OUTPUT_DIR/output.pdf"
-
-# Function to print header
-print_header() {
-    local title="$1"
-    PYTHONPATH=. python3 -c '
-from src.utils.colors import NovaConsole
-console = NovaConsole()
-console.section('"\"$title\""')
-'
-}
-
-# Function to print success
-print_success() {
-    PYTHONPATH=. python -c "
-    from src.utils.colors import NovaConsole
-    from src.utils.path_utils import normalize_path
-    console = NovaConsole()
-    console.success('$1')
-    "
-}
-
-# Function to print error
-print_error() {
-    PYTHONPATH=. python -c "from src.utils.colors import NovaConsole; console = NovaConsole(); console.error('$1')"
-}
-
-# Function to print info
-print_info() {
-    PYTHONPATH=. python -c "from src.utils.colors import NovaConsole; console = NovaConsole(); console.info('$1')"
-}
-
-# Function to print configuration
-print_config() {
-    PYTHONPATH=. python3 -c "
-from rich import print
-from src.utils.path_utils import format_path
-
-print('[cyan]Current Configuration:[/]')
-print('  Input Directory:      ', end='')
-print(format_path('$NOVA_INPUT_DIR'))
-print('  Consolidated Output:  ', end='')
-print(format_path('$NOVA_CONSOLIDATED_DIR'))
-print('  PDF Output:          ', end='')
-print(format_path('$NOVA_OUTPUT_DIR'))
-print('  Media Directory:     ', end='')
-print(format_path('$MEDIA_DIR'))
-print()
-      "
-}
-
-# Function to check Python installation and dependencies
-check_python() {
-    if ! command -v python &> /dev/null; then
-        PYTHONPATH=. python -c "from rich import print; print('[red]✗ Error:[/] Python is not installed or not in PATH')"
-        exit 1
-    fi
-
-    # Check if requirements.txt exists
-    if [[ ! -f requirements.txt ]]; then
-        PYTHONPATH=. python -c "from rich import print; print('[red]✗ Error:[/] requirements.txt not found')"
-        exit 1
-    fi
-
-    # Check for virtual environment
-    if [[ ! -d "venv" ]]; then
-        PYTHONPATH=. python -c "from rich import print; print('[yellow]⚠ Creating virtual environment...[/]')"
-        python -m venv venv
-    fi
-
-    # Activate virtual environment and install dependencies
-    source venv/bin/activate
-    PYTHONPATH=. python -c "from rich import print; print('[cyan]Installing dependencies...[/]')"
-    pip install -r requirements.txt >/dev/null 2>&1 || {
-        PYTHONPATH=. python -c "from rich import print; print('[red]✗ Error:[/] Failed to install dependencies')"
-        exit 1
-    }
-}
-
-# Function to check required scripts
-check_scripts() {
-    local scripts=("src/core/markdown_consolidator.py" "src/core/markdown_to_pdf_converter.py" "src/core/pdf_to_markdown_converter.py")
-    for script in $scripts; do
-        if [[ ! -f $script ]]; then
-            python -c "from rich import print; print(f'[red]✗ Error:[/] Required Python script \"$script\" not found')"
-            exit 1
-        fi
-    done
-}
-
-# Function to check directories
-check_directories() {
-    PYTHONPATH=. python -c "from rich import print; print('[cyan]Checking directories...[/]')"
-    for dir in "$NOVA_INPUT_DIR" "$NOVA_CONSOLIDATED_DIR" "$NOVA_OUTPUT_DIR" "src/utils" "src/core"; do
-        if [[ ! -d "$dir" ]]; then
-            PYTHONPATH=. python -c "from rich import print; print(f'[cyan]Creating directory: {normalize_path('$dir')}[/]')"
-            mkdir -p "$dir"
-        fi
-    done
-    PYTHONPATH=. python -c "from rich import print; print('[green]✓[/] Directory check complete\n')"
-}
-
-# Function to clean up previous files
-cleanup_previous() {
-    print_header "Cleaning up previous files"
-    PYTHONPATH=. python3 -c "
-from rich import print
-from src.utils.path_utils import format_path
-
-print('[cyan]Removing:[/]')
-print('  - ', end='')
-print(format_path('$CONSOLIDATED_MD'))
-print('  - ', end='')
-print(format_path('$MEDIA_DIR'))
-print('  - ', end='')
-print(format_path('$FINAL_PDF'))
-      "
-    rm -f "$CONSOLIDATED_MD"
-    rm -rf "$MEDIA_DIR"
-    rm -f "$FINAL_PDF"
-    
-    PYTHONPATH=. python -c "from rich import print; print('[green]✓[/] Cleanup complete\n')"
-}
-
-# Function to run markdown consolidation
-consolidate_markdown() {
-    print_header "Starting Markdown Consolidation"
-    PYTHONPATH=. python3 -c "
-from rich import print
-from src.utils.path_utils import format_path
-
-print('[cyan]Processing files from:[/] ', end='')
-print(format_path('$NOVA_INPUT_DIR'))
-print('[cyan]Output will be saved to:[/] ', end='')
-print(format_path('$CONSOLIDATED_MD'))
-      "
-      
-    mkdir -p "$(dirname "$CONSOLIDATED_MD")"
-    mkdir -p "$(dirname "$CONSOLIDATED_MD")/_media"
-    
-    # Run Python script
-    PYTHONPATH=. python -m src.core.markdown_consolidator "$NOVA_INPUT_DIR" "$CONSOLIDATED_MD"
-    CONSOLIDATE_STATUS=$?
-    
-    if [[ $CONSOLIDATE_STATUS -eq 0 ]] && [[ -f "$CONSOLIDATED_MD" ]] && [[ -s "$CONSOLIDATED_MD" ]]; then
-        PYTHONPATH=. python3 -c "
-from rich import print
-from src.utils.path_utils import format_path, get_file_size
-
-print('[green]✓[/] Markdown consolidated successfully')
-print('  Location: ', end='')
-print(format_path('$CONSOLIDATED_MD'), end='')
-print(f' ({get_file_size('$CONSOLIDATED_MD')})')
-"
-        return 0
-    else
-        PYTHONPATH=. python3 -c "from rich import print; print('[red]✗[/] Markdown consolidation failed')"
-        return 1
-    fi
-}
-
-# Function to convert to PDF
-convert_to_pdf() {
-    print_header "Converting to PDF"
-    PYTHONPATH=. python3 -c "
-from rich import print
-from src.utils.path_utils import format_path
-
-print('[cyan]Input file:[/]  ', end='')
-print(format_path('$CONSOLIDATED_MD'))
-print('[cyan]Output file:[/] ', end='')
-print(format_path('$FINAL_PDF'))
-      "
-      
-    if ! PYTHONPATH=. python -m src.core.markdown_to_pdf_converter "$CONSOLIDATED_MD" "$FINAL_PDF"; then
-        PYTHONPATH=. python3 -c "from rich import print; print('[red]✗[/] PDF conversion failed')"
-        return 1
-    fi
-    
-    if [[ -f "$FINAL_PDF" ]] && [[ -s "$FINAL_PDF" ]]; then
-        PYTHONPATH=. python3 -c "
-from rich import print
-from src.utils.path_utils import format_path, get_file_size
-
-print('[green]✓[/] PDF generated successfully')
-print('  Location: ', end='')
-print(format_path('$FINAL_PDF'), end='')
-print(f' ({get_file_size('$FINAL_PDF')})')
-"
-        return 0
-    else
-        PYTHONPATH=. python3 -c "from rich import print; print('[red]✗[/] PDF generation failed')"
-        return 1
-    fi
-}
-
-# Function to convert PDFs to markdown
-convert_pdfs_to_markdown() {
-    print_header "Converting PDF files to Markdown"
-    
-    # First, find all markdown files that might have associated PDFs
-    while IFS= read -r -d '' md_file; do
-        # Get the base directory and filename without extension
-        base_dir=$(dirname "$md_file")
-        base_name=$(basename "$md_file" .md)
-        attachment_dir="$base_dir/$base_name"
-        
-        # Check if there's a matching directory with PDFs
-        if [ -d "$attachment_dir" ]; then
-            PYTHONPATH=. python3 -c "
-from src.utils.colors import NovaConsole
-console = NovaConsole()
-console.process_start('Processing attachments', '$md_file')
-            "
-            
-            # Process each PDF in the attachment directory
-            while IFS= read -r -d '' pdf_file; do
-                pdf_name=$(basename "$pdf_file" .pdf)
-                md_output="$attachment_dir/$pdf_name.md"
-                
-                PYTHONPATH=. python3 -c "
-from src.utils.colors import NovaConsole
-console = NovaConsole()
-console.process_item('$pdf_file')
-                "
-                
-                if ! PYTHONPATH=. python -m src.core.pdf_to_markdown_converter "$pdf_file" "$md_output" --media-dir "$attachment_dir/_media"; then
-                    PYTHONPATH=. python3 -c "
-from src.utils.colors import NovaConsole
-console = NovaConsole()
-console.error('PDF conversion failed', '$pdf_file')
-                    "
-                    return 1
-                fi
-            done < <(find "$attachment_dir" -maxdepth 1 -name "*.pdf" -print0)
-        fi
-    done < <(find "$NOVA_INPUT_DIR" -type f -name "*.md" -print0)
-    
-    PYTHONPATH=. python3 -c "
-from src.utils.colors import NovaConsole
-console = NovaConsole()
-console.process_complete('PDF conversion')
-    "
-    return 0
-}
-
-# Function to ensure we're in a virtual environment
-ensure_venv() {
-    if [[ -z "${VIRTUAL_ENV:-}" ]]; then
-        if [[ -f "venv/bin/activate" ]]; then
-            source venv/bin/activate
-        else
-            python -c "from rich import print; print('[yellow]⚠ Creating virtual environment...[/]')"
-            python -m venv venv
-            source venv/bin/activate
-        fi
-    fi
-}
-
-# Main execution
-main() {
-    timer_start=$(date +%s.%N)
-    
-    ensure_venv
-    print_header "Nova Markdown Processing"
-    print_config
-    
-    check_python
-    check_scripts
-    check_directories
-    
-    # Create all required directories first
-    for dir in "$(dirname "$CONSOLIDATED_MD")" "$(dirname "$FINAL_PDF")" "$MEDIA_DIR"; do
+# Check directories
+echo -e "\nChecking directories..."
+for dir in "$INPUT_DIR" "$CONSOLIDATED_DIR" "$PDF_DIR" "$MEDIA_DIR"; do
+    if [ ! -d "$dir" ]; then
         mkdir -p "$dir"
-    done
-    
-    cleanup_previous
-    
-    if ! convert_pdfs_to_markdown; then
-        print_error "PDF conversion failed"
-        exit 1
     fi
-    
-    if ! consolidate_markdown; then
-        print_error "Markdown consolidation failed"
-        exit 1
-    fi
-    
-    if ! convert_to_pdf; then
-        print_error "PDF conversion failed"
-        exit 1
-    fi
-    
-    timer_end=$(date +%s.%N)
-    duration=$(echo "$timer_end - $timer_start" | bc)
-    
-    print_header "Process Complete"
-    python3 -c "
-from rich import print
-from src.utils.path_utils import format_path, get_file_size
-from src.utils.timing import format_duration
+done
+echo -e "${GREEN}✓${NC} Directory check complete"
 
-print('[cyan]Output Files:[/]')
-print('  Markdown: ', end='')
-print(format_path('$CONSOLIDATED_MD'), end='')
-print(f' ({get_file_size('$CONSOLIDATED_MD')})')
-print('  PDF:      ', end='')
-print(format_path('$FINAL_PDF'), end='')
-print(f' ({get_file_size('$FINAL_PDF')})')
-print(f'\n[cyan]Total processing time:[/] {format_duration(float('$duration'))}')
-    "
-}
+# Clean up previous files
+print_section "Cleaning up previous files"
+echo "Removing:"
+echo "  - $CONSOLIDATED_DIR/output.md"
+echo "  - $CONSOLIDATED_DIR/_media"
+echo "  - $PDF_DIR/output.pdf"
 
-# Execute main function
-main
+rm -f "$CONSOLIDATED_DIR/output.md"
+rm -rf "$CONSOLIDATED_DIR/_media"
+rm -f "$PDF_DIR/output.pdf"
+
+echo -e "${GREEN}✓${NC} Cleanup complete"
+
+# Convert PDF files to markdown
+print_section "Converting PDF files to Markdown"
+
+# Run the Python script
+poetry run python -c "
+from pathlib import Path
+from src.core.markdown_consolidator import consolidate
+from src.core.markdown_to_pdf_converter import convert_markdown_to_pdf
+
+# Consolidate markdown files
+consolidate(
+    input_path=Path('$INPUT_DIR'),
+    output_file=Path('$CONSOLIDATED_DIR/output.md'),
+    recursive=True,
+    verbose=True
+)
+
+# Convert to PDF
+convert_markdown_to_pdf(
+    input_file='$CONSOLIDATED_DIR/output.md',
+    output_file='$PDF_DIR/output.pdf',
+    media_dir='$CONSOLIDATED_DIR/_media',
+    template_dir='$TEMPLATE_DIR'
+)
+"

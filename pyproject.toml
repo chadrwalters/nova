@@ -1,0 +1,52 @@
+[tool.poetry]
+name = "nova"
+version = "0.1.0"
+description = "A Python CLI tool for markdown file consolidation and PDF generation"
+authors = ["Chad Walters"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+typer = "^0.9.0"
+pillow = "^10.1.0"
+pillow-heif = "^0.21.0"
+markdown = "^3.5.1"
+weasyprint = "59.0"
+structlog = "^23.2.0"
+rich = "^13.7.0"
+jinja2 = "^3.1.2"
+beautifulsoup4 = "^4.12.2"
+pypdf = "^3.17.1"
+tqdm = "^4.66.1"
+pydyf = "<0.7.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+black = "^23.11.0"
+mypy = "^1.7.0"
+isort = "^5.12.0"
+flake8 = "^6.1.0"
+pre-commit = "^3.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+nova = "src.cli:app"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+multi-line-output = 3
+
+[tool.mypy]
+python-version = "3.11"
+warn-return-any = true
+warn-unused-configs = true
+disallow-untyped-defs = true 
