@@ -1,49 +1,28 @@
-# Nova Personal and Professional Assistant 
+# Nova Markdown Processing Tools
 
 ## Overview
 
-Nova is an advanced AI assistant designed to be your personal analytics and growth partner. This repository contains both the Nova system prompt and a set of tools designed to help prepare your personal data for use with Nova.
+Nova is a Python-based CLI tool for efficient markdown file processing, consolidation, and PDF conversion. It provides robust tools for converting between markdown and PDF formats while maintaining document structure and styling.
 
-The primary workflow involves:
-1. Converting PDFs and Word documents to markdown (if needed)
-2. Exporting markdown files from Bear.app (or similar note-taking apps)
-3. Consolidating these files into a single markdown document
-4. Converting the consolidated markdown into a PDF
-5. Using the PDF with the Nova prompt in your preferred AI platform
+## Features
 
-This workflow helps overcome file number limitations in AI platforms while maintaining the context and structure of your personal data.
+- **Markdown to PDF Conversion**
+  - Custom template support
+  - Configurable CSS styling
+  - Image processing and optimization
+  - Memory-efficient chunk processing for large documents
+  - Async processing capabilities
 
-## Core Components
+- **PDF to Markdown Conversion**
+  - Clean text extraction
+  - Structure preservation
+  - Basic formatting conversion
 
-### Nova AI Assistant Prompt
-
-The Nova prompt (`prompts/Nova.prompt`) is designed to:
-- Process personal data (notes, journals, conversations)
-- Provide data-backed personal insights
-- Track emotional and behavioral patterns
-- Maintain contextual awareness across conversations
-- Generate quantifiable metrics and progress tracking
-
-### Supporting Tools
-
-#### PDF and Word Document Converter
-- Extracts text and images from PDF files
-- Converts Word documents (.doc, .docx) to markdown
-- Performs OCR on images to extract text
-- Saves images to a media directory
-- Maintains directory structure and relationships
-
-#### Markdown Consolidator and PDF Generator
-- Combines multiple markdown files into a single document
-- Handles image processing and path resolution
-- Converts markdown to professionally formatted PDF
-- Configurable styling and layout options
-
-#### Automation Script
-- Streamlines the entire conversion and consolidation process
-- Handles cleanup and organization of files
-- Maintains consistent directory structure
-- Processes both PDF and markdown inputs
+- **Markdown Consolidation**
+  - Multiple file merging
+  - Directory structure preservation
+  - Image handling and optimization
+  - Base64 content processing
 
 ## Installation
 
@@ -57,7 +36,6 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 
    On macOS:
    ```bash
-   brew install tesseract  # For OCR support
    brew install python@3.11
    ```
 
@@ -65,14 +43,10 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
    ```bash
    sudo apt-get update
    sudo apt-get install -y \
-       tesseract-ocr \
        python3.11 \
        python3-pip \
        build-essential \
        python3-dev \
-       python3-setuptools \
-       python3-wheel \
-       python3-cffi \
        libcairo2 \
        libpango-1.0-0 \
        libpangocairo-1.0-0 \
@@ -83,8 +57,7 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
 
    On Windows:
    - Install Python 3.11+ from python.org
-   - Install Tesseract from https://github.com/UB-Mannheim/tesseract/wiki
-   - Add Tesseract to your system PATH
+   - Install the required system libraries for WeasyPrint
 
 3. Install required Python packages:
    ```bash
@@ -96,249 +69,101 @@ The Nova prompt (`prompts/Nova.prompt`) is designed to:
    cp .env.template .env
    ```
 
-5. Edit `.env` file with your paths:
-   ```bash
-   # Example .env configuration
-   SYNC_BASE="/Users/username/path/to/your/synced/folder"
-   NOVA_INPUT_DIR="${SYNC_BASE}/_NovaIndividualMarkdown"
-   NOVA_CONSOLIDATED_DIR="${SYNC_BASE}/_NovaConsolidatedMarkdown"
-   NOVA_OUTPUT_DIR="${SYNC_BASE}/_Nova"
-   ```
-
-6. Create required directories:
-   ```bash
-   mkdir -p "$NOVA_INPUT_DIR" "$NOVA_CONSOLIDATED_DIR" "$NOVA_OUTPUT_DIR"
-   ```
-
 ## Usage
 
-### Converting Documents to Markdown
+### Converting Markdown to PDF
 
-1. Place your PDF or Word files in the input directory (`$NOVA_INPUT_DIR`)
-2. Run the consolidation script:
-   ```bash
-   ./consolidate.sh
-   ```
-   The script will:
-   - Find all PDF and Word files in the input directory
-   - Convert them to markdown with images in `_media` directory
-   - Maintain the original directory structure
-   - Extract text from images using OCR when possible (for PDFs)
+```bash
+# Basic conversion
+python -m src.cli convert md-to-pdf --input input.md --output output.pdf
 
-### Processing Markdown Files
+# With custom template
+python -m src.cli convert md-to-pdf --input input.md --output output.pdf --template custom.html
 
-1. Export your markdown files to your configured input directory (`$NOVA_INPUT_DIR`)
-2. For files with attachments:
-   - Create a directory with the same name as your markdown file
-   - Place PDF or Word attachments in this directory
-   - They will be automatically converted and included
-3. Run the consolidation script:
-   ```bash
-   ./consolidate.sh
-   ```
+# With custom styling
+python -m src.cli convert md-to-pdf --input input.md --output output.pdf --style custom.css
+```
 
-### Output Files
+### Converting PDF to Markdown
 
-After running the script, you'll find:
-- Converted markdown files: In the same directory as the source PDFs
-- Media files: In `_media` directory within the input directory
-- Consolidated markdown: `$NOVA_CONSOLIDATED_DIR/output.md`
-- Final PDF: `$NOVA_OUTPUT_DIR/output.pdf`
+```bash
+# Basic conversion
+python -m src.cli convert pdf-to-md --input input.pdf --output output.md
+
+# With media directory for extracted content
+python -m src.cli convert pdf-to-md --input input.pdf --output output.md --media-dir ./media
+```
+
+### Consolidating Markdown Files
+
+```bash
+# Basic consolidation
+python -m src.cli consolidate --input-dir ./docs --output-file output.md
+
+# With image optimization
+python -m src.cli consolidate --input-dir ./docs --output-file output.md --optimize-images
+```
 
 ## Project Structure
+
 ```
-.
-├── prompts/
-│   └── Nova.prompt                 # Core Nova AI system prompt
-├── config/
-│   └── default_config.yaml         # PDF configuration
-├── styles/
-│   └── default_style.css           # PDF styling
-├── templates/
-│   └── default_template.html       # HTML template
-├── pdf_to_markdown_converter.py    # PDF to Markdown conversion script
-├── markdown_to_pdf_converter.py    # PDF generation script
-├── markdown_consolidator.py        # Markdown consolidation script
-├── consolidate.sh                 # Main automation script
-├── .env.template                  # Environment template
-├── .env                          # Local environment configuration (not in git)
-└── requirements.txt              # Python dependencies
+src/
+├── core/
+│   ├── markdown_to_pdf_converter.py
+│   ├── pdf_to_markdown_converter.py
+│   └── markdown_consolidator.py
+├── utils/
+│   ├── colors.py
+│   └── timing.py
+├── resources/
+│   ├── templates/
+│   ├── styles/
+│   └── prompts/
+└── cli/
 ```
 
-## Requirements
+## Configuration
 
-### System Requirements
+### Environment Variables
+
+- `NOVA_CONSOLIDATED_DIR`: Directory for consolidated markdown files
+- `PDF_TIMEOUT`: Timeout for PDF generation (default: 300 seconds)
+- `PDF_CHUNK_SIZE`: Size of chunks for processing large files (in MB)
+
+### Customization
+
+- Templates: Add custom HTML templates in `src/resources/templates/`
+- Styles: Add custom CSS files in `src/resources/styles/`
+- Configuration: Modify default settings in `config/default_config.yaml`
+
+## Dependencies
+
+### Core Dependencies
 - Python 3.11+
-- Tesseract OCR
-- Cairo graphics library
-- Pango text layout engine
-- GDK-PixBuf image loading library
-- Microsoft Word file support libraries
-
-### Python Dependencies
-- PyMuPDF (for PDF processing)
-- python-docx (for Word document processing)
-- mammoth (for Word to markdown conversion)
-- pytesseract (for OCR)
-- Pillow (for image processing)
-- Click (for CLI interface)
-- WeasyPrint (for PDF generation)
-- Rich (for console output)
-- Additional dependencies in `requirements.txt`
+- WeasyPrint (PDF generation)
+- Click (CLI interface)
+- Rich (console output)
+- Pillow (image processing)
+- PyPDF (PDF processing)
+- BeautifulSoup4 (HTML processing)
+- Jinja2 (template rendering)
+- PyYAML (configuration)
 
 ## Troubleshooting
 
-### PDF Conversion Issues
-- Ensure Tesseract is properly installed and in your PATH
-- Check PDF permissions and accessibility
-- Verify sufficient disk space for image extraction
-- Look for errors in the conversion log
+### PDF Generation Issues
+- Check available memory for large documents
+- Increase PDF_TIMEOUT for complex documents
+- Verify template and style file paths
+- Check file permissions
 
 ### Image Processing Issues
 - Verify image file permissions
 - Check available memory for large images
 - Ensure media directory is writable
-- Review image optimization settings if needed
 
 ### General Issues
-- Check log files for detailed error messages
+- Check console output for error messages
 - Verify all dependencies are installed
-- Ensure proper file permissions
 - Confirm sufficient disk space
-
-## Using Nova with Claude
-
-### Initial Setup in Claude
-
-1. Create a new project:
-   - Open Claude
-   - Click "Create Project"
-   - Name it "Nova"
-
-2. Add the Nova prompt:
-   - Go to Custom Instructions in the project settings
-   - Copy the entire contents of `prompts/Nova.prompt`
-   - Paste it into the Custom Instructions field
-   - Save the changes
-
-3. Add your consolidated data:
-   - Go to Project Files
-   - Upload your generated PDF (`_Nova/output.pdf`)
-
-### Updating Your Data
-
-When you have new notes or journal entries:
-
-1. Generate new consolidated PDF:
-   ```bash
-   ./consolidate.sh
-   ```
-
-2. Update Claude project:
-   - Open your Nova project in Claude
-   - Go to Project Files
-   - Delete the existing PDF
-   - Upload the new PDF from `_Nova/output.pdf`
-
-### Best Practices
-
-- Keep your data current by updating regularly
-- Remove old PDFs before uploading new ones
-- Verify PDF upload was successful
-- Maintain consistent markdown formatting in your notes
-- Use clear section headers for better organization
-- Consider weekly updates or when significant content is added
-
-### Troubleshooting
-
-If Nova seems to be missing context:
-- Confirm the PDF was successfully uploaded
-- Verify the old PDF was completely removed
-- Check that the consolidation process completed without errors
-- Review the PDF content to ensure all data was included
-- Try clearing Claude's conversation history
-
-## Configuration
-
-### Environment Setup
-The following environment variables must be configured in your `.env` file:
-
-- `SYNC_BASE`: Base path to your synced notes or cloud storage directory
-- `NOVA_INPUT_DIR`: Where your markdown files are stored
-- `NOVA_CONSOLIDATED_DIR`: Where the consolidated markdown will be saved
-- `NOVA_OUTPUT_DIR`: Where the final PDF will be generated
-
-### Sync Setup
-Nova is designed to work with markdown files that are synced across your devices. This allows you to write notes on your phone, tablet, or computer and have them automatically available for processing.
-
-Popular note-taking apps that support this workflow include:
-- Bear (uses iCloud for sync)
-- Obsidian (can use iCloud, Dropbox, or other cloud storage)
-- Typora (when used with a cloud-synced folder)
-- Any text editor when used with a synced folder (iCloud Drive, Dropbox, Google Drive, etc.)
-
-Ensure your chosen note-taking app is set up to save files in the directory specified by `NOVA_INPUT_DIR`.
-
-### Styling Options
-- `config/default_config.yaml`: PDF configuration options
-- `styles/default_style.css`: PDF styling
-- `templates/default_template.html`: HTML template structure
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-Copyright 2024 Chad Walters
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-## Raycast Integration
-
-### Prerequisites
-- macOS (Raycast is macOS only)
-- [Raycast](https://www.raycast.com/) installed
-- Raycast Pro subscription (required for AI features)
-- [Raycast Browser Extension](https://www.raycast.com/browser-extension) (optional but recommended)
-
-### Installing Raycast AI Chat Presets
-
-1. Open Raycast (default: `⌘ Space`)
-2. Search for "Import AI Chat Presets"
-3. Select the command and import the following presets from the `prompts/raycast prompts` directory:
-   - `convertJournal.prompt`: Transforms voice memos into structured journal entries
-   - `convertMeeting.prompt`: Processes meeting transcripts into organized summaries
-   - `convertWebpageTomarkdown.prompt`: Converts web content to markdown format
-
-### Using the Presets
-
-#### Journal Conversion
-1. Record your voice memos using your preferred method
-2. Open Raycast and select the "Journal Conversion" preset
-3. Paste your transcribed voice memo
-4. The AI will structure and format your thoughts for use with Nova
-
-#### Meeting Transcripts
-1. After a meeting, copy your meeting transcript
-2. Open Raycast and select the "Meeting Conversion" preset
-3. Paste your meeting transcript
-4. The AI will organize the content with proper attribution, action items, and insights
-
-#### Webpage to Markdown
-1. Install the Raycast Browser Extension
-2. On any webpage, use the extension shortcut (default: `⌘ K`)
-3. Select "Convert to Markdown"
-4. The AI will convert the page content to clean markdown format
-
-These formatted documents can then be processed through Nova's consolidation workflow for comprehensive personal analytics.
+- Check file permissions
