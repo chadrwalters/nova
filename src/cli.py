@@ -18,12 +18,29 @@ app = typer.Typer()
 @app.command()
 def consolidate_cmd(
     input_dir: str = typer.Argument(
-        ..., help="Input directory containing markdown files"
+        ...,
+        help="Input directory containing markdown files",
     ),
-    output_file: str = typer.Argument(..., help="Output consolidated markdown file"),
-    media_dir: str = typer.Option("_media", help="Media directory for images"),
-    recursive: bool = typer.Option(False, "--recursive", "-r", help="Process subdirectories recursively"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show verbose output"),
+    output_file: str = typer.Argument(
+        ...,
+        help="Output consolidated markdown file",
+    ),
+    media_dir: str = typer.Option(
+        "_media",
+        help="Media directory for images",
+    ),
+    recursive: bool = typer.Option(
+        False,
+        "--recursive",
+        "-r",
+        help="Process subdirectories recursively",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show verbose output",
+    ),
 ) -> None:
     """Consolidate multiple markdown files into a single file."""
     try:
@@ -38,9 +55,9 @@ def consolidate_cmd(
         consolidate(input_path, output_path, recursive=recursive, verbose=verbose)
         nova_console.success(f"Successfully consolidated files to {output_path}")
 
-    except Exception as e:
-        nova_console.error(f"Failed to consolidate files: {str(e)}")
-        raise typer.Exit(1)
+    except Exception as err:
+        nova_console.error(f"Failed to consolidate files: {str(err)}")
+        raise typer.Exit(1) from err
 
 
 @app.command()
@@ -49,10 +66,12 @@ def pdf(
     output_file: str = typer.Argument(..., help="Output PDF file"),
     media_dir: str = typer.Option("_media", help="Media directory for images"),
     template_dir: str = typer.Option(
-        "src/resources/templates", help="Template directory"
+        "src/resources/templates",
+        help="Template directory",
     ),
     debug_dir: str = typer.Option(
-        None, help="Debug output directory for intermediate files"
+        None,
+        help="Debug output directory for intermediate files",
     ),
 ) -> None:
     """Convert markdown file to PDF."""
@@ -69,13 +88,13 @@ def pdf(
             output_path,
             media_dir=media_path,
             template_dir=template_path,
-            debug_dir=debug_path
+            debug_dir=debug_path,
         )
         nova_console.success(f"Successfully created PDF: {output_path}")
 
-    except Exception as e:
-        nova_console.error(f"Failed to create PDF: {str(e)}")
-        raise typer.Exit(1)
+    except Exception as err:
+        nova_console.error(f"Failed to create PDF: {str(err)}")
+        raise typer.Exit(1) from err
 
 
 if __name__ == "__main__":

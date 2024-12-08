@@ -131,3 +131,75 @@ Remember:
 - Follow Python best practices
 - Consider backwards compatibility
 - Document breaking changes
+
+Code Quality Rules for LLM:
+1. Always use pathlib.Path for file operations, never os.path
+2. Always use f-strings for string formatting, never % or .format()
+3. Always use async/await for I/O operations
+4. Always use TypedDict for dictionary type hints
+5. Always use Enum for constants with related values
+6. Always use dataclasses for data containers
+7. Always implement __str__ and __repr__ for custom classes
+8. Always use contextlib.contextmanager for resource management
+9. Always use structlog for logging
+10. Always use click.Path for CLI file parameters
+
+Function Rules:
+1. Maximum function complexity: 10 (McCabe)
+2. Maximum function arguments: 8
+3. Maximum function returns: 5
+4. Maximum function local variables: 15
+5. Always type hint all parameters and return values
+6. Always validate input parameters
+7. Always handle edge cases explicitly
+8. Always use early returns for guard clauses
+9. Always document exceptions that may be raised
+10. Always use keyword-only arguments for optional parameters
+
+Error Handling Rules:
+1. Always use custom exceptions for domain-specific errors
+2. Always include context in exception messages
+3. Always clean up resources in finally blocks
+4. Always use contextlib.suppress for specific exceptions
+5. Always log exceptions with traceback
+6. Always validate file operations before execution
+7. Always handle timeout scenarios
+8. Always provide user-friendly error messages
+9. Always implement rollback mechanisms for critical operations
+10. Always validate input data before processing
+
+Testing Rules:
+1. Always write parametrized tests for edge cases
+2. Always mock external dependencies
+3. Always use fixtures for test data
+4. Always test exception scenarios
+5. Always test async code with pytest.mark.asyncio
+6. Always use property-based testing for data validation
+7. Always test timeout scenarios
+8. Always test concurrent operations
+9. Always include integration tests
+10. Always test error recovery mechanisms
+
+Security Rules:
+1. Always validate file paths against directory traversal
+2. Always sanitize markdown input
+3. Always use secure random for sensitive operations
+4. Always validate image files before processing
+5. Always use constant time comparisons for sensitive data
+6. Always handle temporary files securely
+7. Always validate URLs before processing
+8. Always use proper file permissions
+9. Always sanitize file names
+10. Always validate environment variables
+
+Performance Rules:
+1. Always use generators for large datasets
+2. Always implement proper cleanup in __exit__
+3. Always use connection pooling
+4. Always implement proper caching
+5. Always use bulk operations where possible
+6. Always implement rate limiting
+7. Always use streaming for large files
+8. Always implement proper pagination
+9. Always use proper indexing
+10. Always implement proper batching
