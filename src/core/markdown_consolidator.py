@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-from pathlib import Path
-from typing import List, Optional, Dict
-import typer
-from datetime import datetime
-import re
 import base64
-from dataclasses import dataclass
 import hashlib
+import os
+import re
 import shutil
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import typer
 from PIL import Image
 
 from src.utils.colors import NovaConsole
@@ -37,53 +37,53 @@ def extract_date_from_filename(filename: str) -> datetime:
             pass
     return datetime.fromtimestamp(0)  # Default to epoch if no date found
 
-def process_image_links(content: str, file_path: Path, media_dir: Path) -> tuple[str, List[Path]]:
+def process_image_links(content: str, file_path: Path, media_dir: Path) -> Tuple[str, List[Path]]:
     """Process and extract image links from markdown content."""
-    media_files = []
-    
+    media_files: List[Path] = []
+
     # Handle base64 encoded images
     def replace_base64_image(match):
         alt_text = match.group(1)
         image_type = match.group(2)
         base64_data = match.group(3)
-        
+
         try:
             # Generate unique filename based on content hash
             content_hash = hashlib.md5(base64_data.encode()).hexdigest()[:12]
             image_filename = f"{file_path.stem}_{content_hash}.{image_type}"
             image_path = media_dir / image_filename
-            
+
             # Save image if it doesn't exist
             if not image_path.exists():
                 image_data = base64.b64decode(base64_data)
                 image_path.write_bytes(image_data)
-            
+
             media_files.append(image_path)
             return f"![{alt_text}](_media/{image_filename})"
-            
+
         except Exception as e:
             nova_console.error(f"Failed to process base64 image", str(e))
             return f"![{alt_text}](error_processing_image)"
-    
+
     # Handle base64 encoded images
     content = re.sub(
         r'!\[([^\]]*)\]\(data:image/([^;]+);base64,([^\)]+)\)',
         replace_base64_image,
         content
     )
-    
+
     # Handle local image references
     def replace_local_image(match):
         alt_text = match.group(1)
         image_path = match.group(2)
-        
+
         try:
             source_image_path = None
-            
+
             # Remove any _media/ prefix from the search
             clean_image_path = image_path.replace('_media/', '')
             image_name = Path(clean_image_path).name
-            
+
             # Search paths in priority order
             search_paths = [
                 # 1. Direct path relative to markdown file
@@ -147,29 +147,29 @@ def process_image_links(content: str, file_path: Path, media_dir: Path) -> tuple
                 # 30. Try in the markdown file's _media directory with just the number and SVG extension
                 file_path.parent / "_media" / f"{re.sub(r'^(\d+).*$', r'\1', image_name)}.svg"
             ]
-            
+
             # Try each path until we find the image
             for path in search_paths:
                 if path.exists():
                     source_image_path = path
                     nova_console.process_item(f"Found image at: {source_image_path}")
                     break
-            
+
             if source_image_path and source_image_path.exists():
                 # Create a filename that preserves the original name and extension
                 original_name = source_image_path.name
                 file_stem = file_path.stem
-                
+
                 # Generate a unique filename that includes the markdown file name as prefix
                 new_filename = f"{file_stem}_{original_name}"
-                
+
                 # Handle special cases for HEIC/HEIF images
                 if source_image_path.suffix.lower() in ['.heic', '.heif']:
                     # Convert to PNG when copying
                     import pillow_heif
                     new_filename = f"{file_stem}_{source_image_path.stem}.png"
                     new_image_path = media_dir / new_filename
-                    
+
                     if not new_image_path.exists():
                         try:
                             heif_file = pillow_heif.read_heif(str(source_image_path))
@@ -196,14 +196,14 @@ def process_image_links(content: str, file_path: Path, media_dir: Path) -> tuple
                 else:
                     # For other formats, just copy the file
                     new_image_path = media_dir / new_filename
-                    
+
                     if not new_image_path.exists():
                         shutil.copy2(source_image_path, new_image_path)
                         nova_console.process_item(f"Copied image: {source_image_path} -> {new_image_path}")
-                
+
                 media_files.append(new_image_path)
                 return f"![{alt_text}](_media/{new_filename})"
-            
+
             # If image not found, try to find similar filenames
             similar_files = []
             for path in search_paths:
@@ -212,191 +212,126 @@ def process_image_links(content: str, file_path: Path, media_dir: Path) -> tuple
                         if file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.svg')):
                             if image_name.lower() in file.name.lower():
                                 similar_files.append(file)
-            
+
             if similar_files:
                 # Use the first similar file found
                 source_image_path = similar_files[0]
                 nova_console.process_item(f"Found similar image: {source_image_path}")
-                
+
                 new_filename = source_image_path.name
                 if (media_dir / new_filename).exists():
                     new_filename = f"{file_path.stem}_{new_filename}"
-                
+
                 new_image_path = media_dir / new_filename
-                
+
                 if not new_image_path.exists():
                     shutil.copy2(source_image_path, new_image_path)
                     nova_console.process_item(f"Copied similar image: {source_image_path} -> {new_image_path}")
-                
+
                 media_files.append(new_image_path)
                 return f"![{alt_text}](_media/{new_filename})"
-            
+
             nova_console.warning(f"Image not found for {file_path.name}: {image_path}")
             return f"![{alt_text}]({image_path})"
-            
+
         except Exception as e:
             nova_console.warning(f"Failed to process image {image_path}: {str(e)}")
             return f"![{alt_text}]({image_path})"
-    
+
     # Handle local image references
     content = re.sub(r'!\[([^\]]*)\]\(([^:\)]+)\)', replace_local_image, content)
-    
+
     return content, media_files
 
 def process_file(file_path: Path, media_dir: Path) -> MarkdownFile:
     """Process a single markdown file."""
     try:
         # Read file content
-        content = file_path.read_text(encoding='utf-8')
-        
-        # Clean up special characters
-        content = content.replace('\u2028', '\n')  # Line separator
-        content = content.replace('\u2029', '\n')  # Paragraph separator
-        content = content.replace('\r\n', '\n')    # Windows line endings
-        content = content.replace('\r', '\n')      # Mac line endings
-        content = re.sub(r'[\u200B-\u200D\uFEFF]', '', content)  # Zero-width spaces
-        content = re.sub(r'\n{3,}', '\n\n', content)  # Multiple blank lines
-        content = content.strip()  # Remove leading/trailing whitespace
-        
+        content = file_path.read_text(encoding="utf-8")
+
+        # Process images
+        processed_content, media_files = process_image_links(content, file_path, media_dir)
+
         # Extract date from filename
         date = extract_date_from_filename(file_path.name)
-        
-        # Process image links and get list of media files
-        processed_content, media_files = process_image_links(content, file_path, media_dir)
-        
-        # Create MarkdownFile object
-        markdown_file = MarkdownFile(
+
+        return MarkdownFile(
             path=file_path,
             date=date,
             content=processed_content,
             media_files=media_files
         )
-        
-        return markdown_file
-        
+
     except Exception as e:
         nova_console.error(f"Failed to process file {file_path}", str(e))
-        raise
+        return MarkdownFile(
+            path=file_path,
+            date=datetime.fromtimestamp(0),
+            content="",
+            media_files=[]
+        )
 
-def process_input(input_path: Path, recursive: bool = False) -> List[Path]:
-    """Process input path and return list of markdown files."""
-    files = []
-    if input_path.is_dir():
-        pattern = "**/*.md" if recursive else "*.md"
-        files.extend(input_path.glob(pattern))
-    elif input_path.is_file() and input_path.suffix.lower() == '.md':
-        files.append(input_path)
-    return sorted(files)
-
-class MarkdownConsolidator:
-    """A class to consolidate multiple markdown files into a single file."""
-    
-    def __init__(self):
-        """Initialize the markdown consolidator."""
-        self.console = NovaConsole()
-        
-    def consolidate(self, input_files: List[Path], output_file: Path) -> None:
-        """
-        Consolidate multiple markdown files into a single file.
-        
-        Args:
-            input_files: List of input markdown file paths
-            output_file: Output file path
-            
-        Raises:
-            ValueError: If input_files is empty
-            FileNotFoundError: If any input file doesn't exist
-        """
-        if not input_files:
-            raise ValueError("No input files provided")
-            
-        for file in input_files:
-            if not file.exists():
-                raise FileNotFoundError(f"Input file not found: {file}")
-        
-        with timed_section("Consolidating markdown files"):
-            # Create output directory if it doesn't exist
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Process each file
-            with output_file.open('w', encoding='utf-8') as outfile:
-                for input_file in input_files:
-                    self._process_file(input_file, outfile)
-    
-    def _process_file(self, input_file: Path, outfile) -> None:
-        """Process a single markdown file and write its contents to the output file."""
-        content = input_file.read_text(encoding='utf-8')
-        
-        # Process any image references
-        content = self._process_images(content, input_file.parent)
-        
-        # Write to output file
-        outfile.write(f"\n\n{content}\n\n")
-    
-    def _process_images(self, content: str, base_path: Path) -> str:
-        """Process image references in the markdown content."""
-        def replace_image(match):
-            alt_text = match.group(1)
-            image_path = match.group(2)
-            
-            # Convert relative path to absolute
-            if not os.path.isabs(image_path):
-                image_path = base_path / image_path
-            
-            # Verify image exists
-            if not Path(image_path).exists():
-                return match.group(0)
-            
-            # Copy image to output directory if needed
-            # For now, just return the original reference
-            return f"![{alt_text}]({image_path})"
-        
-        # Find and replace image references
-        image_pattern = r'!\[(.*?)\]\((.*?)\)'
-        return re.sub(image_pattern, replace_image, content)
-
-def consolidate(input_path: Path, output_file: Path, recursive: bool = True, verbose: bool = False) -> None:
-    """
-    Consolidate multiple markdown files into a single file.
-    
-    Args:
-        input_path: Path to directory containing markdown files
-        output_file: Path to output consolidated file
-        recursive: Whether to search subdirectories recursively
-        verbose: Whether to print verbose output
-    """
-    if verbose:
-        nova_console.process_item(f"Consolidating markdown files from {input_path} to {output_file}")
-    
-    # Create media directory if it doesn't exist
-    media_dir = output_file.parent / "_media"
-    media_dir.mkdir(exist_ok=True)
-    
-    # Collect markdown files
-    markdown_files = []
-    pattern = "**/*.md" if recursive else "*.md"
-    
-    for file_path in sorted(input_path.glob(pattern)):
-        if verbose:
+def consolidate_files(input_files: List[Path], output_file: Path, media_dir: Path) -> None:
+    """Consolidate multiple markdown files into one."""
+    # Process all files
+    files: List[MarkdownFile] = []
+    for file_path in input_files:
+        if file_path.suffix.lower() == ".md":
             nova_console.process_item(f"Processing {file_path}")
-        try:
-            markdown_file = process_file(file_path, media_dir)
-            markdown_files.append(markdown_file)
-        except Exception as e:
-            nova_console.error(f"Failed to process {file_path}: {str(e)}")
-    
+            files.append(process_file(file_path, media_dir))
+
     # Sort files by date
-    markdown_files.sort(key=lambda x: x.date)
-    
-    # Write consolidated file
-    with output_file.open('w', encoding='utf-8') as f:
-        for idx, md_file in enumerate(markdown_files):
-            if idx > 0:
-                f.write('\n\n---\n\n')  # Add separator between files
-            f.write(md_file.content)
-    
-    if verbose:
-        nova_console.success(f"Successfully consolidated {len(markdown_files)} files to {output_file}")
+    files.sort(key=lambda x: x.date)
+
+    # Combine content
+    combined_content = "\n\n---\n\n".join(file.content for file in files)
+
+    # Write output
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(combined_content, encoding="utf-8")
+
+    # Show completion stats
+    size_mb = output_file.stat().st_size / (1024 * 1024)
+    stats: Dict[str, str] = {
+        "Files": f"{len(files)} processed",
+        "Output": str(output_file),
+        "Size": f"{size_mb:.1f}MB",
+    }
+    nova_console.process_complete("Consolidation", stats)
+
+@app.command()
+def consolidate(
+    input_path: Path = typer.Argument(..., help="Input directory path"),
+    output_file: Path = typer.Argument(..., help="Output markdown file path"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Process subdirectories recursively"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show verbose output"),
+) -> None:
+    """Consolidate markdown files into a single file."""
+    try:
+        # Create media directory
+        media_dir = output_file.parent / "_media"
+        media_dir.mkdir(parents=True, exist_ok=True)
+
+        # Find markdown files
+        markdown_files: List[Path] = []
+        if recursive:
+            for file_path in input_path.rglob("*.md"):
+                markdown_files.append(file_path)
+        else:
+            for file_path in input_path.glob("*.md"):
+                markdown_files.append(file_path)
+
+        if not markdown_files:
+            nova_console.warning("No markdown files found")
+            return
+
+        # Process files
+        consolidate_files(markdown_files, output_file, media_dir)
+
+    except Exception as e:
+        nova_console.error("Consolidation failed", str(e))
+        raise typer.Exit(1)
+
 
 if __name__ == "__main__":
     app()

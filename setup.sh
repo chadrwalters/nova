@@ -29,7 +29,7 @@ fi
 if ! command -v poetry &> /dev/null; then
     print_status "$YELLOW" "Installing Poetry..."
     curl -sSL https://install.python-poetry.org | python3 -
-    
+
     # Add Poetry to PATH
     case "$SHELL" in
         */zsh)
@@ -42,7 +42,7 @@ if ! command -v poetry &> /dev/null; then
             SHELL_PROFILE="$HOME/.profile"
             ;;
     esac
-    
+
     # Add Poetry PATH to shell profile if not already present
     POETRY_PATH="$HOME/.local/bin"
     if [[ ":$PATH:" != *":$POETRY_PATH:"* ]]; then
@@ -88,4 +88,4 @@ if [[ -n "${POETRY_PATH:-}" ]]; then
     echo
     print_status "$YELLOW" "Important: To use Poetry in this terminal session, please run:"
     print_status "$YELLOW" "source $SHELL_PROFILE"
-fi 
+fi

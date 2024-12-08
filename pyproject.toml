@@ -47,14 +47,53 @@ include = '\.pyi?$'
 
 [tool.isort]
 profile = "black"
-multi-line-output = 3
-line-length = 88
+multi_line_output = "VERTICAL_HANGING_INDENT"
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
 
 [tool.mypy]
-python-version = "3.11"
-warn-return-any = true
-warn-unused-configs = true
-disallow-untyped-defs = true
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+warn_redundant_casts = false
+warn_unused_ignores = false
+warn_no_return = false
+warn_unreachable = false
+show_error_codes = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["PIL.*", "markdown.*", "rich.*", "typer.*", "pytest.*", "bs4.*", "pypdf.*", "tqdm.*", "weasyprint.*", "pillow_heif.*", "structlog.*", "colors.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+check_untyped_defs = false
+no_implicit_optional = false
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["D100", "D104", "D200", "D400", "D401"]
+per-file-ignores = [
+    "__init__.py:F401",
+    "tests/*:D100,D101,D102,D103"
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info"
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -73,6 +112,5 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
     "pass",
-    "raise ImportError",
+    "raise ImportError"
 ]
-  

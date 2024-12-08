@@ -1,18 +1,24 @@
-import pytest
 from pathlib import Path
+
+import pytest
+
 from src.core.markdown_to_pdf_converter import MarkdownToPDFConverter
+
 
 def test_convert_markdown_to_pdf(sample_markdown_file, temp_output_dir):
     """Test converting a markdown file to PDF."""
     converter = MarkdownToPDFConverter()
     output_file = temp_output_dir / "output.pdf"
-    
+
     converter.convert(sample_markdown_file, output_file)
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
 
-def test_convert_with_custom_template(sample_markdown_file, test_data_dir, temp_output_dir):
+
+def test_convert_with_custom_template(
+    sample_markdown_file, test_data_dir, temp_output_dir
+):
     """Test converting markdown to PDF with a custom template."""
     # Create a custom template
     template_file = test_data_dir / "custom_template.html"
@@ -24,17 +30,18 @@ def test_convert_with_custom_template(sample_markdown_file, test_data_dir, temp_
     </html>
     """
     template_file.write_text(template_content)
-    
+
     converter = MarkdownToPDFConverter(template_path=template_file)
     output_file = temp_output_dir / "output.pdf"
-    
+
     converter.convert(sample_markdown_file, output_file)
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
-    
+
     # Cleanup
     template_file.unlink()
+
 
 def test_convert_with_custom_css(sample_markdown_file, test_data_dir, temp_output_dir):
     """Test converting markdown to PDF with custom CSS."""
@@ -45,17 +52,18 @@ def test_convert_with_custom_css(sample_markdown_file, test_data_dir, temp_outpu
     h1 { color: blue; }
     """
     css_file.write_text(css_content)
-    
+
     converter = MarkdownToPDFConverter(css_path=css_file)
     output_file = temp_output_dir / "output.pdf"
-    
+
     converter.convert(sample_markdown_file, output_file)
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
-    
+
     # Cleanup
     css_file.unlink()
+
 
 def test_convert_with_images(sample_markdown_file, sample_image_file, temp_output_dir):
     """Test converting markdown with images to PDF."""
@@ -63,14 +71,15 @@ def test_convert_with_images(sample_markdown_file, sample_image_file, temp_outpu
     content = sample_markdown_file.read_text()
     content += f"\n\n![Test Image]({sample_image_file})"
     sample_markdown_file.write_text(content)
-    
+
     converter = MarkdownToPDFConverter()
     output_file = temp_output_dir / "output.pdf"
-    
+
     converter.convert(sample_markdown_file, output_file)
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
+
 
 def test_invalid_input_file(temp_output_dir):
     """Test converting a non-existent markdown file."""
@@ -78,8 +87,9 @@ def test_invalid_input_file(temp_output_dir):
     with pytest.raises(FileNotFoundError):
         converter.convert(Path("nonexistent.md"), temp_output_dir / "output.pdf")
 
+
 def test_invalid_template_path(sample_markdown_file, temp_output_dir):
     """Test converting with a non-existent template."""
     with pytest.raises(FileNotFoundError):
         converter = MarkdownToPDFConverter(template_path=Path("nonexistent.html"))
-        converter.convert(sample_markdown_file, temp_output_dir / "output.pdf") 
+        converter.convert(sample_markdown_file, temp_output_dir / "output.pdf")

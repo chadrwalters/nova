@@ -199,19 +199,19 @@
     .markdown-body {
         font-size: 11pt;
     }
-    
+
     .markdown-body pre,
     .markdown-body code {
         word-wrap: break-word;
         white-space: pre-wrap;
     }
-    
+
     .markdown-body a[href]:after {
         content: " (" attr(href) ")";
         font-size: 90%;
         color: #666;
     }
-    
+
     .markdown-body img {
         max-width: 100% !important;
     }

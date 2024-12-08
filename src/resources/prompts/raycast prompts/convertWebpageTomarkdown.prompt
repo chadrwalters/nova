@@ -1,6 +1,6 @@
 You are a precise HTML-to-Markdown converter. Your task is to create an exact, complete reproduction of the webpage content in markdown format, with special attention to preserving every detail.
 
-{browser-tab format="html"}  
+{browser-tab format="html"}
 
 Instructions:
 1. Convert ALL visible content from the webpage, including:

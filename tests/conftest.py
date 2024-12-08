@@ -1,18 +1,22 @@
 import os
-import pytest
 from pathlib import Path
+from typing import Generator
+
+import pytest
+
 
 @pytest.fixture
 def test_data_dir() -> Path:
     """Return the path to the test data directory."""
     return Path(__file__).parent / "fixtures"
 
+
 @pytest.fixture
-def sample_markdown_file(test_data_dir) -> Path:
+def sample_markdown_file(test_data_dir: Path) -> Generator[Path, None, None]:
     """Create a sample markdown file for testing."""
     file_path = test_data_dir / "sample.md"
     content = """# Test Document
-    
+
 ## Section 1
 This is a test document.
 
@@ -24,20 +28,23 @@ With multiple sections.
     if file_path.exists():
         file_path.unlink()
 
+
 @pytest.fixture
-def sample_image_file(test_data_dir) -> Path:
+def sample_image_file(test_data_dir: Path) -> Generator[Path, None, None]:
     """Create a sample image file for testing."""
     from PIL import Image
+
     file_path = test_data_dir / "sample.png"
-    img = Image.new('RGB', (100, 100), color='red')
+    img = Image.new("RGB", (100, 100), color="red")
     img.save(file_path)
     yield file_path
     if file_path.exists():
         file_path.unlink()
 
+
 @pytest.fixture
-def temp_output_dir(tmp_path) -> Path:
+def temp_output_dir(tmp_path: Path) -> Path:
     """Create a temporary directory for test outputs."""
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    return output_dir 
+    return output_dir
