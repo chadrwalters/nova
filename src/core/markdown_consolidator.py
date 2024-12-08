@@ -355,5 +355,48 @@ class MarkdownConsolidator:
         image_pattern = r'!\[(.*?)\]\((.*?)\)'
         return re.sub(image_pattern, replace_image, content)
 
+def consolidate(input_path: Path, output_file: Path, recursive: bool = True, verbose: bool = False) -> None:
+    """
+    Consolidate multiple markdown files into a single file.
+    
+    Args:
+        input_path: Path to directory containing markdown files
+        output_file: Path to output consolidated file
+        recursive: Whether to search subdirectories recursively
+        verbose: Whether to print verbose output
+    """
+    if verbose:
+        nova_console.process_item(f"Consolidating markdown files from {input_path} to {output_file}")
+    
+    # Create media directory if it doesn't exist
+    media_dir = output_file.parent / "_media"
+    media_dir.mkdir(exist_ok=True)
+    
+    # Collect markdown files
+    markdown_files = []
+    pattern = "**/*.md" if recursive else "*.md"
+    
+    for file_path in sorted(input_path.glob(pattern)):
+        if verbose:
+            nova_console.process_item(f"Processing {file_path}")
+        try:
+            markdown_file = process_file(file_path, media_dir)
+            markdown_files.append(markdown_file)
+        except Exception as e:
+            nova_console.error(f"Failed to process {file_path}: {str(e)}")
+    
+    # Sort files by date
+    markdown_files.sort(key=lambda x: x.date)
+    
+    # Write consolidated file
+    with output_file.open('w', encoding='utf-8') as f:
+        for idx, md_file in enumerate(markdown_files):
+            if idx > 0:
+                f.write('\n\n---\n\n')  # Add separator between files
+            f.write(md_file.content)
+    
+    if verbose:
+        nova_console.success(f"Successfully consolidated {len(markdown_files)} files to {output_file}")
+
 if __name__ == "__main__":
     app()
