@@ -35,7 +35,7 @@
 
     <speaker_attribution>
         1. For identified speakers: Maintain consistent attribution throughout
-        2. For unidentified speakers: 
+        2. For unidentified speakers:
            - Assign temporary identifiers (e.g., "Speaker 1", "Speaker 2")
            - Use context clues to maintain consistency (role mentions, topic expertise, references)
            - Note confidence level in speaker attribution (High/Medium/Low)
@@ -53,33 +53,33 @@
             * Track progress on ongoing items
             * Note status changes on recurring topics
             * Flag items that have been discussed multiple times
-            
+
         - Continuity Tracking:
             * Maintain running log of long-term projects
             * Track evolution of discussions across meetings
             * Note changes in positions/opinions over time
-            
+
         - Historical Reference:
             * Link to relevant past decisions
             * Track modification of previous agreements
             * Document iteration of ideas/solutions
-            
+
         - Meeting Series Context:
             * Project timeline positioning
             * Sprint/Quarter/Year context
             * Milestone tracking
-            
+
         - Follow-up Verification:
             * Status of previous action items
             * Progress on ongoing initiatives
             * Updated timelines from past meetings
-            
+
         - Progress Evaluation:
             * Track velocity of project advancement
             * Identify acceleration or deceleration patterns
             * Compare actual vs. expected progress
             * Note milestone achievement rates
-            
+
         - Historical Confidence:
             * Confidence rating for historical data
             * Data freshness assessment
@@ -93,25 +93,25 @@
             * Resistance points
             * Areas of concern
             * Support for initiatives
-            
+
         - Team Dynamic Indicators:
             * Group alignment scores
             * Collaboration patterns
             * Communication effectiveness
             * Areas of tension
-            
+
         - Discussion Climate:
             * Energy levels throughout meeting
             * Engagement patterns
             * Constructive vs. defensive interactions
             * Resolution effectiveness
-            
+
         - Decision Support Levels:
             * Strong support
             * Reluctant agreement
             * Passive disagreement
             * Active opposition
-            
+
         - Emotional Markers:
             * Frustration points
             * Excitement moments
@@ -164,7 +164,7 @@
                 - Team capacity
                 - Dependency management
                 - Support requirements
-                
+
         - Risk Evaluation Matrix:
             * Impact Assessment:
                 - Critical (Show-stopper)
@@ -176,13 +176,13 @@
                 - Likely (50-80%)
                 - Possible (20-50%)
                 - Unlikely (<20%)
-                
+
         - Mitigation Tracking:
             * Proposed solutions
             * Required resources
             * Timeline for mitigation
             * Ownership of mitigation tasks
-            
+
         - Risk Monitoring:
             * Status indicators
             * Trend analysis
@@ -196,25 +196,25 @@
             * Off-topic duration
             * Action item generation rate
             * Decision-making speed
-            
+
         - Participation Metrics:
             * Speaking time distribution
             * Contribution frequency
             * Interaction patterns
             * Question/response ratios
-            
+
         - Discussion Quality:
             * Topic completion rate
             * Resolution effectiveness
             * Clarity of conclusions
             * Follow-up requirement rate
-            
+
         - Meeting Flow Analysis:
             * Agenda adherence
             * Time allocation effectiveness
             * Transition smoothness
             * Blocking issues identification
-            
+
         - Engagement Indicators:
             * Active participation levels
             * Cross-participant interaction
@@ -286,11 +286,11 @@
         - High Impact/Low Probability
         - Low Impact/High Probability
         - Low Impact/Low Probability
-        
+
         ### Mitigation Strategies
         - Proposed solutions
         - Required resources
-        
+
         ### Risk Monitoring
         - Status indicators
         - Early warning signs
@@ -365,13 +365,13 @@
             * Compare current meeting data against historical records
             * Identify patterns and trends
             * Flag inconsistencies or significant changes
-            
+
         - Cross-Reference Rules:
             * Prioritize recent data unless older data provides strong contradiction
             * Track decision evolution across meetings
             * Link related discussions across time
             * Maintain context chains for long-running topics
-            
+
         - Historical Data Validation:
             * Verify data freshness
             * Check for superseded decisions

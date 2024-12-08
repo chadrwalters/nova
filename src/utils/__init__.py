@@ -1,1 +1,1 @@
-"""Utility functions for Nova markdown tools.""" 
+"""Utility functions for Nova markdown tools."""

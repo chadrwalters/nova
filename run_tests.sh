@@ -71,4 +71,4 @@ $PYTEST_CMD
 # If coverage was run, provide the report location
 if [ $COVERAGE -eq 1 ]; then
     echo "Coverage report generated in htmlcov/index.html"
-fi 
+fi
