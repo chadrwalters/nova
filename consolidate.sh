@@ -12,7 +12,7 @@ CONSOLIDATED_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsol
 PDF_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
 DEBUG_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/_NovaDebug"
 MEDIA_DIR="$CONSOLIDATED_DIR/_media"
-TEMPLATE_DIR="src/resources/templates/default.html"
+TEMPLATE_DIR="src/resources/templates"
 
 # Print section header
 print_section() {
@@ -65,7 +65,7 @@ from src.core.markdown_to_pdf_converter import convert_markdown_to_pdf
 
 # Consolidate markdown files
 consolidate(
-    input_path=Path('$INPUT_DIR'),
+    input_dir=Path('$INPUT_DIR'),
     output_file=Path('$CONSOLIDATED_DIR/output.md'),
     recursive=True,
     verbose=True
@@ -73,9 +73,9 @@ consolidate(
 
 # Convert to PDF
 convert_markdown_to_pdf(
-    input_file='$CONSOLIDATED_DIR/output.md',
-    output_file='$PDF_DIR/output.pdf',
-    media_dir='$CONSOLIDATED_DIR/_media',
-    template_dir='$TEMPLATE_DIR',
-    debug_dir='$DEBUG_DIR'
+    input_file=Path('$CONSOLIDATED_DIR/output.md'),
+    output_file=Path('$PDF_DIR/output.pdf'),
+    media_dir=Path('$CONSOLIDATED_DIR/_media'),
+    template_dir=Path('$TEMPLATE_DIR'),
+    debug_dir=Path('$DEBUG_DIR')
 )"
