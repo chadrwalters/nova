@@ -1,12 +1,7 @@
-# OS generated files
-.DS_Store
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Ignore all dot directories and their contents
+.*/
 
-# Python
+# Common Python-specific files and directories
 __pycache__/
 *.py[cod]
 *$py.class
@@ -27,32 +22,27 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.python-version 
 
-# Virtual Environment
+# Virtual environments
+.env
+.venv
+env/
 venv/
 ENV/
-env/
-.env/
 
-# IDE
+# IDE specific files
 .idea/
 .vscode/
 *.swp
 *.swo
-.project
-.pydevproject
-.settings/
 
-# Log files
-*.log
-markdown_to_pdf.log
-markdown_consolidator.log
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
 
-# Project specific
-_media/
-output.md
-output.pdf
+# Poetry
+poetry.lock
 
-# Environment files
-.env
+# Misc
+.DS_Store

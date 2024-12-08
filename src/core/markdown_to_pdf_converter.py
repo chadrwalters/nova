@@ -84,11 +84,49 @@ class MarkdownToPDFConverter:
         
     def _setup_jinja(self):
         """Set up the Jinja2 environment."""
+        if self.template_path and not self.template_path.exists():
+            raise FileNotFoundError(f"Template file not found: {self.template_path}")
+        
         template_dir = Path(__file__).parent.parent / "resources" / "templates"
+        if not template_dir.exists():
+            raise FileNotFoundError(f"Template directory not found: {template_dir}")
+        
         self.jinja_env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(template_dir))
         )
         
+    def _get_template(self) -> jinja2.Template:
+        """
+        Get the HTML template to use.
+        
+        Returns:
+            jinja2.Template: The template to use for rendering
+        
+        Raises:
+            FileNotFoundError: If template file doesn't exist
+        """
+        if self.template_path:
+            if not self.template_path.exists():
+                raise FileNotFoundError(f"Template file not found: {self.template_path}")
+            with self.template_path.open('r', encoding='utf-8') as f:
+                return jinja2.Template(f.read())
+        return self.jinja_env.get_template('default.html')
+        
+    def _get_css(self) -> Optional[List[CSS]]:
+        """Get CSS stylesheets to use."""
+        css_files = []
+        
+        # Add custom CSS if provided
+        if self.css_path and self.css_path.exists():
+            css_files.append(CSS(filename=str(self.css_path)))
+            
+        # Add default CSS
+        default_css = Path(__file__).parent.parent / "resources" / "styles" / "default.css"
+        if default_css.exists():
+            css_files.append(CSS(filename=str(default_css)))
+            
+        return css_files if css_files else None
+
     def convert(self, input_file: Path, output_file: Path) -> None:
         """
         Convert a markdown file to PDF.
@@ -114,10 +152,12 @@ class MarkdownToPDFConverter:
         
         # Apply template
         template = self._get_template()
-        html = template.render(
-            title=input_file.stem,
-            content=html_content
-        )
+        template_vars = {
+            'title': input_file.stem,
+            'content': html_content,
+            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        html = template.render(**template_vars)
         
         # Convert to PDF
         css = self._get_css()
@@ -125,35 +165,6 @@ class MarkdownToPDFConverter:
             output_file,
             stylesheets=css if css else []
         )
-        
-    def _get_template(self) -> jinja2.Template:
-        """
-        Get the HTML template to use.
-        
-        Raises:
-            FileNotFoundError: If template_path is provided but doesn't exist
-        """
-        if self.template_path:
-            if not self.template_path.exists():
-                raise FileNotFoundError(f"Template file not found: {self.template_path}")
-            with self.template_path.open('r', encoding='utf-8') as f:
-                return jinja2.Template(f.read())
-        return self.jinja_env.get_template('default.html')
-        
-    def _get_css(self) -> Optional[List[CSS]]:
-        """Get CSS stylesheets to use."""
-        css_files = []
-        
-        # Add custom CSS if provided
-        if self.css_path and self.css_path.exists():
-            css_files.append(CSS(filename=str(self.css_path)))
-            
-        # Add default CSS
-        default_css = Path(__file__).parent.parent / "resources" / "styles" / "default.css"
-        if default_css.exists():
-            css_files.append(CSS(filename=str(default_css)))
-            
-        return css_files if css_files else None
 
 def resolve_image_path(image_path: str, base_dir: Path, media_dir: Path) -> Optional[Path]:
     """Resolve image path to actual file location."""
@@ -259,6 +270,55 @@ def process_markdown_content(content: str, base_dir: Path, media_dir: Path) -> s
     content = re.sub(r'!\[([^\]]*)\]\(([^:\)]+)\)', replace_image_path, content)
     
     return content
+
+def convert_markdown_to_pdf(input_file: str, output_file: str, media_dir: str, template_dir: str) -> None:
+    """
+    Convert a markdown file to PDF.
+    
+    Args:
+        input_file: Path to input markdown file
+        output_file: Path to output PDF file
+        media_dir: Path to media directory
+        template_dir: Path to template directory
+    """
+    input_path = Path(input_file)
+    output_path = Path(output_file)
+    media_path = Path(media_dir)
+    template_path = Path(template_dir)
+    
+    try:
+        with timed_section("Converting markdown to PDF"):
+            # Initialize converter with template directory
+            converter = MarkdownToPDFConverter()
+            
+            # Process content to handle images
+            content = input_path.read_text(encoding='utf-8')
+            processed_content = process_markdown_content(
+                content,
+                input_path.parent,
+                media_path
+            )
+            
+            # Write processed content to temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', encoding='utf-8', delete=False) as temp_file:
+                temp_file.write(processed_content)
+                temp_path = Path(temp_file.name)
+            
+            try:
+                # Convert to PDF with timeout
+                with timeout(300):  # 5 minutes timeout
+                    converter.convert(temp_path, output_path)
+                nova_console.success(f"Successfully converted {input_file} to {output_file}")
+            finally:
+                # Clean up temporary file
+                temp_path.unlink()
+                
+    except TimeoutError:
+        nova_console.error("PDF conversion timed out")
+        raise
+    except Exception as e:
+        nova_console.error(f"Failed to convert markdown to PDF: {str(e)}")
+        raise
 
 @app.command()
 def convert_markdown_to_pdf(
