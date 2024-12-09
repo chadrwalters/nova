@@ -1,42 +1,62 @@
+import time
 from contextlib import contextmanager
-from datetime import datetime
 from functools import wraps
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, TypeVar
 
-from src.utils.colors import NovaConsole
-
-nova_console = NovaConsole()
+T = TypeVar("T")
 
 
-class Timer:
-    def __init__(self):
-        self.start_time = datetime.now()
-        self.last_checkpoint = self.start_time
+def timed(func: Callable[..., T]) -> Callable[..., T]:
+    """Decorator to measure function execution time.
 
-    def checkpoint(self, name: str) -> float:
-        """Record a checkpoint and return duration since last checkpoint."""
-        now = datetime.now()
-        duration = (now - self.last_checkpoint).total_seconds()
-        self.last_checkpoint = now
-        return duration
+    Args:
+        func: The function to time
 
-    def total(self) -> float:
-        """Get total duration since timer started."""
-        return (datetime.now() - self.start_time).total_seconds()
+    Returns:
+        The wrapped function that measures execution time
+    """
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> T:
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        end = time.perf_counter()
+        print(f"{func.__name__} took {end - start:.2f} seconds")
+        return result
+
+    return wrapper
+
+
+def get_execution_time(func: Callable[..., T], *args: Any, **kwargs: Any) -> float:
+    """Measure execution time of a function.
+
+    Args:
+        func: The function to time
+        args: Positional arguments for the function
+        kwargs: Keyword arguments for the function
+
+    Returns:
+        The execution time in seconds
+    """
+    start = time.perf_counter()
+    func(*args, **kwargs)
+    end = time.perf_counter()
+    return end - start
 
 
 @contextmanager
-def timed_section(name: str):
-    """
-    Context manager for timing a section of code.
+def timed_section(name: str) -> Iterator[None]:
+    """Context manager for timing code sections.
 
     Args:
         name: Name of the section being timed
+
+    Yields:
+        None
     """
-    start_time = datetime.now()
-    nova_console.process_start(name)
+    start = time.perf_counter()
     try:
         yield
     finally:
-        duration = (datetime.now() - start_time).total_seconds()
-        nova_console.process_end(f"{name} completed in {duration:.2f}s")
+        end = time.perf_counter()
+        print(f"{name} took {end - start:.2f} seconds")

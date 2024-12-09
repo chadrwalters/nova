@@ -3,19 +3,23 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Callable, Dict, Literal, Optional, TypeVar, cast
 
 import markdown
+import structlog
 from bs4 import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
 from rich.progress import Progress
 from weasyprint import CSS, HTML
 
+from src.core.exceptions import ProcessingError
 from src.utils.colors import NovaConsole
 from src.utils.path_utils import format_path, normalize_path
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 console = NovaConsole()
+
+T = TypeVar("T")
 
 
 class MarkdownToPDFConverter:
@@ -75,10 +79,29 @@ class MarkdownToPDFConverter:
             logger.error(f"Failed to convert {input_file} to PDF: {str(e)}")
             raise
 
+    def _normalize_content(self, content: str) -> str:
+        """Normalize content by handling special characters and line endings."""
+        # Replace Unicode paragraph separators with newlines
+        content = content.replace("\u2029", "\n")
+
+        # Normalize other special characters
+        content = content.replace("\u2028", "\n")  # line separator
+        content = content.replace("\r\n", "\n")  # Windows line endings
+        content = content.replace("\r", "\n")  # Mac line endings
+
+        # Normalize multiple newlines to maximum of two
+        while "\n\n\n" in content:
+            content = content.replace("\n\n\n", "\n\n")
+
+        return content.strip()
+
     def _convert_markdown_to_html(
         self, content: str, media_dir: Optional[Path] = None
     ) -> str:
         """Convert markdown content to HTML with proper media path handling."""
+        # Normalize content before conversion
+        content = self._normalize_content(content)
+
         html = markdown.markdown(
             content,
             extensions=[
@@ -131,9 +154,9 @@ class MarkdownToPDFConverter:
                     stylesheets.append(CSS(filename=str(style_file)))
 
             # Write PDF with styles
-            html.write_pdf(
-                str(output_file), stylesheets=stylesheets, presentational_hints=True
-            )
+            document = html.render(stylesheets=stylesheets)
+            document.write_pdf(str(output_file))
+
         except Exception as e:
             logger.error(f"PDF conversion failed: {str(e)}")
             raise
@@ -142,19 +165,70 @@ class MarkdownToPDFConverter:
 def convert_markdown_to_pdf(
     input_file: Path,
     output_file: Path,
+    *,
     media_dir: Optional[Path] = None,
     template_dir: Optional[Path] = None,
     debug_dir: Optional[Path] = None,
 ) -> None:
-    """
-    Convert a markdown file to PDF with optional media and template support.
+    """Convert markdown file to PDF.
 
     Args:
-        input_file: Path to the input markdown file
-        output_file: Path to save the output PDF
-        media_dir: Optional directory containing media files
-        template_dir: Optional directory containing HTML templates
-        debug_dir: Optional directory for debug output
+        input_file: Input markdown file path
+        output_file: Output PDF file path
+        media_dir: Optional media directory path
+        template_dir: Optional template directory path
+        debug_dir: Optional debug output directory path
+
+    Raises:
+        FileNotFoundError: If input file doesn't exist
+        ProcessingError: If conversion fails
     """
-    converter = MarkdownToPDFConverter(template_dir)
-    converter.convert(input_file, output_file, media_dir, debug_dir)
+    try:
+        # Convert markdown to HTML
+        html_content = _convert_to_html(input_file, media_dir)
+
+        # Convert HTML to PDF
+        HTML(string=html_content).write_pdf(str(output_file))
+
+        # Save debug output if requested
+        if debug_dir:
+            debug_file = debug_dir / f"{input_file.stem}.html"
+            debug_file.write_text(html_content)
+
+    except Exception as e:
+        logger.error(
+            "Failed to convert markdown to PDF",
+            input_file=str(input_file),
+            error=str(e),
+        )
+        raise ProcessingError(f"Failed to convert markdown to PDF: {e}") from e
+
+
+def _convert_to_html(input_file: Path, media_dir: Optional[Path] = None) -> str:
+    """Convert markdown file to HTML.
+
+    Args:
+        input_file: Input markdown file path
+        media_dir: Optional media directory path
+
+    Returns:
+        The HTML content as a string
+
+    Raises:
+        FileNotFoundError: If input file doesn't exist
+        ProcessingError: If conversion fails
+    """
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    # Read markdown content
+    content = input_file.read_text()
+
+    # Convert to HTML using type-safe approach
+    try:
+        result = markdown.markdown(content)
+        if not isinstance(result, str):
+            raise ProcessingError("Markdown conversion failed: output is not a string")
+        return result
+    except Exception as e:
+        raise ProcessingError(f"Failed to convert markdown to HTML: {e}") from e
