@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "nova"
 version = "0.1.0"
-description = "A Python CLI tool for markdown file consolidation and PDF generation"
-authors = ["Chad Walters"]
+description = "Markdown file consolidation and PDF generation tool"
+authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
 packages = [{include = "src"}]
 
@@ -10,35 +10,30 @@ packages = [{include = "src"}]
 python = "^3.11"
 click = "^8.1.7"
 pillow = "^10.1.0"
-pillow-heif = "^0.21.0"
 markdown = "^3.5.1"
-weasyprint = "57.1"
-pydyf = "0.5.0"
-jinja2 = "^3.1.2"
-pyyaml = "^6.0.1"
-structlog = "^23.2.0"
-rich = "^13.7.0"
+weasyprint = "^63.0"
 beautifulsoup4 = "^4.12.2"
-pypdf = "^3.17.1"
-tqdm = "^4.66.1"
-typer = "^0.15.1"
+structlog = "^24.1.0"
+jinja2 = "^3.1.2"
+python-dotenv = "^1.0.0"
+# Office document processing
+mammoth = "^1.6.0"  # Word to HTML
+pandas = "^2.1.4"   # Excel processing
+openpyxl = "^3.1.2"  # Excel file support for pandas
+python-pptx = "^0.6.23"  # PowerPoint processing
+pdfkit = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
-pytest-cov = "^4.1.0"
-pytest-asyncio = "^0.21.1"
 black = "^23.11.0"
 isort = "^5.12.0"
 mypy = "^1.7.1"
-pylint = "^3.0.2"
-pre-commit = "^3.5.0"
+pytest = "^7.4.3"
+pytest-cov = "^3.0.0"
+flake8 = "^6.1.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-nova = "src.cli:app"
 
 [tool.black]
 line-length = 88
@@ -47,70 +42,15 @@ include = '\.pyi?$'
 
 [tool.isort]
 profile = "black"
-multi_line_output = "VERTICAL_HANGING_INDENT"
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
-line_length = 88
+src_paths = ["src", "tests"]
+known_first_party = ["src"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = false
-warn_unused_configs = false
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = false
-disallow_untyped_decorators = false
-no_implicit_optional = false
-warn_redundant_casts = false
-warn_unused_ignores = false
-warn_no_return = false
-warn_unreachable = false
-show_error_codes = true
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["PIL.*", "markdown.*", "rich.*", "typer.*", "pytest.*", "bs4.*", "pypdf.*", "tqdm.*", "weasyprint.*", "pillow_heif.*", "structlog.*", "colors.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["tests.*"]
-disallow_untyped_defs = false
-check_untyped_defs = false
-no_implicit_optional = false
-
-[tool.flake8]
-max-line-length = 120
-extend-ignore = ["D100", "D104", "D200", "D400", "D401"]
-per-file-ignores = [
-    "__init__.py:F401",
-    "tests/*:D100,D101,D102,D103"
-]
-exclude = [
-    ".git",
-    "__pycache__",
-    "build",
-    "dist",
-    "*.egg-info"
-]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-v --tb=short"
-filterwarnings = ["ignore::DeprecationWarning"]
-
-[tool.coverage.run]
-source = ["src"]
-omit = ["tests/*", "**/__init__.py"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if __name__ == .__main__.:",
-    "raise NotImplementedError",
-    "pass",
-    "raise ImportError"
-]
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+mypy_path = "src/stubs"
+plugins = []
