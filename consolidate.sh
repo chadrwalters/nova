@@ -80,6 +80,10 @@ echo "Processing files..."
 echo "Source: ${NOVA_INPUT_DIR}"
 echo "Target: ${NOVA_OUTPUT_DIR}/consolidated.pdf"
 
+# Install dependencies
+echo "Installing dependencies..."
+poetry install
+
 poetry run python -m src.cli.main consolidate \
     --input-dir "${NOVA_INPUT_DIR}" \
     --output-dir "${NOVA_OUTPUT_DIR}" \

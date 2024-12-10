@@ -1,7 +1,7 @@
 You are assisting in developing a Python CLI tool for markdown file consolidation and PDF generation.
 
 Project Context:
-- Python CLI application using Click, WeasyPrint, and document processing libraries
+- Python CLI application using Click, PyMuPDF, and document processing libraries
 - Target Python version: 3.11+
 - Primary focus on clean code and efficient processing
 - Follows PEP 8 style guide with specific modifications
@@ -16,6 +16,7 @@ Code Organization:
     - logging.py
     - config.py
     - exceptions.py
+    - resource_manager.py
   - utils/ (helper functions)
   - cli/ (command line interface)
   - processors/ (document processors)
@@ -24,7 +25,6 @@ Code Organization:
     - attachment_processor.py
     - metadata_processor.py
     - embedded_content_processor.py
-    - markdown_to_pdf_processor.py
   - models/ (data models and types)
   - config/ (configuration management)
   - resources/ (templates, styles, prompts)
@@ -294,13 +294,73 @@ Office Document Rules:
 10. Always clean up temporary Office files
 
 PDF Generation Rules:
-1. Always use WeasyPrint for PDF generation
-2. Always validate HTML before conversion
-3. Always include required CSS
-4. Always handle page breaks properly
-5. Always process embedded images
-6. Always validate PDF output
+1. Always use PyMuPDF (fitz) for PDF generation
+2. Always handle image paths correctly
+3. Always clean up PDF resources
+4. Always validate PDF output
+5. Always handle large documents efficiently
+6. Always set proper PDF metadata
 7. Always handle Unicode correctly
-8. Always set proper PDF metadata
-9. Always handle large documents efficiently
+8. Always process embedded images
+9. Always handle page breaks properly
 10. Always clean up temporary files
+
+Pipeline Rules:
+1. Always validate input before processing
+2. Always use proper error handling with custom exceptions
+3. Always manage resources with context managers
+4. Always implement proper cleanup
+5. Always validate between pipeline stages
+6. Always use structured logging
+7. Always implement progress tracking
+8. Always validate output integrity
+9. Always handle memory efficiently
+10. Always implement proper error recovery
+
+Error Handling Rules:
+1. Always use custom exception hierarchy
+2. Always include error context and details
+3. Always implement proper error recovery
+4. Always log errors with full context
+5. Always clean up resources on error
+6. Always validate state after recovery
+7. Always provide user-friendly error messages
+8. Always categorize errors by severity
+9. Always handle nested errors properly
+10. Always maintain error state history
+
+Resource Management Rules:
+1. Always use context managers for resources
+2. Always implement proper cleanup
+3. Always track resource usage
+4. Always validate resource state
+5. Always handle resource limits
+6. Always clean up temporary files
+7. Always verify resource availability
+8. Always handle concurrent access
+9. Always monitor resource usage
+10. Always implement resource pooling
+
+Validation Rules:
+1. Always validate input files
+2. Always validate between stages
+3. Always validate output integrity
+4. Always check resource limits
+5. Always validate configuration
+6. Always verify file permissions
+7. Always check content integrity
+8. Always validate embedded content
+9. Always verify character encoding
+10. Always check size limits
+
+Monitoring Rules:
+1. Always log pipeline stages
+2. Always track resource usage
+3. Always monitor performance
+4. Always track error rates
+5. Always measure processing time
+6. Always monitor memory usage
+7. Always track cleanup success
+8. Always verify stage completion
+9. Always monitor system health
+10. Always track validation results
