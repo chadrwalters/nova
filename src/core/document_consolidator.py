@@ -1,9 +1,10 @@
 import hashlib
 import re
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import structlog
 
@@ -15,11 +16,24 @@ from src.core.exceptions import (
     NovaError,
     ProcessingError,
 )
+from src.core.logging import get_logger
 from src.processors.attachment_processor import AttachmentProcessor
 from src.processors.html_processor import HTMLProcessor
 from src.processors.markdown_processor import MarkdownProcessor
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
+
+
+@dataclass
+class ProcessedImage:
+    """Result of image processing."""
+
+    path: Path
+    target_path: Path
+    html_path: Path
+    metadata: Dict[str, Any]
+    is_valid: bool = True
+    error: Optional[str] = None
 
 
 @dataclass
@@ -34,170 +48,107 @@ class ConsolidationResult:
 
 
 class DocumentConsolidator:
-    """Consolidates multiple markdown documents into one."""
+    """Handles the consolidation of multiple markdown documents."""
 
-    def __init__(self, base_dir: Path, output_dir: Path, config: ProcessingConfig):
-        """Initialize the consolidator."""
-        self.base_dir = base_dir
+    def __init__(
+        self,
+        input_dir: Path,
+        output_dir: Path,
+        consolidated_dir: Path,
+        temp_dir: Path,
+        template_dir: Path,
+        error_tolerance: bool = False,
+    ) -> None:
+        """Initialize the document consolidator.
+
+        Args:
+            input_dir: Directory containing input markdown files
+            output_dir: Directory for final output files
+            consolidated_dir: Directory for consolidated files
+            temp_dir: Directory for temporary files
+            template_dir: Directory containing templates
+            error_tolerance: Whether to continue on errors
+        """
+        self.input_dir = input_dir
         self.output_dir = output_dir
-        self.config = config
+        self.consolidated_dir = consolidated_dir
+        self.temp_dir = temp_dir
+        self.template_dir = template_dir
+        self.error_tolerance = error_tolerance
+        self.logger = get_logger()
 
         # Initialize processors
         self.markdown_processor = MarkdownProcessor(
-            media_dir=config.media_dir,
-            template_dir=config.template_dir,
-            debug_dir=config.debug_dir,
-            error_tolerance=config.error_tolerance,
+            temp_dir=temp_dir,
+            media_dir=output_dir / "_media",
+            error_tolerance=error_tolerance,
         )
-
         self.html_processor = HTMLProcessor(
-            media_dir=config.media_dir,
-            debug_dir=config.debug_dir,
-            error_tolerance=config.error_tolerance,
+            temp_dir=temp_dir,
+            template_dir=template_dir,
+            error_tolerance=error_tolerance,
         )
 
-        self.attachment_processor = AttachmentProcessor(
-            media_dir=config.media_dir,
-            debug_dir=config.debug_dir,
-            error_tolerance=config.error_tolerance,
-        )
+    def consolidate_files(self, files: List[Path]) -> None:
+        """Consolidate multiple markdown files into a single document.
 
-        # Create output directories
-        output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "html").mkdir(parents=True, exist_ok=True)
-        (output_dir / "pdf").mkdir(parents=True, exist_ok=True)
-
-        # Create debug directories if enabled
-        if config.debug_dir:
-            config.debug_dir.mkdir(parents=True, exist_ok=True)
-            (config.debug_dir / "html").mkdir(parents=True, exist_ok=True)
-            (config.debug_dir / "html" / "individual").mkdir(
-                parents=True, exist_ok=True
-            )
-            (config.debug_dir / "attachments").mkdir(parents=True, exist_ok=True)
-            (config.debug_dir / "media").mkdir(parents=True, exist_ok=True)
-
-    def consolidate_documents(
-        self, input_files: List[Path], title: str
-    ) -> ConsolidationResult:
-        """Consolidate markdown documents into HTML and PDF."""
+        Args:
+            files: List of markdown files to consolidate
+        """
         try:
-            # Use debug directory for HTML files if available
-            html_dir = (
-                (self.config.debug_dir / "html")
-                if self.config.debug_dir
-                else (self.output_dir / "html")
-            )
-            html_dir.mkdir(parents=True, exist_ok=True)
-
-            # Create individual files directory
-            individual_dir = (
-                (self.config.debug_dir / "html" / "individual")
-                if self.config.debug_dir
-                else (html_dir / "individual")
-            )
-            individual_dir.mkdir(parents=True, exist_ok=True)
-
-            processed_files = []
-            metadata_list = []
-            warnings = []
-
             # Process each file
-            for doc_path in input_files:
-                try:
-                    # Process markdown
-                    with doc_path.open() as f:
-                        content = f.read()
+            processed_contents = self._process_markdown_files(files)
 
-                    # Process markdown and get metadata
-                    try:
-                        result = self.markdown_processor.process_markdown(
-                            content, doc_path
-                        )
-                        metadata_list.append(result.metadata)
-                        warnings.extend(result.warnings)
-                    except Exception as e:
-                        raise ProcessingError(f"Failed to process markdown: {str(e)}")
+            # Generate consolidated markdown
+            consolidated_md = self._generate_consolidated_markdown(processed_contents)
+            consolidated_md_path = self.consolidated_dir / "consolidated.md"
+            consolidated_md_path.write_text(consolidated_md, encoding="utf-8")
+            self.logger.info(f"Created consolidated markdown: {consolidated_md_path}")
 
-                    # Convert to HTML
-                    try:
-                        html_file = self.html_processor.convert_to_html(
-                            result.content, doc_path, individual_dir
-                        )
-                        processed_files.append(html_file)
-                    except ConversionError as e:
-                        raise ProcessingError(f"HTML conversion failed: {str(e)}")
+            # Convert to HTML
+            consolidated_html = self.html_processor.process_content(consolidated_md)
+            consolidated_html_path = self.consolidated_dir / "consolidated.html"
+            consolidated_html_path.write_text(consolidated_html, encoding="utf-8")
+            self.logger.info(f"Created consolidated HTML: {consolidated_html_path}")
 
-                except Exception as e:
-                    if self.config.error_tolerance == "strict":
-                        if not isinstance(e, ProcessingError):
-                            raise ProcessingError(
-                                f"Failed to process {doc_path}: {str(e)}"
-                            )
-                        raise
-                    warnings.append(f"Failed to process {doc_path}: {str(e)}")
-                    logger.error(
-                        "Failed to process document",
-                        error=str(e),
-                        document=str(doc_path),
-                    )
+            # Generate PDF
+            output_pdf = self.output_dir / "consolidated.pdf"
+            self.html_processor.generate_pdf(consolidated_html, output_pdf)
+            self.logger.info(f"Generated PDF: {output_pdf}")
 
-            if not processed_files:
-                raise ProcessingError("No files were successfully processed")
+        except Exception as err:
+            self.logger.error("Error during consolidation", exc_info=err)
+            if not self.error_tolerance:
+                raise ProcessingError("Failed to consolidate files") from err
 
-            # Consolidate HTML files
+    def _process_markdown_files(self, files: List[Path]) -> List[str]:
+        """Process individual markdown files.
+
+        Args:
+            files: List of markdown files to process
+
+        Returns:
+            List of processed markdown contents
+        """
+        processed_contents = []
+        for file in files:
             try:
-                consolidated_html = html_dir / "consolidated.html"
-                self.html_processor.consolidate_html_files(
-                    processed_files, consolidated_html
-                )
-            except ConsolidationError as e:
-                raise ProcessingError(f"Failed to consolidate HTML files: {str(e)}")
+                content = self.markdown_processor.process_file(file)
+                processed_contents.append(content)
+                self.logger.info(f"Processed markdown file: {file}")
+            except Exception as err:
+                self.logger.error(f"Error processing {file}", exc_info=err)
+                if not self.error_tolerance:
+                    raise ProcessingError(f"Failed to process {file}") from err
+        return processed_contents
 
-            # Copy individual files to output directory
-            output_html_dir = self.output_dir / "html"
-            output_html_dir.mkdir(parents=True, exist_ok=True)
+    def _generate_consolidated_markdown(self, processed_contents: List[str]) -> str:
+        """Generate consolidated markdown from processed markdown contents.
 
-            for html_file in processed_files:
-                try:
-                    import shutil
+        Args:
+            processed_contents: List of processed markdown contents
 
-                    target_file = output_html_dir / html_file.name
-                    shutil.copy2(html_file, target_file)
-                    logger.info(f"Copied HTML file to output: {target_file}")
-                except Exception as e:
-                    logger.error(f"Failed to copy HTML file {html_file.name}: {str(e)}")
-
-            return ConsolidationResult(
-                content=consolidated_html.read_text(),
-                html_files=processed_files,
-                consolidated_html=consolidated_html,
-                warnings=warnings,
-                metadata=metadata_list,
-            )
-
-        except Exception as e:
-            logger.error("Consolidation failed", error=str(e))
-            if not isinstance(e, NovaError):
-                e = ProcessingError(f"Document consolidation failed: {str(e)}")
-
-            return ConsolidationResult(
-                content="",
-                html_files=[],
-                consolidated_html=Path(),
-                warnings=[str(e)],
-                metadata=[],
-            )
-        finally:
-            # Cleanup
-            self.cleanup()
-
-    def cleanup(self) -> None:
-        """Clean up temporary files."""
-        try:
-            # Clean up processors
-            self.markdown_processor.cleanup()
-        except Exception as e:
-            logger.error(f"Failed to cleanup: {str(e)}")
-            if self.config.error_tolerance == "strict":
-                raise
+        Returns:
+            Consolidated markdown content
+        """
+        return "\n\n---\n\n".join(processed_contents)
