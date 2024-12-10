@@ -1,8 +1,10 @@
 """Type stubs for structlog library."""
+
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 class BoundLogger:
     """Bound logger class."""
+
     def debug(self, event: str, **kwargs: Any) -> None: ...
     def info(self, event: str, **kwargs: Any) -> None: ...
     def warning(self, event: str, **kwargs: Any) -> None: ...
@@ -18,6 +20,7 @@ class BoundLogger:
 
 class ProcessorFormatter:
     """Processor formatter class."""
+
     def __init__(
         self,
         processor: Callable[..., Any],
@@ -28,7 +31,6 @@ class ProcessorFormatter:
     ) -> None: ...
 
 def get_logger(*args: Any, **kwargs: Any) -> BoundLogger: ...
-
 def wrap_logger(
     logger: Any,
     processors: Optional[List[Callable[..., Any]]] = None,
@@ -36,4 +38,4 @@ def wrap_logger(
     context_class: Optional[Type[Dict[str, Any]]] = None,
     cache_logger_on_first_use: bool = True,
     **kwargs: Any,
-) -> BoundLogger: ... 
+) -> BoundLogger: ...

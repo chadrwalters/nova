@@ -1,9 +1,11 @@
 """Type stubs for WeasyPrint library."""
+
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
 class CSS:
     """CSS stylesheet class."""
+
     def __init__(
         self,
         filename: Optional[str] = None,
@@ -16,6 +18,7 @@ class CSS:
 
 class HTML:
     """HTML document class."""
+
     def __init__(
         self,
         filename: Optional[str] = None,
@@ -39,4 +42,4 @@ class HTML:
         stylesheets: Optional[List[CSS]] = None,
         enable_hinting: bool = False,
         **kwargs: Any,
-    ) -> Any: ... 
+    ) -> Any: ...

@@ -1,214 +1,143 @@
-"""Logging configuration for Nova."""
+"""Logging configuration and setup."""
+
 import logging
 import sys
-from collections import defaultdict
-from typing import Any, Dict, Optional, Set, Union
+from pathlib import Path
+from typing import Any, List, Optional, TypeAlias, Union, cast
 
 import structlog
-import structlog.processors
-import structlog.stdlib
-import structlog.dev
-import structlog.typing
-from rich.console import Console
+from structlog import PrintLoggerFactory, configure, dev, make_filtering_bound_logger
+from structlog.contextvars import merge_contextvars
+from structlog.processors import (
+    JSONRenderer,
+    StackInfoRenderer,
+    TimeStamper,
+    UnicodeDecoder,
+    add_log_level,
+    format_exc_info,
+)
+from structlog.stdlib import BoundLogger
 from structlog.types import EventDict, Processor
 
-# Configure standard logging
-logging.basicConfig(
-    format="%(message)s",
-    stream=sys.stdout,
-    level=logging.INFO,
-)
+# Type aliases
+LogLevel: TypeAlias = Union[str, int]
+LogHandler: TypeAlias = logging.Handler
+LogConfig: TypeAlias = dict[str, Any]
+Processors: TypeAlias = list[Processor]
 
-# Rich console for pretty output
-console = Console()
 
-# Track duplicate messages
-_duplicate_messages: Dict[str, Set[str]] = defaultdict(set)
-
-def add_timestamp(
-    logger: str, name: str, event_dict: EventDict
-) -> EventDict:
-    """Add timestamp in a standardized format.
-    
-    Args:
-        logger: Logger instance name
-        name: Event name
-        event_dict: Event dictionary
-
-    Returns:
-        Modified event dictionary
-    """
-    # We'll let structlog handle the timestamp
-    return event_dict
-
-def add_log_level(
-    logger: str, level_name: str, event_dict: EventDict
-) -> EventDict:
-    """Add log level with consistent formatting.
-    
-    Args:
-        logger: Logger instance name
-        level_name: Log level name
-        event_dict: Event dictionary
-
-    Returns:
-        Modified event dictionary
-    """
-    event_dict["level"] = level_name.lower()
-    return event_dict
-
-def format_exc_info(
-    logger: str, name: str, event_dict: EventDict
-) -> EventDict:
-    """Format exception info if present.
-    
-    Args:
-        logger: Logger instance name
-        name: Event name
-        event_dict: Event dictionary
-
-    Returns:
-        Modified event dictionary
-    """
-    if "exc_info" in event_dict and event_dict["exc_info"]:
-        event_dict["error"] = str(event_dict["exc_info"])
-    return event_dict
-
-def format_stack_info(
-    logger: str, name: str, event_dict: EventDict
-) -> EventDict:
-    """Format stack info if present.
-    
-    Args:
-        logger: Logger instance name
-        name: Event name
-        event_dict: Event dictionary
-
-    Returns:
-        Modified event dictionary
-    """
-    if "stack_info" in event_dict and event_dict["stack_info"]:
-        event_dict["stack"] = event_dict["stack_info"]
-    return event_dict
-
-def clean_message(
-    logger: str, name: str, event_dict: EventDict
-) -> EventDict:
-    """Clean and standardize message format.
-    
-    Args:
-        logger: Logger instance name
-        name: Event name
-        event_dict: Event dictionary
-
-    Returns:
-        Modified event dictionary
-    """
-    if "event" in event_dict:
-        event_dict["message"] = event_dict.pop("event")
-    return event_dict
-
-def deduplicate_messages(
-    logger: str, level: str, event_dict: EventDict
-) -> Optional[EventDict]:
-    """Deduplicate repeated log messages.
-    
-    Args:
-        logger: Logger instance name
-        level: Log level
-        event_dict: Event dictionary
-
-    Returns:
-        Modified event dictionary or None if message is duplicate
-    """
-    message = event_dict.get("message", "")
-    if not message:
-        return event_dict
-        
-    # Create a key that combines logger, level and message type
-    msg_type = message.split(":")[0] if ":" in message else message
-    key = f"{logger}:{level}:{msg_type}"
-    
-    # For attachment warnings, extract just the filename
-    if "Attachment file not found" in message:
-        filepath = message.split(": ")[-1]
-        filename = filepath.split("/")[-1]
-        if filename not in _duplicate_messages[key]:
-            _duplicate_messages[key].add(filename)
-            # Simplify the message to show just filename
-            event_dict["message"] = f"Attachment file not found: {filename}"
-            return event_dict
-        return None
-    
-    # For other messages, check if exact message was logged
-    if message not in _duplicate_messages[key]:
-        _duplicate_messages[key].add(message)
-        return event_dict
-        
-    return None
-
-def setup_logging(level: str = "INFO", pretty: bool = True) -> None:
+def setup_logging(
+    log_level: LogLevel = "INFO",
+    log_file: Optional[Path] = None,
+    json_format: bool = False,
+) -> None:
     """Set up logging configuration.
-    
+
     Args:
-        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        pretty: Whether to use pretty formatting for console output
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        log_file: Path to log file (if None, logs to stdout only)
+        json_format: Whether to use JSON format for logs
+
+    Raises:
+        ValueError: If log_level is invalid
     """
-    # Set log level
-    logging.getLogger().setLevel(level)
-    
-    # Common processors
-    processors_list: list[Processor] = [
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
-        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+    # Validate log level
+    if isinstance(log_level, str):
+        level = logging.getLevelName(log_level.upper())
+        if not isinstance(level, int):
+            raise ValueError(f"Invalid log level: {log_level}")
+    else:
+        level = log_level
+
+    # Set up processors
+    processors: Processors = [
+        merge_contextvars,
         add_log_level,
+        TimeStamper(fmt="iso"),
+        StackInfoRenderer(),
         format_exc_info,
-        format_stack_info,
-        clean_message,
-        deduplicate_messages,
-        structlog.processors.StackInfoRenderer(),
     ]
 
-    if pretty:
-        # Add pretty printing for console output
-        processors_list.extend([
-            structlog.dev.ConsoleRenderer(
-                colors=True,
-                level_styles={
-                    "debug": "bright_blue",
-                    "info": "bright_green", 
-                    "warning": "yellow",
-                    "error": "red",
-                    "critical": "red bold",
-                },
-                pad_event=0,
-            ),
-        ])
+    if json_format:
+        processors.append(JSONRenderer())
     else:
-        # Use JSON formatting for machine parsing
-        processors_list.extend([
-            structlog.processors.JSONRenderer()
-        ])
+        processors.extend(
+            [
+                UnicodeDecoder(),
+                dev.ConsoleRenderer(),
+            ]
+        )
 
-    # Configure structlog with type-safe configuration
-    # Note: We use getattr to avoid mypy error with configure
-    configure = getattr(structlog, "configure")
+    # Configure structlog
     configure(
-        processors=processors_list,
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
+        processors=cast(List[Processor], processors),
+        logger_factory=PrintLoggerFactory(),
+        wrapper_class=make_filtering_bound_logger(level),
         cache_logger_on_first_use=True,
     )
 
-def get_logger(name: Optional[str] = None) -> structlog.BoundLogger:
-    """Get a logger instance with standardized configuration.
-    
+    # Set up logging handlers
+    handlers: List[LogHandler] = [logging.StreamHandler(sys.stdout)]
+    if log_file:
+        handlers.append(logging.FileHandler(filename=log_file, encoding="utf-8"))
+
+    # Configure logging
+    logging.basicConfig(
+        format="%(message)s",
+        level=level,
+        handlers=handlers,
+    )
+
+
+def get_logger(name: Optional[str] = None) -> BoundLogger:
+    """Get a logger instance.
+
     Args:
-        name: Logger name (usually __name__)
-        
+        name: Logger name (if None, uses calling module name)
+
     Returns:
         Configured logger instance
     """
-    return structlog.get_logger(name) 
+    return cast(BoundLogger, structlog.get_logger(name))
+
+
+def get_file_logger(name: str) -> structlog.BoundLogger:
+    """Get a logger configured for file operations.
+    
+    Args:
+        name: Logger name
+        
+    Returns:
+        Configured logger
+    """
+    return structlog.get_logger(name).bind(
+        component="file_operations"
+    )
+
+def log_file_operation(
+    logger: structlog.BoundLogger,
+    operation: str,
+    file_path: Path,
+    category: str,
+    **kwargs
+) -> None:
+    """Log a file operation with consistent formatting.
+    
+    Args:
+        logger: Logger instance
+        operation: Operation being performed (read/write/create/delete)
+        file_path: Path to file
+        category: File category (markdown/html/pdf/temp)
+        **kwargs: Additional logging context
+    """
+    logger.info(
+        f"{operation} {category} file",
+        path=str(file_path),
+        operation=operation,
+        category=category,
+        **kwargs
+    )
+
+
+# Type hints for exports
+__all__: list[str] = ["setup_logging", "get_logger"]
