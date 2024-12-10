@@ -6,6 +6,10 @@ from typing import Dict, Optional
 from rich.console import Console
 from rich.theme import Theme
 
+from src.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 NOVA_THEME = Theme(
     {
         "info": "blue",

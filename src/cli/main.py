@@ -1,23 +1,31 @@
 import os
 import time
-from enum import Enum, auto
+from enum import Enum
+from os import PathLike
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Sequence, Union, cast
 
 import click
-import structlog
 from dotenv import load_dotenv
+from rich.console import Console
 
 from src.core.config import ProcessingConfig
 from src.core.document_consolidator import DocumentConsolidator
-from src.core.exceptions import ProcessingError
-from src.core.markdown_to_pdf_converter import convert_markdown_to_pdf
-from src.core.types import ProcessingPhase
+from src.core.exceptions import ConversionError, ProcessingError
+from src.core.logging import get_logger, setup_logging
+from src.processors.html_processor import HTMLProcessor
+from src.processors.markdown_to_pdf_processor import convert_markdown_to_pdf
+from src.resources.templates.template_manager import TemplateManager
 from src.utils.colors import NovaConsole
 
-logger = structlog.get_logger(__name__)
+# Set up logging
+setup_logging(level="INFO", pretty=True)
+logger = get_logger(__name__)
 
 nova_console = NovaConsole()
+
+# Initialize console for rich output
+console = Console()
 
 
 def format_time(seconds: float) -> str:
@@ -35,310 +43,170 @@ def shorten_path(path: str) -> str:
 
 
 class ProcessingPhase(Enum):
-    """Processing phases for document consolidation."""
+    """Enum representing different processing phases."""
 
-    HTML_INDIVIDUAL = auto()  # Generate individual HTML files only
-    MARKDOWN_CONSOLIDATED = auto()  # Generate consolidated markdown
-    HTML_CONSOLIDATED = auto()  # Generate consolidated HTML
-    PDF = auto()  # Generate final PDF
-    ALL = auto()  # Complete processing (default)
+    INDIVIDUAL_HTML = "individual_html"
+    CONSOLIDATED_MARKDOWN = "consolidated_markdown"
+    CONSOLIDATED_HTML = "consolidated_html"
+    PDF = "pdf"
+    ALL = "all"
 
 
 def load_config() -> ProcessingConfig:
     """Load configuration from environment variables."""
     load_dotenv()
 
-    # Load paths from environment
-    base_dir = Path(os.getenv("NOVA_INPUT_DIR"))
-    output_dir = Path(os.getenv("NOVA_CONSOLIDATED_DIR"))
-    template_dir = Path(os.getenv("NOVA_TEMPLATE_DIR", "src/resources/templates"))
-    media_dir = Path(os.getenv("NOVA_MEDIA_DIR"))
-    debug_dir = (
-        Path(os.getenv("NOVA_DEBUG_DIR")) if os.getenv("NOVA_DEBUG_DIR") else None
+    # Get required paths
+    input_dir = os.getenv("NOVA_INPUT_DIR", "")
+    output_dir = os.getenv("NOVA_OUTPUT_DIR", "")
+    consolidated_dir = os.getenv("NOVA_CONSOLIDATED_DIR", "")
+    processing_dir = os.getenv("NOVA_PROCESSING_DIR", "")
+    template_dir = os.getenv("NOVA_TEMPLATE_DIR", "")
+    media_dir = os.getenv("NOVA_MEDIA_DIR", "")
+
+    if not all([input_dir, output_dir, consolidated_dir]):
+        raise ProcessingError("Required environment variables are missing")
+
+    return ProcessingConfig(
+        input_dir=Path(input_dir),
+        output_dir=Path(output_dir),
+        consolidated_dir=Path(consolidated_dir),
+        processing_dir=Path(processing_dir) if processing_dir else None,
+        template_dir=Path(template_dir) if template_dir else None,
+        media_dir=Path(media_dir) if media_dir else None,
     )
 
-    # Create configuration
-    return ProcessingConfig(
+
+def initialize_processor(
+    input_dir: Path,
+    output_dir: Path,
+    consolidated_dir: Path,
+    temp_dir: Path,
+    template_dir: Path,
+    error_tolerance: str = "strict",
+) -> DocumentConsolidator:
+    """Initialize document processor with configuration.
+
+    Args:
+        input_dir: Input directory path
+        output_dir: Output directory path
+        consolidated_dir: Consolidated files directory path
+        temp_dir: Temporary files directory path
+        template_dir: Template files directory path
+        error_tolerance: Error handling mode ("strict" or "lenient")
+
+    Returns:
+        Initialized DocumentConsolidator instance
+    """
+    return DocumentConsolidator(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        consolidated_dir=consolidated_dir,
+        temp_dir=temp_dir,
         template_dir=template_dir,
-        media_dir=media_dir,
-        relative_media_path="../_media",  # Default for individual files
-        debug_dir=debug_dir,
-        error_tolerance=os.getenv("NOVA_ERROR_TOLERANCE", "lenient"),
+        error_tolerance=error_tolerance == "lenient",
     )
 
 
 @click.group()
-def cli():
-    """Nova - Markdown Document Consolidation Tool"""
+def cli() -> None:
+    """Nova document processing CLI."""
     pass
 
 
 @cli.command()
-@click.option("--force", is_flag=True, help="Force reprocessing of all documents")
+@click.option("--force", is_flag=True, help="Force processing of all files")
 @click.option(
-    "--debug-dir", type=click.Path(path_type=Path), help="Debug output directory"
+    "--processing-dir",
+    type=click.Path(exists=False, file_okay=False, dir_okay=True, path_type=Path),
+    help="Directory for intermediate processing files",
 )
 @click.option(
     "--phase",
-    type=click.Choice([phase.name for phase in ProcessingPhase], case_sensitive=False),
+    type=click.Choice([p.name for p in ProcessingPhase], case_sensitive=False),
     default=ProcessingPhase.ALL.name,
-    help="Stop processing at specified phase",
+    help="Processing phase to execute",
 )
 def process(
-    force: bool, debug_dir: Optional[Path] = None, phase: str = ProcessingPhase.ALL.name
+    force: bool,
+    processing_dir: Optional[Path] = None,
+    phase: str = ProcessingPhase.ALL.name,
 ) -> None:
     """Process markdown files."""
+    console = Console()
+    start_time = time.time()
     try:
-        # Create required directories
-        template_dir = Path("templates")
-        template_dir.mkdir(parents=True, exist_ok=True)
+        # Load configuration
+        config = load_config()
 
-        media_dir = Path("media")
-        media_dir.mkdir(parents=True, exist_ok=True)
+        # Update config with command-line processing directory if provided
+        if processing_dir:
+            config.processing_dir = processing_dir.resolve()
+            config.processing_dir.mkdir(parents=True, exist_ok=True)
+            (config.processing_dir / "markdown").mkdir(parents=True, exist_ok=True)
+            (config.processing_dir / "html").mkdir(parents=True, exist_ok=True)
+            (config.processing_dir / "html" / "individual").mkdir(
+                parents=True, exist_ok=True
+            )
+            (config.processing_dir / "attachments").mkdir(parents=True, exist_ok=True)
+            (config.processing_dir / "media").mkdir(parents=True, exist_ok=True)
 
-        # Initialize configuration
-        config = ProcessingConfig(
-            template_dir=template_dir,
-            media_dir=media_dir,
-            relative_media_path="_media",
-            debug_dir=debug_dir.resolve() if debug_dir else None,
-            error_tolerance="lenient",
+        # Initialize processor
+        processor = DocumentConsolidator(
+            input_dir=config.input_dir,
+            output_dir=config.output_dir,
+            consolidated_dir=config.consolidated_dir,
+            temp_dir=config.processing_dir or Path("temp"),
+            template_dir=config.template_dir or Path("templates"),
+            error_tolerance=False,  # Default to strict mode
         )
 
         # Get input files
-        input_dir = Path(
-            "/Users/ChadWalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaIndividualMarkdown"
-        )
-        output_dir = Path(
-            "/Users/ChadWalters/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
-        )
-
-        # Initialize processors
-        consolidator = DocumentConsolidator(
-            base_dir=input_dir, output_dir=output_dir, config=config
-        )
-
-        # Log with shortened paths
-        print()  # Add blank line
-        print(click.style(f"Starting {phase} processing...", fg="cyan"))
-        print()  # Add blank line
-
-        # Get input files
-        input_files = (
-            sorted(input_dir.glob("**/*.md"))
-            if force
-            else [
+        input_files = sorted(config.input_dir.glob("*.md"))
+        if not force:
+            # Only process files that haven't been processed
+            files_to_process = [
                 f
-                for f in input_dir.glob("**/*.md")
-                if not (debug_dir / "html" / f"{f.stem}.html").exists()
+                for f in input_files
+                if not (
+                    config.processing_dir or Path("temp") / "html" / f"{f.stem}.html"
+                ).exists()
             ]
-        )
-
-        # Log input files with shortened paths
-        if input_files:
-            print(click.style(f"Found {len(input_files)} files to process:", fg="cyan"))
-            print()
-            for f in input_files:
-                print(f"  • {f.name}")
-            print()
         else:
-            print(click.style("No files to process", fg="yellow"))
-            return
+            files_to_process = input_files
 
-        # Process files
-        print(click.style("Phase 1: Generating individual HTML files...", fg="cyan"))
-        start_time = time.time()
+        # Process files based on phase
+        match ProcessingPhase[phase.upper()]:
+            case ProcessingPhase.INDIVIDUAL_HTML:
+                processor._process_markdown_files(files_to_process)
+            case ProcessingPhase.CONSOLIDATED_MARKDOWN:
+                processor.consolidate_files(files_to_process)
+            case ProcessingPhase.CONSOLIDATED_HTML:
+                processor.consolidate_files(files_to_process)
+            case ProcessingPhase.PDF:
+                processor.consolidate_files(files_to_process)
+            case ProcessingPhase.ALL:
+                processor.consolidate_files(files_to_process)
 
-        # Process files
-        result = consolidator.consolidate_documents(
-            input_files, "Consolidated Document"
-        )
+        # Print completion message
+        duration = time.time() - start_time
+        console.print(f"\nTotal processing time: {format_time(duration)}")
 
-        # Log warnings
-        if result.warnings:
-            print()
-            print(click.style("Warnings:", fg="yellow"))
-            for warning in result.warnings:
-                print(f"  • {warning}")
-            print()
-
-        # Log completion
-        elapsed = time.time() - start_time
-        print(
-            click.style(
-                f"✓ Individual HTML files generated ({elapsed:.1f}s)", fg="green"
-            )
-        )
-        print()
-
-        # Stop if requested
-        if phase == ProcessingPhase.HTML_INDIVIDUAL.name:
-            return
-
-        # Generate consolidated markdown
-        print(click.style("Phase 2: Generating consolidated markdown...", fg="cyan"))
-        start_time = time.time()
-
-        # Create consolidated markdown directory
-        consolidated_dir = Path(
-            "/Users/ChadWalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaConsolidatedMarkdown"
-        )
-        consolidated_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write consolidated markdown
-        consolidated_md = consolidated_dir / "consolidated.md"
-        consolidated_md.write_text(result.content)
-
-        # Log completion
-        elapsed = time.time() - start_time
-        print(
-            click.style(
-                f"✓ Consolidated markdown generated ({elapsed:.1f}s)", fg="green"
-            )
-        )
-        print()
-
-        # Stop if requested
-        if phase == ProcessingPhase.MARKDOWN_CONSOLIDATED.name:
-            return
-
-        # Generate consolidated HTML
-        print(click.style("Phase 3: Generating consolidated HTML...", fg="cyan"))
-        start_time = time.time()
-
-        # Write consolidated HTML
-        consolidated_html = consolidated_dir / "consolidated.html"
-        if (
-            result.consolidated_html
-            and result.consolidated_html.exists()
-            and not result.consolidated_html.is_dir()
-        ):
-            consolidated_html.write_text(result.consolidated_html.read_text())
-            logger.info(f"Generated consolidated HTML: {consolidated_html}")
-        else:
-            error_msg = "No valid consolidated HTML file was generated"
-            logger.error(error_msg)
-            raise ProcessingError(error_msg)
-
-        # Log completion
-        elapsed = time.time() - start_time
-        print(
-            click.style(f"✓ Consolidated HTML generated ({elapsed:.1f}s)", fg="green")
-        )
-        print()
-
-        # Stop if requested
-        if phase == ProcessingPhase.HTML_CONSOLIDATED.name:
-            return
-
-        # Generate PDF
-        print(click.style("Phase 4: Generating PDF...", fg="cyan"))
-        start_time = time.time()
-
-        # Create PDF directory
-        pdf_dir = output_dir / "pdf"
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate PDF
-        pdf_file = pdf_dir / "consolidated.pdf"
-        try:
-            import shutil
-            import subprocess
-            import tempfile
-
-            # Create temporary directory for processing
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_html = Path(temp_dir) / "input.html"
-                temp_pdf = Path(temp_dir) / "output.pdf"
-
-                # Copy HTML file to temp directory
-                shutil.copy2(consolidated_html, temp_html)
-
-                # Run wkhtmltopdf with minimal options
-                cmd = [
-                    "wkhtmltopdf",
-                    "--enable-local-file-access",
-                    "--disable-smart-shrinking",
-                    "--print-media-type",
-                    "--page-size",
-                    "Letter",
-                    "--margin-top",
-                    "25.4",
-                    "--margin-right",
-                    "25.4",
-                    "--margin-bottom",
-                    "25.4",
-                    "--margin-left",
-                    "25.4",
-                    str(temp_html),
-                    str(temp_pdf),
-                ]
-
-                result = subprocess.run(cmd, capture_output=True, text=True)
-
-                if result.returncode != 0:
-                    print(
-                        click.style(
-                            f"Failed to generate PDF: {result.stderr}", fg="red"
-                        )
-                    )
-                    return
-
-                # Copy PDF back if successful
-                if temp_pdf.exists() and temp_pdf.stat().st_size > 0:
-                    shutil.copy2(temp_pdf, pdf_file)
-                else:
-                    print(
-                        click.style(
-                            "Generated PDF file is empty or not created", fg="red"
-                        )
-                    )
-                    return
-
-        except Exception as e:
-            print(click.style(f"Failed to generate PDF: {str(e)}", fg="red"))
-            if pdf_file.exists():
-                pdf_file.unlink()  # Clean up failed PDF
-            return
-
-        # Log completion
-        elapsed = time.time() - start_time
-        print(click.style(f"✓ PDF generated ({elapsed:.1f}s)", fg="green"))
-        print()
-
-        # Log total time
-        total_elapsed = time.time() - start_time
-        print(click.style(f"Total processing time: {total_elapsed:.1f}s", fg="green"))
-        print()
-
-        # Log generated files
-        print(click.style("✓ Generated consolidated markdown:", fg="green"))
-        print(f"  📄 {consolidated_md.name}")
-        print()
-
-        print(click.style("✓ Generated consolidated HTML:", fg="green"))
-        print(f"  📄 {consolidated_html.name}")
-        print()
-
-        if phase == ProcessingPhase.ALL.name:
-            print(click.style("✓ Generated PDF:", fg="green"))
-            print(f"  📄 {pdf_file.name}")
-            print()
-
-    except Exception as e:
-        print(click.style(f"Error: {str(e)}", fg="red"))
-        raise
+    except Exception as err:
+        console.print(f"[red]Error: {str(err)}[/red]")
+        raise click.Abort() from err
 
 
 @cli.command()
-def clean():
+def clean() -> None:
     """Clean temporary files and directories."""
     try:
         config = load_config()
+        processing_dir = config.processing_dir
 
-        # Clean temp directory
-        if config["temp_dir"].exists():
-            for item in config["temp_dir"].glob("*"):
+        # Clean processing directory
+        if processing_dir and processing_dir.exists():
+            for item in processing_dir.glob("*"):
                 if item.is_file():
                     item.unlink()
                 elif item.is_dir():
@@ -348,9 +216,9 @@ def clean():
 
         print(click.style("Cleaned temporary files", fg="green"))
 
-    except Exception as e:
-        print(click.style(f"Cleanup failed: {str(e)}", fg="red"))
-        raise click.ClickException(str(e))
+    except Exception as err:
+        print(click.style(f"Cleanup failed: {str(err)}", fg="red"))
+        raise click.ClickException(str(err)) from err
 
 
 @click.command()
@@ -373,14 +241,14 @@ def clean():
 )
 def html_convert(
     input_dir: Path, output_dir: Path, template_dir: Path, recursive: bool
-):
+) -> None:
     """Convert markdown files to HTML."""
     try:
         # Create output directory
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize processor
-        processor = HTMLProcessor(template_dir)
+        processor = HTMLProcessor(template_dir=template_dir, temp_dir=output_dir)
 
         # Get markdown files
         pattern = "**/*.md" if recursive else "*.md"
@@ -393,13 +261,13 @@ def html_convert(
         # Process each file
         for md_file in markdown_files:
             print(click.style(f"Converting {md_file} to HTML", fg="cyan"))
-            processor.markdown_to_html(md_file, output_dir)
+            processor.convert_to_html(str(md_file), output_dir)
 
         print(click.style("HTML conversion complete", fg="green"))
 
-    except Exception as e:
-        print(click.style(f"HTML conversion failed: {str(e)}", fg="red"))
-        raise click.ClickException(f"HTML conversion failed: {str(e)}")
+    except Exception as err:
+        print(click.style(f"HTML conversion failed: {str(err)}", fg="red"))
+        raise click.ClickException(f"HTML conversion failed: {str(err)}") from err
 
 
 @click.command()
@@ -417,11 +285,13 @@ def html_convert(
     default=Path("src/resources/templates"),
     help="Directory containing HTML templates",
 )
-def html_consolidate(input_dir: Path, output_file: Path, template_dir: Path):
+def html_consolidate(input_dir: Path, output_file: Path, template_dir: Path) -> None:
     """Consolidate HTML files into a single file."""
     try:
         # Initialize processor
-        processor = HTMLProcessor(template_dir)
+        processor = HTMLProcessor(
+            template_dir=template_dir, temp_dir=output_file.parent
+        )
 
         # Get HTML files
         html_files = sorted(input_dir.glob("*.html"))
@@ -434,13 +304,13 @@ def html_consolidate(input_dir: Path, output_file: Path, template_dir: Path):
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Consolidate files
-        processor.consolidate_html(html_files, output_file)
+        processor.consolidate_html_files(html_files, output_file)
 
         print(click.style("HTML consolidation complete", fg="green"))
 
-    except Exception as e:
-        print(click.style(f"HTML consolidation failed: {str(e)}", fg="red"))
-        raise click.ClickException(f"HTML consolidation failed: {str(e)}")
+    except Exception as err:
+        print(click.style(f"HTML consolidation failed: {str(err)}", fg="red"))
+        raise click.ClickException(f"HTML consolidation failed: {str(err)}") from err
 
 
 @cli.command()
@@ -466,17 +336,17 @@ def html_consolidate(input_dir: Path, output_file: Path, template_dir: Path):
     help="Template directory",
 )
 @click.option(
-    "--debug-dir",
+    "--processing-dir",
     "-d",
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
-    help="Debug output directory",
+    help="Processing directory",
 )
 def pdf(
     input_file: Path,
     output_file: Path,
     media_dir: Path,
     template_dir: Path,
-    debug_dir: Optional[Path] = None,
+    processing_dir: Optional[Path] = None,
 ) -> None:
     """Convert markdown file to PDF."""
     try:
@@ -486,18 +356,140 @@ def pdf(
             output_file,
             media_dir=media_dir,
             template_dir=template_dir,
-            debug_dir=debug_dir,
+            processing_dir=processing_dir,
         )
         nova_console.success(f"Successfully created PDF: {output_file}")
-    except Exception as e:
-        print(click.style(f"Failed to create PDF: {str(e)}", fg="red"))
-        raise click.ClickException(str(e))
+    except Exception as err:
+        print(click.style(f"Failed to create PDF: {str(err)}", fg="red"))
+        raise click.ClickException(str(err)) from err
+
+
+def validate_paths(
+    input_dir: Optional[str],
+    output_dir: Optional[str],
+    consolidated_dir: Optional[str],
+    temp_dir: Optional[str],
+    template_dir: Optional[str],
+) -> tuple[Path, Path, Path, Path, Path]:
+    """Validate and convert path strings to Path objects.
+
+    Args:
+        input_dir: Input directory path
+        output_dir: Output directory path
+        consolidated_dir: Consolidated files directory path
+        temp_dir: Temporary files directory path
+        template_dir: Template files directory path
+
+    Returns:
+        Tuple of validated Path objects
+
+    Raises:
+        ProcessingError: If any required path is missing or invalid
+    """
+    if not all([input_dir, output_dir, consolidated_dir, temp_dir, template_dir]):
+        raise ProcessingError("All directory paths must be provided")
+
+    try:
+        paths = (
+            Path(cast(str, input_dir)),
+            Path(cast(str, output_dir)),
+            Path(cast(str, consolidated_dir)),
+            Path(cast(str, temp_dir)),
+            Path(cast(str, template_dir)),
+        )
+
+        # Create directories if they don't exist
+        for path in paths[1:]:  # Skip input_dir as it must exist
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except Exception as err:
+                raise ProcessingError(f"Failed to create directory: {path}") from err
+
+        return paths
+
+    except ProcessingError:
+        raise  # Re-raise ProcessingError with its original context
+    except Exception as err:
+        raise ProcessingError("Failed to create path objects") from err
+
+
+@cli.command()
+@click.option("--input-dir", type=click.Path(exists=True), help="Input directory")
+@click.option("--output-dir", type=click.Path(), help="Output directory")
+@click.option(
+    "--consolidated-dir", type=click.Path(), help="Consolidated files directory"
+)
+@click.option("--temp-dir", type=click.Path(), help="Temporary files directory")
+@click.option("--template-dir", type=click.Path(), help="Template files directory")
+@click.option(
+    "--error-tolerance",
+    type=click.Choice(["strict", "lenient"]),
+    default="strict",
+    help="Error handling mode",
+)
+@click.option(
+    "--phase",
+    type=click.Choice([p.value for p in ProcessingPhase]),
+    default=ProcessingPhase.ALL.value,
+    help="Processing phase to execute",
+)
+def consolidate(
+    input_dir: Optional[str],
+    output_dir: Optional[str],
+    consolidated_dir: Optional[str],
+    temp_dir: Optional[str],
+    template_dir: Optional[str],
+    error_tolerance: str,
+    phase: str,
+) -> None:
+    """Consolidate markdown files into a single document."""
+    try:
+        # Validate and convert paths
+        input_path, output_path, consolidated_path, temp_path, template_path = (
+            validate_paths(
+                input_dir, output_dir, consolidated_dir, temp_dir, template_dir
+            )
+        )
+
+        # Create processor
+        try:
+            processor = DocumentConsolidator(
+                input_dir=input_path,
+                output_dir=output_path,
+                consolidated_dir=consolidated_path,
+                temp_dir=temp_path,
+                template_dir=template_path,
+                error_tolerance=error_tolerance == "lenient",
+            )
+        except Exception as err:
+            raise ProcessingError("Failed to initialize document processor") from err
+
+        # Get input files
+        files = sorted(input_path.glob("*.md"))
+        if not files:
+            console.print("[yellow]No markdown files found in input directory[/yellow]")
+            return
+
+        # Process based on phase
+        try:
+            processor._process_markdown_files(files)
+            console.print("[green]✓ Processing completed successfully[/green]")
+        except Exception as err:
+            raise ProcessingError("Failed to process files") from err
+
+    except ProcessingError as err:
+        console.print(f"[red]Error during consolidation: {err}[/red]")
+        raise click.ClickException(str(err)) from None  # Avoid double error messages
+    except Exception as err:
+        console.print(f"[red]Unexpected error: {err}[/red]")
+        raise click.ClickException("An unexpected error occurred") from err
 
 
 # Add commands to CLI group
 cli.add_command(html_convert)
 cli.add_command(html_consolidate)
 cli.add_command(pdf)
+cli.add_command(consolidate)
 
 if __name__ == "__main__":
     cli()

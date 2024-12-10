@@ -1,8 +1,9 @@
 import json
 import re
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 import frontmatter
 import nltk
@@ -31,10 +32,11 @@ logger = structlog.get_logger(__name__)
 class MetadataProcessor:
     """Processes and extracts metadata from documents."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the metadata processor."""
         # Initialize NLP components
-        self.stop_words = set(stopwords.words("english"))
-        self.lemmatizer = WordNetLemmatizer()
+        self.stop_words: Set[str] = set(stopwords.words("english"))
+        self.lemmatizer: WordNetLemmatizer = WordNetLemmatizer()
 
         # Add domain-specific stop words
         self.stop_words.update(
@@ -64,7 +66,7 @@ class MetadataProcessor:
         )
 
         # Common metadata patterns
-        self.patterns = {
+        self.patterns: Dict[str, List[str]] = {
             "title": [r"^#\s+(.+)$", r"^Title:\s*(.+)$", r"@title\s+(.+)"],
             "date": [
                 r"^Date:\s*(.+)$",
@@ -79,44 +81,101 @@ class MetadataProcessor:
             "priority": [r"^Priority:\s*(\d+)$", r"@priority\s+(\d+)"],
         }
 
+    def _parse_date(self, date_str: Optional[str]) -> Optional[datetime]:
+        """Parse date string into datetime.
+
+        Args:
+            date_str: Date string to parse
+
+        Returns:
+            Parsed datetime or None
+        """
+        if not date_str:
+            return None
+
+        # Try common date formats
+        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y%m%d"]:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
+        return None
+
+    def _normalize_metadata(self, metadata: DocumentMetadata) -> None:
+        """Normalize metadata fields.
+
+        Args:
+            metadata: Metadata to normalize
+        """
+        # Ensure date exists
+        if not metadata.date:
+            metadata.date = datetime.now()
+
+        # Convert priority to int if present
+        if metadata.priority:
+            try:
+                metadata.priority = int(metadata.priority)
+            except (ValueError, TypeError):
+                metadata.priority = None
+
+        # Ensure lists are unique
+        for field in ["tags", "keywords", "references", "related_docs"]:
+            value = getattr(metadata, field)
+            if value:
+                setattr(metadata, field, sorted(set(value)))
+
+    def _parse_frontmatter(self, content: str) -> tuple[Dict[str, Any], str]:
+        """Parse frontmatter from content.
+
+        Args:
+            content: Content to parse
+
+        Returns:
+            Tuple of (metadata dict, clean content)
+        """
+        # Try frontmatter first
+        doc = frontmatter.loads(content)
+        if doc.metadata:
+            return doc.metadata, doc.content
+
+        # Try YAML block
+        yaml_match = re.match(r"^---\n(.*?)\n---\n(.*)", content, re.DOTALL)
+        if yaml_match:
+            try:
+                return yaml.safe_load(yaml_match.group(1)), yaml_match.group(2)
+            except yaml.YAMLError:
+                pass
+
+        # Try JSON block
+        json_match = re.match(r"^\{[\s\S]*?\}\n(.*)", content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0)), json_match.group(1)
+            except json.JSONDecodeError:
+                pass
+
+        return {}, content
+
     def extract_metadata(
         self, content: str, file_path: Optional[Path] = None
     ) -> ExtractedMetadata:
-        """Extract metadata from document content."""
+        """Extract metadata from document content.
+
+        Args:
+            content: The content to extract metadata from
+            file_path: Optional path to the source file
+
+        Returns:
+            ExtractedMetadata containing the extracted metadata and content
+        """
         try:
-            # Try frontmatter first
-            doc = frontmatter.loads(content)
-            metadata = doc.metadata
-            clean_content = doc.content
-
-            # If no frontmatter, try other formats
-            if not metadata:
-                metadata = {}
-                clean_content = content
-
-                # Try YAML block
-                yaml_match = re.match(r"^---\n(.*?)\n---\n(.*)", content, re.DOTALL)
-                if yaml_match:
-                    try:
-                        metadata = yaml.safe_load(yaml_match.group(1))
-                        clean_content = yaml_match.group(2)
-                    except yaml.YAMLError:
-                        pass
-
-                # Try JSON block
-                if not metadata:
-                    json_match = re.match(r"^\{[\s\S]*?\}\n(.*)", content, re.DOTALL)
-                    if json_match:
-                        try:
-                            metadata = json.loads(json_match.group(0))
-                            clean_content = json_match.group(1)
-                        except json.JSONDecodeError:
-                            pass
+            # Parse frontmatter and get clean content
+            metadata, clean_content = self._parse_frontmatter(content)
 
             # Extract additional metadata from content
             extracted = self._extract_content_metadata(clean_content)
 
-            # Create empty metadata structure
+            # Create metadata structure
             final_metadata = self._create_empty_metadata()
 
             # Update with extracted metadata
@@ -134,44 +193,17 @@ class MetadataProcessor:
             if not final_metadata.date and file_path:
                 date_match = re.search(r"(\d{4}-\d{2}-\d{2})", file_path.stem)
                 if date_match:
-                    try:
-                        final_metadata.date = datetime.strptime(
-                            date_match.group(1), "%Y-%m-%d"
-                        )
-                    except ValueError:
-                        pass
+                    parsed_date = self._parse_date(date_match.group(1))
+                    if parsed_date:
+                        final_metadata.date = parsed_date
 
-            # Convert date string to datetime if needed
+            # Parse date string if needed
             if isinstance(final_metadata.date, str):
-                try:
-                    # Try common date formats
-                    for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y%m%d"]:
-                        try:
-                            final_metadata.date = datetime.strptime(
-                                final_metadata.date, fmt
-                            )
-                            break
-                        except ValueError:
-                            continue
-                except Exception:
-                    final_metadata.date = datetime.now()
+                parsed_date = self._parse_date(final_metadata.date)
+                final_metadata.date = parsed_date or datetime.now()
 
-            # Ensure date exists
-            if not final_metadata.date:
-                final_metadata.date = datetime.now()
-
-            # Convert priority to int if present
-            if final_metadata.priority:
-                try:
-                    final_metadata.priority = int(final_metadata.priority)
-                except (ValueError, TypeError):
-                    final_metadata.priority = None
-
-            # Ensure lists are unique
-            for field in ["tags", "keywords", "references", "related_docs"]:
-                value = getattr(final_metadata, field)
-                if value:
-                    setattr(final_metadata, field, list(set(value)))
+            # Normalize metadata fields
+            self._normalize_metadata(final_metadata)
 
             return ExtractedMetadata(
                 metadata=final_metadata,
@@ -193,9 +225,16 @@ class MetadataProcessor:
                 error=str(e),
             )
 
-    def _extract_content_metadata(self, content: str) -> Dict:
-        """Extract metadata from content using patterns."""
-        metadata = {}
+    def _extract_content_metadata(self, content: str) -> Dict[str, Any]:
+        """Extract metadata from content using patterns.
+
+        Args:
+            content: The content to extract metadata from
+
+        Returns:
+            Dictionary of extracted metadata
+        """
+        metadata: Dict[str, Any] = {}
 
         # Extract using patterns
         for field, patterns in self.patterns.items():
@@ -205,11 +244,11 @@ class MetadataProcessor:
                 if values:
                     if field == "tags":
                         metadata[field] = list(
-                            set(
+                            {
                                 tag.strip("#")
                                 for value in values
                                 for tag in value.split()
-                            )
+                            }
                         )
                     elif field in ["date", "priority"]:
                         metadata[field] = values[0]  # Use first match
@@ -225,21 +264,26 @@ class MetadataProcessor:
         return metadata
 
     def _extract_keywords(self, content: str) -> List[str]:
-        """Extract keywords from content using NLP."""
+        """Extract keywords from content using NLP.
+
+        Args:
+            content: The content to extract keywords from
+
+        Returns:
+            List of extracted keywords
+        """
         try:
             # Simple word tokenization
             words = re.findall(r"\b\w+\b", content.lower())
 
             # Remove stop words and lemmatize
-            keywords = []
+            keywords: List[str] = []
             for word in words:
                 if word not in self.stop_words and word.isalnum() and len(word) > 2:
                     lemma = self.lemmatizer.lemmatize(word)
                     keywords.append(lemma)
 
             # Count frequencies
-            from collections import Counter
-
             keyword_freq = Counter(keywords)
 
             # Get top keywords (adjust threshold as needed)
@@ -255,39 +299,49 @@ class MetadataProcessor:
             logger.error("Keyword extraction failed", error=str(e))
             return []
 
-    def _generate_summary(self, content: str) -> Optional[str]:
-        """Generate a summary from content."""
+    def _generate_summary(self, content: str) -> str:
+        """Generate a summary from content.
+
+        Args:
+            content: The content to generate summary from
+
+        Returns:
+            Generated summary
+        """
         try:
             # Remove markdown formatting
-            clean_text = re.sub(r"[#*_~`]", "", content)
-            clean_text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", clean_text)
+            clean_content = re.sub(r"#+ ", "", content)
+            clean_content = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", clean_content)
+            clean_content = re.sub(r"[*_~`]", "", clean_content)
 
-            # Simple sentence splitting
-            sentences = re.split(r"[.!?]+\s+", clean_text)
+            # Split into sentences
+            sentences = sent_tokenize(clean_content)
 
             # Get first few sentences (adjust as needed)
             summary_sentences = sentences[:3]
 
-            if summary_sentences:
-                return " ".join(summary_sentences)
-            return None
+            return " ".join(summary_sentences).strip()
 
         except Exception as e:
             logger.error("Summary generation failed", error=str(e))
-            return None
+            return ""
 
     def _create_empty_metadata(self) -> DocumentMetadata:
-        """Create empty metadata structure."""
+        """Create an empty metadata structure.
+
+        Returns:
+            Empty DocumentMetadata instance
+        """
         return DocumentMetadata(
             title="",
-            date=datetime.now(),
-            author=None,
-            category="general",
+            date=datetime.now(),  # Default to current time
+            author="",
+            category="",
             tags=[],
-            summary=None,
-            status=None,
+            status="",
             priority=None,
             keywords=[],
+            summary="",
             references=[],
             related_docs=[],
             custom_fields={},
@@ -312,7 +366,7 @@ class MetadataProcessor:
         footnote_matches = re.finditer(r"\[\^([^\]]+)\]", content)
         references.update(m.group(1) for m in footnote_matches)
 
-        return sorted(list(references))
+        return sorted(references)
 
     def find_related_documents(
         self, content: str, metadata: DocumentMetadata, all_docs: List[DocumentMetadata]
@@ -323,7 +377,7 @@ class MetadataProcessor:
             doc_keywords = set(metadata.keywords)
             doc_tags = set(metadata.tags)
 
-            related = []
+            related = set()
             for other in all_docs:
                 # Skip self
                 if other.title == metadata.title:
@@ -333,23 +387,27 @@ class MetadataProcessor:
                 other_keywords = set(other.keywords)
                 other_tags = set(other.tags)
 
+                # Calculate keyword similarity
+                keyword_union = doc_keywords | other_keywords
+                keyword_intersection = doc_keywords & other_keywords
                 keyword_similarity = (
-                    len(doc_keywords & other_keywords)
-                    / len(doc_keywords | other_keywords)
-                    if doc_keywords or other_keywords
+                    len(keyword_intersection) / len(keyword_union)
+                    if keyword_union
                     else 0
                 )
+
+                # Calculate tag similarity
+                tag_union = doc_tags | other_tags
+                tag_intersection = doc_tags & other_tags
                 tag_similarity = (
-                    len(doc_tags & other_tags) / len(doc_tags | other_tags)
-                    if doc_tags or other_tags
-                    else 0
+                    len(tag_intersection) / len(tag_union) if tag_union else 0
                 )
 
                 # Combine scores (adjust weights as needed)
                 similarity = (keyword_similarity * 0.6) + (tag_similarity * 0.4)
 
                 if similarity > 0.3:  # Adjust threshold as needed
-                    related.append(other.title)
+                    related.add(other.title)
 
             return sorted(related)
 

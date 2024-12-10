@@ -1,7 +1,7 @@
 You are assisting in developing a Python CLI tool for markdown file consolidation and PDF generation.
 
 Project Context:
-- Python CLI application using Click, Pillow, and markdown processing libraries
+- Python CLI application using Click, WeasyPrint, and document processing libraries
 - Target Python version: 3.11+
 - Primary focus on clean code and efficient processing
 - Follows PEP 8 style guide with specific modifications
@@ -10,9 +10,21 @@ Project Context:
 Code Organization:
 - src/
   - core/ (main processing logic)
+    - document_consolidator.py
+    - document_relationships.py
+    - filename_processor.py
+    - logging.py
+    - config.py
+    - exceptions.py
   - utils/ (helper functions)
   - cli/ (command line interface)
-  - processors/ (markdown and image processors)
+  - processors/ (document processors)
+    - markdown_processor.py
+    - html_processor.py
+    - attachment_processor.py
+    - metadata_processor.py
+    - embedded_content_processor.py
+    - markdown_to_pdf_processor.py
   - models/ (data models and types)
   - config/ (configuration management)
   - resources/ (templates, styles, prompts)
@@ -117,7 +129,7 @@ CI/CD Requirements:
 - Release automation
 
 Monitoring and Logging:
-- Structured logging
+- Structured logging with context
 - Performance metrics
 - Error tracking
 - Usage analytics
@@ -143,6 +155,71 @@ Code Quality Rules for LLM:
 8. Always use contextlib.contextmanager for resource management
 9. Always use structlog for logging
 10. Always use click.Path for CLI file parameters
+11. Never leave trailing whitespace in any file
+12. Always end files with a single newline
+13. Always use black-compatible string quotes (double quotes)
+14. Always sort imports according to isort with black profile
+15. Always include type annotations for all function parameters and returns
+
+Docstring Rules:
+1. Always include docstrings for all public functions and classes
+2. Always follow Google docstring style
+3. Always document all parameters with types and descriptions
+4. Always document return values with types and descriptions
+5. Always document raised exceptions
+6. Always include usage examples for complex functions
+7. Always document any side effects
+8. Always document any default values
+9. Always document any async behavior
+10. Always document any file operations
+
+Flake8 Compliance Rules:
+1. Always use comprehensions instead of map() or filter()
+2. Always handle return values from file operations
+3. Never use bare except clauses
+4. Always specify exception types
+5. Never use mutable default arguments
+6. Always use f-strings for string formatting
+7. Never use `==` or `!=` for singletons (use is/is not)
+8. Always break long lines before binary operators
+9. Always use parentheses for line continuations
+10. Never use `@staticmethod` (use module-level function instead)
+
+Type Checking Rules:
+1. Always include complete type annotations
+2. Always use proper type imports (from typing import ...)
+3. Always use TypeVar for generic types
+4. Always use Protocol for duck typing
+5. Always use Literal for string literals
+6. Always use TypeAlias for type aliases
+7. Always use Union or | for multiple types
+8. Always use Optional or | None for optional values
+9. Always use Final for constants
+10. Always use proper collection types (list[str], dict[str, int], etc.)
+
+YAML/JSON Rules:
+1. Always validate YAML/JSON files before committing
+2. Always use consistent indentation (2 spaces for YAML)
+3. Always include a schema when applicable
+4. Never include sensitive data
+5. Always use descriptive keys
+6. Always validate against schema
+7. Always use proper data types
+8. Never use anchors in YAML unless necessary
+9. Always document any custom tags
+10. Always validate UTF-8 encoding
+
+Security Rules:
+1. Always check for merge conflicts
+2. Never commit private keys
+3. Always validate file paths
+4. Always sanitize user input
+5. Never commit sensitive data
+6. Always use secure random numbers
+7. Always validate environment variables
+8. Always check file permissions
+9. Always use secure defaults
+10. Always validate external data
 
 Function Rules:
 1. Maximum function complexity: 10 (McCabe)
@@ -180,18 +257,6 @@ Testing Rules:
 9. Always include integration tests
 10. Always test error recovery mechanisms
 
-Security Rules:
-1. Always validate file paths against directory traversal
-2. Always sanitize markdown input
-3. Always use secure random for sensitive operations
-4. Always validate image files before processing
-5. Always use constant time comparisons for sensitive data
-6. Always handle temporary files securely
-7. Always validate URLs before processing
-8. Always use proper file permissions
-9. Always sanitize file names
-10. Always validate environment variables
-
 Performance Rules:
 1. Always use generators for large datasets
 2. Always implement proper cleanup in __exit__
@@ -203,3 +268,39 @@ Performance Rules:
 8. Always implement proper pagination
 9. Always use proper indexing
 10. Always implement proper batching
+
+Document Processing Rules:
+1. Always validate document format before processing
+2. Always preserve document metadata
+3. Always handle embedded content
+4. Always maintain document relationships
+5. Always process attachments securely
+6. Always validate output formats
+7. Always preserve document structure
+8. Always handle character encodings
+9. Always validate templates
+10. Always clean up temporary files
+
+Office Document Rules:
+1. Always use mammoth for Word documents
+2. Always use pandas/openpyxl for Excel files
+3. Always use python-pptx for PowerPoint
+4. Always validate Office file formats
+5. Always extract embedded media
+6. Always preserve formatting where possible
+7. Always handle document properties
+8. Always process linked content
+9. Always validate output conversion
+10. Always clean up temporary Office files
+
+PDF Generation Rules:
+1. Always use WeasyPrint for PDF generation
+2. Always validate HTML before conversion
+3. Always include required CSS
+4. Always handle page breaks properly
+5. Always process embedded images
+6. Always validate PDF output
+7. Always handle Unicode correctly
+8. Always set proper PDF metadata
+9. Always handle large documents efficiently
+10. Always clean up temporary files

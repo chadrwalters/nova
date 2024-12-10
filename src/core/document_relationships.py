@@ -1,11 +1,18 @@
+# mypy: disable-error-code="var-annotated"
+
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, TypedDict
+from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict, cast
 
-import networkx as nx
+import networkx as nx  # type: ignore
 import structlog
+from networkx.algorithms.cycles import simple_cycles  # type: ignore
+from networkx.algorithms.dag import ancestors, descendants  # type: ignore
+from networkx.algorithms.shortest_paths.generic import shortest_path  # type: ignore
+from networkx.classes.digraph import DiGraph
+from networkx.exception import NetworkXNoPath
 
 logger = structlog.get_logger(__name__)
 
@@ -44,14 +51,26 @@ class DocumentRelationships:
     warnings: List[str]
 
 
+class EdgeData(TypedDict):
+    """Type definition for edge data in the graph."""
+
+    ref_type: str
+    line_number: int
+
+
+@dataclass
 class DocumentRelationshipManager:
     """Manages and analyzes relationships between documents."""
 
-    def __init__(self, base_dir: Path):
-        self.base_dir = base_dir
-        self.graph = nx.DiGraph()
-        self.references: Dict[str, DocumentReference] = {}
-        self.warnings: List[str] = []
+    base_dir: Path
+    graph: DiGraph = field(default_factory=lambda: nx.DiGraph())  # type: ignore
+    references: Dict[str, DocumentReference] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+    type_counts: Dict[str, int] = field(default_factory=dict)  # type: ignore
+
+    def __post_init__(self) -> None:
+        """Initialize after dataclass initialization."""
+        self.type_counts = {}
 
     def add_reference(
         self,
@@ -86,11 +105,14 @@ class DocumentRelationshipManager:
 
             # Update graph
             if is_valid:
+                edge_data: EdgeData = {
+                    "ref_type": ref_type,
+                    "line_number": line_number,
+                }
                 self.graph.add_edge(
                     str(source_path),
                     str(target_path),
-                    ref_type=ref_type,
-                    line_number=line_number,
+                    **edge_data,
                 )
 
         except Exception as e:
@@ -108,22 +130,24 @@ class DocumentRelationshipManager:
         """Analyze document relationships and detect issues."""
         try:
             # Find cycles in the dependency graph
-            cycles = list(nx.simple_cycles(self.graph))
+            cycles_list = list(simple_cycles(self.graph))
 
             # Convert cycles to Path objects
-            path_cycles = [[Path(node) for node in cycle] for cycle in cycles]
+            path_cycles = [[Path(node) for node in cycle] for cycle in cycles_list]
 
             # Get all dependencies
             dependencies = []
-            for source, target, data in self.graph.edges(data=True):
+            for source, target, data in cast(
+                List[Tuple[str, str, EdgeData]], self.graph.edges(data=True)
+            ):
                 # Check if this edge is part of a cycle
                 is_circular = any(
-                    source in cycle and target in cycle for cycle in cycles
+                    source in cycle and target in cycle for cycle in cycles_list
                 )
 
                 # Find dependency path
                 if is_circular:
-                    path = nx.shortest_path(self.graph, source=target, target=source)
+                    path = shortest_path(self.graph, source=target, target=source)
                 else:
                     path = []
 
@@ -131,7 +155,7 @@ class DocumentRelationshipManager:
                     DocumentDependency(
                         source_doc=Path(source),
                         target_doc=Path(target),
-                        dep_type=data.get("ref_type", "unknown"),
+                        dep_type=data["ref_type"],
                         is_circular=is_circular,
                         path=[Path(p) for p in path],
                     )
@@ -159,7 +183,7 @@ class DocumentRelationshipManager:
             source = str(self._normalize_path(doc_path))
             if source in self.graph:
                 # Get all reachable nodes
-                reachable = nx.descendants(self.graph, source)
+                reachable = descendants(self.graph, source)
                 return [Path(node) for node in reachable]
             return []
 
@@ -175,7 +199,7 @@ class DocumentRelationshipManager:
             target = str(self._normalize_path(doc_path))
             if target in self.graph:
                 # Get all predecessor nodes
-                predecessors = nx.ancestors(self.graph, target)
+                predecessors = ancestors(self.graph, target)
                 return [Path(node) for node in predecessors]
             return []
 
@@ -195,12 +219,13 @@ class DocumentRelationshipManager:
                 return []
 
             # Find all cycles containing this node
-            cycles = []
-            for cycle in nx.simple_cycles(self.graph):
+            cycles_list = list(simple_cycles(self.graph))
+            result_cycles = []
+            for cycle in cycles_list:
                 if source in cycle:
-                    cycles.append([Path(node) for node in cycle])
+                    result_cycles.append([Path(node) for node in cycle])
 
-            return cycles
+            return result_cycles
 
         except Exception as e:
             logger.error(
@@ -219,9 +244,9 @@ class DocumentRelationshipManager:
             if source in self.graph and target in self.graph:
                 try:
                     # Find shortest path
-                    path = nx.shortest_path(self.graph, source=source, target=target)
+                    path = shortest_path(self.graph, source=source, target=target)
                     return [Path(node) for node in path]
-                except nx.NetworkXNoPath:
+                except NetworkXNoPath:
                     return []
             return []
 
@@ -283,12 +308,12 @@ class DocumentRelationshipManager:
                 self.graph.edges[edge]["label"] = data.get("ref_type", "")
 
             # Write DOT file
-            nx.drawing.nx_pydot.write_dot(self.graph, output_file)
+            nx.drawing.nx_pydot.write_dot(self.graph, output_file)  # type: ignore
 
         except Exception as e:
             logger.error("Failed to export graph", error=str(e), file=str(output_file))
 
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> Dict[str, Any]:
         """Get statistics about document relationships."""
         try:
             stats = {
@@ -297,16 +322,7 @@ class DocumentRelationshipManager:
                 "invalid_references": len(
                     [ref for ref in self.references.values() if not ref.is_valid]
                 ),
-                "circular_dependencies": len(list(nx.simple_cycles(self.graph))),
-                "isolated_documents": len(list(nx.isolates(self.graph))),
-                "max_depth": (
-                    nx.dag_longest_path_length(self.graph)
-                    if nx.is_directed_acyclic_graph(self.graph)
-                    else -1
-                ),
-                "strongly_connected_components": len(
-                    list(nx.strongly_connected_components(self.graph))
-                ),
+                "circular_dependencies": len(list(simple_cycles(self.graph))),
                 "reference_types": self._count_reference_types(),
             }
 

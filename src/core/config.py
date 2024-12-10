@@ -7,63 +7,78 @@ from typing import Literal, Optional
 class ProcessingConfig:
     """Configuration for document processing."""
 
-    template_dir: Path
-    media_dir: Path
-    relative_media_path: str
-    debug_dir: Optional[Path] = None
-    error_tolerance: Literal["strict", "lenient"] = "lenient"
+    def __init__(
+        self,
+        input_dir: Path,
+        output_dir: Path,
+        consolidated_dir: Path,
+        processing_dir: Optional[Path] = None,
+        media_dir: Optional[Path] = None,
+        template_dir: Optional[Path] = None,
+        css_file: Optional[Path] = None,
+        error_tolerance: str = "lenient",
+    ):
+        """Initialize configuration.
 
-    def __post_init__(self):
-        """Validate configuration after initialization."""
-        # Ensure paths exist
-        if not self.template_dir.exists():
-            raise ValueError(f"Template directory does not exist: {self.template_dir}")
-        if not self.media_dir.parent.exists():
-            self.media_dir.parent.mkdir(parents=True, exist_ok=True)
+        Args:
+            input_dir: Directory containing input markdown files
+            output_dir: Directory for output files
+            consolidated_dir: Directory for consolidated output
+            processing_dir: Directory for intermediate processing files
+            media_dir: Directory for media files
+            template_dir: Directory containing HTML templates
+            css_file: Optional CSS file for styling
+            error_tolerance: How to handle errors ("strict" or "lenient")
+        """
+        self.input_dir = input_dir.resolve()
+        self.output_dir = output_dir.resolve()
+        self.consolidated_dir = consolidated_dir.resolve()
+        self.processing_dir = processing_dir
+        self.media_dir = media_dir
+        self.template_dir = template_dir or Path("src/resources/templates")
+        self.css_file = css_file
+        self.error_tolerance = error_tolerance
 
-        # Create media directory if it doesn't exist
-        self.media_dir.mkdir(exist_ok=True)
+        # Create necessary directories
+        self.input_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.consolidated_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create debug directories if enabled
-        if self.debug_dir:
-            self.debug_dir = self.debug_dir.resolve()
-            self.debug_dir.mkdir(parents=True, exist_ok=True)
-            (self.debug_dir / "markdown").mkdir(parents=True, exist_ok=True)
-            (self.debug_dir / "html").mkdir(parents=True, exist_ok=True)
-            (self.debug_dir / "html" / "individual").mkdir(parents=True, exist_ok=True)
-            (self.debug_dir / "attachments").mkdir(parents=True, exist_ok=True)
-            (self.debug_dir / "media").mkdir(parents=True, exist_ok=True)
+        if self.processing_dir:
+            self.processing_dir = self.processing_dir.resolve()
+            self.processing_dir.mkdir(parents=True, exist_ok=True)
+            (self.processing_dir / "markdown").mkdir(parents=True, exist_ok=True)
+            (self.processing_dir / "html").mkdir(parents=True, exist_ok=True)
+            (self.processing_dir / "html" / "individual").mkdir(
+                parents=True, exist_ok=True
+            )
+            (self.processing_dir / "attachments").mkdir(parents=True, exist_ok=True)
+            (self.processing_dir / "media").mkdir(parents=True, exist_ok=True)
 
-        # Validate error_tolerance
-        if self.error_tolerance not in ("strict", "lenient"):
-            raise ValueError("error_tolerance must be either 'strict' or 'lenient'")
+    @property
+    def html_dir(self) -> Path:
+        """Get the HTML output directory."""
+        if not self.processing_dir:
+            raise ValueError("Processing directory not configured")
+        return self.processing_dir / "html"
 
-    def get_media_path(self, is_consolidated: bool) -> str:
-        """Get the correct media path based on context."""
-        if is_consolidated:
-            return "_media"  # Relative to consolidated HTML location
-        return "../_media"  # Relative to individual HTML files in html/ subdirectory
+    @property
+    def individual_html_dir(self) -> Path:
+        """Get the directory for individual HTML files."""
+        if not self.processing_dir:
+            raise ValueError("Processing directory not configured")
+        return self.processing_dir / "html" / "individual"
 
-    def get_debug_html_dir(self) -> Path:
-        """Get the debug HTML directory."""
-        if not self.debug_dir:
-            raise ValueError("Debug directory not configured")
-        return self.debug_dir / "html"
+    @property
+    def media_output_dir(self) -> Path:
+        """Get the media output directory."""
+        if not self.processing_dir:
+            raise ValueError("Processing directory not configured")
+        return self.processing_dir / "media"
 
-    def get_debug_individual_html_dir(self) -> Path:
-        """Get the debug individual HTML directory."""
-        if not self.debug_dir:
-            raise ValueError("Debug directory not configured")
-        return self.debug_dir / "html" / "individual"
-
-    def get_debug_media_dir(self) -> Path:
-        """Get the debug media directory."""
-        if not self.debug_dir:
-            raise ValueError("Debug directory not configured")
-        return self.debug_dir / "media"
-
-    def get_debug_attachments_dir(self) -> Path:
-        """Get the debug attachments directory."""
-        if not self.debug_dir:
-            raise ValueError("Debug directory not configured")
-        return self.debug_dir / "attachments"
+    @property
+    def attachments_dir(self) -> Path:
+        """Get the attachments directory."""
+        if not self.processing_dir:
+            raise ValueError("Processing directory not configured")
+        return self.processing_dir / "attachments"
