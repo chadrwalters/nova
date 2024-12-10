@@ -1,40 +1,25 @@
+"""Custom exception classes for the application."""
+
+
 class NovaError(Exception):
-    """Base exception for Nova errors."""
-
-    pass
+    """Base exception class for Nova errors."""
 
 
-class TemplateError(NovaError):
-    """Raised for template-related errors."""
-
-    pass
+class ConfigError(NovaError):
+    """Configuration related errors."""
 
 
 class ProcessingError(NovaError):
-    """Raised for document processing errors."""
-
-    pass
+    """Document processing related errors."""
 
 
 class ConversionError(NovaError):
-    """Raised for markdown to HTML conversion errors."""
-
-    pass
+    """Document conversion related errors."""
 
 
 class ConsolidationError(NovaError):
-    """Raised for HTML consolidation errors."""
-
-    pass
-
-
-class ConfigurationError(NovaError):
-    """Raised for configuration-related errors."""
-
-    pass
+    """Document consolidation related errors."""
 
 
 class MediaError(NovaError):
-    """Raised for media file handling errors."""
-
-    pass
+    """Media processing related errors."""

@@ -1,8 +1,10 @@
 """Type stubs for pandas library."""
+
 from typing import Any, Dict, List, Optional, Union
 
 class DataFrame:
     """DataFrame class."""
+
     def __init__(
         self,
         data: Optional[Any] = None,
@@ -65,4 +67,4 @@ def read_excel(
     convert_float: bool = True,
     mangle_dupe_cols: bool = True,
     **kwargs: Any,
-) -> Union[DataFrame, Dict[str, DataFrame]]: ... 
+) -> Union[DataFrame, Dict[str, DataFrame]]: ...

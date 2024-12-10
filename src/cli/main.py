@@ -19,7 +19,7 @@ from src.resources.templates.template_manager import TemplateManager
 from src.utils.colors import NovaConsole
 
 # Set up logging
-setup_logging(level="INFO", pretty=True)
+setup_logging(log_level="INFO", json_format=False)
 logger = get_logger(__name__)
 
 nova_console = NovaConsole()
@@ -414,75 +414,63 @@ def validate_paths(
 
 
 @cli.command()
-@click.option("--input-dir", type=click.Path(exists=True), help="Input directory")
-@click.option("--output-dir", type=click.Path(), help="Output directory")
 @click.option(
-    "--consolidated-dir", type=click.Path(), help="Consolidated files directory"
-)
-@click.option("--temp-dir", type=click.Path(), help="Temporary files directory")
-@click.option("--template-dir", type=click.Path(), help="Template files directory")
-@click.option(
-    "--error-tolerance",
-    type=click.Choice(["strict", "lenient"]),
-    default="strict",
-    help="Error handling mode",
+    "--input-dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    required=True,
+    help="Directory containing input markdown files",
 )
 @click.option(
-    "--phase",
-    type=click.Choice([p.value for p in ProcessingPhase]),
-    default=ProcessingPhase.ALL.value,
-    help="Processing phase to execute",
+    "--output-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    required=True,
+    help="Directory for output files",
+)
+@click.option(
+    "--processing-dir",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    required=True,
+    help="Directory for processing files",
+)
+@click.option(
+    "--template-dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    required=True,
+    help="Directory containing HTML templates",
 )
 def consolidate(
-    input_dir: Optional[str],
-    output_dir: Optional[str],
-    consolidated_dir: Optional[str],
-    temp_dir: Optional[str],
-    template_dir: Optional[str],
-    error_tolerance: str,
-    phase: str,
+    input_dir: Path,
+    output_dir: Path,
+    processing_dir: Path,
+    template_dir: Path,
 ) -> None:
     """Consolidate markdown files into a single document."""
     try:
-        # Validate and convert paths
-        input_path, output_path, consolidated_path, temp_path, template_path = (
-            validate_paths(
-                input_dir, output_dir, consolidated_dir, temp_dir, template_dir
-            )
+        # Create config from CLI arguments
+        config = ProcessingConfig(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            processing_dir=processing_dir,
         )
 
-        # Create processor
-        try:
-            processor = DocumentConsolidator(
-                input_dir=input_path,
-                output_dir=output_path,
-                consolidated_dir=consolidated_path,
-                temp_dir=temp_path,
-                template_dir=template_path,
-                error_tolerance=error_tolerance == "lenient",
-            )
-        except Exception as err:
-            raise ProcessingError("Failed to initialize document processor") from err
+        # Initialize processor with config
+        processor = DocumentConsolidator(
+            config=config,
+            error_tolerance=False,  # Default to strict mode
+        )
 
         # Get input files
-        files = sorted(input_path.glob("*.md"))
-        if not files:
-            console.print("[yellow]No markdown files found in input directory[/yellow]")
+        input_files = sorted(input_dir.glob("*.md"))
+        if not input_files:
+            logger.warning(f"No markdown files found in {input_dir}")
             return
 
-        # Process based on phase
-        try:
-            processor._process_markdown_files(files)
-            console.print("[green]✓ Processing completed successfully[/green]")
-        except Exception as err:
-            raise ProcessingError("Failed to process files") from err
+        # Process files
+        processor.consolidate_files(input_files)
 
-    except ProcessingError as err:
-        console.print(f"[red]Error during consolidation: {err}[/red]")
-        raise click.ClickException(str(err)) from None  # Avoid double error messages
     except Exception as err:
-        console.print(f"[red]Unexpected error: {err}[/red]")
-        raise click.ClickException("An unexpected error occurred") from err
+        logger.error("Error during consolidation", exc_info=err)
+        raise click.Abort() from err
 
 
 # Add commands to CLI group

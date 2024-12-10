@@ -1,8 +1,10 @@
 """Type stubs for BeautifulSoup library."""
+
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 class Tag:
     """HTML tag class."""
+
     name: str
     attrs: Dict[str, Any]
     contents: List[Any]
@@ -33,6 +35,7 @@ class Tag:
 
 class BeautifulSoup(Tag):
     """BeautifulSoup class for parsing HTML/XML."""
+
     def __init__(
         self,
         markup: str = "",
@@ -52,4 +55,4 @@ class BeautifulSoup(Tag):
         **kwargs: Any,
     ) -> Tag: ...
     def get_text(self, separator: str = "", strip: bool = False) -> str: ...
-    def prettify(self, encoding: Optional[str] = None) -> str: ... 
+    def prettify(self, encoding: Optional[str] = None) -> str: ...

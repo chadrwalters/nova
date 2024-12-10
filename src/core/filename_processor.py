@@ -1,167 +1,186 @@
+"""Filename processing functionality."""
+
 import re
-import unicodedata
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypeAlias, Union
 
-from src.core.logging import get_logger
+import structlog
 
-logger = get_logger(__name__)
+from src.core.exceptions import ProcessingError
+
+logger = structlog.get_logger(__name__)
+
+# Type aliases
+DateStr: TypeAlias = str
+TitleStr: TypeAlias = str
+ErrorStr: TypeAlias = str
+ProcessingResult: TypeAlias = Union[str, ErrorStr]
+
+
+@dataclass
+class ProcessedFilename:
+    """Result of filename processing."""
+
+    original_path: Path
+    processed_path: Path
+    date: Optional[datetime] = None
+    title: Optional[str] = None
+    error: Optional[str] = None
 
 
 class FilenameProcessor:
-    """Processes filenames to ensure they are valid and consistent."""
+    """Processor for handling filenames and paths."""
 
-    def __init__(self):
-        # Initialize patterns
-        self.invalid_chars = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
-        self.spaces = re.compile(r"\s+")
-        self.dots = re.compile(r"\.+")
-        self.dashes = re.compile(r"-+")
-        self.underscores = re.compile(r"_+")
-        self.leading_trailing = re.compile(r"^[-._\s]+|[-._\s]+$")
+    def __init__(self, error_tolerance: bool = False) -> None:
+        """Initialize the filename processor.
 
-    def clean_filename(
-        self, filename: str, max_length: int = 255, replacement: str = "-"
-    ) -> str:
-        """Clean a filename to make it safe and consistent."""
+        Args:
+            error_tolerance: Whether to continue on errors
+        """
+        self.error_tolerance = error_tolerance
+        self.logger = logger
+
+    def process_filename(self, path: Path) -> ProcessedFilename:
+        """Process a filename to extract metadata and normalize.
+
+        Args:
+            path: Path to process
+
+        Returns:
+            Processed filename result
+
+        Raises:
+            ProcessingError: If processing fails and error_tolerance is False
+        """
         try:
-            # Normalize unicode characters
-            filename = unicodedata.normalize("NFKD", filename)
-            filename = "".join(c for c in filename if not unicodedata.combining(c))
+            # Extract date and title from filename
+            date, title = self._parse_filename(path.stem)
 
-            # Replace invalid characters
-            filename = self.invalid_chars.sub(replacement, filename)
+            # Create processed path
+            processed_path = self._create_processed_path(path, date, title)
 
-            # Replace spaces
-            filename = self.spaces.sub(replacement, filename)
-
-            # Replace multiple dots
-            filename = self.dots.sub(".", filename)
-
-            # Replace multiple dashes
-            filename = self.dashes.sub(replacement, filename)
-
-            # Replace multiple underscores
-            filename = self.underscores.sub("_", filename)
-
-            # Remove leading/trailing separators
-            filename = self.leading_trailing.sub("", filename)
-
-            # Ensure filename is not empty
-            if not filename:
-                return "unnamed"
-
-            # Truncate if too long
-            name_parts = filename.rsplit(".", 1)
-            if len(name_parts) > 1:
-                name, ext = name_parts
-                # Reserve space for extension
-                max_name_length = max_length - len(ext) - 1
-                if len(name) > max_name_length:
-                    name = name[:max_name_length]
-                filename = f"{name}.{ext}"
-            else:
-                if len(filename) > max_length:
-                    filename = filename[:max_length]
-
-            return filename
-
-        except Exception as e:
-            logger.error("Filename cleaning failed", error=str(e), filename=filename)
-            return "unnamed"
-
-    def make_unique(
-        self, base_path: Path, filename: str, max_attempts: int = 1000
-    ) -> Optional[str]:
-        """Make a filename unique in the given directory."""
-        try:
-            # Clean filename first
-            filename = self.clean_filename(filename)
-
-            # Split name and extension
-            name_parts = filename.rsplit(".", 1)
-            if len(name_parts) > 1:
-                name, ext = name_parts
-                ext = f".{ext}"
-            else:
-                name = filename
-                ext = ""
-
-            # Try original name first
-            if not (base_path / filename).exists():
-                return filename
-
-            # Try adding numbers
-            for i in range(1, max_attempts):
-                new_name = f"{name}_{i}{ext}"
-                if not (base_path / new_name).exists():
-                    return new_name
-
-            # If we get here, we've run out of attempts
-            logger.error(
-                "Failed to create unique filename",
-                filename=filename,
-                attempts=max_attempts,
+            return ProcessedFilename(
+                original_path=path,
+                processed_path=processed_path,
+                date=date,
+                title=title,
             )
-            return None
 
-        except Exception as e:
-            logger.error(
-                "Unique filename generation failed", error=str(e), filename=filename
+        except Exception as err:
+            error_msg = f"Failed to process filename: {path}"
+            self.logger.error(error_msg, exc_info=err)
+            if not self.error_tolerance:
+                raise ProcessingError(error_msg) from err
+            return ProcessedFilename(
+                original_path=path,
+                processed_path=path,
+                error=str(err),
             )
-            return None
 
-    def get_safe_path(
-        self, base_path: Path, relative_path: str, create_dirs: bool = True
-    ) -> Optional[Path]:
-        """Get a safe path relative to the base path."""
-        try:
-            # Clean path components
-            parts = [self.clean_filename(part) for part in Path(relative_path).parts]
+    def _parse_filename(
+        self, filename: str
+    ) -> tuple[Optional[datetime], Optional[str]]:
+        """Parse a filename to extract date and title.
 
-            # Combine parts
-            clean_path = Path(*parts)
+        Args:
+            filename: Filename to parse
 
-            # Ensure path is relative
-            if clean_path.is_absolute():
-                clean_path = Path(*clean_path.parts[1:])
+        Returns:
+            Tuple of (date, title) if found, (None, None) otherwise
 
-            # Combine with base path
-            full_path = base_path / clean_path
+        Raises:
+            ValueError: If date parsing fails
+        """
+        # Try to extract date from filename
+        date_match = re.match(
+            r"^(\d{4})[-_]?(\d{2})[-_]?(\d{2})[-_\s]*(.*?)$", filename
+        )
 
-            # Create parent directories if needed
-            if create_dirs:
-                full_path.parent.mkdir(parents=True, exist_ok=True)
+        if date_match:
+            year, month, day = map(int, date_match.groups()[:3])
+            try:
+                date = datetime(year, month, day)
+                title = date_match.group(4).strip()
+                return date, title or None
+            except ValueError as err:
+                self.logger.warning(
+                    "Invalid date in filename",
+                    filename=filename,
+                    error=str(err),
+                )
+                return None, None
 
-            return full_path
+        # Try to extract title without date
+        title_match = re.match(r"^[\w-]+(?:\s+[\w-]+)*$", filename)
+        if title_match:
+            return None, filename
 
-        except Exception as e:
-            logger.error(
-                "Safe path generation failed",
-                error=str(e),
-                base=str(base_path),
-                path=relative_path,
-            )
-            return None
+        return None, None
 
-    def is_safe_path(self, base_path: Path, check_path: Path) -> bool:
-        """Check if a path is safe (no directory traversal)."""
-        try:
-            # Resolve paths
-            base_abs = base_path.resolve()
-            check_abs = check_path.resolve()
+    def _create_processed_path(
+        self,
+        original_path: Path,
+        date: Optional[datetime],
+        title: Optional[str],
+    ) -> Path:
+        """Create a processed path from components.
 
-            # Check if path is under base directory
-            return str(check_abs).startswith(str(base_abs))
+        Args:
+            original_path: Original file path
+            date: Extracted date
+            title: Extracted title
 
-        except Exception as e:
-            logger.error(
-                "Path safety check failed",
-                error=str(e),
-                base=str(base_path),
-                path=str(check_path),
-            )
-            return False
+        Returns:
+            Processed path
+        """
+        # Start with the parent directory
+        parent = original_path.parent
+
+        # Create new filename
+        if date and title:
+            new_name = f"{date.strftime('%Y-%m-%d')}_{title}"
+        elif title:
+            new_name = title
+        else:
+            new_name = original_path.stem
+
+        # Clean up filename
+        new_name = self._clean_filename(new_name)
+
+        # Add extension
+        new_name = f"{new_name}{original_path.suffix}"
+
+        return parent / new_name
+
+    def _clean_filename(self, filename: str) -> str:
+        """Clean a filename to be filesystem safe.
+
+        Args:
+            filename: Filename to clean
+
+        Returns:
+            Cleaned filename
+
+        Raises:
+            ValueError: If filename is empty after cleaning
+        """
+        # Replace invalid characters
+        filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
+
+        # Replace multiple spaces/underscores with single underscore
+        filename = re.sub(r"[\s_]+", "_", filename)
+
+        # Remove leading/trailing spaces and dots
+        filename = filename.strip(". ")
+
+        # Ensure filename is not empty
+        if not filename:
+            filename = "unnamed"
+
+        return filename
 
 
-__all__ = ["FilenameProcessor"]
+# Type hints for exports
+__all__: list[str] = ["FilenameProcessor", "ProcessedFilename"]

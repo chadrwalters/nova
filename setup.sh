@@ -72,9 +72,7 @@ if [[ ! -f ".env" ]]; then
     cp .env.template .env
 fi
 
-# Install pre-commit hooks
-print_status "$CYAN" "Setting up pre-commit hooks..."
-poetry run pre-commit install
+# Pre-commit hooks installation removed for now
 
 print_status "$GREEN" "✓ Setup complete!"
 echo

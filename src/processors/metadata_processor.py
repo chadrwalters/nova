@@ -414,3 +414,10 @@ class MetadataProcessor:
         except Exception as e:
             logger.error("Related document finding failed", error=str(e))
             return []
+
+    def enrich_content(self, content: str, file_path: Path) -> str:
+        """Adds metadata markers to help maintain context during consolidation"""
+        # Add section markers
+        # Preserve header hierarchy
+        # Update image/attachment paths to new consolidated structure
+        # Maintain cross-document link integrity

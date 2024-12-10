@@ -53,22 +53,24 @@ echo -e "\nStep 2: Directory Setup"
 echo "Creating required directories..."
 echo "  Input Dir:         ${NOVA_INPUT_DIR}"
 echo "  Output Dir:        ${NOVA_OUTPUT_DIR}"
-echo "  Consolidated Dir:  ${NOVA_CONSOLIDATED_DIR}"
 echo "  Processing Dir:    ${NOVA_PROCESSING_DIR}"
-echo "  Temp Dir:         ${NOVA_TEMP_DIR}"
-echo "  Media Dir:        ${NOVA_MEDIA_DIR}"
 
-# Create required directories
+# Create required directories with proper permissions
+umask 0022  # Set default permissions to 755 for directories and 644 for files
 mkdir -p "${NOVA_INPUT_DIR}"
 mkdir -p "${NOVA_OUTPUT_DIR}"
-mkdir -p "${NOVA_CONSOLIDATED_DIR}"
 mkdir -p "${NOVA_PROCESSING_DIR}"
-mkdir -p "${NOVA_TEMP_DIR}"
-mkdir -p "${NOVA_MEDIA_DIR}"
 
 # Create processing subdirectories
 mkdir -p "${NOVA_PROCESSING_DIR}/html"
+mkdir -p "${NOVA_PROCESSING_DIR}/consolidated"
+mkdir -p "${NOVA_PROCESSING_DIR}/media"
 mkdir -p "${NOVA_PROCESSING_DIR}/attachments"
+mkdir -p "${NOVA_PROCESSING_DIR}/temp"
+
+# Ensure write permissions
+chmod 755 "${NOVA_INPUT_DIR}" "${NOVA_OUTPUT_DIR}" "${NOVA_PROCESSING_DIR}"
+chmod 755 "${NOVA_PROCESSING_DIR}"/{html,consolidated,media,attachments,temp}
 
 echo "✓ Directories created/verified"
 
@@ -81,9 +83,8 @@ echo "Target: ${NOVA_OUTPUT_DIR}/consolidated.pdf"
 poetry run python -m src.cli.main consolidate \
     --input-dir "${NOVA_INPUT_DIR}" \
     --output-dir "${NOVA_OUTPUT_DIR}" \
-    --consolidated-dir "${NOVA_CONSOLIDATED_DIR}" \
     --processing-dir "${NOVA_PROCESSING_DIR}" \
-    --temp-dir "${NOVA_TEMP_DIR}"
+    --template-dir "src/resources/templates"
 
 # Print completion message
 echo -e "\n=== Process Complete ==="
@@ -92,16 +93,12 @@ echo -e "\n✓ All steps completed successfully"
 # Print generated files
 echo -e "\nGenerated Files:"
 echo "  📄 Input Files:        ${NOVA_INPUT_DIR}/"
-echo "  📄 Consolidated Files: ${NOVA_CONSOLIDATED_DIR}/"
 echo "  📄 Output Files:       ${NOVA_OUTPUT_DIR}/"
 echo "  📄 Processing Files:   ${NOVA_PROCESSING_DIR}/"
-echo "  📄 Media Files:        ${NOVA_MEDIA_DIR}/"
 
 echo -e "\nDirectory Structure:"
 echo "    input/         (Source markdown files)"
-echo "    consolidated/  (Consolidated markdown and HTML)"
 echo "    output/        (Final PDF output)"
 echo "    processing/    (Processing files)"
-echo "    media/        (Images and other media)"
 
 echo -e "\nView the files above to see the results"

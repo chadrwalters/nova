@@ -148,7 +148,7 @@ Use structured logging with context:
 from src.core.logging import get_logger
 
 logger = get_logger()
-logger.info("Processing file", 
+logger.info("Processing file",
     file_path=str(file_path),
     processor="markdown",
     phase="consolidation"
@@ -175,7 +175,7 @@ relationship = DocumentRelationship(
    ```python
    # Process file metadata
    metadata = metadata_processor.extract_metadata(file_path)
-   
+
    # Process relationships
    relationships = relationship_processor.analyze_file(file_path)
    ```
@@ -184,10 +184,10 @@ relationship = DocumentRelationship(
    ```python
    # Process markdown
    content = markdown_processor.process_file(file_path)
-   
+
    # Process attachments
    attachments = attachment_processor.process_attachments(content)
-   
+
    # Process Office documents
    if file_path.suffix == '.docx':
        content = mammoth.convert_to_html(file_path)
@@ -199,7 +199,7 @@ relationship = DocumentRelationship(
    ```python
    # Generate HTML
    html = html_processor.process_content(content)
-   
+
    # Generate PDF with WeasyPrint
    HTML(string=html_content).write_pdf(
        output_path,

@@ -1,10 +1,8 @@
-# mypy: disable-error-code="var-annotated"
+"""Document relationship management functionality."""
 
-import re
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict, cast
+from typing import Any, Dict, List, Optional, Set, TypeAlias, TypedDict, cast
 
 import networkx as nx  # type: ignore
 import structlog
@@ -15,6 +13,12 @@ from networkx.classes.digraph import DiGraph
 from networkx.exception import NetworkXNoPath
 
 logger = structlog.get_logger(__name__)
+
+# Type aliases
+PathStr: TypeAlias = str
+NodeList: TypeAlias = List[PathStr]
+EdgeList: TypeAlias = List[tuple[PathStr, PathStr]]
+GraphData: TypeAlias = Dict[str, Any]
 
 
 @dataclass
@@ -50,6 +54,21 @@ class DocumentRelationships:
     cycles: List[List[Path]]
     warnings: List[str]
 
+    def analyze_dependencies(self, markdown_content: str) -> dict[str, list[str]]:
+        """
+        Analyzes markdown content for dependencies.
+        
+        Returns:
+            Dictionary mapping content chunks to their required resources
+            (images, attachments, etc.)
+        """
+        dependencies = {
+            "images": self._find_image_references(content),
+            "internal_links": self._find_internal_links(content),
+            "attachments": self._find_attachments(content)
+        }
+        return dependencies
+
 
 class EdgeData(TypedDict):
     """Type definition for edge data in the graph."""
@@ -66,7 +85,7 @@ class DocumentRelationshipManager:
     graph: DiGraph = field(default_factory=lambda: nx.DiGraph())  # type: ignore
     references: Dict[str, DocumentReference] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
-    type_counts: Dict[str, int] = field(default_factory=dict)  # type: ignore
+    type_counts: Dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Initialize after dataclass initialization."""
@@ -80,7 +99,15 @@ class DocumentRelationshipManager:
         line_number: int,
         context: str,
     ) -> None:
-        """Add a reference between documents."""
+        """Add a reference between documents.
+
+        Args:
+            source_doc: Source document path
+            target_doc: Target document path
+            ref_type: Type of reference
+            line_number: Line number of reference
+            context: Context of reference
+        """
         try:
             # Normalize paths
             source_path = self._normalize_path(source_doc)
@@ -127,7 +154,11 @@ class DocumentRelationshipManager:
             )
 
     def analyze_relationships(self) -> DocumentRelationships:
-        """Analyze document relationships and detect issues."""
+        """Analyze document relationships and detect issues.
+
+        Returns:
+            Document relationships analysis result
+        """
         try:
             # Find cycles in the dependency graph
             cycles_list = list(simple_cycles(self.graph))
@@ -136,9 +167,9 @@ class DocumentRelationshipManager:
             path_cycles = [[Path(node) for node in cycle] for cycle in cycles_list]
 
             # Get all dependencies
-            dependencies = []
+            dependencies: List[DocumentDependency] = []
             for source, target, data in cast(
-                List[Tuple[str, str, EdgeData]], self.graph.edges(data=True)
+                List[tuple[PathStr, PathStr, EdgeData]], self.graph.edges(data=True)
             ):
                 # Check if this edge is part of a cycle
                 is_circular = any(
@@ -178,7 +209,14 @@ class DocumentRelationshipManager:
             )
 
     def get_document_dependencies(self, doc_path: Path) -> List[Path]:
-        """Get all documents that the given document depends on."""
+        """Get all documents that the given document depends on.
+
+        Args:
+            doc_path: Document path to check
+
+        Returns:
+            List of dependent document paths
+        """
         try:
             source = str(self._normalize_path(doc_path))
             if source in self.graph:
@@ -194,7 +232,14 @@ class DocumentRelationshipManager:
             return []
 
     def get_dependent_documents(self, doc_path: Path) -> List[Path]:
-        """Get all documents that depend on the given document."""
+        """Get all documents that depend on the given document.
+
+        Args:
+            doc_path: Document path to check
+
+        Returns:
+            List of documents that depend on the given document
+        """
         try:
             target = str(self._normalize_path(doc_path))
             if target in self.graph:
@@ -212,7 +257,14 @@ class DocumentRelationshipManager:
             return []
 
     def check_circular_dependencies(self, doc_path: Path) -> List[List[Path]]:
-        """Check for circular dependencies involving the given document."""
+        """Check for circular dependencies involving the given document.
+
+        Args:
+            doc_path: Document path to check
+
+        Returns:
+            List of circular dependency paths
+        """
         try:
             source = str(self._normalize_path(doc_path))
             if source not in self.graph:
@@ -236,7 +288,15 @@ class DocumentRelationshipManager:
             return []
 
     def get_reference_chain(self, source_doc: Path, target_doc: Path) -> List[Path]:
-        """Get the chain of references from source to target document."""
+        """Get the chain of references from source to target document.
+
+        Args:
+            source_doc: Source document path
+            target_doc: Target document path
+
+        Returns:
+            List of documents in the reference chain
+        """
         try:
             source = str(self._normalize_path(source_doc))
             target = str(self._normalize_path(target_doc))
@@ -260,7 +320,14 @@ class DocumentRelationshipManager:
             return []
 
     def _normalize_path(self, path: Path) -> Path:
-        """Normalize path relative to base directory."""
+        """Normalize path relative to base directory.
+
+        Args:
+            path: Path to normalize
+
+        Returns:
+            Normalized path
+        """
         try:
             if path.is_absolute():
                 return path.relative_to(self.base_dir)
@@ -272,7 +339,15 @@ class DocumentRelationshipManager:
     def _validate_reference(
         self, source_path: Path, target_path: Path
     ) -> tuple[bool, Optional[str]]:
-        """Validate a document reference."""
+        """Validate a document reference.
+
+        Args:
+            source_path: Source document path
+            target_path: Target document path
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
         try:
             # Check if target exists
             full_target = self.base_dir / target_path
@@ -297,7 +372,11 @@ class DocumentRelationshipManager:
             return False, str(e)
 
     def export_graph(self, output_file: Path) -> None:
-        """Export the relationship graph to a DOT file."""
+        """Export the relationship graph to a DOT file.
+
+        Args:
+            output_file: Path to output file
+        """
         try:
             # Add graph attributes
             for node in self.graph.nodes():
@@ -314,7 +393,11 @@ class DocumentRelationshipManager:
             logger.error("Failed to export graph", error=str(e), file=str(output_file))
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get statistics about document relationships."""
+        """Get statistics about document relationships.
+
+        Returns:
+            Dictionary of statistics
+        """
         try:
             stats = {
                 "total_documents": self.graph.number_of_nodes(),
@@ -333,8 +416,12 @@ class DocumentRelationshipManager:
             return {}
 
     def _count_reference_types(self) -> Dict[str, int]:
-        """Count occurrences of each reference type."""
-        type_counts = {}
+        """Count occurrences of each reference type.
+
+        Returns:
+            Dictionary mapping reference types to counts
+        """
+        type_counts: Dict[str, int] = {}
         for ref in self.references.values():
             ref_type = ref.ref_type
             type_counts[ref_type] = type_counts.get(ref_type, 0) + 1
