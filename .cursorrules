@@ -1,366 +1,184 @@
-You are assisting in developing a Python CLI tool for markdown file consolidation and PDF generation.
+# Nova Document Processor Pipeline Rules
 
-Project Context:
-- Python CLI application using Click, PyMuPDF, and document processing libraries
-- Target Python version: 3.11+
-- Primary focus on clean code and efficient processing
-- Follows PEP 8 style guide with specific modifications
-- Uses modern Python features (match/case, TypeAlias, etc.)
+# Core Pipeline Structure
+pipeline:
+  phases:
+    - HTML_INDIVIDUAL:
+        description: "Convert individual markdown files to HTML"
+        requirements:
+          - Validate input markdown
+          - Process embedded content
+          - Handle image references
+          - Generate individual HTML
+          - Preserve metadata
+        
+    - MARKDOWN_CONSOLIDATED:
+        description: "Combine markdown files"
+        requirements:
+          - Maintain document order
+          - Preserve headers
+          - Handle cross-references
+          - Update internal links
+        
+    - HTML_CONSOLIDATED:
+        description: "Generate consolidated HTML"
+        requirements:
+          - Apply HTML template
+          - Process consolidated markdown
+          - Handle resource paths
+          - Update internal references
+          
+    - PDF:
+        description: "Generate final PDF"
+        requirements:
+          - Apply PDF template
+          - Handle page breaks
+          - Process images
+          - Set metadata
 
-Code Organization:
-- src/
-  - core/ (main processing logic)
-    - document_consolidator.py
-    - document_relationships.py
-    - filename_processor.py
-    - logging.py
-    - config.py
-    - exceptions.py
-    - resource_manager.py
-  - utils/ (helper functions)
-  - cli/ (command line interface)
-  - processors/ (document processors)
-    - markdown_processor.py
-    - html_processor.py
-    - attachment_processor.py
-    - metadata_processor.py
-    - embedded_content_processor.py
-  - models/ (data models and types)
-  - config/ (configuration management)
-  - resources/ (templates, styles, prompts)
-  - exceptions/ (custom exception classes)
-  - tests/ (test files and fixtures)
+# State Management
+state_tracking:
+  required_states:
+    - current_phase
+    - processed_files
+    - validation_results
+    - resource_usage
+    - error_states
+  persistence:
+    - Use checkpoints for recovery
+    - Maintain processing history
+    - Track partial results
 
-Development Environment:
-- Use poetry for dependency management
-- Maintain .env files for environment variables
-- Include pre-commit hooks for code quality
-- Use pytest for testing framework
+# Error Handling
+error_handling:
+  retry_policy:
+    max_retries: 3
+    delay_between_retries: 1
+    backoff_factor: 2
+  error_tolerance:
+    allow_partial_success: true
+    continue_on_non_critical: true
+  cleanup:
+    - Remove temporary files
+    - Release locks
+    - Free resources
 
-Coding Standards:
-1. Use type hints consistently with typing module
-2. Implement error handling with custom exceptions
-3. Document all public functions with docstrings (Google style)
-4. Use dataclasses and Pydantic models for data validation
-5. Implement async processing for I/O operations
-6. Use pathlib for file path operations
-7. Implement logging with structlog
+# Resource Management
+resource_management:
+  file_operations:
+    - Use pathlib.Path exclusively
+    - Implement proper locking
+    - Clean up temporary files
+  memory:
+    - Monitor usage
+    - Implement limits
+    - Clean up regularly
+  disk:
+    - Track space usage
+    - Maintain cleanup schedule
+    - Handle large files
 
-Architecture Patterns:
-- Factory pattern for file processors
-- Strategy pattern for different input types
-- Observer pattern for progress tracking
-- Builder pattern for output generation
-- Repository pattern for data access
-- Dependency injection for better testability
+# Validation
+validation:
+  input:
+    - File existence
+    - Markdown structure
+    - Encoding
+    - Size limits
+    - Content safety
+  output:
+    - HTML validity
+    - PDF structure
+    - Image quality
+    - Metadata presence
 
-Error Handling:
-- Create custom exceptions for each error type
-- Log all errors with appropriate context
-- Implement graceful degradation for non-critical failures
-- Include error recovery mechanisms
-- Provide user-friendly error messages
+# Code Quality
+code_quality:
+  style:
+    - Use black formatter
+    - Follow PEP 8
+    - Maximum line length: 88
+  typing:
+    - Use type hints
+    - Enable strict mypy
+    - Document type aliases
+  documentation:
+    - Google style docstrings
+    - Update README.md
+    - Maintain CHANGELOG.md
 
-Performance Guidelines:
-- Use generators for large file processing
-- Implement parallel processing with asyncio
-- Stream large files instead of loading into memory
-- Cache processed images based on hash
-- Use connection pooling for external services
-- Implement rate limiting where necessary
+# Testing Requirements
+testing:
+  coverage:
+    minimum: 80%
+  types:
+    - Unit tests
+    - Integration tests
+    - Performance tests
+    - Concurrency tests
+  scenarios:
+    - Happy path
+    - Error conditions
+    - Resource limits
+    - Concurrent access
 
-Testing Requirements:
-- Unit tests for all core functions (min 80% coverage)
-- Integration tests for file processing flows
-- Property-based testing for file handling
-- Mock external dependencies
-- Performance benchmarks
-- Security testing
-- API testing where applicable
+# Security
+security:
+  file_handling:
+    - Validate all paths
+    - Check permissions
+    - Handle symlinks safely
+  content:
+    - Sanitize markdown
+    - Validate external refs
+    - Check embedded content
 
-Documentation:
-- Include type hints and docstrings
-- Add inline comments for complex logic
-- Maintain a CHANGELOG.md
-- Update README.md with usage examples
-- Include API documentation
-- Document configuration options
-- Maintain architecture decision records (ADRs)
+# Performance
+performance:
+  async_operations:
+    - File I/O
+    - Network requests
+    - Image processing
+  optimization:
+    - Cache results
+    - Batch operations
+    - Stream large files
 
-Naming Conventions:
-- Use snake_case for functions and variables
-- Use PascalCase for classes
-- Use UPPER_CASE for constants
-- Prefix private methods with underscore
-- Use descriptive names that reflect purpose
+# Logging
+logging:
+  required_fields:
+    - timestamp
+    - phase
+    - file_path
+    - operation
+    - status
+  levels:
+    - DEBUG: Development details
+    - INFO: Normal operations
+    - WARNING: Non-critical issues
+    - ERROR: Critical failures
 
-Code Structure:
-- Maximum function length: 50 lines
-- Maximum file length: 500 lines
-- Maximum line length: 88 characters (black formatter)
-- Use absolute imports
-- Group imports according to isort standards
-- Separate concerns into appropriate modules
+# Configuration
+configuration:
+  sources:
+    - Environment variables
+    - .env file
+    - CLI arguments
+    - Default config
+  validation:
+    - Required fields
+    - Type checking
+    - Path existence
+    - Value ranges
 
-Optimization Focus:
-- Memory efficiency in file processing
-- CPU optimization for image processing
-- Minimal disk I/O operations
-- Efficient string concatenation
-- Database query optimization
-- Resource cleanup and management
-
-Security Considerations:
-- Validate all file paths
-- Sanitize markdown content
-- Handle symlinks safely
-- Implement file access checks
-- Secure handling of environment variables
-- Input validation and sanitization
-- OWASP security guidelines compliance
-- Regular dependency security updates
-
-CI/CD Requirements:
-- Automated testing on push
-- Code quality checks
-- Security scanning
-- Automated deployment
-- Version tagging
-- Release automation
-
-Monitoring and Logging:
-- Structured logging with context
-- Performance metrics
-- Error tracking
-- Usage analytics
-- Health checks
-- Resource monitoring
-
-Remember:
-- Focus on maintainability and readability
-- Implement robust error handling
-- Optimize for performance where critical
-- Follow Python best practices
-- Consider backwards compatibility
-- Document breaking changes
-
-Code Quality Rules for LLM:
-1. Always use pathlib.Path for file operations, never os.path
-2. Always use f-strings for string formatting, never % or .format()
-3. Always use async/await for I/O operations
-4. Always use TypedDict for dictionary type hints
-5. Always use Enum for constants with related values
-6. Always use dataclasses for data containers
-7. Always implement __str__ and __repr__ for custom classes
-8. Always use contextlib.contextmanager for resource management
-9. Always use structlog for logging
-10. Always use click.Path for CLI file parameters
-11. Never leave trailing whitespace in any file
-12. Always end files with a single newline
-13. Always use black-compatible string quotes (double quotes)
-14. Always sort imports according to isort with black profile
-15. Always include type annotations for all function parameters and returns
-
-Docstring Rules:
-1. Always include docstrings for all public functions and classes
-2. Always follow Google docstring style
-3. Always document all parameters with types and descriptions
-4. Always document return values with types and descriptions
-5. Always document raised exceptions
-6. Always include usage examples for complex functions
-7. Always document any side effects
-8. Always document any default values
-9. Always document any async behavior
-10. Always document any file operations
-
-Flake8 Compliance Rules:
-1. Always use comprehensions instead of map() or filter()
-2. Always handle return values from file operations
-3. Never use bare except clauses
-4. Always specify exception types
-5. Never use mutable default arguments
-6. Always use f-strings for string formatting
-7. Never use `==` or `!=` for singletons (use is/is not)
-8. Always break long lines before binary operators
-9. Always use parentheses for line continuations
-10. Never use `@staticmethod` (use module-level function instead)
-
-Type Checking Rules:
-1. Always include complete type annotations
-2. Always use proper type imports (from typing import ...)
-3. Always use TypeVar for generic types
-4. Always use Protocol for duck typing
-5. Always use Literal for string literals
-6. Always use TypeAlias for type aliases
-7. Always use Union or | for multiple types
-8. Always use Optional or | None for optional values
-9. Always use Final for constants
-10. Always use proper collection types (list[str], dict[str, int], etc.)
-
-YAML/JSON Rules:
-1. Always validate YAML/JSON files before committing
-2. Always use consistent indentation (2 spaces for YAML)
-3. Always include a schema when applicable
-4. Never include sensitive data
-5. Always use descriptive keys
-6. Always validate against schema
-7. Always use proper data types
-8. Never use anchors in YAML unless necessary
-9. Always document any custom tags
-10. Always validate UTF-8 encoding
-
-Security Rules:
-1. Always check for merge conflicts
-2. Never commit private keys
-3. Always validate file paths
-4. Always sanitize user input
-5. Never commit sensitive data
-6. Always use secure random numbers
-7. Always validate environment variables
-8. Always check file permissions
-9. Always use secure defaults
-10. Always validate external data
-
-Function Rules:
-1. Maximum function complexity: 10 (McCabe)
-2. Maximum function arguments: 8
-3. Maximum function returns: 5
-4. Maximum function local variables: 15
-5. Always type hint all parameters and return values
-6. Always validate input parameters
-7. Always handle edge cases explicitly
-8. Always use early returns for guard clauses
-9. Always document exceptions that may be raised
-10. Always use keyword-only arguments for optional parameters
-
-Error Handling Rules:
-1. Always use custom exceptions for domain-specific errors
-2. Always include context in exception messages
-3. Always clean up resources in finally blocks
-4. Always use contextlib.suppress for specific exceptions
-5. Always log exceptions with traceback
-6. Always validate file operations before execution
-7. Always handle timeout scenarios
-8. Always provide user-friendly error messages
-9. Always implement rollback mechanisms for critical operations
-10. Always validate input data before processing
-
-Testing Rules:
-1. Always write parametrized tests for edge cases
-2. Always mock external dependencies
-3. Always use fixtures for test data
-4. Always test exception scenarios
-5. Always test async code with pytest.mark.asyncio
-6. Always use property-based testing for data validation
-7. Always test timeout scenarios
-8. Always test concurrent operations
-9. Always include integration tests
-10. Always test error recovery mechanisms
-
-Performance Rules:
-1. Always use generators for large datasets
-2. Always implement proper cleanup in __exit__
-3. Always use connection pooling
-4. Always implement proper caching
-5. Always use bulk operations where possible
-6. Always implement rate limiting
-7. Always use streaming for large files
-8. Always implement proper pagination
-9. Always use proper indexing
-10. Always implement proper batching
-
-Document Processing Rules:
-1. Always validate document format before processing
-2. Always preserve document metadata
-3. Always handle embedded content
-4. Always maintain document relationships
-5. Always process attachments securely
-6. Always validate output formats
-7. Always preserve document structure
-8. Always handle character encodings
-9. Always validate templates
-10. Always clean up temporary files
-
-Office Document Rules:
-1. Always use mammoth for Word documents
-2. Always use pandas/openpyxl for Excel files
-3. Always use python-pptx for PowerPoint
-4. Always validate Office file formats
-5. Always extract embedded media
-6. Always preserve formatting where possible
-7. Always handle document properties
-8. Always process linked content
-9. Always validate output conversion
-10. Always clean up temporary Office files
-
-PDF Generation Rules:
-1. Always use PyMuPDF (fitz) for PDF generation
-2. Always handle image paths correctly
-3. Always clean up PDF resources
-4. Always validate PDF output
-5. Always handle large documents efficiently
-6. Always set proper PDF metadata
-7. Always handle Unicode correctly
-8. Always process embedded images
-9. Always handle page breaks properly
-10. Always clean up temporary files
-
-Pipeline Rules:
-1. Always validate input before processing
-2. Always use proper error handling with custom exceptions
-3. Always manage resources with context managers
-4. Always implement proper cleanup
-5. Always validate between pipeline stages
-6. Always use structured logging
-7. Always implement progress tracking
-8. Always validate output integrity
-9. Always handle memory efficiently
-10. Always implement proper error recovery
-
-Error Handling Rules:
-1. Always use custom exception hierarchy
-2. Always include error context and details
-3. Always implement proper error recovery
-4. Always log errors with full context
-5. Always clean up resources on error
-6. Always validate state after recovery
-7. Always provide user-friendly error messages
-8. Always categorize errors by severity
-9. Always handle nested errors properly
-10. Always maintain error state history
-
-Resource Management Rules:
-1. Always use context managers for resources
-2. Always implement proper cleanup
-3. Always track resource usage
-4. Always validate resource state
-5. Always handle resource limits
-6. Always clean up temporary files
-7. Always verify resource availability
-8. Always handle concurrent access
-9. Always monitor resource usage
-10. Always implement resource pooling
-
-Validation Rules:
-1. Always validate input files
-2. Always validate between stages
-3. Always validate output integrity
-4. Always check resource limits
-5. Always validate configuration
-6. Always verify file permissions
-7. Always check content integrity
-8. Always validate embedded content
-9. Always verify character encoding
-10. Always check size limits
-
-Monitoring Rules:
-1. Always log pipeline stages
-2. Always track resource usage
-3. Always monitor performance
-4. Always track error rates
-5. Always measure processing time
-6. Always monitor memory usage
-7. Always track cleanup success
-8. Always verify stage completion
-9. Always monitor system health
-10. Always track validation results
+# Development Workflow
+workflow:
+  version_control:
+    - Use feature branches
+    - Write clear commits
+    - Update documentation
+  review:
+    - Code review required
+    - Test coverage check
+    - Documentation update
+    - Performance impact

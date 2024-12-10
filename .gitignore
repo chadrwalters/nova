@@ -1,7 +1,4 @@
-# Ignore all dot directories and their contents
-.*/
-
-# Common Python-specific files and directories
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,26 +20,43 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environment
 .env
 .venv
 env/
 venv/
 ENV/
 
-# IDE specific files
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.DS_Store
 
-# Testing
+# Project specific
+_NovaProcessing/
+_Nova/
+_NovaIndividualMarkdown/
+*.pdf
+*.html
+/media/
+/temp/
+
+# Logs
+*.log
+logs/
+
+# Test coverage
 .coverage
-.pytest_cache/
+coverage.xml
 htmlcov/
 
-# Poetry
-poetry.lock
+# mypy
+.mypy_cache/
 
-# Misc
-.DS_Store
+# pytest
+.pytest_cache/
+
+# poetry
+poetry.toml
