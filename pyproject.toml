@@ -9,11 +9,12 @@ packages = [{include = "src"}]
 [tool.poetry.dependencies]
 python = "^3.11"
 click = "^8.1.7"
-pillow = "^10.1.0"
 markdown = "^3.5.1"
-pymupdf = "^1.23.7"
 beautifulsoup4 = "^4.12.2"
-structlog = "^24.1.0"
+structlog = "^23.2.0"
+pymupdf = "^1.23.7"  # PDF generation with PyMuPDF
+pydyf = ">=0.5.0,<0.6.0"
+mistune = "^3.0.2"
 jinja2 = "^3.1.2"
 python-dotenv = "^1.0.0"
 # Office document processing
@@ -22,6 +23,9 @@ pandas = "^2.1.4"   # Excel processing
 openpyxl = "^3.1.2"  # Excel file support for pandas
 python-pptx = "^0.6.23"  # PowerPoint processing
 pdfkit = "^1.0.0"
+chardet = "^5.2.0"
+aiofiles = "^23.2.1"
+psutil = "^5.9.8"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.11.0"

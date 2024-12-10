@@ -63,9 +63,9 @@ class DocumentRelationships:
             (images, attachments, etc.)
         """
         dependencies = {
-            "images": self._find_image_references(content),
-            "internal_links": self._find_internal_links(content),
-            "attachments": self._find_attachments(content)
+            "images": self._find_image_references(markdown_content),
+            "internal_links": self._find_internal_links(markdown_content),
+            "attachments": self._find_attachments(markdown_content)
         }
         return dependencies
 
