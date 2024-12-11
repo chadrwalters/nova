@@ -78,33 +78,24 @@ def load_config() -> ProcessingConfig:
 
 
 def initialize_processor(
-    input_dir: Path,
-    output_dir: Path,
-    consolidated_dir: Path,
-    temp_dir: Path,
-    template_dir: Path,
+    processing_dir: Path,
     error_tolerance: str = "strict",
+    retry_count: int = 3
 ) -> DocumentConsolidator:
     """Initialize document processor with configuration.
 
     Args:
-        input_dir: Input directory path
-        output_dir: Output directory path
-        consolidated_dir: Consolidated files directory path
-        temp_dir: Temporary files directory path
-        template_dir: Template files directory path
+        processing_dir: Directory for processing files
         error_tolerance: Error handling mode ("strict" or "lenient")
+        retry_count: Number of retries for failed operations
 
     Returns:
         Initialized DocumentConsolidator instance
     """
     return DocumentConsolidator(
-        input_dir=input_dir,
-        output_dir=output_dir,
-        consolidated_dir=consolidated_dir,
-        temp_dir=temp_dir,
-        template_dir=template_dir,
+        processing_dir=processing_dir,
         error_tolerance=error_tolerance == "lenient",
+        retry_count=retry_count
     )
 
 
@@ -153,12 +144,9 @@ def process(
 
         # Initialize processor
         processor = DocumentConsolidator(
-            input_dir=config.input_dir,
-            output_dir=config.output_dir,
-            consolidated_dir=config.consolidated_dir,
-            temp_dir=config.processing_dir or Path("temp"),
-            template_dir=config.template_dir or Path("templates"),
+            processing_dir=config.processing_dir or Path("temp"),
             error_tolerance=False,  # Default to strict mode
+            retry_count=3
         )
 
         # Get input files
@@ -446,17 +434,11 @@ def consolidate(
 ) -> None:
     """Consolidate markdown files into a single document."""
     try:
-        # Create config from CLI arguments
-        config = ProcessingConfig(
-            input_dir=input_dir,
-            output_dir=output_dir,
-            processing_dir=processing_dir,
-        )
-
-        # Initialize processor with config
+        # Initialize processor
         processor = DocumentConsolidator(
-            config=config,
+            processing_dir=processing_dir,
             error_tolerance=False,  # Default to strict mode
+            retry_count=3
         )
 
         # Get input files
@@ -465,8 +447,12 @@ def consolidate(
             logger.warning(f"No markdown files found in {input_dir}")
             return
 
+        # Create output directory if it doesn't exist
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / "consolidated.pdf"
+
         # Process files
-        processor.consolidate_files(input_files)
+        processor.consolidate_files(input_files, output_file)
 
     except Exception as err:
         logger.error("Error during consolidation", exc_info=err)

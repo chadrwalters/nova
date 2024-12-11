@@ -11,9 +11,13 @@ import structlog
 import aiofiles
 from bs4 import BeautifulSoup
 import markdown
+import time
+import shutil
+import urllib.parse
 
 from src.core.exceptions import ValidationError, ProcessingError
 from src.core.logging import get_logger
+from src.processors.pdf_processor import PDFAttachmentHandler
 
 logger = structlog.get_logger(__name__)
 
@@ -163,6 +167,10 @@ class MarkdownProcessor:
         self.logger = logger
         self.validator = MarkdownValidator()
         
+        # Use the parent of temp_dir as the processing directory
+        processing_dir = temp_dir.parent
+        self.pdf_handler = PDFAttachmentHandler(processing_dir)
+        
         # Initialize markdown converter
         self.md = markdown.Markdown(
             extensions=[
@@ -278,11 +286,123 @@ class MarkdownProcessor:
         except Exception as err:
             raise ProcessingError(f"Failed to process markdown content: {err}") from err
 
+    async def _find_pdf_attachments(self, content: str, base_path: Path) -> dict[str, Path]:
+        """Find and process PDF attachments in markdown content.
+        
+        Args:
+            content: Markdown content
+            base_path: Base path for resolving relative paths
+            
+        Returns:
+            Dictionary mapping original paths to processed paths
+        """
+        pdf_map = {}
+        
+        # Log start of PDF attachment search
+        self.logger.info("Searching for PDF attachments", file=str(base_path))
+        
+        try:
+            # Find PDF links in markdown content
+            pdf_pattern = r'\[([^\]]+)\]\(([^)]+\.pdf(?:/[^)]+\.pdf)?)\)'
+            matches = re.finditer(pdf_pattern, content, re.IGNORECASE)
+            
+            for match in matches:
+                link_text, pdf_path = match.groups()
+                
+                # URL decode the path
+                pdf_path = urllib.parse.unquote(pdf_path)
+                
+                # Handle PDF in directory case
+                if '.pdf/' in pdf_path:
+                    dir_path, file_name = pdf_path.split('.pdf/', 1)
+                    dir_path = dir_path + '.pdf'
+                    pdf_file = base_path.parent / dir_path / file_name
+                else:
+                    pdf_file = Path(pdf_path)
+                    if not pdf_file.is_absolute():
+                        pdf_file = base_path.parent / pdf_file
+                
+                self.logger.info("Found PDF reference", 
+                               link_text=link_text,
+                               pdf_path=str(pdf_file))
+                
+                # Process PDF if it exists
+                if pdf_file.exists():
+                    if pdf_file.is_dir():
+                        # If it's a directory ending in .pdf, look for the PDF file inside
+                        actual_pdf = pdf_file / pdf_file.name
+                        if actual_pdf.exists() and actual_pdf.is_file():
+                            self.logger.info("Found PDF in directory", 
+                                           dir=str(pdf_file),
+                                           file=str(actual_pdf))
+                            pdf_file = actual_pdf
+                    
+                    if pdf_file.is_file():
+                        self.logger.info("Processing PDF attachment", file=str(pdf_file))
+                        processed = self.pdf_handler.process_pdf(pdf_file)
+                        pdf_map[pdf_path] = processed.target_path
+                        self.logger.info("PDF processed successfully",
+                                       source=str(pdf_file),
+                                       target=str(processed.target_path),
+                                       size=processed.size)
+                    else:
+                        self.logger.warning("PDF file not found or invalid", file=str(pdf_file))
+                else:
+                    self.logger.warning("PDF file not found", file=str(pdf_file))
+            
+            # Also check for PDF files in the same directory
+            for file in base_path.parent.glob('**/*.pdf'):
+                if file.is_file():
+                    # Check if this is a PDF file in a directory with the same name
+                    if file.parent.name.endswith('.pdf'):
+                        parent_pdf = file.parent
+                        if parent_pdf.name == file.name:
+                            # This is a PDF file inside a directory with the same name
+                            self.logger.info("Found PDF in directory with same name", file=str(file))
+                            processed = self.pdf_handler.process_pdf(file)
+                            relative_path = f"{parent_pdf.relative_to(base_path.parent)}/{file.name}"
+                            pdf_map[str(relative_path)] = processed.target_path
+                            self.logger.info("PDF from directory processed",
+                                           source=str(file),
+                                           target=str(processed.target_path),
+                                           size=processed.size)
+                    elif file.name not in [Path(p).name for p in pdf_map.keys()]:
+                        # This is a standalone PDF file
+                        self.logger.info("Found additional PDF file", file=str(file))
+                        processed = self.pdf_handler.process_pdf(file)
+                        relative_path = file.relative_to(base_path.parent)
+                        pdf_map[str(relative_path)] = processed.target_path
+                        self.logger.info("Additional PDF processed",
+                                       source=str(file),
+                                       target=str(processed.target_path),
+                                       size=processed.size)
+            
+            self.logger.info("PDF attachment search complete",
+                           found=len(pdf_map),
+                           file=str(base_path))
+            
+            return pdf_map
+            
+        except Exception as e:
+            self.logger.error("Failed to process PDF attachments",
+                            error=str(e),
+                            file=str(base_path))
+            if not self.error_tolerance:
+                raise ProcessingError(f"Failed to process PDF attachments: {e}")
+            return pdf_map
+
     async def convert_to_html(self, markdown_file: Path) -> str:
         """Convert markdown to HTML and process embedded content."""
         try:
             async with aiofiles.open(markdown_file, 'r', encoding='utf-8') as f:
                 content = await f.read()
+
+            # Find and process PDF attachments
+            pdf_map = await self._find_pdf_attachments(content, markdown_file)
+            
+            # Update PDF references
+            if pdf_map:
+                content = self.pdf_handler.update_pdf_references(content, pdf_map)
 
             # Convert to HTML
             html = self.md.convert(content)
@@ -349,3 +469,93 @@ class MarkdownProcessor:
                     )
                     if not self.error_tolerance:
                         raise ProcessingError(f"Failed to process embedded image: {e}")
+
+    def _process_file_with_retry(self, file_path: Path, retries: int = 3) -> str:
+        """Process a markdown file with retries.
+        
+        Args:
+            file_path: Path to markdown file
+            retries: Number of retries
+            
+        Returns:
+            Processed markdown content
+        """
+        for attempt in range(retries):
+            try:
+                # Read markdown content
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Process embedded images
+                content = self._process_embedded_images(content, file_path)
+                
+                # Process PDF attachments
+                content = self._process_pdf_attachments(content, file_path)
+                
+                # Add metadata
+                content = self._add_metadata(content, file_path)
+                
+                return content
+                
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise ProcessingError(f"Failed to process {file_path}: {e}")
+                self.logger.warning(f"Retry {attempt + 1} for {file_path}: {e}")
+                time.sleep(1)
+    
+    def _process_pdf_attachments(self, content: str, file_path: Path) -> str:
+        """Process PDF attachments in markdown content.
+        
+        Args:
+            content: Markdown content
+            file_path: Path to markdown file
+            
+        Returns:
+            Processed markdown content
+        """
+        # Find all PDF links
+        pdf_pattern = r'\[([^\]]+)\]\(([^)]+\.pdf)\)'
+        matches = re.finditer(pdf_pattern, content)
+        
+        for match in matches:
+            link_text = match.group(1)
+            pdf_path = match.group(2)
+            
+            self.logger.info("Found PDF reference",
+                           link_text=link_text,
+                           pdf_path=pdf_path)
+            
+            # Convert relative path to absolute
+            if pdf_path.startswith('..'):
+                abs_path = file_path.parent / pdf_path.lstrip('../')
+            else:
+                abs_path = file_path.parent / pdf_path
+            
+            if abs_path.exists():
+                # Copy PDF to attachments directory
+                pdf_name = abs_path.name
+                pdf_hash = hashlib.sha256(str(abs_path).encode()).hexdigest()[:12]
+                pdf_name_with_hash = f"{pdf_name.rsplit('.', 1)[0]}_{pdf_hash}.pdf"
+                
+                target_path = self.temp_dir / "attachments/pdf" / pdf_name_with_hash
+                if not target_path.exists():
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(abs_path, target_path)
+                    self.logger.info("PDF file copied to processing directory",
+                                   size=target_path.stat().st_size,
+                                   source=str(abs_path),
+                                   target=str(target_path))
+                
+                # Update link in content
+                old_link = f"[{link_text}]({pdf_path})"
+                new_link = f'<a href="../attachments/pdf/{pdf_name_with_hash}" class="pdf-attachment" target="_blank">{link_text}</a>'
+                content = content.replace(old_link, new_link)
+                
+                self.logger.info("Additional PDF processed",
+                               size=target_path.stat().st_size,
+                               source=str(abs_path),
+                               target=str(target_path))
+            else:
+                self.logger.warning("PDF file not found", file=str(abs_path))
+        
+        return content
