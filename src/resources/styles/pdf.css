@@ -1,0 +1,271 @@
+/* PDF-specific styling */
+body {
+  font-family: "DejaVu Sans", Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.6;
+  margin: 0;
+  padding: 2cm;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Typography optimization */
+* {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
+}
+
+/* Heading styles */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  line-height: 1.2;
+  font-weight: 600;
+  page-break-after: avoid;
+  color: #333;
+}
+
+h1 { font-size: 24pt; }
+h2 { font-size: 20pt; }
+h3 { font-size: 16pt; }
+h4 { font-size: 14pt; }
+h5 { font-size: 12pt; }
+h6 { font-size: 11pt; }
+
+/* Paragraph spacing */
+p {
+  margin: 0.75em 0;
+  line-height: 1.6;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Fix hyperlink styling */
+a {
+  color: #0066cc;
+  text-decoration: none;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Prevent text overlap */
+p, h1, h2, h3, h4, h5, h6, ul, ol {
+  margin: 0.75em 0;
+  page-break-inside: avoid;
+  orphans: 3;
+  widows: 3;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+/* Fix list formatting */
+.pdf-list {
+  margin: 0.75em 0;
+  padding-left: 2em;
+  list-style-position: outside;
+  text-align: left;
+}
+
+.pdf-nested-list {
+  margin: 0.5em 0;
+  padding-left: 2em;
+}
+
+.pdf-list-item {
+  margin: 0.4em 0;
+  line-height: 1.4;
+  text-align: left;
+  page-break-inside: avoid;
+}
+
+/* Fix code block formatting */
+pre, code {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 10pt;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  background: #f5f5f5;
+  padding: 0.75em;
+  border-radius: 4px;
+  page-break-inside: avoid;
+  letter-spacing: 0;
+  margin: 1em 0;
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid #ddd;
+}
+
+/* Fix URL rendering */
+.url-content {
+  word-break: break-all;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  display: inline-block;
+}
+
+/* Table styling */
+.table-wrapper {
+  width: 100%;
+  margin: 1em 0;
+  overflow-x: auto;
+  page-break-inside: avoid;
+  border: none;
+}
+
+.pdf-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 0;
+  font-size: 10pt;
+  background-color: white;
+}
+
+.pdf-table td, .pdf-table th {
+  padding: 8px;
+  border: 1px solid #ddd;
+  text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  background-color: white;
+  line-height: 1.4;
+}
+
+.pdf-table th {
+  background-color: #f5f5f5;
+  font-weight: bold;
+  border-bottom: 2px solid #ddd;
+  white-space: nowrap;
+}
+
+.pdf-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+.pdf-table tr:hover {
+  background-color: #f5f5f5;
+}
+
+/* Header and footer */
+.pdf-header {
+  position: running(header);
+  text-align: center;
+  font-size: 9pt;
+  border-bottom: 1px solid #ddd;
+  margin: 0;
+  padding: 0.5cm 0;
+  background-color: white;
+  width: 100%;
+}
+
+.pdf-footer {
+  position: running(footer);
+  text-align: center;
+  font-size: 9pt;
+  border-top: 1px solid #ddd;
+  margin: 0;
+  padding: 0.5cm 0;
+  background-color: white;
+  width: 100%;
+}
+
+/* Page numbers */
+@page {
+  @top-center {
+    content: element(header);
+    margin: 0.5cm 0;
+  }
+  @bottom-center {
+    content: element(footer);
+    margin: 0.5cm 0;
+  }
+  margin: 2cm;
+  size: A4;
+}
+
+/* Font optimization */
+@font-face {
+  font-family: "DejaVu Sans";
+  src: local("DejaVu Sans");
+  font-display: swap;
+  unicode-range: U+000-5FF; /* Latin glyphs only */
+}
+
+@font-face {
+  font-family: "DejaVu Sans Mono";
+  src: local("DejaVu Sans Mono");
+  font-display: swap;
+  unicode-range: U+000-5FF; /* Latin glyphs only */
+}
+
+/* Print optimization */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  body {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 2cm;
+    background-color: white;
+  }
+  
+  pre, code {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    page-break-inside: avoid;
+    background-color: #f5f5f5 !important;
+  }
+  
+  table {
+    page-break-inside: avoid;
+    max-width: 100%;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  
+  td, th {
+    page-break-inside: avoid;
+  }
+  
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+  
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  
+  .pdf-header, .pdf-footer {
+    display: block !important;
+    position: fixed;
+    width: 100%;
+  }
+  
+  .pdf-header {
+    top: 0;
+  }
+  
+  .pdf-footer {
+    bottom: 0;
+  }
+} 

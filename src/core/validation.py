@@ -4,6 +4,8 @@ from typing import Optional
 import chardet
 import re
 from typing import TypedDict, Final
+from bs4 import BeautifulSoup
+from typing import Tuple, List
 
 from .exceptions import (
     ValidationError,
@@ -162,3 +164,35 @@ async def validate_markdown_content(
             pass
 
         # Add more validation rules as needed
+
+class HTMLValidator:
+    @staticmethod
+    def validate_html_structure(html_content: str) -> Tuple[bool, List[str]]:
+        """Validate HTML structure and identify potential rendering issues."""
+        issues = []
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Check for unclosed tags
+        if len(soup.find_all()) != len(re.findall(r'</[^>]*>', html_content)):
+            issues.append("Detected unclosed HTML tags")
+            
+        # Check for nested block elements that might cause layout issues
+        for block in soup.find_all(['div', 'p', 'section']):
+            if block.find_all(['div', 'p', 'section']):
+                issues.append(f"Potentially problematic nested block elements in {block.name}")
+        
+        # Validate image elements
+        for img in soup.find_all('img'):
+            if not img.get('alt'):
+                issues.append(f"Missing alt text for image: {img.get('src', 'unknown')}")
+        
+        # Check for proper heading hierarchy
+        headings = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        prev_level = 0
+        for heading in headings:
+            current_level = int(heading.name[1])
+            if current_level > prev_level + 1:
+                issues.append(f"Skipped heading level: {heading.name}")
+            prev_level = current_level
+        
+        return len(issues) == 0, issues
