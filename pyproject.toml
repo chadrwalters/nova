@@ -1,66 +1,19 @@
 [tool.poetry]
 name = "nova"
 version = "0.1.0"
-description = "Markdown file consolidation and PDF generation tool"
-authors = ["Your Name <your.email@example.com>"]
-readme = "README.md"
-packages = [{include = "src"}]
+description = "Nova Document Processor"
+authors = ["Chad Walters"]
 
 [tool.poetry.dependencies]
-python = "^3.11"
-click = "^8.1.7"
+python = "^3.10"
 markdown = "^3.5.1"
-beautifulsoup4 = "^4.12.2"
-structlog = "^23.2.0"
-pymupdf = "^1.23.7"  # PDF generation with PyMuPDF
-pydyf = ">=0.5.0,<0.6.0"
-mistune = "^3.0.2"
-jinja2 = "^3.1.2"
-python-dotenv = "^1.0.0"
-# Office document processing
-mammoth = "^1.6.0"  # Word to HTML
-pandas = "^2.1.4"   # Excel processing
-openpyxl = "^3.1.2"  # Excel file support for pandas
-python-pptx = "^0.6.23"  # PowerPoint processing
 pdfkit = "^1.0.0"
-chardet = "^5.2.0"
-aiofiles = "^23.2.1"
-psutil = "^5.9.8"
-
-[tool.poetry.group.dev.dependencies]
-black = "^23.11.0"
-isort = "^5.12.0"
-mypy = "^1.7.1"
-pytest = "^7.4.3"
-pytest-cov = "^3.0.0"
-flake8 = "^6.1.0"
+aiofiles = "^23.2.0"
+structlog = "^23.2.0"
+PyPDF2 = "^3.0.1"
+pikepdf = "^8.10.1"
+PyMuPDF = "^1.23.8"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.black]
-line-length = 88
-target-version = ['py311']
-include = '\.pyi?$'
-
-[tool.isort]
-profile = "black"
-src_paths = ["src", "tests"]
-known_first_party = ["src"]
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-default_section = "THIRDPARTY"
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-mypy_path = "src/stubs"
-plugins = []
-exclude = ["src/stubs/.*"]
-namespace_packages = true
-explicit_package_bases = true
-no_implicit_optional = true
-strict_optional = true
-check_untyped_defs = true
