@@ -64,9 +64,15 @@ class DocumentConsolidator:
             temp_dir=config.processing_dir / "temp",
             media_dir=config.processing_dir / "media"
         )
+        
+        # Get template and CSS paths
+        resources_dir = Path(__file__).parent.parent / "resources"
+        template_dir = resources_dir / "templates"
+        self.css_path = resources_dir / "styles" / "pdf.css"
+        
         self.html_processor = HTMLProcessor(
             temp_dir=config.processing_dir / "temp",
-            template_dir=Path(__file__).parent.parent / "resources" / "templates"
+            template_dir=template_dir
         )
 
     def consolidate_files(self, input_files: Sequence[Path]) -> Path:
@@ -148,9 +154,14 @@ class DocumentConsolidator:
 
                 # Generate final PDF
                 if consolidated_html:
+                    # Ensure CSS file exists
+                    if not self.css_path.exists():
+                        raise ConsolidationError(f"CSS file not found: {self.css_path}")
+                        
                     await self.html_processor.generate_pdf(
                         "\n".join(consolidated_html),
-                        output_file
+                        output_file,
+                        self.css_path
                     )
 
         except Exception as e:

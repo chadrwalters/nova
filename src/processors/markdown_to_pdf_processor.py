@@ -3,15 +3,14 @@
 import asyncio
 from pathlib import Path
 from typing import Optional
-
-import fitz
-from bs4 import BeautifulSoup
+import structlog
 
 from src.core.exceptions import PipelineError
 from src.processors.html_processor import HTMLProcessor
 from src.processors.markdown_processor import MarkdownProcessor
 from src.core.resource_manager import ResourceManager
 
+logger = structlog.get_logger(__name__)
 
 async def convert_markdown_to_pdf(
     input_path: Path,
@@ -36,52 +35,49 @@ async def convert_markdown_to_pdf(
         PipelineError: If conversion fails at any stage
     """
     try:
-        # Initialize processors
-        markdown_processor = MarkdownProcessor()
-        html_processor = HTMLProcessor()
-        
         # Create resource manager if not provided
         if not resource_manager:
             resource_manager = ResourceManager()
-        
-        # Convert markdown to HTML
-        html_content = await markdown_processor.process_file(input_path)
-        
-        # Apply template and CSS
-        html_content = await html_processor.process_content(
-            html_content,
-            template_path=template_path,
-            css_path=css_path
-        )
-        
-        # Create temporary HTML file
+
+        # Set up processors with proper directories
         markdown_processor = MarkdownProcessor(
-            temp_dir=config.temp_dir,
-            media_dir=config.media_dir,
+            temp_dir=resource_manager.temp_dir,
+            media_dir=resource_manager.media_dir,
             error_tolerance=True
         )
+        
         html_processor = HTMLProcessor(
-            temp_dir=config.temp_dir,
-            template_dir=config.template_dir,
-            error_tolerance=True
+            temp_dir=resource_manager.temp_dir,
+            template_dir=resource_manager.template_dir
         )
 
         # Process markdown
-        markdown_content = markdown_processor.process_file(input_path)
-        log_file_operation(logger, "read", input_path, "markdown")
+        logger.info("Processing markdown", file=str(input_path))
+        html_content = await markdown_processor.convert_to_html(input_path)
 
-        # Save HTML
-        html_path = config.html_dir / input_path.with_suffix('.html').name
-        html_processor.convert_to_html(markdown_content, html_path)
-        log_file_operation(logger, "create", html_path, "html")
+        # Ensure CSS path exists
+        if not css_path:
+            css_path = resource_manager.template_dir / 'styles' / 'pdf.css'
+        
+        if not css_path.exists():
+            raise PipelineError(f"CSS file not found: {css_path}")
 
-        # Generate PDF using PyMuPDF
-        html_processor.generate_pdf(
-            html_path.read_text(encoding="utf-8"),
-            output_path
+        # Generate PDF
+        logger.info("Generating PDF", output=str(output_path))
+        await html_processor.generate_pdf(
+            html_content,
+            output_path,
+            css_path
         )
-        log_file_operation(logger, "create", output_path, "pdf")
+
+        logger.info("PDF generation complete", output=str(output_path))
+        return output_path
 
     except Exception as e:
-        logger.error("PDF conversion failed", exc_info=e)
+        logger.error(
+            "PDF conversion failed",
+            input=str(input_path),
+            output=str(output_path),
+            error=str(e)
+        )
         raise PipelineError(f"Failed to convert {input_path} to PDF: {str(e)}") from e
