@@ -32,9 +32,13 @@ pipeline:
         description: "Generate final PDF"
         requirements:
           - Apply PDF template
-          - Handle page breaks
           - Process images
           - Set metadata
+          - NO HEADERS OR FOOTERS: Headers and footers in wkhtmltopdf are explicitly forbidden due to:
+              * Increased complexity and failure rates with separate HTML context
+              * Resource constraints with complex documents and many images
+              * Unreliable rendering in multi-page documents
+              * Memory management issues during rendering passes
 
 # State Management
 state_tracking:
