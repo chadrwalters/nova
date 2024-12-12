@@ -16,8 +16,9 @@ import urllib.parse
 import pikepdf
 import subprocess
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import fitz  # PyMuPDF
+import base64
 
 from src.core.exceptions import ProcessingError
 
@@ -49,27 +50,207 @@ class HTMLProcessor:
             'enable-local-file-access': None
         }
 
-    def _wrap_html_content(self, html_content: str) -> str:
+    def _wrap_html_content(self, html_content: str, resources_dir: Path, css_file: Path) -> str:
         """Wrap HTML content in proper structure with meta tags."""
+        # Read CSS content
+        with open(css_file, 'r') as f:
+            css_content = f.read()
+            
+        # Convert relative paths to absolute
+        html_content = html_content.replace('../attachments', str(resources_dir))
+        
+        # Replace PDF placeholders with embedded PDFs
+        pattern = r'<!-- PDF_EMBED_START:([^:]+):([^-]+) --><div class="pdf-placeholder">[^<]+</div><!-- PDF_EMBED_END:\1 -->'
+        for match in re.finditer(pattern, html_content):
+            pdf_path, title = match.groups()
+            # Read PDF content and convert to base64
+            with open(pdf_path, 'rb') as f:
+                pdf_content = f.read()
+                pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+            
+            # Replace placeholder with embedded PDF
+            placeholder = match.group(0)
+            embed_html = f'''
+            <div class="pdf-embed">
+                <div class="pdf-title">{title}</div>
+                <embed src="data:application/pdf;base64,{pdf_base64}" 
+                       type="application/pdf" 
+                       width="100%" 
+                       height="800px">
+            </div>'''
+            html_content = html_content.replace(placeholder, embed_html)
+            
         return f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nova Document</title>
+    <style>
+        {css_content}
+        
+        /* PDF Embed Styles */
+        .pdf-embed {{
+            margin: 2em 0;
+            padding: 1em;
+            border: 1px solid #ddd;
+            background: #fff;
+        }}
+        
+        .pdf-title {{
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 1em;
+            color: #333;
+        }}
+        
+        .pdf-placeholder {{
+            display: none;
+        }}
+        
+        /* Word Document Styles */
+        .word-document-content {{
+            margin: 2em 0;
+            padding: 1em;
+            border: 1px solid #ddd;
+            background: #fff;
+            font-family: "Times New Roman", Times, serif;
+        }}
+        
+        .word-document-header {{
+            margin-bottom: 1em;
+            padding-bottom: 1em;
+            border-bottom: 1px solid #eee;
+        }}
+        
+        .word-document-header h2 {{
+            margin: 0;
+            padding: 0;
+            color: #333;
+            font-size: 1.5em;
+            font-weight: bold;
+        }}
+        
+        .word-document-meta {{
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 0.5em;
+            font-style: italic;
+        }}
+        
+        .word-document-body {{
+            line-height: 1.6;
+            font-family: "Times New Roman", Times, serif;
+        }}
+        
+        .word-document-body p {{
+            margin: 1em 0;
+            text-align: justify;
+            orphans: 3;
+            widows: 3;
+        }}
+        
+        .word-document-body h1,
+        .word-document-body h2,
+        .word-document-body h3,
+        .word-document-body h4,
+        .word-document-body h5,
+        .word-document-body h6 {{
+            color: #333;
+            margin: 1.5em 0 0.8em;
+        }}
+        
+        .word-document-body table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1em 0;
+        }}
+        
+        .word-document-body th,
+        .word-document-body td {{
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+        }}
+        
+        .word-document-body th {{
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }}
+        
+        .word-document-body ul,
+        .word-document-body ol {{
+            margin: 1em 0;
+            padding-left: 2em;
+        }}
+        
+        .word-document-body li {{
+            margin: 0.5em 0;
+        }}
+        
+        .word-document-body img {{
+            max-width: 100%;
+            height: auto;
+            margin: 1em 0;
+        }}
+        
+        /* Print-specific Word document styles */
+        @media print {{
+            .word-document-content {{
+                margin: 2em 0;
+                padding: 0;
+                border: none;
+                break-inside: auto;
+            }}
+            
+            .word-document-header {{
+                break-inside: avoid;
+                break-after: avoid;
+                margin-bottom: 1em;
+            }}
+            
+            .word-document-body {{
+                break-inside: auto;
+            }}
+            
+            .word-document-body table {{
+                break-inside: avoid;
+            }}
+            
+            .word-document-body h1,
+            .word-document-body h2,
+            .word-document-body h3,
+            .word-document-body h4,
+            .word-document-body h5,
+            .word-document-body h6 {{
+                break-after: avoid;
+            }}
+            
+            .word-document-body p {{
+                orphans: 3;
+                widows: 3;
+            }}
+            
+            .word-document-body img {{
+                break-inside: avoid;
+            }}
+        }}
+    </style>
 </head>
 <body>
 {html_content}
 </body>
 </html>"""
 
-    async def _convert_pdf_to_images(self, pdf_path: Path) -> List[Path]:
+    async def _convert_pdf_to_images(self, pdf_path: Path, resources_dir: Path) -> List[Path]:
         """Convert PDF pages to images."""
         try:
             # Open the PDF
             pdf_doc = fitz.open(str(pdf_path))
             
             # Create a directory for the images
-            images_dir = self.temp_dir / "pdf_images"
+            images_dir = resources_dir / "images"
             images_dir.mkdir(exist_ok=True)
             
             # Convert each page to an image
@@ -80,40 +261,41 @@ class HTMLProcessor:
                 # Get the page as an image with high resolution
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                 
-                # Save the image
+                # Save the image directly to disk
                 image_path = images_dir / f"page_{page_num}.png"
                 pix.save(str(image_path))
                 image_paths.append(image_path)
                 
-                self.logger.info("Converted PDF page to image",
+                # Free memory
+                pix = None
+                page = None
+                
+                self.logger.debug("Converted PDF page to image",
                                page=page_num,
-                               size=image_path.stat().st_size)
+                               target=str(image_path))
             
+            # Close the PDF
+            pdf_doc.close()
             return image_paths
             
         except Exception as e:
             self.logger.error("Failed to convert PDF to images", error=str(e))
             raise ProcessingError(f"Failed to convert PDF to images: {e}")
 
-    async def _embed_pdf_as_images(self, input_html: str, pdf_path: Path, marker_id: str) -> str:
+    async def _embed_pdf_as_images(self, input_html: str, pdf_path: Path, marker_id: str, resources_dir: Path) -> str:
         """Embed a PDF as a series of images in the HTML."""
         try:
             # Convert PDF to images
-            image_paths = await self._convert_pdf_to_images(pdf_path)
+            image_paths = await self._convert_pdf_to_images(pdf_path, resources_dir)
             
             # Create HTML for the images
             images_html = []
             for image_path in image_paths:
-                # Copy image to the media directory
-                media_dir = self.temp_dir / "media"
-                media_dir.mkdir(exist_ok=True)
+                # Use relative path from resources directory
+                rel_path = image_path.relative_to(resources_dir)
                 
-                image_name = f"pdf_page_{image_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                target_path = media_dir / image_name
-                shutil.copy2(image_path, target_path)
-                
-                # Add image HTML
-                images_html.append(f'<img src="{target_path}" class="pdf-page" style="width: 100%; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">')
+                # Add image HTML with relative path
+                images_html.append(f'<img src="{rel_path}" class="pdf-page" style="width: 100%; margin: 10px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">')
             
             # Replace marker with images
             marker = f"<<<{marker_id}>>>"
@@ -122,6 +304,170 @@ class HTMLProcessor:
         except Exception as e:
             self.logger.error("Failed to embed PDF as images", error=str(e))
             raise ProcessingError(f"Failed to embed PDF as images: {e}")
+
+    async def _prepare_resources(self, html_content: str, css_file: Path) -> Tuple[str, List[Path]]:
+        """Prepare resources for HTML generation."""
+        # Extract and process embedded content
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Process Word document content
+        for div in soup.find_all('div', class_='word-document-content'):
+            # Get the HTML file path from the iframe
+            iframe = div.find('iframe')
+            if iframe and iframe.get('src', '').startswith('../attachments/word/'):
+                html_file = iframe.get('src', '').replace('../attachments/', '')
+                html_path = Path("/tmp/nova_output/resources") / html_file
+                
+                try:
+                    # Read the Word document HTML content
+                    if html_path.exists():
+                        with open(html_path, 'r', encoding='utf-8') as f:
+                            word_content = f.read()
+                            
+                        # Parse the Word document HTML
+                        word_soup = BeautifulSoup(word_content, 'html.parser')
+                        
+                        # Extract metadata from the Word document
+                        meta_div = div.find('div', class_='word-document-meta')
+                        if meta_div:
+                            meta_div.clear()  # Remove existing content
+                            
+                            # Add formatted metadata
+                            last_modified = datetime.fromtimestamp(html_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            meta_div.append(f"Last Modified: {last_modified}")
+                        
+                        # Extract the body content
+                        body_content = word_soup.find('body')
+                        if body_content:
+                            # Create a new div for the Word content
+                            word_div = soup.new_tag('div')
+                            word_div['class'] = 'word-document-body'
+                            
+                            # Process and copy content from the Word document body
+                            for child in body_content.children:
+                                if isinstance(child, str):
+                                    if child.strip():  # Only append non-empty strings
+                                        p = soup.new_tag('p')
+                                        p['class'] = 'word-paragraph'
+                                        p.string = child.strip()
+                                        word_div.append(p)
+                                else:
+                                    # Clean up and format the element
+                                    if child.name == 'p':
+                                        child['class'] = 'word-paragraph'
+                                        # Remove empty paragraphs
+                                        if not child.get_text(strip=True):
+                                            continue
+                                    elif child.name == 'table':
+                                        child['class'] = 'word-table'
+                                        # Add classes to table cells
+                                        for td in child.find_all(['td', 'th']):
+                                            td['class'] = 'word-table-cell'
+                                    elif child.name in ['ul', 'ol']:
+                                        child['class'] = 'word-list'
+                                        # Add classes to list items
+                                        for li in child.find_all('li'):
+                                            li['class'] = 'word-list-item'
+                                    elif child.name == 'h1':
+                                        child['class'] = 'word-heading-1'
+                                    elif child.name == 'h2':
+                                        child['class'] = 'word-heading-2'
+                                    elif child.name == 'h3':
+                                        child['class'] = 'word-heading-3'
+                                    
+                                    # Process images
+                                    for img in child.find_all('img'):
+                                        src = img.get('src', '')
+                                        if src.startswith('data:'):
+                                            continue  # Skip data URLs
+                                            
+                                        try:
+                                            # Get source path
+                                            src_path = Path(src)
+                                            if not src_path.is_absolute():
+                                                src_path = Path("/tmp/nova_output") / src
+                                            
+                                            if src_path.exists():
+                                                # Copy to resources directory
+                                                target_name = f"{src_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{src_path.suffix}"
+                                                target_path = Path("/tmp/nova_output/resources") / target_name
+                                                target_path.parent.mkdir(parents=True, exist_ok=True)
+                                                shutil.copy2(src_path, target_path)
+                                                
+                                                # Update src to absolute path
+                                                img['src'] = f'file://{str(target_path)}'
+                                        except Exception as e:
+                                            self.logger.warning(f"Failed to process image {src}", error=str(e))
+                                    
+                                    # Clean up any empty elements
+                                    if child.get_text(strip=True) or child.find('img'):
+                                        # Copy the element and its children
+                                        new_child = soup.new_tag(child.name)
+                                        new_child.attrs = child.attrs
+                                        for content in child.contents:
+                                            new_child.append(content.copy())
+                                        word_div.append(new_child)
+                            
+                            # Replace the iframe with the actual content
+                            iframe.replace_with(word_div)
+                except Exception as e:
+                    self.logger.error(f"Failed to process Word document {html_file}",
+                                    component="html_processor",
+                                    error=str(e))
+        
+        # Process PDF embeds
+        for iframe in soup.find_all('iframe'):
+            src = iframe.get('src', '')
+            if src.startswith('../attachments/pdf/'):
+                # Get the PDF file name
+                pdf_name = src.split('/')[-1]
+                
+                # Create an object tag for the PDF
+                obj = soup.new_tag('object')
+                obj['data'] = f'file://{str(Path("/tmp/nova_output/resources") / pdf_name)}'
+                obj['type'] = 'application/pdf'
+                obj['width'] = '100%'
+                obj['height'] = '800px'
+                
+                # Add fallback content
+                embed = soup.new_tag('embed')
+                embed['src'] = obj['data']
+                embed['type'] = 'application/pdf'
+                embed['width'] = '100%'
+                embed['height'] = '800px'
+                obj.append(embed)
+                
+                # Replace iframe with object
+                iframe.replace_with(obj)
+        
+        # Process images
+        for img in soup.find_all('img'):
+            src = img.get('src', '')
+            if src.startswith('data:'):
+                continue  # Skip data URLs
+                
+            try:
+                # Get source path
+                src_path = Path(src)
+                if not src_path.is_absolute():
+                    src_path = Path("/tmp/nova_output") / src
+                
+                if src_path.exists():
+                    # Copy to resources directory
+                    target_name = f"{src_path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{src_path.suffix}"
+                    target_path = Path("/tmp/nova_output/resources") / target_name
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_path, target_path)
+                    
+                    # Update src to absolute path
+                    img['src'] = f'file://{str(target_path)}'
+            except Exception as e:
+                self.logger.warning(f"Failed to process image {src}", error=str(e))
+        
+        # Process other resources
+        processed_resources = []
+        
+        return str(soup), processed_resources
 
     async def generate_pdf(self, html_content: str, output_file: Path, css_file: Path) -> None:
         """Generate PDF from HTML content."""
@@ -136,40 +482,80 @@ class HTMLProcessor:
         local_output = local_temp / "temp_output.pdf"
 
         try:
+            # Create resources directory
+            resources_dir = local_temp / "resources"
+            resources_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy CSS file to resources directory
+            css_target = resources_dir / "styles.css"
+            shutil.copy2(css_file, css_target)
+            
+            # Prepare resources and update HTML
+            updated_html, _ = await self._prepare_resources(html_content, css_target)
+            
+            # Wrap HTML with proper structure
+            final_html = self._wrap_html_content(updated_html, resources_dir, css_target)
+
             # Write HTML to temp file
-            temp_html = self.temp_dir / "temp_consolidated.html"
+            temp_html = local_temp / "temp.html"
             async with aiofiles.open(temp_html, 'w', encoding='utf-8') as f:
-                await f.write(html_content)
+                await f.write(final_html)
 
-            # Configure PDF options
-            options = {
-                'page-size': 'Letter',
-                'margin-top': '20mm',
-                'margin-right': '20mm',
-                'margin-bottom': '20mm',
-                'margin-left': '20mm',
-                'encoding': 'UTF-8',
-                'no-outline': None,
-                'enable-local-file-access': None,
-                'quiet': None
-            }
+            # Configure wkhtmltopdf options
+            options = [
+                '--page-size', 'Letter',
+                '--margin-top', '20mm',
+                '--margin-right', '20mm',
+                '--margin-bottom', '20mm',
+                '--margin-left', '20mm',
+                '--encoding', 'UTF-8',
+                '--no-outline',
+                '--enable-local-file-access',
+                '--quiet',
+                '--load-error-handling', 'ignore',
+                '--disable-smart-shrinking',
+                '--zoom', '1.0',
+                '--javascript-delay', '1000',
+                '--no-stop-slow-scripts',
+                '--debug-javascript',
+                '--print-media-type',
+                '--enable-javascript',
+                '--disable-external-links',
+                '--disable-internal-links'
+            ]
 
-            # Generate PDF to local temp first
-            pdfkit.from_file(str(temp_html), str(local_output), options=options, css=str(css_file))
+            # Run wkhtmltopdf directly
+            cmd = [self.wkhtmltopdf_path] + options + [str(temp_html), str(local_output)]
+            
+            # Change to temp directory before running command
+            cwd = os.getcwd()
+            os.chdir(str(local_temp))
+            
+            try:
+                # Run wkhtmltopdf
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    self.logger.error("wkhtmltopdf failed",
+                                    component="html_processor",
+                                    stderr=result.stderr,
+                                    stdout=result.stdout)
+                    raise ProcessingError(f"wkhtmltopdf failed: {result.stderr}")
+                    
+            finally:
+                # Change back to original directory
+                os.chdir(cwd)
 
             # Ensure output directory exists
             output_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Copy to final destination with proper permissions
-            import shutil
+            
+            # Copy to final destination
             shutil.copy2(local_output, output_file)
-            output_file.chmod(0o644)  # Set standard read permissions
-
+            
             self.logger.info("PDF generation complete",
                            component="html_processor",
-                           final_size=output_file.stat().st_size,
                            output=str(output_file))
-
+                           
         except Exception as e:
             self.logger.error("PDF generation failed",
                             component="html_processor",
@@ -179,8 +565,34 @@ class HTMLProcessor:
             # Cleanup temp files
             if local_output.exists():
                 local_output.unlink()
-            if local_temp.exists():
-                local_temp.rmdir()
+            if temp_html.exists():
+                temp_html.unlink()
+            if resources_dir.exists():
+                shutil.rmtree(resources_dir)
+                
+    def _make_paths_absolute(self, html_content: str, base_dir: Path) -> str:
+        """Convert relative paths to absolute paths."""
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Handle images
+        for img in soup.find_all('img'):
+            src = img.get('src', '')
+            if src and not src.startswith(('data:', 'http:', 'https:')):
+                img['src'] = str(base_dir / src)
+                
+        # Handle links
+        for link in soup.find_all('a'):
+            href = link.get('href', '')
+            if href and not href.startswith(('http:', 'https:', 'mailto:', '#')):
+                link['href'] = str(base_dir / href)
+                
+        # Handle iframes
+        for iframe in soup.find_all('iframe'):
+            src = iframe.get('src', '')
+            if src and not src.startswith(('http:', 'https:')):
+                iframe['src'] = str(base_dir / src)
+                
+        return str(soup)
 
     def clean_html(self, html_content: str) -> str:
         """Clean and format HTML content."""

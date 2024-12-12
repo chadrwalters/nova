@@ -193,11 +193,11 @@ class DocumentConsolidator:
                 # Track PDF attachments
                 async with aiofiles.open(input_file, 'r') as f:
                     content = await f.read()
-                    pdf_map = await processor._find_pdf_attachments(content, input_file)
-                    if pdf_map:
+                    pdf_attachments = await processor._find_pdf_attachments(content, input_file)
+                    if pdf_attachments:
                         # Update paths to be relative to processing directory
                         updated_map = {}
-                        for orig_path, proc_path in pdf_map.items():
+                        for _, orig_path, proc_path in pdf_attachments:
                             # Make sure the processed path is relative to the processing directory
                             if proc_path.is_absolute():
                                 try:

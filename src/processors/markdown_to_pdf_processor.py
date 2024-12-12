@@ -2,8 +2,9 @@
 
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 import structlog
+import logging
 
 from src.core.exceptions import PipelineError
 from src.processors.html_processor import HTMLProcessor
@@ -81,3 +82,76 @@ async def convert_markdown_to_pdf(
             error=str(e)
         )
         raise PipelineError(f"Failed to convert {input_path} to PDF: {str(e)}") from e
+
+class MarkdownToPDFProcessor:
+    def process_image(self, image_data: Any) -> None:
+        """Process image data using streaming and proper memory management."""
+        try:
+            # Extract metadata before touching binary content
+            metadata = {
+                'path': str(getattr(image_data, 'path', 'unknown')),
+                'type': getattr(image_data, 'mime_type', 'unknown'),
+                'size': self._get_image_size(image_data)
+            }
+
+            logger.debug(
+                "Processing image",
+                extra={
+                    'phase': 'PDF',
+                    'file_path': metadata['path'],
+                    'operation': 'image_processing',
+                    'status': 'processing',
+                    'metadata': metadata
+                }
+            )
+
+            # Process image using streaming
+            self._process_image_stream(image_data)
+
+            logger.info(
+                f"Processed image: {metadata['path']}",
+                extra={
+                    'phase': 'PDF',
+                    'file_path': metadata['path'],
+                    'operation': 'image_processing',
+                    'status': 'complete',
+                    'metadata': metadata
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                "Image processing failed",
+                extra={
+                    'phase': 'PDF',
+                    'file_path': str(getattr(image_data, 'path', 'unknown')),
+                    'operation': 'image_processing',
+                    'status': 'error',
+                    'error': str(e)
+                }
+            )
+            raise
+
+    def _get_image_size(self, image_data: Any) -> int:
+        """Get image size without loading full content."""
+        if hasattr(image_data, 'path') and Path(image_data.path).exists():
+            return Path(image_data.path).stat().st_size
+        if hasattr(image_data, 'content'):
+            return len(image_data.content)
+        return 0
+
+    def _process_image_stream(self, image_data: Any) -> None:
+        """Process image using streaming to avoid memory issues."""
+        # Process image in chunks if it's a file
+        if hasattr(image_data, 'path') and Path(image_data.path).exists():
+            with open(image_data.path, 'rb') as f:
+                while chunk := f.read(8192):  # 8KB chunks
+                    self._process_chunk(chunk)
+        # Fall back to direct content if necessary
+        elif hasattr(image_data, 'content'):
+            self._process_chunk(image_data.content)
+
+    def _process_chunk(self, chunk: bytes) -> None:
+        """Process a single chunk of image data."""
+        # Implement actual image processing here
+        pass

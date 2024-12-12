@@ -18,8 +18,8 @@ from src.processors.markdown_to_pdf_processor import convert_markdown_to_pdf
 from src.resources.templates.template_manager import TemplateManager
 from src.utils.colors import NovaConsole
 
-# Set up logging
-setup_logging(log_level="INFO", json_format=False)
+# Set up logging with WARNING level by default
+setup_logging(log_level="WARNING", json_format=False)
 logger = get_logger(__name__)
 
 nova_console = NovaConsole()
@@ -100,9 +100,13 @@ def initialize_processor(
 
 
 @click.group()
-def cli() -> None:
-    """Nova document processing CLI."""
-    pass
+@click.option('--verbose', is_flag=True, help='Enable verbose logging')
+def cli(verbose: bool) -> None:
+    """Nova document processor CLI."""
+    if verbose:
+        # Re-configure logging for verbose output
+        setup_logging(log_level="INFO", json_format=False)
+        logger.info("Verbose logging enabled")
 
 
 @cli.command()
@@ -129,6 +133,9 @@ def process(
     try:
         # Load configuration
         config = load_config()
+
+        # Initialize logging with binary content filtering
+        setup_logging(config)
 
         # Update config with command-line processing directory if provided
         if processing_dir:
@@ -432,31 +439,46 @@ def consolidate(
     processing_dir: Path,
     template_dir: Path,
 ) -> None:
-    """Consolidate markdown files into a single document."""
+    """Consolidate markdown files into a single PDF."""
     try:
-        # Initialize processor
-        processor = DocumentConsolidator(
-            processing_dir=processing_dir,
-            error_tolerance=False,  # Default to strict mode
-            retry_count=3
-        )
-
+        # Create processor
+        processor = DocumentConsolidator(processing_dir, template_dir)
+        
         # Get input files
         input_files = sorted(input_dir.glob("*.md"))
         if not input_files:
-            logger.warning(f"No markdown files found in {input_dir}")
+            logger.warning("No markdown files found", directory=str(input_dir))
             return
-
-        # Create output directory if it doesn't exist
-        output_dir.mkdir(parents=True, exist_ok=True)
+            
+        # Set output file
         output_file = output_dir / "consolidated.pdf"
-
+        
         # Process files
         processor.consolidate_files(input_files, output_file)
-
+        
+        # Only show success message if we actually succeeded
+        print("\n=== Process Complete ===\n")
+        print("✓ All steps completed successfully\n")
+        
     except Exception as err:
         logger.error("Error during consolidation", exc_info=err)
-        raise click.Abort() from err
+        print("\nAborted!\n")
+        print("=== Process Complete ===\n")
+        print("❌ Process failed with errors\n")
+    
+    finally:
+        # Always show file information
+        print("Generated Files:")
+        print(f"  📄 Input Files:        {input_dir}/")
+        print(f"  📄 Output Files:       {output_dir}/")
+        print(f"  📄 Processing Files:   {processing_dir}/\n")
+        
+        print("Directory Structure:")
+        print("    input/         (Source markdown files)")
+        print("    output/        (Final PDF output)")
+        print("    processing/    (Processing files)\n")
+        
+        print("View the files above to see the results")
 
 
 # Add commands to CLI group
