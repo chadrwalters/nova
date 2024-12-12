@@ -46,15 +46,83 @@ class MarkdownProcessor:
         self.pdf_handler = PDFAttachmentHandler(temp_dir)
         
     async def convert_to_html(self, file_path: Path) -> str:
-        """Convert markdown file to HTML.
-        
-        Args:
-            file_path: Path to markdown file
-            
-        Returns:
-            Processed HTML content
-        """
+        """Convert markdown file to HTML."""
         try:
+            # Add CSS for document boundaries and embedded content
+            css = """
+            <style>
+            .markdown-document {
+                border: 2px solid #2196F3;
+                border-radius: 4px;
+                padding: 20px;
+                margin: 20px 0;
+                background: #fff;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .markdown-content {
+                position: relative;
+                padding: 15px;
+                background: #FAFAFA;
+                border-left: 4px solid #2196F3;
+                margin: 15px 0;
+                border-radius: 4px;
+            }
+            .markdown-content:before {
+                content: "Markdown";
+                position: absolute;
+                top: -10px;
+                left: 10px;
+                background: #2196F3;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            .word-document-wrapper {
+                position: relative;
+                margin: 15px 0;
+                border: 1px solid #E0E0E0;
+                border-radius: 4px;
+                background: white;
+            }
+            .word-document-wrapper:before {
+                content: "Embedded Word Document";
+                position: absolute;
+                top: -10px;
+                left: 10px;
+                background: #FF9800;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            .attachment-container {
+                display: flex;
+                align-items: center;
+                padding: 12px 15px;
+                margin: 10px 0;
+                background: #F5F5F5;
+                border-left: 4px solid #FF9800;
+                border-radius: 4px;
+            }
+            .attachment-icon {
+                font-size: 24px;
+                margin-right: 12px;
+            }
+            .attachment-title {
+                font-weight: 500;
+                color: #1976D2;
+                text-decoration: none;
+                margin-right: 12px;
+            }
+            .attachment-meta {
+                color: #666;
+                font-size: 14px;
+                margin-left: auto;
+            }
+            </style>
+            """
+
             async with aiofiles.open(file_path, 'r') as f:
                 content = await f.read()
                 
@@ -63,10 +131,22 @@ class MarkdownProcessor:
             content = await self._process_word_attachments(content, file_path)
             content = await self._process_pdf_attachments(content, file_path)
             
-            # Convert to HTML
-            html = markdown.markdown(content, extensions=['extra', 'meta'])
+            # Convert to HTML with preserved HTML blocks
+            html = markdown.markdown(content, extensions=['extra', 'meta'], output_format='html5')
             
-            return html
+            # Wrap initial markdown content
+            html = f'<div class="markdown-content">{html}</div>'
+            
+            # Wrap everything in document container
+            wrapped_html = f"""
+            {css}
+            <div class="markdown-document">
+                <div class="document-title">{file_path.stem}</div>
+                {html}
+            </div>
+            """
+            
+            return wrapped_html
             
         except Exception as e:
             self.logger.error("Markdown conversion failed",
@@ -155,57 +235,52 @@ class MarkdownProcessor:
                 abs_path = (file_path.parent / urllib.parse.unquote(word_path)).resolve()
                 
                 if abs_path.exists():
-                    # Process Word file
+                    # Process Word file to get HTML content
                     processed = await self.word_processor.process_document(abs_path)
                     
                     if processed.target_path and processed.target_path.exists():
                         # Read the HTML content
                         async with aiofiles.open(processed.target_path, 'r', encoding='utf-8') as f:
-                            html_content = await f.read()
+                            word_content = await f.read()
                             
                         # Parse the HTML to extract just the body content
-                        soup = BeautifulSoup(html_content, 'html.parser')
+                        soup = BeautifulSoup(word_content, 'html.parser')
                         body_content = soup.find('body')
                         if body_content:
                             content_html = ''.join(str(tag) for tag in body_content.children)
                         else:
-                            content_html = html_content
+                            content_html = word_content
+
+                        # Close the current markdown section before embedded content
+                        attachment_html = '</div>\n'  # Close markdown-content div
                         
-                        # Create HTML structure with proper indentation
-                        html = f'''<div class="word-document-content">
-    <div class="word-document-header">
-        <h2>{link_text}</h2>
-        <div class="word-document-meta">
-            <span>Last Modified: {datetime.fromtimestamp(abs_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}</span>
-        </div>
+                        # Add the Word document
+                        attachment_html += f"""
+<div class="word-document-wrapper">
+    <div class="attachment-container">
+        <span class="attachment-icon">📄</span>
+        <span class="attachment-title">{link_text}</span>
+        <span class="attachment-meta">Word Document • Modified {datetime.fromtimestamp(abs_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}</span>
     </div>
-    <div class="word-document-body">
+    <div class="word-content">
         {content_html}
     </div>
-</div>'''
+</div>
+"""
+                        # Start a new markdown section after embedded content
+                        attachment_html += '\n<div class="markdown-content">'
                         
-                        # Replace markdown link with HTML
+                        # Replace markdown link with HTML content
                         old_link = f"[{link_text}]({word_path})"
-                        content = content.replace(old_link, html)
-                        
-                        self.logger.debug("Word document embedded",
-                                       source=str(abs_path),
-                                       target=str(processed.target_path))
-                    else:
-                        self.logger.warning("Word document processing failed",
-                                          file=str(abs_path),
-                                          error="HTML file not found")
-                        continue
-                else:
-                    self.logger.warning("Word document not found",
-                                      file=str(abs_path))
-                    
+                        content = content.replace(old_link, attachment_html)
+
             return content
             
         except Exception as e:
             self.logger.error(f"Failed to process Word attachments in {file_path}",
-                            component="markdown_processor",
                             error=str(e))
+            if self.error_tolerance:
+                return content
             raise ProcessingError(f"Failed to process Word attachments: {e}")
             
     async def _find_pdf_attachments(self, content: str, file_path: Path) -> list[tuple[str, str, Path]]:
@@ -233,38 +308,27 @@ class MarkdownProcessor:
             
             for link_text, pdf_path, abs_path in attachments:
                 if abs_path.exists():
-                    # Process PDF file
-                    processed = await self.pdf_handler.process_pdf(abs_path)
-                    
-                    # Store the processed PDF path for later embedding
-                    if not hasattr(self, 'pdf_attachments'):
-                        self.pdf_attachments = []
-                    self.pdf_attachments.append({
-                        'path': processed.target_path,
-                        'title': link_text
-                    })
-                    
-                    # Replace markdown link with HTML comment placeholder
+                    # Create HTML-style attachment block that will be preserved
+                    modified_time = datetime.fromtimestamp(abs_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M')
+                    attachment_html = f"""
+<div class="attachment-container">
+    <span class="attachment-icon">📑</span>
+    <a href="{pdf_path}" class="attachment-title">{link_text}</a>
+    <span class="attachment-meta">PDF Document • Modified {modified_time}</span>
+</div>
+"""
+                    # Replace markdown link with HTML
                     old_link = f"[{link_text}]({pdf_path})"
-                    placeholder = f'<!-- PDF_EMBED_START:{processed.target_path}:{link_text} --><div class="pdf-placeholder">{link_text}</div><!-- PDF_EMBED_END:{processed.target_path} -->'
-                    content = content.replace(old_link, placeholder)
-                    
-                    self.logger.info("PDF processed for embedding",
-                                   source=str(abs_path),
-                                   target=str(processed.target_path))
-                else:
-                    self.logger.warning("PDF file not found",
-                                      file=str(abs_path))
+                    content = content.replace(old_link, attachment_html)
                     
             return content
             
         except Exception as e:
+            self.logger.error("PDF processing failed", error=str(e))
             if self.error_tolerance:
-                self.logger.warning("PDF processing failed",
-                                  error=str(e))
                 return content
             raise ProcessingError(f"Failed to process PDF attachments: {e}")
-
+            
     async def _process_embedded_content(self, content: str, file_path: Path) -> str:
         """Process embedded content in markdown."""
         try:
