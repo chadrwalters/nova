@@ -1,36 +1,6 @@
 # Nova Document Processor
 
-A robust Python CLI tool for markdown file consolidation and PDF generation with advanced document processing capabilities.
-
-## Features
-
-### Core Processing
-- Asynchronous markdown to HTML conversion
-- Smart document consolidation with state tracking
-- PDF generation with customizable templates
-- Phased processing with checkpointing
-- Resource-aware processing with automatic cleanup
-
-### Document Handling
-- Metadata extraction and preservation
-- Attachment processing
-- Image optimization and embedding
-- Cross-document referencing
-- Document relationship tracking
-
-### Advanced Features
-- Progress tracking and state management
-- Error recovery with configurable retry logic
-- Resource monitoring and management
-- Structured logging with context
-- Phase-based processing control
-
-## Requirements
-
-- Python 3.11+
-- Poetry for dependency management
-- wkhtmltopdf for PDF generation
-- Git for version control
+A document processing pipeline for converting and consolidating various document formats.
 
 ## Installation
 

@@ -3,9 +3,13 @@ name = "nova"
 version = "0.1.0"
 description = "Nova Document Processor"
 authors = ["Chad Walters"]
+packages = [
+    { include = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+click = "^8.1.0"
 markdown = "^3.5.1"
 pdfkit = "^1.0.0"
 aiofiles = "^23.2.0"
@@ -15,6 +19,7 @@ pikepdf = "^8.10.1"
 PyMuPDF = "^1.23.8"
 python-docx = "^0.8.11"
 mammoth = "^1.6.0"
+python-pptx = "^0.6.21"
 
 [build-system]
 requires = ["poetry-core"]

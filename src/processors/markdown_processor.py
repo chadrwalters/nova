@@ -20,6 +20,7 @@ from src.core.exceptions import ValidationError, ProcessingError
 from src.core.logging import get_logger
 from src.processors.pdf_processor import PDFAttachmentHandler
 from src.processors.word_processor import WordProcessor
+from src.processors.powerpoint_processor import PowerPointProcessor
 
 logger = structlog.get_logger(__name__)
 
@@ -44,6 +45,7 @@ class MarkdownProcessor:
         self.logger = logger
         self.word_processor = WordProcessor(temp_dir)
         self.pdf_handler = PDFAttachmentHandler(temp_dir)
+        self.powerpoint_processor = PowerPointProcessor(temp_dir)
         
     async def convert_to_html(self, file_path: Path) -> str:
         """Convert markdown file to HTML."""
@@ -120,6 +122,45 @@ class MarkdownProcessor:
                 font-size: 14px;
                 margin-left: auto;
             }
+            .pptx-container {
+                position: relative;
+                margin: 15px 0;
+                border: 1px solid #E0E0E0;
+                border-radius: 4px;
+                background: white;
+            }
+            .pptx-container:before {
+                content: "PowerPoint Presentation";
+                position: absolute;
+                top: -10px;
+                left: 10px;
+                background: #4CAF50;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            .slides-wrapper {
+                padding: 20px;
+            }
+            .slide {
+                border: 1px solid #ddd;
+                margin: 10px 0;
+                padding: 15px;
+                background: #fff;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .shape {
+                margin: 10px 0;
+            }
+            .text-content {
+                font-size: 16px;
+                line-height: 1.5;
+            }
+            .image-content img {
+                max-width: 100%;
+                height: auto;
+            }
             </style>
             """
 
@@ -129,6 +170,7 @@ class MarkdownProcessor:
             # Process embedded content
             content = await self._process_embedded_images(content, file_path)
             content = await self._process_word_attachments(content, file_path)
+            content = await self._process_powerpoint_attachments(content, file_path)
             content = await self._process_pdf_attachments(content, file_path)
             
             # Convert to HTML with preserved HTML blocks
@@ -159,7 +201,7 @@ class MarkdownProcessor:
         try:
             # Find image references
             for match in re.finditer(r'\[([^\]]+)\]\(([^)]+\.(png|jpg|jpeg|gif))\)', content):
-                link_text, image_path = match.groups()
+                link_text, image_path, _ = match.groups()
                 abs_path = (file_path.parent / urllib.parse.unquote(image_path)).resolve()
                 
                 if not abs_path.exists():
@@ -304,9 +346,17 @@ class MarkdownProcessor:
         """Process PDF attachments in markdown content."""
         try:
             # Find PDF references
-            attachments = await self._find_pdf_attachments(content, file_path)
-            
-            for link_text, pdf_path, abs_path in attachments:
+            for match in re.finditer(r'\[([^\]]+)\]\(([^)]+\.pdf)\)', content):
+                link_text, pdf_path = match.groups()
+                
+                # Check if it's a URL
+                if pdf_path.startswith(('http://', 'https://')):
+                    # For URLs, just preserve the link
+                    self.logger.info("Skipping external PDF URL", url=pdf_path)
+                    continue
+                    
+                abs_path = (file_path.parent / urllib.parse.unquote(pdf_path)).resolve()
+                
                 if abs_path.exists():
                     # Create HTML-style attachment block that will be preserved
                     modified_time = datetime.fromtimestamp(abs_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M')
@@ -320,7 +370,9 @@ class MarkdownProcessor:
                     # Replace markdown link with HTML
                     old_link = f"[{link_text}]({pdf_path})"
                     content = content.replace(old_link, attachment_html)
-                    
+                else:
+                    self.logger.warning("PDF file not found", file=str(abs_path))
+
             return content
             
         except Exception as e:
@@ -340,6 +392,15 @@ class MarkdownProcessor:
                     
                 docx_name = docx_file.stem
                 content += f"\n\n[{docx_name}]({docx_file.relative_to(file_path.parent)})"
+            
+            # Process PowerPoint files in subdirectories
+            for pptx_file in file_path.parent.rglob('*.pptx'):
+                # Skip if not in a subdirectory of the markdown file
+                if pptx_file.parent == file_path.parent:
+                    continue
+                    
+                pptx_name = pptx_file.stem
+                content += f"\n\n[{pptx_name}]({pptx_file.relative_to(file_path.parent)})"
             
             # Process PDFs in subdirectories
             for pdf_file in file_path.parent.rglob('*.pdf'):
@@ -371,6 +432,7 @@ class MarkdownProcessor:
             
             # Process attachments in order
             content = await self._process_word_attachments(content, file_path)
+            content = await self._process_powerpoint_attachments(content, file_path)
             content = await self._process_pdf_attachments(content, file_path)
             
             # Store the processed content for PDF generation
@@ -388,35 +450,15 @@ class MarkdownProcessor:
             raise ProcessingError(f"Failed to process markdown file: {e}")
 
     async def generate_final_pdf(self, html_content: str) -> bytes:
-        """Generate final PDF with all embedded content.
-        
-        Args:
-            html_content: HTML content to convert to PDF
-            
-        Returns:
-            PDF content as bytes
-            
-        Raises:
-            ProcessingError: If PDF generation fails
-        """
+        """Generate final PDF with all embedded content."""
         try:
-            # Replace PDF placeholders with actual content
-            if hasattr(self, 'pdf_attachments'):
-                for attachment in self.pdf_attachments:
-                    placeholder = f'[[PDF_EMBED:{attachment["path"]}:{attachment["title"]}]]'
-                    # Read PDF content
-                    async with aiofiles.open(attachment['path'], 'rb') as f:
-                        pdf_content = await f.read()
-                    # Convert to base64 for embedding
-                    pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-                    # Replace placeholder with embedded PDF
-                    html_content = html_content.replace(
-                        placeholder,
-                        f'<embed src="data:application/pdf;base64,{pdf_base64}" type="application/pdf" width="100%" height="600px">'
-                    )
+            self.logger.info("Starting PDF generation", content_length=len(html_content))
+            
+            # Add debug logging for PowerPoint content
+            pptx_matches = re.findall(r'<div class="pptx-container".*?</div></div>', html_content, re.DOTALL)
+            self.logger.info("Found PowerPoint content", count=len(pptx_matches))
             
             # Use wkhtmltopdf to convert HTML to PDF
-            # Note: Headers and footers are explicitly forbidden per pipeline rules
             options = {
                 'enable-local-file-access': None,
                 'quiet': None,
@@ -429,13 +471,17 @@ class MarkdownProcessor:
                 'encoding': 'UTF-8',
                 'no-header-line': None,
                 'no-footer-line': None,
-                'disable-smart-shrinking': None
+                'disable-smart-shrinking': None,
+                # Add these options to better handle PowerPoint content
+                'enable-javascript': None,
+                'javascript-delay': '1000',  # Wait for any JavaScript to complete
+                'load-error-handling': 'ignore'
             }
             
-            # Convert HTML to PDF using wkhtmltopdf
             import pdfkit
             pdf_bytes = pdfkit.from_string(html_content, False, options=options)
             
+            self.logger.info("PDF generation complete", pdf_size=len(pdf_bytes))
             return pdf_bytes
             
         except Exception as e:
@@ -462,3 +508,50 @@ class MarkdownProcessor:
         pdf_content = await self.generate_final_pdf(html_content)
         
         return pdf_content
+
+    async def _process_powerpoint_attachments(self, content: str, file_path: Path) -> str:
+        """Process PowerPoint attachments in markdown content."""
+        try:
+            # Find PowerPoint references
+            for match in re.finditer(r'\[([^\]]+)\]\(([^)]+\.pptx?)\)', content):
+                link_text, pptx_path = match.groups()
+                abs_path = (file_path.parent / urllib.parse.unquote(pptx_path)).resolve()
+                
+                if abs_path.exists():
+                    # Process PowerPoint file
+                    processed = await self.powerpoint_processor.process_presentation(abs_path)
+                    
+                    if processed.target_path and processed.target_path.exists():
+                        # Read the HTML content
+                        async with aiofiles.open(processed.target_path, 'r', encoding='utf-8') as f:
+                            pptx_content = await f.read()
+
+                        # Close the current markdown section before embedded content
+                        attachment_html = '</div>\n'  # Close markdown-content div
+                        
+                        # Add the PowerPoint content
+                        attachment_html += f"""
+<div class="pptx-container">
+    <div class="attachment-container">
+        <span class="attachment-icon">📊</span>
+        <span class="attachment-title">{link_text}</span>
+        <span class="attachment-meta">PowerPoint • {processed.slide_count} slides • Modified {datetime.fromtimestamp(abs_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}</span>
+    </div>
+    {pptx_content}
+</div>
+"""
+                        # Start a new markdown section after embedded content
+                        attachment_html += '\n<div class="markdown-content">'
+                        
+                        # Replace markdown link with HTML content
+                        old_link = f"[{link_text}]({pptx_path})"
+                        content = content.replace(old_link, attachment_html)
+
+            return content
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process PowerPoint attachments in {file_path}",
+                            error=str(e))
+            if self.error_tolerance:
+                return content
+            raise ProcessingError(f"Failed to process PowerPoint attachments: {e}")

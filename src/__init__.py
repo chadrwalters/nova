@@ -1,1 +1,1 @@
-"""Nova markdown processing tools."""
+"""Nova document processor package."""
