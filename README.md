@@ -1,6 +1,15 @@
 # Nova Document Processor
 
-A document processing pipeline for converting and consolidating various document formats.
+A sophisticated document processing pipeline for converting, consolidating, and formatting documents with a focus on PDF output optimization.
+
+## Features
+
+- Multi-phase document processing pipeline
+- Structured metadata handling
+- Advanced PDF layout and formatting
+- Resource-aware processing
+- Robust error handling and validation
+- Support for multiple document formats
 
 ## Installation
 
@@ -39,16 +48,35 @@ poetry run python -m src.cli.main consolidate \
     --template-dir "src/resources/templates"
 ```
 
-### Advanced Usage
-```bash
-# Process specific phases
-poetry run python -m src.cli.main process \
-    --phase HTML_INDIVIDUAL \
-    --processing-dir "path/to/processing"
+## Pipeline Phases
 
-# Force reprocessing of all files
-poetry run python -m src.cli.main process --force
-```
+The processor operates in distinct phases:
+
+1. **HTML_INDIVIDUAL**
+   - Converts individual markdown files to HTML
+   - Validates input markdown
+   - Processes embedded content
+   - Handles image references
+   - Preserves metadata
+
+2. **MARKDOWN_CONSOLIDATED**
+   - Combines markdown files
+   - Maintains document order
+   - Preserves headers
+   - Handles cross-references
+   - Updates internal links
+
+3. **HTML_CONSOLIDATED**
+   - Applies HTML template
+   - Processes consolidated markdown
+   - Handles resource paths
+   - Updates internal references
+
+4. **PDF**
+   - Applies PDF template
+   - Processes images
+   - Sets metadata
+   - Note: Headers and footers in wkhtmltopdf are explicitly forbidden
 
 ## Configuration
 
@@ -60,42 +88,96 @@ NOVA_OUTPUT_DIR=/path/to/output
 NOVA_PROCESSING_DIR=/path/to/processing
 ```
 
-### Processing Phases
-- HTML_INDIVIDUAL: Convert individual markdown files to HTML
-- MARKDOWN_CONSOLIDATED: Combine markdown files
-- HTML_CONSOLIDATED: Generate consolidated HTML
-- PDF: Create final PDF output
-- ALL: Execute complete pipeline
+### Style Configuration
+The default configuration (`config/default_config.yaml`) supports:
 
-## Directory Structure
+```yaml
+style:
+  page_size: 'A4'
+  margin: '0.5in'
+  font_family: 'Arial'
+  font_size: '11pt'
+  line_height: '1.5'
+  colors:
+    text: '#333333'
+    headings: '#000000'
+    links: '#0066cc'
+```
 
-```
-project/
-├── input/          # Source markdown files
-├── output/         # Generated PDFs
-└── processing/     # Intermediate files
-    ├── markdown/   # Processed markdown
-    ├── html/       # Generated HTML
-    ├── media/      # Processed images
-    └── attachments/# Processed attachments
-```
+## Document Metadata
+
+Documents support rich metadata:
+- Title
+- Date
+- Author
+- Category
+- Tags
+- Summary
+- Status
+- Priority
+- Keywords
+- References
+- Related documents
+- Custom fields
 
 ## Error Handling
 
-The processor implements robust error handling with:
-- Automatic retries for transient failures
-- State preservation during processing
-- Detailed error logging
-- Resource cleanup on failure
-- Configurable error tolerance
+The processor implements comprehensive error handling:
+- Retry policies with exponential backoff
+- State tracking and recovery
+- Partial success handling
+- Resource cleanup
+- Detailed logging with binary content filtering
 
 ## Resource Management
 
-- Automatic memory monitoring
+- File operations using pathlib.Path
+- Memory usage monitoring
 - Disk space management
-- File locking for concurrent access
+- Proper file locking
 - Temporary file cleanup
-- Resource usage logging
+- Streaming for large files
+
+## Code Quality
+
+- Black formatter (max line length: 88)
+- Type hints with strict mypy
+- Google style docstrings
+- Comprehensive test coverage
+
+## Project Structure
+```
+nova/
+├── src/
+│   ├── core/
+│   │   ├── types.py           # Core data types
+│   │   ├── exceptions.py      # Custom exceptions
+│   │   ├── validation.py      # Input validation
+│   │   └── logging.py         # Logging configuration
+│   ├── processors/
+│   │   ├── markdown_processor.py
+│   │   ├── html_processor.py
+│   │   ├── pdf_processor.py
+│   │   └── word_processor.py
+│   └── resources/
+│       └── templates/         # HTML/PDF templates
+├── config/
+│   └── default_config.yaml    # Default configuration
+├── tests/                     # Test suite
+├── consolidate.sh            # Convenience script
+└── pyproject.toml           # Project dependencies
+```
+
+## Dependencies
+
+Key dependencies (from pyproject.toml):
+- Python ^3.10
+- markdown ^3.5.1
+- pdfkit ^1.0.0
+- structlog ^23.2.0
+- PyPDF2 ^3.0.1
+- python-docx ^0.8.11
+- python-pptx ^0.6.21
 
 ## Contributing
 
@@ -107,5 +189,3 @@ The processor implements robust error handling with:
 ## License
 
 MIT License - See LICENSE file for details
-
-## Project Structure
