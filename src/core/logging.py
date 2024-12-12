@@ -1,127 +1,61 @@
-"""Logging configuration and setup."""
+"""Logging configuration."""
 
-import logging
-import re
 import sys
 from pathlib import Path
-from typing import Any, List, Optional, TypeAlias, Union, cast, Pattern
-
+from typing import Any, Dict
 import structlog
-from structlog import PrintLoggerFactory, configure, dev, make_filtering_bound_logger
-from structlog.contextvars import merge_contextvars
-from structlog.processors import (
-    JSONRenderer,
-    StackInfoRenderer,
-    TimeStamper,
-    UnicodeDecoder,
-    add_log_level,
-    format_exc_info,
-)
-from structlog.stdlib import BoundLogger
-from structlog.types import EventDict, Processor
+from structlog.types import Processor
+from structlog.dev import ConsoleRenderer
+from structlog.processors import StackInfoRenderer
 
-# Type aliases
-LogLevel: TypeAlias = Union[str, int]
-LogHandler: TypeAlias = logging.Handler
-LogConfig: TypeAlias = dict[str, Any]
-Processors: TypeAlias = list[Processor]
-
-
-class BinaryContentFilter(logging.Filter):
-    def __init__(
-        self,
-        name: str = "",
-        pattern: str = r"[A-Za-z0-9+/]{100,}={0,2}",
-        summary_template: str = "[BASE64 DATA: {size} bytes]"
-    ):
-        super().__init__(name)
-        self.pattern: Pattern = re.compile(pattern)
-        self.summary_template = summary_template
-
-    def _filter_string(self, text: str) -> str:
-        """Filter base64 content from a single string."""
-        if not isinstance(text, str):
-            return text
-            
-        matches = list(self.pattern.finditer(text))
-        if not matches:
-            return text
-            
-        result = text
-        for match in matches:
-            base64_content = match.group(0)
-            summary = self.summary_template.format(size=len(base64_content))
-            result = result.replace(base64_content, summary)
-        return result
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Filter the log record, replacing base64 content with summaries."""
-        # Filter the main message
-        if isinstance(record.msg, str):
-            record.msg = self._filter_string(record.msg)
-            
-        # Filter any string arguments
-        if record.args:
-            if isinstance(record.args, (tuple, list)):
-                record.args = tuple(
-                    self._filter_string(arg) if isinstance(arg, str) else arg
-                    for arg in record.args
-                )
-            elif isinstance(record.args, dict):
-                record.args = {
-                    k: self._filter_string(v) if isinstance(v, str) else v
-                    for k, v in record.args.items()
-                }
-                
-        return True
-
-
-def setup_logging(
-    log_level: LogLevel = "INFO",
-    log_file: Optional[Path] = None,
-    json_format: bool = False,
-) -> None:
-    """Set up unified logging configuration."""
+def configure_logging() -> None:
+    """Configure structured logging."""
     
-    # Create binary content filter
-    binary_filter = BinaryContentFilter()
-    
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    
-    # Create and configure console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(log_level)
-    console_handler.addFilter(binary_filter)  # Add filter to handler
-    
-    # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    
-    # Add console handler to root logger
-    root_logger.addHandler(console_handler)
-    
-    # Add file handler if specified
-    if log_file:
-        file_handler = logging.FileHandler(filename=log_file, encoding="utf-8")
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(formatter)
-        file_handler.addFilter(binary_filter)  # Add filter to file handler
-        root_logger.addHandler(file_handler)
+    # Configure processors for structlog
+    processors = [
+        # Add timestamps in a standard format
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        # Add log level
+        structlog.processors.add_log_level,
+        # Format the event dict to a string
+        structlog.processors.format_exc_info,
+        # Add colors and pretty printing
+        ConsoleRenderer(
+            colors=True,
+            level_styles={  # Use proper ANSI color codes
+                'debug': '\x1b[36m',    # Cyan
+                'info': '\x1b[32m',     # Green
+                'warning': '\x1b[33m',  # Yellow
+                'error': '\x1b[31m',    # Red
+                'critical': '\x1b[41m', # Red background
+            },
+            sort_keys=True,
+            repr_native_str=False,
+            pad_event=25  # Fixed width for event messages
+        )
+    ]
 
+    structlog.configure(
+        processors=processors,
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        wrapper_class=structlog.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
 
-def get_logger(name: Optional[str] = None) -> BoundLogger:
+# Alias for backward compatibility
+setup_logging = configure_logging
+
+def get_logger(name: str) -> structlog.BoundLogger:
     """Get a logger instance.
-
+    
     Args:
-        name: Logger name (if None, uses calling module name)
-
+        name: Name of the logger
+        
     Returns:
         Configured logger instance
     """
-    return cast(BoundLogger, structlog.get_logger(name))
-
+    return structlog.get_logger(name)
 
 def get_file_logger(name: str) -> structlog.BoundLogger:
     """Get a logger configured for file operations.
@@ -159,7 +93,3 @@ def log_file_operation(
         category=category,
         **kwargs
     )
-
-
-# Type hints for exports
-__all__: list[str] = ["setup_logging", "get_logger"]

@@ -12,14 +12,14 @@ from rich.console import Console
 from src.core.config import ProcessingConfig
 from src.core.document_consolidator import DocumentConsolidator
 from src.core.exceptions import PipelineError, ProcessingError
-from src.core.logging import get_logger, setup_logging
+from src.core.logging import get_logger, configure_logging
 from src.processors.html_processor import HTMLProcessor
 from src.processors.markdown_to_pdf_processor import convert_markdown_to_pdf
 from src.resources.templates.template_manager import TemplateManager
 from src.utils.colors import NovaConsole
 
 # Set up logging with WARNING level by default
-setup_logging(log_level="WARNING", json_format=False)
+configure_logging()
 logger = get_logger(__name__)
 
 nova_console = NovaConsole()
@@ -105,7 +105,7 @@ def cli(verbose: bool) -> None:
     """Nova document processor CLI."""
     if verbose:
         # Re-configure logging for verbose output
-        setup_logging(log_level="INFO", json_format=False)
+        configure_logging()
         logger.info("Verbose logging enabled")
 
 
@@ -135,7 +135,7 @@ def process(
         config = load_config()
 
         # Initialize logging with binary content filtering
-        setup_logging(config)
+        configure_logging()
 
         # Update config with command-line processing directory if provided
         if processing_dir:
