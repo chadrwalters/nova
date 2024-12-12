@@ -7,6 +7,7 @@ from typing import Optional
 
 import PyPDF2
 import structlog
+import aiofiles
 
 from src.core.exceptions import ProcessingError
 from src.processors.attachment_processor import ProcessedAttachment
@@ -125,7 +126,7 @@ class PDFAttachmentHandler:
         except Exception as e:
             raise ProcessingError(f"Failed to extract PDF metadata: {e}")
 
-    def process_pdf(self, file_path: Path) -> ProcessedAttachment:
+    async def process_pdf(self, file_path: Path) -> ProcessedAttachment:
         """Process PDF attachment.
 
         Args:
@@ -138,6 +139,10 @@ class PDFAttachmentHandler:
             ProcessingError: If processing fails
         """
         try:
+            # Ensure file exists
+            if not file_path.exists():
+                raise ProcessingError(f"PDF file not found: {file_path}")
+
             # Validate PDF
             if not self.validate_pdf(file_path):
                 raise ProcessingError(f"Invalid PDF file: {file_path}")
@@ -146,11 +151,15 @@ class PDFAttachmentHandler:
             metadata = self.extract_metadata(file_path)
 
             # Generate target path with hash
-            target_name = f"{file_path.stem}_{metadata.hash}.pdf"
+            safe_name = "".join(c if c.isalnum() or c in ".-_" else "_" for c in file_path.stem)
+            target_name = f"{safe_name}_{metadata.hash}.pdf"
             target_path = self.processing_dir / target_name
 
+            # Create target directory if it doesn't exist
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
             # Copy file to processing directory
-            shutil.copy2(file_path, target_path)
+            await self._copy_file(file_path, target_path)
 
             self.logger.info("PDF file copied to processing directory",
                            source=str(file_path),
@@ -160,7 +169,6 @@ class PDFAttachmentHandler:
             return ProcessedAttachment(
                 source_path=file_path,
                 target_path=target_path,
-                content_type="application/pdf",
                 size=metadata.size,
                 metadata={
                     "title": metadata.title,
@@ -174,6 +182,18 @@ class PDFAttachmentHandler:
 
         except Exception as e:
             raise ProcessingError(f"Failed to process PDF attachment: {e}")
+
+    async def _copy_file(self, source: Path, target: Path) -> None:
+        """Copy file using async operations.
+        
+        Args:
+            source: Source file path
+            target: Target file path
+        """
+        async with aiofiles.open(source, 'rb') as src, \
+                   aiofiles.open(target, 'wb') as dst:
+            while chunk := await src.read(8192):  # 8KB chunks
+                await dst.write(chunk)
 
     def update_pdf_references(self, content: str, pdf_map: dict[str, Path]) -> str:
         """Update PDF references in markdown content.

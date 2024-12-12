@@ -203,4 +203,75 @@ blockquote {
     content: " (PDF not found)";
     font-style: italic;
     font-size: 0.9em;
+}
+
+/* Word document styles */
+.word-document-content {
+    margin: 2em 0;
+    padding: 1em;
+    border: 1px solid #ddd;
+    background: #fff;
+    font-family: "Times New Roman", Times, serif;
+}
+
+.word-document-header {
+    margin-bottom: 1.5em;
+    padding-bottom: 1em;
+    border-bottom: 1px solid #eee;
+}
+
+.word-document-header h2 {
+    margin: 0 0 0.5em 0;
+    color: #333;
+}
+
+.word-document-meta {
+    font-size: 0.9em;
+    color: #666;
+}
+
+.word-document-meta span {
+    margin-right: 1.5em;
+}
+
+.word-document-body {
+    line-height: 1.6;
+}
+
+/* Word document content styles */
+.word-document-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+}
+
+.word-document-body td,
+.word-document-body th {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+.word-document-body ul,
+.word-document-body ol {
+    padding-left: 2em;
+    margin: 1em 0;
+}
+
+.word-document-body img {
+    max-width: 100%;
+    height: auto;
+    margin: 1em 0;
+}
+
+/* Print-specific Word document styles */
+@media print {
+    .word-document-content {
+        break-inside: avoid;
+        border: none;
+        padding: 0;
+    }
+    
+    .word-document-header {
+        break-after: avoid;
+    }
 } 

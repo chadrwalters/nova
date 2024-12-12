@@ -81,6 +81,10 @@ resource_management:
     - Track space usage
     - Maintain cleanup schedule
     - Handle large files
+  logging_rules:
+    - filter_binary_content: true
+    - summarize_large_data: true
+    - exclude_base64_from_console: true
 
 # Validation
 validation:
@@ -161,6 +165,12 @@ logging:
     - INFO: Normal operations
     - WARNING: Non-critical issues
     - ERROR: Critical failures
+  content_filtering:
+    - filter_base64: true
+    - max_binary_length: 100
+    - binary_summary: "[BASE64 DATA: {size} {type}]"
+    - excluded_patterns:
+      - "[A-Za-z0-9+/]{100,}={0,2}"
 
 # Configuration
 configuration:

@@ -16,8 +16,8 @@ class ProcessedAttachment:
 
     source_path: Path
     target_path: Path
-    content_type: str
     size: int
+    content_type: str = "application/octet-stream"
     preview_path: Optional[Path] = None
     metadata: Optional[Dict[str, Any]] = field(default_factory=dict)
 
@@ -68,8 +68,8 @@ class AttachmentProcessor:
             return ProcessedAttachment(
                 source_path=file_path,
                 target_path=target_path,
-                content_type=content_type,
                 size=size,
+                content_type=content_type,
                 metadata={
                     "mime_type": content_type,
                     "original_name": file_path.name,

@@ -84,25 +84,9 @@ echo "Target: ${NOVA_OUTPUT_DIR}/consolidated.pdf"
 echo "Installing dependencies..."
 poetry install
 
+# Run the consolidation - let Python handle completion messages
 poetry run python -m src.cli.main consolidate \
     --input-dir "${NOVA_INPUT_DIR}" \
     --output-dir "${NOVA_OUTPUT_DIR}" \
     --processing-dir "${NOVA_PROCESSING_DIR}" \
     --template-dir "src/resources/templates"
-
-# Print completion message
-echo -e "\n=== Process Complete ==="
-echo -e "\n✓ All steps completed successfully"
-
-# Print generated files
-echo -e "\nGenerated Files:"
-echo "  📄 Input Files:        ${NOVA_INPUT_DIR}/"
-echo "  📄 Output Files:       ${NOVA_OUTPUT_DIR}/"
-echo "  📄 Processing Files:   ${NOVA_PROCESSING_DIR}/"
-
-echo -e "\nDirectory Structure:"
-echo "    input/         (Source markdown files)"
-echo "    output/        (Final PDF output)"
-echo "    processing/    (Processing files)"
-
-echo -e "\nView the files above to see the results"
