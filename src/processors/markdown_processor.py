@@ -1,26 +1,28 @@
 """Markdown processing and validation functionality."""
 
-import base64
-import hashlib
-import os
-import re
-from pathlib import Path
-from typing import Dict, List, Optional, Set, TypeAlias, Union
-import mimetypes
-import structlog
-import aiofiles
-from bs4 import BeautifulSoup
-import markdown
-import time
+import asyncio
 import shutil
-import urllib.parse
+from pathlib import Path
+import structlog
+from typing import Optional, Dict, Any, Tuple, List, Union, TypeAlias
+import aiofiles
+import magic
+import hashlib
 from datetime import datetime
+import base64
+import re
+import json
+import urllib.parse
+import markdown
 
-from src.core.exceptions import ValidationError, ProcessingError
-from src.core.logging import get_logger
-from src.processors.pdf_processor import PDFAttachmentHandler, PDFGenerator
-from src.processors.word_processor import WordProcessor
-from src.processors.powerpoint_processor import PowerPointProcessor
+from src.core.models import Attachment, AttachmentType
+from src.core.exceptions import ProcessingError
+from src.processors.models import ProcessedAttachment
+from src.processors.converters.word_converter import WordConverter
+from src.processors.converters.pdf_converter import PDFConverter
+from src.processors.converters.powerpoint_converter import PowerPointConverter
+from src.processors.converters.image_converter import ImageConverter
+from src.generators.pdf_generator import PDFGenerator
 
 logger = structlog.get_logger(__name__)
 
@@ -43,159 +45,88 @@ class MarkdownProcessor:
         self.media_dir = media_dir
         self.error_tolerance = error_tolerance
         self.logger = logger
-        self.word_processor = WordProcessor(temp_dir)
-        self.pdf_handler = PDFAttachmentHandler(temp_dir)
-        self.powerpoint_processor = PowerPointProcessor(temp_dir)
         
-    async def convert_to_html(self, file_path: Path) -> str:
+        # Initialize converters
+        self.word_converter = WordConverter()
+        self.pdf_converter = PDFConverter()
+        self.powerpoint_converter = PowerPointConverter()
+        self.image_converter = ImageConverter()
+        
+        # Initialize attachment processor
+        self.attachment_processor = None
+        
+    async def convert_to_html(self, file_path: Path, content: Optional[str] = None, pdf_generator: PDFGenerator = None) -> str:
         """Convert markdown file to HTML."""
         try:
-            # Add CSS for document boundaries and embedded content
-            css = """
-            <style>
-            .markdown-document {
-                border: 2px solid #2196F3;
-                border-radius: 4px;
-                padding: 20px;
-                margin: 20px 0;
-                background: #fff;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .markdown-content {
-                position: relative;
-                padding: 15px;
-                background: #FAFAFA;
-                border-left: 4px solid #2196F3;
-                margin: 15px 0;
-                border-radius: 4px;
-            }
-            .markdown-content:before {
-                content: "Markdown";
-                position: absolute;
-                top: -10px;
-                left: 10px;
-                background: #2196F3;
-                color: white;
-                padding: 2px 8px;
-                border-radius: 3px;
-                font-size: 12px;
-            }
-            .word-document-wrapper {
-                position: relative;
-                margin: 15px 0;
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                background: white;
-            }
-            .word-document-wrapper:before {
-                content: "Embedded Word Document";
-                position: absolute;
-                top: -10px;
-                left: 10px;
-                background: #FF9800;
-                color: white;
-                padding: 2px 8px;
-                border-radius: 3px;
-                font-size: 12px;
-            }
-            .attachment-container {
-                display: flex;
-                align-items: center;
-                padding: 12px 15px;
-                margin: 10px 0;
-                background: #F5F5F5;
-                border-left: 4px solid #FF9800;
-                border-radius: 4px;
-            }
-            .attachment-icon {
-                font-size: 24px;
-                margin-right: 12px;
-            }
-            .attachment-title {
-                font-weight: 500;
-                color: #1976D2;
-                text-decoration: none;
-                margin-right: 12px;
-            }
-            .attachment-meta {
-                color: #666;
-                font-size: 14px;
-                margin-left: auto;
-            }
-            .pptx-container {
-                position: relative;
-                margin: 15px 0;
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                background: white;
-            }
-            .pptx-container:before {
-                content: "PowerPoint Presentation";
-                position: absolute;
-                top: -10px;
-                left: 10px;
-                background: #4CAF50;
-                color: white;
-                padding: 2px 8px;
-                border-radius: 3px;
-                font-size: 12px;
-            }
-            .slides-wrapper {
-                padding: 20px;
-            }
-            .slide {
-                border: 1px solid #ddd;
-                margin: 10px 0;
-                padding: 15px;
-                background: #fff;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .shape {
-                margin: 10px 0;
-            }
-            .text-content {
-                font-size: 16px;
-                line-height: 1.5;
-            }
-            .image-content img {
-                max-width: 100%;
-                height: auto;
-            }
-            </style>
-            """
+            logger.info("Starting markdown conversion", file=str(file_path))
+            
+            # Read content if not provided
+            if content is None:
+                async with aiofiles.open(file_path, 'r') as f:
+                    content = await f.read()
 
-            async with aiofiles.open(file_path, 'r') as f:
-                content = await f.read()
+            logger.info(
+                "Using content",
+                file=str(file_path),
+                content_preview=content[:200]
+            )
+
+            # Process attachments first
+            if self.attachment_processor:
+                logger.info("Processing attachments")
+                content, _ = await self.attachment_processor.process_attachments(
+                    content,
+                    file_path.parent,
+                    self.temp_dir,
+                    pdf_generator
+                )
                 
-            # Process embedded content
-            content = await self._process_embedded_images(content, file_path)
-            content = await self._process_word_attachments(content, file_path)
-            content = await self._process_powerpoint_attachments(content, file_path)
-            content = await self._process_pdf_attachments(content, file_path)
+                logger.info(
+                    "Processed attachments",
+                    content_preview=content[:200]
+                )
+
+            # Convert markdown to HTML
+            html = markdown.markdown(
+                content,
+                extensions=[
+                    'fenced_code',
+                    'tables',
+                    'footnotes',
+                    'attr_list',
+                    'def_list',
+                    'abbr',
+                    'md_in_html'
+                ],
+                output_format='html5'
+            )
             
-            # Convert to HTML with preserved HTML blocks
-            html = markdown.markdown(content, extensions=['extra', 'meta'], output_format='html5')
+            logger.info(
+                "Converted to HTML",
+                html_preview=html[:200]
+            )
             
-            # Wrap initial markdown content
-            html = f'<div class="markdown-content">{html}</div>'
-            
-            # Wrap everything in document container
+            # Wrap in document container
             wrapped_html = f"""
-            {css}
             <div class="markdown-document">
                 <div class="document-title">{file_path.stem}</div>
-                {html}
+                <div class="markdown-content">{html}</div>
             </div>
             """
+            
+            logger.info(
+                "Wrapped HTML",
+                wrapped_preview=wrapped_html[:200]
+            )
             
             return wrapped_html
             
         except Exception as e:
-            self.logger.error("Markdown conversion failed",
-                            file=str(file_path),
-                            error=str(e))
+            logger.error("Markdown conversion failed",
+                        file=str(file_path),
+                        error=str(e))
             raise ProcessingError(f"Failed to convert markdown: {e}")
-            
+
     async def _process_embedded_images(self, content: str, file_path: Path) -> str:
         """Process embedded images in markdown content."""
         try:
