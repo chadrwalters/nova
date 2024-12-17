@@ -3,11 +3,13 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import PyPDF2
 import structlog
 import aiofiles
+import asyncio
+from weasyprint import HTML, CSS
 
 from src.core.exceptions import ProcessingError
 from src.processors.attachment_processor import ProcessedAttachment
@@ -232,3 +234,68 @@ class PDFAttachmentHandler:
             )
 
         return updated_content 
+
+
+class PDFGenerator:
+    """PDF generation using WeasyPrint."""
+
+    def __init__(self, template_dir: Path):
+        self.template_dir = template_dir
+        self.logger = logger.bind(component="pdf_generator")
+
+    async def generate_pdf(
+        self,
+        html_content: str,
+        output_file: Path,
+        css_files: List[Path],
+        base_url: Optional[str] = None
+    ) -> None:
+        """Generate PDF from HTML content using WeasyPrint.
+
+        Args:
+            html_content: HTML content to convert
+            output_file: Output PDF file path
+            css_files: List of CSS file paths to apply
+            base_url: Optional base URL for resolving relative paths
+
+        Raises:
+            ProcessingError: If PDF generation fails
+        """
+        try:
+            # Ensure output directory exists
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Load CSS files
+            css_list = []
+            for css_file in css_files:
+                if not css_file.exists():
+                    raise ProcessingError(f"CSS file not found: {css_file}")
+                async with aiofiles.open(css_file, 'r') as f:
+                    css_content = await f.read()
+                    css_list.append(CSS(string=css_content))
+
+            # Create HTML object with base URL
+            html = HTML(
+                string=html_content,
+                base_url=base_url or str(self.template_dir)
+            )
+
+            # Generate PDF
+            self.logger.info("Generating PDF", output=str(output_file))
+            
+            # Use the older API style
+            document = html.render(stylesheets=css_list)
+            await asyncio.to_thread(
+                document.write_pdf,
+                str(output_file)
+            )
+
+            self.logger.info("PDF generation complete",
+                           output=str(output_file),
+                           size=output_file.stat().st_size)
+
+        except Exception as e:
+            self.logger.error("PDF generation failed",
+                            error=str(e),
+                            output=str(output_file))
+            raise ProcessingError(f"Failed to generate PDF: {e}")

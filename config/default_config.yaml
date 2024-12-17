@@ -8,6 +8,9 @@ style:
     text: '#333333'
     headings: '#000000'
     links: '#0066cc'
+  pdf:
+    optimize: true
+    zoom: 1.0
 header:
   enabled: false
   content: ''
