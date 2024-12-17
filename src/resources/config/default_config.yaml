@@ -1,0 +1,42 @@
+# Nova Default Configuration
+
+# Processing Options
+processing:
+  error_tolerance: "lenient"  # "strict" or "lenient"
+  max_file_size_mb: 50
+  max_memory_percent: 75
+  concurrent_processes: 4
+
+# Document Style
+style:
+  page_size: "A4"
+  margin: "2.5cm 1.5cm"
+  font_family: "DejaVu Serif"
+  font_size: "11pt"
+  line_height: "1.6"
+  colors:
+    text: "#333333"
+    headings: "#000000"
+    links: "#0066cc"
+    code_background: "#f5f5f5"
+    table_border: "#dddddd"
+
+# Markdown Processing
+markdown:
+  extensions:
+    - extra
+    - codehilite
+    - tables
+    - toc
+    - fenced_code
+    - sane_lists
+
+# PDF Generation
+pdf:
+  metadata:
+    creator: "Nova Document Processor"
+    producer: "WeasyPrint"
+  compression: true
+  attachments:
+    embed: true
+    max_size_mb: 20 
