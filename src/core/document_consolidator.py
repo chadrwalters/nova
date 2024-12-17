@@ -33,50 +33,74 @@ class ConsolidationState:
 class DocumentConsolidator:
     """Handles document consolidation with robust error handling and resource management."""
 
-    def __init__(
-        self,
-        processing_dir: Path,
-        error_tolerance: bool = False,
-        retry_count: int = 3
-    ) -> None:
+    def __init__(self, processing_dir: Path, template_dir: Path) -> None:
         """Initialize document consolidator.
-
+        
         Args:
             processing_dir: Directory for processing files
-            error_tolerance: Whether to continue on non-critical errors
-            retry_count: Number of retries for failed operations
+            template_dir: Directory containing templates
+            
+        Raises:
+            ProcessingError: If initialization fails
         """
-        self.processing_dir = processing_dir
-        self.error_tolerance = error_tolerance
-        self.retry_count = retry_count
-        self.logger = logger
-        
-        # Initialize state and managers
-        self.state = ConsolidationState()
-        self.resource_manager = ResourceManager()
-        
-        # Initialize processors
-        self.markdown_processor = MarkdownProcessor(
-            temp_dir=processing_dir / "temp",
-            media_dir=processing_dir / "media",
-            error_tolerance=error_tolerance
-        )
-        
-        # Find wkhtmltopdf path
-        wkhtmltopdf_path = shutil.which('wkhtmltopdf')
-        if not wkhtmltopdf_path:
-            raise ProcessingError("wkhtmltopdf not found in system PATH")
-        
-        self.html_processor = HTMLProcessor(
-            temp_dir=processing_dir / "temp",
-            wkhtmltopdf_path=wkhtmltopdf_path
-        )
-        
-        self.pdf_handler = PDFAttachmentHandler(processing_dir)
-        
-        # Create required directories
-        (processing_dir / "temp").mkdir(parents=True, exist_ok=True)
-        (processing_dir / "media").mkdir(parents=True, exist_ok=True)
+        try:
+            self.processing_dir = processing_dir
+            self.template_dir = template_dir
+            self.logger = logger.bind(component="document_consolidator")
+            
+            # Initialize state
+            self.state = ConsolidationState()
+            
+            # Configure processing settings
+            self.retry_count = 3
+            self.error_tolerance = True
+            
+            # Create required directories
+            self._create_directories()
+            
+            # Initialize processors
+            self.markdown_processor = MarkdownProcessor(
+                self.processing_dir / "temp",
+                self.processing_dir / "media",
+                error_tolerance=self.error_tolerance
+            )
+            
+            self.html_processor = HTMLProcessor(
+                temp_dir=self.processing_dir / "temp",
+                template_dir=self.template_dir
+            )
+            
+            self.pdf_handler = PDFAttachmentHandler(self.processing_dir)
+            
+            self.logger.info("Document consolidator initialized",
+                           processing_dir=str(processing_dir),
+                           template_dir=str(template_dir))
+                           
+        except Exception as e:
+            raise ProcessingError(f"Failed to initialize document consolidator: {e}")
+
+    def _create_directories(self) -> None:
+        """Create required processing directories."""
+        try:
+            # Create main processing subdirectories
+            dirs = [
+                self.processing_dir / "temp",
+                self.processing_dir / "media",
+                self.processing_dir / "html",
+                self.processing_dir / "consolidated",
+                self.processing_dir / "attachments" / "pdf",
+                self.processing_dir / "attachments" / "word",
+                self.processing_dir / "attachments" / "pptx"
+            ]
+            
+            for dir_path in dirs:
+                dir_path.mkdir(parents=True, exist_ok=True)
+                
+            self.logger.debug("Created processing directories",
+                           directories=[str(d) for d in dirs])
+                           
+        except Exception as e:
+            raise ProcessingError(f"Failed to create processing directories: {e}")
 
     def consolidate_files(self, input_files: Sequence[Path], output_file: Optional[Path] = None) -> Path:
         """Consolidate multiple markdown files into a single PDF.

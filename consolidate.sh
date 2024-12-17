@@ -27,20 +27,6 @@ if ! command -v poetry &> /dev/null; then
 fi
 echo "✓ Poetry is installed"
 
-echo "Checking wkhtmltopdf installation..."
-if ! command -v wkhtmltopdf &> /dev/null; then
-    echo "Installing wkhtmltopdf..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        brew install wkhtmltopdf
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        sudo apt-get update && sudo apt-get install -y wkhtmltopdf
-    else
-        echo "❌ Please install wkhtmltopdf manually: https://wkhtmltopdf.org/downloads.html"
-        exit 1
-    fi
-fi
-echo "✓ wkhtmltopdf is installed"
-
 echo "Loading environment configuration..."
 if [ ! -f .env ]; then
     echo "❌ Environment file not found"

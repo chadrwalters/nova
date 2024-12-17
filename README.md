@@ -9,7 +9,7 @@ A sophisticated document processing pipeline for converting, consolidating, and 
 - Advanced PDF layout and formatting
 - Resource-aware processing
 - Robust error handling and validation
-- Support for multiple document formats
+- Support for multiple document formats (Markdown, Word, PowerPoint)
 
 ## Installation
 

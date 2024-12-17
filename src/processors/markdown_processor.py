@@ -18,7 +18,7 @@ from datetime import datetime
 
 from src.core.exceptions import ValidationError, ProcessingError
 from src.core.logging import get_logger
-from src.processors.pdf_processor import PDFAttachmentHandler
+from src.processors.pdf_processor import PDFAttachmentHandler, PDFGenerator
 from src.processors.word_processor import WordProcessor
 from src.processors.powerpoint_processor import PowerPointProcessor
 
@@ -454,35 +454,27 @@ class MarkdownProcessor:
         try:
             self.logger.info("Starting PDF generation", content_length=len(html_content))
             
-            # Add debug logging for PowerPoint content
-            pptx_matches = re.findall(r'<div class="pptx-container".*?</div></div>', html_content, re.DOTALL)
-            self.logger.info("Found PowerPoint content", count=len(pptx_matches))
+            # Create PDF generator
+            pdf_generator = PDFGenerator(Path("src/resources/templates"))
             
-            # Use wkhtmltopdf to convert HTML to PDF
-            options = {
-                'enable-local-file-access': None,
-                'quiet': None,
-                'print-media-type': None,
-                'no-outline': None,
-                'margin-top': '0',
-                'margin-right': '0',
-                'margin-bottom': '0',
-                'margin-left': '0',
-                'encoding': 'UTF-8',
-                'no-header-line': None,
-                'no-footer-line': None,
-                'disable-smart-shrinking': None,
-                # Add these options to better handle PowerPoint content
-                'enable-javascript': None,
-                'javascript-delay': '1000',  # Wait for any JavaScript to complete
-                'load-error-handling': 'ignore'
-            }
+            # Generate PDF to temporary file
+            temp_pdf = Path("temp_output.pdf")
+            css_file = Path("src/resources/styles/pdf.css")
             
-            import pdfkit
-            pdf_bytes = pdfkit.from_string(html_content, False, options=options)
+            await pdf_generator.generate_pdf(
+                html_content,
+                temp_pdf,
+                css_files=[css_file]
+            )
             
-            self.logger.info("PDF generation complete", pdf_size=len(pdf_bytes))
-            return pdf_bytes
+            # Read PDF content
+            async with aiofiles.open(temp_pdf, 'rb') as f:
+                pdf_content = await f.read()
+            
+            # Clean up
+            temp_pdf.unlink()
+            
+            return pdf_content
             
         except Exception as e:
             self.logger.error("Failed to generate final PDF",

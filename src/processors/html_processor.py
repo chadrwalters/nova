@@ -21,21 +21,22 @@ import fitz  # PyMuPDF
 import base64
 
 from src.core.exceptions import ProcessingError
+from src.processors.pdf_processor import PDFGenerator
 
 logger = structlog.get_logger(__name__)
 
 class HTMLProcessor:
     """Handles HTML processing and PDF generation."""
 
-    def __init__(self, temp_dir: Path, wkhtmltopdf_path: str = '/usr/local/bin/wkhtmltopdf') -> None:
+    def __init__(self, temp_dir: Path, template_dir: Path) -> None:
         """Initialize HTML processor.
         
         Args:
             temp_dir: Directory for temporary files
-            wkhtmltopdf_path: Path to wkhtmltopdf executable
+            template_dir: Directory containing templates
         """
         self.temp_dir = temp_dir
-        self.wkhtmltopdf_path = wkhtmltopdf_path
+        self.template_dir = template_dir
         self.logger = logger
         
         # Configure PDF generation options
@@ -469,107 +470,39 @@ class HTMLProcessor:
         
         return str(soup), processed_resources
 
-    async def generate_pdf(self, html_content: str, output_file: Path, css_file: Path) -> None:
-        """Generate PDF from HTML content."""
-        self.logger.info("Starting PDF generation", 
-                        component="html_processor",
-                        css_file=str(css_file),
-                        wkhtmltopdf_path=str(self.wkhtmltopdf_path))
-        
-        # Create a local temp directory for initial output
-        local_temp = Path("/tmp/nova_output")
-        local_temp.mkdir(parents=True, exist_ok=True)
-        local_output = local_temp / "temp_output.pdf"
+    async def generate_pdf(
+        self,
+        html_content: str,
+        output_file: Path,
+        css_file: Path
+    ) -> None:
+        """Generate PDF from HTML content.
 
+        Args:
+            html_content: HTML content to convert
+            output_file: Output PDF file path
+            css_file: CSS file path
+
+        Raises:
+            ProcessingError: If PDF generation fails
+        """
         try:
-            # Create resources directory
-            resources_dir = local_temp / "resources"
-            resources_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Copy CSS file to resources directory
-            css_target = resources_dir / "styles.css"
-            shutil.copy2(css_file, css_target)
-            
-            # Prepare resources and update HTML
-            updated_html, _ = await self._prepare_resources(html_content, css_target)
-            
-            # Wrap HTML with proper structure
-            final_html = self._wrap_html_content(updated_html, resources_dir, css_target)
+            # Create PDF generator
+            pdf_generator = PDFGenerator(self.template_dir)
 
-            # Write HTML to temp file
-            temp_html = local_temp / "temp.html"
-            async with aiofiles.open(temp_html, 'w', encoding='utf-8') as f:
-                await f.write(final_html)
+            # Generate PDF
+            await pdf_generator.generate_pdf(
+                html_content,
+                output_file,
+                css_files=[css_file],
+                base_url=str(self.temp_dir)
+            )
 
-            # Configure wkhtmltopdf options
-            options = [
-                '--page-size', 'Letter',
-                '--margin-top', '20mm',
-                '--margin-right', '20mm',
-                '--margin-bottom', '20mm',
-                '--margin-left', '20mm',
-                '--encoding', 'UTF-8',
-                '--no-outline',
-                '--enable-local-file-access',
-                '--quiet',
-                '--load-error-handling', 'ignore',
-                '--disable-smart-shrinking',
-                '--zoom', '1.0',
-                '--javascript-delay', '1000',
-                '--no-stop-slow-scripts',
-                '--debug-javascript',
-                '--print-media-type',
-                '--enable-javascript',
-                '--disable-external-links',
-                '--disable-internal-links'
-            ]
-
-            # Run wkhtmltopdf directly
-            cmd = [self.wkhtmltopdf_path] + options + [str(temp_html), str(local_output)]
-            
-            # Change to temp directory before running command
-            cwd = os.getcwd()
-            os.chdir(str(local_temp))
-            
-            try:
-                # Run wkhtmltopdf
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    self.logger.error("wkhtmltopdf failed",
-                                    component="html_processor",
-                                    stderr=result.stderr,
-                                    stdout=result.stdout)
-                    raise ProcessingError(f"wkhtmltopdf failed: {result.stderr}")
-                    
-            finally:
-                # Change back to original directory
-                os.chdir(cwd)
-
-            # Ensure output directory exists
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Copy to final destination
-            shutil.copy2(local_output, output_file)
-            
-            self.logger.info("PDF generation complete",
-                           component="html_processor",
-                           output=str(output_file))
-                           
         except Exception as e:
             self.logger.error("PDF generation failed",
-                            component="html_processor",
                             error=str(e))
-            raise ProcessingError(f"PDF generation failed: {e}")
-        finally:
-            # Cleanup temp files
-            if local_output.exists():
-                local_output.unlink()
-            if temp_html.exists():
-                temp_html.unlink()
-            if resources_dir.exists():
-                shutil.rmtree(resources_dir)
-                
+            raise ProcessingError(f"Failed to generate PDF: {e}")
+
     def _make_paths_absolute(self, html_content: str, base_dir: Path) -> str:
         """Convert relative paths to absolute paths."""
         soup = BeautifulSoup(html_content, 'html.parser')
