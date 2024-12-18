@@ -48,29 +48,12 @@ def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None
         stream=sys.stdout
     )
 
-    def filter_processor(logger, method_name, event_dict):
-        """Filter out large values and sensitive data."""
-        result = {}
-        for key, value in event_dict.items():
-            if key == "config":
-                result[key] = "[filtered config]"
-            elif callable(value):
-                result[key] = "[filtered function]"
-            elif isinstance(value, (dict, list)):
-                result[key] = "[filtered large object]"
-            elif isinstance(value, str) and len(value) > 200:
-                result[key] = value[:200] + "..."
-            else:
-                result[key] = value
-        return result
-
     # Configure structlog
     processors = [
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        filter_processor,
     ]
 
     # Add renderer based on format
@@ -81,19 +64,13 @@ def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None
             )
         )
     else:
-        # Define ANSI color codes
-        COLORS = {
-            "debug": "\033[34m",     # Blue
-            "info": "\033[32m",      # Green
-            "warning": "\033[33m",   # Yellow
-            "error": "\033[31m",     # Red
-            "critical": "\033[1;31m"  # Bold Red
-        }
-        RESET = "\033[0m"
-
-        # Create color style dict with pre-formatted strings
+        # Define color styles as pre-formatted strings
         level_styles = {
-            level: f"{color}%s{RESET}" for level, color in COLORS.items()
+            "debug": "\033[34m%s\033[0m",    # Blue
+            "info": "\033[32m%s\033[0m",     # Green
+            "warning": "\033[33m%s\033[0m",  # Yellow
+            "error": "\033[31m%s\033[0m",    # Red
+            "critical": "\033[1;31m%s\033[0m" # Bold Red
         }
 
         processors.append(
