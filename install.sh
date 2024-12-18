@@ -22,13 +22,17 @@ source .env
 
 # Create required directories
 echo "Creating required directories..."
-mkdir -p "${NOVA_INPUT_DIR}"
-mkdir -p "${NOVA_OUTPUT_DIR}"
 mkdir -p "${NOVA_PROCESSING_DIR}"
+mkdir -p "${NOVA_PROCESSING_DIR}/temp"
 mkdir -p "${NOVA_PHASE_MARKDOWN_PARSE}"
-mkdir -p "${NOVA_TEMP_DIR}"
-mkdir -p "${NOVA_OFFICE_ASSETS_DIR}"
-mkdir -p "${NOVA_OFFICE_TEMP_DIR}"
+mkdir -p "${NOVA_PROCESSING_DIR}/temp_office"
+
+# Create image processing directories
+echo "Creating image processing directories..."
+mkdir -p "${NOVA_ORIGINAL_IMAGES_DIR}"
+mkdir -p "${NOVA_PROCESSED_IMAGES_DIR}"
+mkdir -p "${NOVA_IMAGE_METADATA_DIR}"
+mkdir -p "${NOVA_IMAGE_CACHE_DIR}"
 
 # Install dependencies using poetry
 echo "Installing Python dependencies..."

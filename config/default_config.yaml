@@ -23,3 +23,18 @@ markdown:
     - taskList
     - linkify
     - image
+
+image_processing:
+  quality: 85
+  max_width: 1920
+  max_height: 1080
+  preferred_format: "png"
+  cache_enabled: true
+  cache_duration: 86400  # 24 hours
+  retry_attempts: 3
+  timeout: 30
+  directories:
+    original: "${NOVA_ORIGINAL_IMAGES_DIR}"
+    processed: "${NOVA_PROCESSED_IMAGES_DIR}"
+    metadata: "${NOVA_IMAGE_METADATA_DIR}"
+    cache: "${NOVA_IMAGE_CACHE_DIR}"

@@ -21,6 +21,9 @@ from markitdown import MarkItDown
 from markitdown._markitdown import FileConversionException, UnsupportedFormatException
 from tqdm import tqdm
 from PIL import Image
+from openai import OpenAI
+
+from .image_processor import ImageProcessor
 
 # Filter PyMuPDF SWIG deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message="builtin type SwigPyPacked has no __module__ attribute")
@@ -164,8 +167,40 @@ class MarkdownProcessor:
             elif plugin == 'image':
                 self.md.enable('image')
         
+        # Initialize OpenAI client if API key is available
+        openai_key = os.getenv('OPEN_AI_KEY')
+        logger.info("OpenAI key found: %s", bool(openai_key))
+        openai_client = None
+        if openai_key:
+            try:
+                openai_client = OpenAI(api_key=openai_key)
+                # Test with the new consolidated model
+                response = openai_client.chat.completions.create(
+                    model="gpt-4-turbo-2024-04-09",  # Changed to new model
+                    messages=[{
+                        "role": "user",
+                        "content": [{
+                            "type": "text",
+                            "text": "Test"
+                        }]
+                    }],
+                    max_tokens=1
+                )
+                logger.info("OpenAI client initialized successfully")
+            except Exception as e:
+                logger.warning("OpenAI model not available: %s", str(e))
+                openai_client = None
+        else:
+            logger.warning("OpenAI API key not found. Image descriptions will be limited.")
+        
+        # Initialize image processor
+        self.image_processor = ImageProcessor(config, openai_client)
+        
         # Initialize document converter with image support
-        self.converter = MarkItDown()
+        self.converter = MarkItDown(
+            llm_client=openai_client,
+            llm_model="gpt-4-turbo-2024-04-09" if openai_client else None
+        )
         
         # Configure logging to be minimal and clean
         logging.getLogger().handlers = []  # Remove all handlers from root logger
@@ -178,6 +213,12 @@ class MarkdownProcessor:
         logger.handlers = []  # Remove all handlers
         logger.addHandler(console_handler)
         logger.setLevel(logging.INFO)
+
+        # Suppress OpenAI HTTP request logs
+        openai_logger = logging.getLogger("openai")
+        openai_logger.setLevel(logging.WARNING)
+        httpx_logger = logging.getLogger("httpx")
+        httpx_logger.setLevel(logging.WARNING)
 
     def _setup_directories(self) -> None:
         """Create required directories if they don't exist."""
@@ -367,7 +408,12 @@ class MarkdownProcessor:
                     
                     # Convert result to string if needed
                     if not isinstance(result, str):
-                        result = str(result)
+                        if hasattr(result, 'markdown'):
+                            result = result.markdown
+                        elif hasattr(result, 'text'):
+                            result = result.text
+                        else:
+                            result = str(result)
                     
                     # Write the markdown output
                     output_md = output_path.with_suffix('.md')
@@ -532,6 +578,15 @@ class MarkdownProcessor:
                                 output_md = output_attachments_dir / f"{attachment.stem}.md"
                                 result = self._convert_text_file_to_markdown(attachment)
                                 
+                                # Convert result to string if needed
+                                if not isinstance(result, str):
+                                    if hasattr(result, 'markdown'):
+                                        result = result.markdown
+                                    elif hasattr(result, 'text'):
+                                        result = result.text
+                                    else:
+                                        result = str(result)
+                                
                                 # Write markdown output
                                 with open(output_md, 'w', encoding='utf-8') as f:
                                     f.write(result)
@@ -555,70 +610,56 @@ class MarkdownProcessor:
                                     if old_ref in content:
                                         content = content.replace(old_ref, error_note)
                         
-                        # Handle images (including HEIC and WebP) using MarkItDown
+                        # Handle images using our new ImageProcessor
                         elif suffix in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.HEIC'}:
                             try:
-                                # Special handling for HEIC files
-                                if suffix in {'.heic', '.HEIC'} and HEIF_SUPPORT:
-                                    # Convert HEIC to JPG first
-                                    jpg_path = self._convert_heic_to_jpg(attachment)
-                                    try:
-                                        # Convert JPG and extract metadata
-                                        output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                        result = self.converter.convert(
-                                            str(jpg_path),
-                                            image_dir=str(output_attachments_dir)
-                                        )
-                                    finally:
-                                        # Clean up temporary JPG
-                                        if jpg_path.exists():
-                                            jpg_path.unlink()
-                                # Special handling for WebP files
-                                elif suffix == '.webp':
-                                    # Convert WebP to JPG first
-                                    jpg_path = self._convert_webp_to_jpg(attachment)
-                                    try:
-                                        # Convert JPG and extract metadata
-                                        output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                        result = self.converter.convert(
-                                            str(jpg_path),
-                                            image_dir=str(output_attachments_dir)
-                                        )
-                                    finally:
-                                        # Clean up temporary JPG
-                                        if jpg_path.exists():
-                                            jpg_path.unlink()
-                                else:
-                                    # Handle other image formats directly
-                                    output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                    result = self.converter.convert(
-                                        str(attachment),
-                                        image_dir=str(output_attachments_dir)
-                                    )
+                                # Process the image
+                                metadata = self.image_processor.process_image(attachment, output_attachments_dir)
                                 
-                                # Convert result to string if needed
-                                if not isinstance(result, str):
-                                    result = str(result)
+                                if metadata.error:
+                                    raise ProcessingError(metadata.error)
+                                
+                                # Create markdown content with image metadata
+                                result = f"# Image: {attachment.name}\n\n"
+                                
+                                if metadata.description:
+                                    result += f"## Description\n\n{metadata.description}\n\n"
+                                
+                                result += f"## Metadata\n\n"
+                                result += f"- Dimensions: {metadata.width}x{metadata.height}\n"
+                                result += f"- Format: {metadata.format}\n"
+                                result += f"- Size: {metadata.size / 1024:.1f} KB\n"
                                 
                                 # Write markdown with metadata
+                                output_md = output_attachments_dir / f"{attachment.stem}.md"
                                 with open(output_md, 'w', encoding='utf-8') as f:
                                     f.write(result)
                                 
-                                # Update markdown content to reference the new markdown file
-                                new_ref = f'[{filename}]({output_path.stem}/{attachment.stem}.md)<!-- {{"embed":"true"}} -->'
+                                # Update markdown content to reference both the image and its description
+                                # Keep the original directory structure in the path
+                                dir_name = input_path.stem  # e.g. "20241105 - Journal"
+                                image_path = f"{dir_name}/{os.path.basename(metadata.processed_path)}"
+                                desc_path = f"{dir_name}/{attachment.stem}.md"
+                                
+                                # Create the new reference that includes both image and description
+                                new_ref = f'![{attachment.name}]({image_path})<!-- {{"embed":"true"}} -->'
+                                if metadata.description:
+                                    new_ref += f'\n\n[Image Description]({desc_path})<!-- {{"embed":"true"}} -->'
+                                
+                                # Replace all old references with the new one
                                 for old_ref in old_ref_patterns:
                                     if old_ref in content:
                                         content = content.replace(old_ref, new_ref)
                                 
                                 self.summary.add_processed('image', attachment)
-                            except (FileConversionException, UnsupportedFormatException, Exception) as e:
+                            except Exception as e:
                                 warning = f"Could not process image {attachment.name} (attachment in {rel_path}): {str(e)}"
                                 print(f"\nWarning: {warning}")
                                 self.summary.add_warning(warning)
                                 self.summary.add_skipped('error', attachment)
                                 
-                                # Replace reference with error note
-                                error_note = f"[⚠️ Failed to convert image: {filename} (Error: {str(e)})]<!-- {{'status':'error'}} -->"
+                                # Replace reference with error note but keep original image
+                                error_note = f'[{filename}]({input_path.stem}/{filename})<!-- {{"embed":"true"}} -->\n\n[⚠️ Failed to generate image description: {str(e)}]<!-- {{"status":"error"}} -->'
                                 for old_ref in old_ref_patterns:
                                     if old_ref in content:
                                         content = content.replace(old_ref, error_note)
@@ -639,7 +680,12 @@ class MarkdownProcessor:
                                 
                                 # Convert result to string if needed
                                 if not isinstance(result, str):
-                                    result = str(result)
+                                    if hasattr(result, 'markdown'):
+                                        result = result.markdown
+                                    elif hasattr(result, 'text'):
+                                        result = result.text
+                                    else:
+                                        result = str(result)
                                 
                                 with open(output_md, 'w', encoding='utf-8') as f:
                                     f.write(result)
