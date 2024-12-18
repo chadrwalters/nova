@@ -5,6 +5,7 @@ from typing import List, Optional
 from ..core.config import NovaConfig
 from ..core.logging import get_logger
 from ..core.errors import ProcessingError, ErrorSeverity
+from ..core.processor import process_markdown_file
 from markdown_it import MarkdownIt
 
 logger = get_logger(__name__)
@@ -32,7 +33,7 @@ async def process_markdown_files(config: NovaConfig) -> bool:
         # Process each file
         tasks = []
         for file in markdown_files:
-            tasks.append(process_single_file(file, output_dir, config))
+            tasks.append(process_markdown_file(file, output_dir, config))
             
         # Wait for all files to be processed
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -51,48 +52,3 @@ async def process_markdown_files(config: NovaConfig) -> bool:
     except Exception as e:
         logger.error("markdown_processing_failed", error=str(e))
         return False
-
-async def process_single_file(
-    input_file: Path,
-    output_dir: Path,
-    config: NovaConfig
-) -> None:
-    """Process a single markdown file."""
-    try:
-        logger.debug("processing_file", file=str(input_file))
-        
-        # Read input file
-        async with aiofiles.open(input_file, 'r', encoding='utf-8') as f:
-            content = await f.read()
-            
-        # Initialize markdown parser
-        md = MarkdownIt('commonmark', {
-            'typographer': config.markdown.typographer,
-            'linkify': config.markdown.linkify,
-            'breaks': config.markdown.breaks
-        })
-        
-        # Add plugins
-        for plugin in config.markdown.plugins:
-            if hasattr(md, f'enable_{plugin}'):
-                getattr(md, f'enable_{plugin}')()
-                
-        # Parse and validate content
-        html = md.render(content)
-        
-        # Write processed file
-        output_file = output_dir / input_file.name
-        async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
-            await f.write(html)
-            
-        logger.debug("file_processed",
-                    input_file=str(input_file),
-                    output_file=str(output_file))
-                    
-    except Exception as e:
-        logger.error("file_processing_error",
-                    file=str(input_file),
-                    error=str(e))
-        raise ProcessingError(f"Failed to process {input_file.name}: {str(e)}",
-                            severity=ErrorSeverity.ERROR,
-                            source=str(input_file)) 

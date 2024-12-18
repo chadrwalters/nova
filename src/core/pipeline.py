@@ -145,3 +145,30 @@ class Pipeline:
                         input=str(input_path),
                         output=str(output_path))
             return False
+
+def setup_environment(config_path: Optional[Path] = None) -> NovaConfig:
+    """Set up processing environment and load configuration."""
+    try:
+        # Load config
+        config = load_config(config_path)
+        
+        # Convert all path configs to Path objects
+        config.processing.input_dir = Path(str(config.processing.input_dir))
+        config.processing.processing_dir = Path(str(config.processing.processing_dir))
+        config.processing.phase_markdown_parse = Path(str(config.processing.phase_markdown_parse))
+        config.processing.phase_markdown_consolidate = Path(str(config.processing.phase_markdown_consolidate))
+        config.processing.phase_pdf_generate = Path(str(config.processing.phase_pdf_generate))
+        config.processing.temp_dir = Path(str(config.processing.temp_dir))
+        
+        # Create required directories
+        config.processing.processing_dir.mkdir(parents=True, exist_ok=True)
+        config.processing.phase_markdown_parse.mkdir(parents=True, exist_ok=True)
+        config.processing.phase_markdown_consolidate.mkdir(parents=True, exist_ok=True)
+        config.processing.phase_pdf_generate.mkdir(parents=True, exist_ok=True)
+        config.processing.temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        return config
+        
+    except Exception as e:
+        logger.error("environment_setup_failed", error=str(e))
+        raise

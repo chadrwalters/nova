@@ -80,7 +80,7 @@ output:
       font_size: 9
       background: '#f6f8fa'
     hr:
-      width: 1
+      width: "1pt"
       color: '#000000'
 
 security:

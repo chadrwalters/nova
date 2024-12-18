@@ -6,31 +6,29 @@ authors = ["Your Name <your.email@example.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.11"
-markdown-it-py = "^3.0.0"
-mdit-py-plugins = "^0.4.0"
-weasyprint = "^60.1"
-structlog = "^24.1.0"
+python = ">=3.10,<4.0"
+markdown-it-py = ">=3.0.0,<4.0.0"
+mdit-py-plugins = ">=0.4.0,<0.5.0"
+weasyprint = ">=60.1,<61.0"
+structlog = ">=24.1.0,<25.0.0"
 python-dotenv = "^1.0.0"
-markitdown = {git = "https://github.com/microsoft/markitdown.git"}
-python-docx = "^1.0.0"
-PyMuPDF = "^1.23.8"
-python-pptx = "^0.6.21"
-Pillow = "^10.2.0"
-pydantic = "^2.5.3"
-jsonschema = "^4.21.1"
+markitdown = "0.0.1a3"
+Pillow = "^10.0.0"
+pydantic = ">=2.5.2,<3.0.0"
 aiofiles = "^23.2.1"
-aiohttp = "^3.9.1"
 typer = "^0.9.0"
 rich = "^13.7.0"
+psutil = "^5.9.6"
+pyyaml = "^6.0.1"
+pillow-heif = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.0.0"
-mypy = "^1.0.0"
-pytest = "^8.0.0"
-pytest-asyncio = "^0.23.5"
-pytest-cov = "^4.1.0"
-flake8 = "^7.0.0"
+black = ">=23.0.0,<24.0.0"
+mypy = ">=1.0.0,<2.0.0"
+pytest = ">=8.0.0,<9.0.0"
+pytest-asyncio = ">=0.23.5,<0.24.0"
+pytest-cov = ">=4.1.0,<5.0.0"
+flake8 = ">=7.0.0,<8.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

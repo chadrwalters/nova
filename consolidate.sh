@@ -232,7 +232,7 @@ while [ $attempt -le $MAX_RETRIES ]; do
     log "INFO" "Running Phase 3: PDF Generate"
     if ! PYTHONPATH="." poetry run python3 -m src.cli.main generate-pdf \
         --input "$NOVA_PHASE_MARKDOWN_CONSOLIDATE" \
-        --output "$NOVA_OUTPUT_DIR" \
+        --output "$NOVA_PHASE_PDF_GENERATE" \
         --config config/default_config.yaml; then
         exit_code=$?
         log "ERROR" "Phase 3 failed"
