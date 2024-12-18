@@ -59,11 +59,18 @@ def process(
             validator.validate_directory(input_path)
             processor.process_directory(input_path)
             
-        print("[green]Processing completed successfully![/green]")
+        # Check if there were any errors
+        if processor.summary.errors:
+            print("\n[yellow]Processing completed with errors:[/yellow]")
+            for error in processor.summary.errors:
+                print(f"[yellow]  - {error}[/yellow]")
+            raise typer.Exit(code=2)  # Use code 2 for non-critical errors
+            
+        print("\n[green]Processing completed successfully![/green]")
         
     except Exception as e:
-        print(f"[red]Error: {str(e)}[/red]")
-        raise typer.Exit(code=1)
+        print(f"\n[red]Critical Error: {str(e)}[/red]")
+        raise typer.Exit(code=1)  # Use code 1 for critical errors
 
 if __name__ == "__main__":
     app() 
