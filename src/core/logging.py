@@ -64,19 +64,9 @@ def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None
             )
         )
     else:
-        # Define color styles as pre-formatted strings
-        level_styles = {
-            "debug": "\033[34m%s\033[0m",    # Blue
-            "info": "\033[32m%s\033[0m",     # Green
-            "warning": "\033[33m%s\033[0m",  # Yellow
-            "error": "\033[31m%s\033[0m",    # Red
-            "critical": "\033[1;31m%s\033[0m" # Bold Red
-        }
-
         processors.append(
             structlog.dev.ConsoleRenderer(
-                colors=True,
-                level_styles=level_styles
+                colors=True
             )
         )
 
