@@ -1,138 +1,25 @@
-# Nova Document Processor Default Configuration
-
-markdown:
-  plugins:
-    - table
-    - strikethrough
-    - linkify
-    - image
-  options:
-    typographer: true
-    linkify: true
-    breaks: true
-  allowed_html_tags:
-    - p
-    - br
-    - b
-    - i
-    - strong
-    - em
-    - a
-    - img
-    - h1
-    - h2
-    - h3
-    - h4
-    - h5
-    - h6
-    - ul
-    - ol
-    - li
-    - blockquote
-    - code
-    - pre
-    - hr
-    - table
-    - thead
-    - tbody
-    - tr
-    - th
-    - td
+# Nova Document Processor Configuration
+# First Phase: Markdown Parse
 
 processing:
   error_tolerance: lenient
   max_retries: 3
-  delay_between_retries: 1
-  max_file_size: 10  # MB
-  max_total_size: 50  # MB
-  concurrent_processes: 4
-  # Processing directories are set via environment variables
-  input_dir: ${NOVA_INPUT_DIR}
-  processing_dir: ${NOVA_PROCESSING_DIR}
-  phase_markdown_parse: ${NOVA_PHASE_MARKDOWN_PARSE}
-  phase_markdown_consolidate: ${NOVA_PHASE_MARKDOWN_CONSOLIDATE}
-  phase_pdf_generate: ${NOVA_PHASE_PDF_GENERATE}
-  temp_dir: ${NOVA_TEMP_DIR}
-
-output:
-  format: pdf
-  style:
-    font_family: Helvetica
-    fallback_fonts: [Courier, Times]
-    font_size: 11
-    line_height: 1.5
-    margins:
-      top: 25
-      right: 20
-      bottom: 25
-      left: 20
-    page:
-      format: A4
-      orientation: P
-    headers:
-      h1_size: 24
-      h2_size: 20
-      h3_size: 16
-      h4_size: 14
-      font_family: Helvetica
-    code:
-      font_family: Courier
-      font_size: 9
-      background: '#f6f8fa'
-    hr:
-      width: "1pt"
-      color: '#000000'
-
-security:
-  allow_external_refs: false
-  sanitize_html: true
-  allowed_domains: []
-  max_image_size: 5242880  # 5MB in bytes
+  max_file_size: 100  # MB
+  max_total_size: 500  # MB
 
 logging:
   level: INFO
-  format: console
-  file_path: null
+  format: json
   filter_binary: true
   max_binary_length: 100
-  filter_config: true
-  max_value_length: 200
-  format_style:
-    timestamp: cyan
-    level:
-      debug: blue
-      info: green
-      warning: yellow
-      error: red
-      critical: "red,bold"
-  console_format: "{timestamp} {level} {event} {extra}"
 
-document_handling:
-  allowed_types:
-    - .pdf
-    - .docx
-    - .doc
-    - .pptx
-    - .ppt
-    - .xlsx
-    - .xls
-  word_processing:
-    extract_images: true
-    preserve_formatting: true
-    table_handling: markdown
-    image_output_dir: "assets/images"
-  office_processing:
-    tool: markitdown
-    powerpoint:
-      slide_separator: "---"
-      include_notes: true
-    excel:
-      sheet_separator: "## Sheet:"
-      max_rows: 1000
-    pdf:
-      extract_images: true
-      ocr_enabled: true
-  max_size: 10485760  # 10MB
-  embed_options:
-    - preview
-    - embed
+markdown:
+  typographer: true
+  linkify: true
+  breaks: true
+  plugins:
+    - table
+    - strikethrough
+    - taskList
+    - linkify
+    - image

@@ -1,11 +1,11 @@
-# Nova Document Processor
+# Nova Document Processor - Markdown Parse Phase
 
-A modern, async document processing pipeline for converting markdown to PDF with embedded document support and advanced validation.
+A modern document processing system for parsing and validating markdown files with embedded document support.
 
 ## Features
 
 ### Core Processing
-- Async markdown processing pipeline
+- Markdown file processing and validation
 - Secure content validation and sanitization
 - Frontmatter extraction and validation
 - Special character handling
@@ -97,117 +97,22 @@ Process markdown files with embedded documents:
 ```python
 from nova.core.validation import DocumentValidator
 from nova.core.config import load_config
+from nova.processors.markdown_processor import MarkdownProcessor
 
 # Load configuration
-config = load_config('config.yaml')
+config = load_config()
 
-# Initialize validator
-validator = DocumentValidator(config)
+# Initialize processor
+processor = MarkdownProcessor(config)
 
-# Process files
-await validator.validate_input_files(files)
+# Process a file or directory
+processor.process_file("path/to/document.md")
+processor.process_directory("path/to/documents/")
 ```
-
-### Document Embedding
-
-Nova supports embedding various document types in markdown files:
-
-```markdown
-# My Document
-
-Here's an embedded Word document:
-[Document Title](path/to/document.docx)<!-- {"embed": true} -->
-
-Here's an embedded PDF with preview:
-[PDF Title](path/to/document.pdf)<!-- {"embed": true, "preview": true} -->
-
-Here's an embedded PowerPoint:
-[Presentation Title](path/to/slides.pptx)<!-- {"embed": true} -->
-```
-
-## Error Handling
-
-The system provides three severity levels:
-- CRITICAL: Stops processing
-- ERROR: Logged but continues if in lenient mode
-- WARNING: Noted but doesn't affect processing
-
-Example error handling:
-
-```python
-from nova.core.errors import ErrorHandler, ProcessingError, ErrorSeverity
-
-error_handler = ErrorHandler()
-
-try:
-    # Process files
-    await validator.validate_input_files(files)
-except ProcessingError as e:
-    if e.severity == ErrorSeverity.CRITICAL:
-        raise
-    error_handler.add_error(e)
-```
-
-## Logging
-
-Structured logging with:
-- Timestamp tracking
-- Source identification
-- Error details
-- Processing status
-- Binary content filtering
-
-Example log configuration:
-
-```python
-import structlog
-
-logger = structlog.get_logger()
-logger.info("processing_started",
-    input_files=len(files),
-    config=config.model_dump()
-)
-```
-
-## Environment Variables
-
-Required environment variables:
-- `NOVA_INPUT_DIR`: Input directory for markdown files
-- `NOVA_OFFICE_ASSETS_DIR`: Directory for document assets
-- `NOVA_OFFICE_TEMP_DIR`: Temporary processing directory
-
-Optional variables:
-- `NOVA_ERROR_TOLERANCE`: 'strict' or 'lenient' (default: 'lenient')
-- `NOVA_LOG_LEVEL`: Logging level (default: 'INFO')
-
-## Development
-
-1. Set up development environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   pip install -r requirements-dev.txt
-   ```
-
-2. Run tests:
-   ```bash
-   pytest tests/
-   ```
-
-3. Check code style:
-   ```bash
-   black src/
-   flake8 src/
-   mypy src/
-   ```
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
+Contributions are welcome! Please read our contributing guidelines first.
 
 Please ensure your changes:
 - Include appropriate tests
@@ -218,3 +123,8 @@ Please ensure your changes:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Dependencies
+
+- markdown-it-py for markdown processing
+- markitdown for document conversion
