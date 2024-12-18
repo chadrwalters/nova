@@ -11,7 +11,7 @@ from ..core.logging import configure_logging, get_logger
 from ..core.errors import NovaError, ConfigError
 from ..pipeline.markdown import process_markdown_files
 from ..pipeline.consolidate import consolidate_markdown
-from ..pipeline.pdf import generate_pdfs
+from ..processors.pdf_generator import generate_pdf_files
 
 # Create Typer app
 app = typer.Typer()
@@ -106,7 +106,7 @@ def consolidate(
 @app.command()
 def generate_pdf(
     input_dir: str = Option(None, "--input", help="Input directory containing consolidated markdown files"),
-    output: str = Option(None, help="Output directory for PDF files"),
+    output: str = Option(None, "--output", help="Output directory for PDF files"),
     config: Optional[str] = Option(None, help="Configuration file path")
 ):
     """Generate PDF files from consolidated markdown."""
@@ -120,12 +120,8 @@ def generate_pdf(
         if output:
             nova_config.processing.phase_pdf_generate = Path(output)
             
-        logger.info("starting_pdf_generation",
-                   input_dir=str(nova_config.processing.phase_markdown_consolidate),
-                   output_dir=str(nova_config.processing.phase_pdf_generate))
-        
         # Run PDF generation
-        if not asyncio.run(generate_pdfs(nova_config)):
+        if not asyncio.run(generate_pdf_files(nova_config)):
             sys.exit(1)
             
     except Exception as e:

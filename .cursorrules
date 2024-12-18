@@ -290,3 +290,17 @@ document_processing:
         > - File: {filename}
         > - Error: {error}
         > Processing failed after {retry_count} attempts
+
+# Input File Handling
+input_file_handling:
+  modification_policy: "never"
+  rules:
+    - Input files must never be modified
+    - All transformations must write to output directories only
+    - Original files must be preserved exactly as received
+    - Input directories are read-only
+  enforcement:
+    - Validate input file checksums
+    - Track file access patterns
+    - Log all file operations
+    - Prevent write operations to input paths

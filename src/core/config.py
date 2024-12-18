@@ -50,15 +50,12 @@ class ProcessingConfig(BaseModel):
     max_file_size: int = 10
     max_total_size: int = 50
     concurrent_processes: int = 4
-    input_dir: Path = Field(default_factory=lambda: Path(os.getenv("NOVA_INPUT_DIR", "")))
-    processing_dir: Path = Field(default_factory=lambda: Path(os.getenv("NOVA_PROCESSING_DIR", "")))
-    phase_markdown_parse: Path = Field(default_factory=lambda: Path(os.getenv("NOVA_PHASE_MARKDOWN_PARSE", "")))
-    phase_markdown_consolidate: Path = Field(default_factory=lambda: Path(os.getenv("NOVA_PHASE_MARKDOWN_CONSOLIDATE", "")))
-    phase_pdf_generate: Path = Field(default_factory=lambda: Path(os.getenv("NOVA_PHASE_PDF_GENERATE", "")))
-    temp_dir: Path = Field(default_factory=lambda: Path(os.getenv("NOVA_TEMP_DIR", "")))
-
-    class Config:
-        arbitrary_types_allowed = True
+    input_dir: str = Field(default="${NOVA_INPUT_DIR}")
+    processing_dir: str = Field(default="${NOVA_PROCESSING_DIR}")
+    phase_markdown_parse: str = Field(default="${NOVA_PHASE_MARKDOWN_PARSE}")
+    phase_markdown_consolidate: str = Field(default="${NOVA_PHASE_MARKDOWN_CONSOLIDATE}")
+    phase_pdf_generate: str = Field(default="${NOVA_PHASE_PDF_GENERATE}")
+    temp_dir: str = Field(default="${NOVA_TEMP_DIR}")
 
     def model_post_init(self, __context):
         """Convert path strings to Path objects after env var expansion."""
@@ -67,9 +64,14 @@ class ProcessingConfig(BaseModel):
                      'phase_markdown_consolidate', 'phase_pdf_generate', 'temp_dir']:
             value = getattr(self, field)
             if isinstance(value, (str, Path)):
-                # Convert to string, expand vars, then convert to Path
+                # Convert to string, expand vars
                 expanded = os.path.expandvars(str(value))
-                setattr(self, field, Path(expanded))
+                setattr(self, field, expanded)
+
+    def get_path(self, field_name: str) -> Path:
+        """Get a path field as a Path object."""
+        value = getattr(self, field_name)
+        return Path(os.path.expandvars(str(value)))
 
 class PDFPageConfig(BaseModel):
     """PDF page configuration."""
@@ -99,11 +101,9 @@ class PDFCodeConfig(BaseModel):
 
 class PDFHRConfig(BaseModel):
     """PDF horizontal rule configuration."""
-    width: int = Field(
-        default=1,
-        description="Line width in points",
-        ge=1,
-        le=5
+    width: str = Field(
+        default="1pt",
+        description="Line width in points"
     )
     color: str = Field(
         default="#000000",
@@ -112,31 +112,23 @@ class PDFHRConfig(BaseModel):
 
     @validator('width')
     def validate_width(cls, v):
-        if isinstance(v, (int, float)):
-            value = int(v)
-        elif isinstance(v, str):
+        if isinstance(v, str):
             try:
                 # Remove any units and convert
                 clean_value = v.lower().strip()
                 # Handle relative units by converting to base value
-                for unit in ['r', 'pt', 'px', 'em', 'rem', '%']:
+                for unit in ['pt', 'px', 'em', 'rem', '%']:
                     if clean_value.endswith(unit):
                         clean_value = clean_value[:-len(unit)].strip()
                         break
                 if not clean_value:
-                    return 1  # Default width
-                value = int(float(clean_value))
+                    return "1pt"  # Default width
+                value = float(clean_value)
+                return f"{value}pt"  # Always return with unit
             except (ValueError, TypeError):
-                return 1  # Default to 1 on conversion error
+                return "1pt"  # Default to 1pt on conversion error
         else:
-            return 1  # Default for any other type
-            
-        # Clamp value to valid range
-        if value < 1:
-            return 1
-        if value > 5:
-            return 5
-        return value
+            return "1pt"  # Default for any other type
 
     @validator('color')
     def validate_color(cls, v):
@@ -147,11 +139,11 @@ class PDFHRConfig(BaseModel):
 class PDFStyleConfig(BaseModel):
     """PDF styling configuration."""
     font_family: str = Field(
-        default="Noto Sans, STHeiti Light, Arial Unicode MS",
+        default="DejaVu Sans",
         description="Font stack with Unicode support"
     )
     fallback_fonts: list[str] = Field(
-        default=["STHeiti Light", "Arial Unicode MS"],
+        default=["Noto Sans", "Arial Unicode MS"],
         description="Fallback fonts for Unicode characters"
     )
     font_size: int = Field(
@@ -214,7 +206,7 @@ class OutputConfig(BaseModel):
             background="#f6f8fa"
         ),
         hr=PDFHRConfig(
-            width=1,
+            width="1pt",
             color="#000000"
         )
     ))
@@ -318,11 +310,10 @@ class MetadataConfig(BaseModel):
         'filename',
         'date',
         'title',
-        'toc',
         'processed_timestamp'
     ])
     date_format: str = '%Y-%m-%d'
-    filename_pattern: str = r'^\d{8}\s*-\s*.+\.md$'
+    filename_pattern: str = r'^(\d{4})(\d{2})(\d{2})\s*-\s*(.+)\.md$'
 
 class NovaConfig(BaseModel):
     """Main configuration class."""
