@@ -8,7 +8,13 @@ set -e
 
 # Source environment variables
 if [ -f .env ]; then
+    echo "Loading environment variables from .env"
+    set -a  # automatically export all variables
     source .env
+    set +a
+    echo "OPEN_AI_KEY is set: ${OPEN_AI_KEY:+yes}"
+else
+    echo "No .env file found"
 fi
 
 # Configuration
@@ -25,12 +31,9 @@ log() {
 required_vars=(
     "NOVA_BASE_DIR"
     "NOVA_INPUT_DIR"
-    "NOVA_OUTPUT_DIR"
-    "NOVA_CONFIG_DIR"
     "NOVA_PROCESSING_DIR"
-    "NOVA_TEMP_DIR"
     "NOVA_PHASE_MARKDOWN_PARSE"
-    "NOVA_OFFICE_ASSETS_DIR"
+    "NOVA_TEMP_DIR"
     "NOVA_OFFICE_TEMP_DIR"
 )
 

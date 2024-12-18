@@ -69,11 +69,9 @@ class InputValidator:
         required_vars = [
             "NOVA_BASE_DIR",
             "NOVA_INPUT_DIR",
-            "NOVA_OUTPUT_DIR",
             "NOVA_PROCESSING_DIR",
             "NOVA_PHASE_MARKDOWN_PARSE",
             "NOVA_TEMP_DIR",
-            "NOVA_OFFICE_ASSETS_DIR",
             "NOVA_OFFICE_TEMP_DIR"
         ]
 

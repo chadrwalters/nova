@@ -1,72 +1,67 @@
 """Logging configuration for Nova Document Processor."""
 
 import logging
+import json
 from typing import Any, Dict
-
-import structlog
-from rich.logging import RichHandler
+from pathlib import Path
 
 from .models import LoggingConfig
 
+class NovaFormatter(logging.Formatter):
+    """Custom formatter that handles structured logging cleanly."""
+    
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the log record."""
+        # Skip debug messages unless explicitly requested
+        if record.levelno == logging.DEBUG:
+            return ""
+            
+        # For INFO level, only show specific messages
+        if record.levelno == logging.INFO:
+            msg = record.getMessage()
+            # Only show specific info messages
+            if any(x in msg for x in [
+                "Running Markdown Parse Phase",
+                "Processing completed",
+                "Processing directory:",
+                "Starting markdown parse"
+            ]):
+                return msg
+            return ""
+            
+        # For other levels, include the level
+        return f"{record.levelname}: {record.getMessage()}"
+
 def setup_logging(config: LoggingConfig, verbose: bool = False) -> None:
-    """Configure logging with structlog and rich."""
+    """Set up logging configuration."""
+    # Remove all existing handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers = []
     
-    # Set log level
+    # Set level based on verbose flag
     level = logging.DEBUG if verbose else getattr(logging, config.level.upper())
+    root_logger.setLevel(level)
     
-    # Configure standard logging
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        handlers=[
-            RichHandler(
-                rich_tracebacks=True,
-                markup=True,
-                show_time=True,
-                show_path=True
-            )
-        ]
-    )
-
-    # Configure structlog
-    processors = [
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        _filter_binary_data if config.filter_binary else structlog.processors.identity,
-        structlog.processors.JSONRenderer() if config.format == "json" else structlog.dev.ConsoleRenderer()
-    ]
-
-    structlog.configure(
-        processors=processors,
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
-    )
-
-def get_logger(name: str) -> structlog.BoundLogger:
-    """Get a logger instance."""
-    return structlog.get_logger(name)
-
-def _filter_binary_data(
-    logger: str,
-    method_name: str,
-    event_dict: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Filter out binary data from logs."""
-    MAX_LENGTH = 100  # from config
+    # Create console handler with custom formatter
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(NovaFormatter())
+    root_logger.addHandler(console_handler)
     
-    def _truncate(value: Any) -> str:
-        if isinstance(value, bytes):
-            return f"[BINARY DATA: {len(value)} bytes]"
-        if isinstance(value, str) and len(value) > MAX_LENGTH:
-            return f"{value[:MAX_LENGTH]}... [truncated]"
-        return value
+    # Configure all loggers to use the root logger
+    for name in logging.root.manager.loggerDict:
+        logger = logging.getLogger(name)
+        logger.handlers = []
+        logger.propagate = True
+    
+    # Suppress all logging from libraries
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("markdown_it").setLevel(logging.WARNING)
+    logging.getLogger("markitdown").setLevel(logging.WARNING)
 
-    return {
-        key: _truncate(value)
-        for key, value in event_dict.items()
-    }
+def get_logger(name: str) -> logging.Logger:
+    """Get a logger with the Nova configuration."""
+    logger = logging.getLogger(name)
+    logger.propagate = True  # Ensure messages propagate to root logger
+    return logger
