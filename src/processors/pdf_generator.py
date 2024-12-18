@@ -18,6 +18,8 @@ import markdown
 from weasyprint import CSS, HTML
 import os
 import platform
+import json
+from bs4 import Comment
 
 logger = get_logger(__name__)
 
@@ -170,138 +172,327 @@ class PDFGenerator:
     async def generate_pdf(self, markdown_content: str, output_file: Union[str, Path]) -> None:
         """Generate PDF from markdown content."""
         try:
-            # Debug unicode characters in markdown content
-            non_ascii = await self.debug_unicode_characters(markdown_content)
-            if non_ascii:
-                logger.warning("unicode_characters_in_markdown", 
-                             count=len(non_ascii),
-                             first_10=non_ascii[:10])
-            
-            # Convert output_file to Path if it's a string
-            output_file = Path(str(output_file))
-            
-            # Ensure output directory exists
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            
             # Convert markdown to HTML
             html = self.md.convert(markdown_content)
-            
-            # Debug unicode characters in HTML
-            non_ascii_html = await self.debug_unicode_characters(html)
-            if non_ascii_html:
-                logger.warning("unicode_characters_in_html", 
-                             count=len(non_ascii_html),
-                             first_10=non_ascii_html[:10])
-            
-            # Parse HTML with BeautifulSoup
             soup = BeautifulSoup(html, 'html.parser')
             
             # Add first page
             self.pdf.add_page()
             
-            # Process HTML elements
-            await self._process_elements(self.pdf, soup)
+            # Split content into sections based on metadata comments
+            sections = []
+            current_section = {'metadata': None, 'content': []}
             
+            for element in soup.children:
+                if isinstance(element, Comment) and element.strip().startswith('Source:'):
+                    if current_section['content']:
+                        sections.append(current_section)
+                        current_section = {'metadata': None, 'content': []}
+                        
+                    # Parse metadata
+                    meta_lines = element.strip().split('\n')
+                    metadata = {}
+                    for line in meta_lines:
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            metadata[key.strip()] = value.strip()
+                    current_section['metadata'] = metadata
+                else:
+                    current_section['content'].append(element)
+                    
+            if current_section['content']:
+                sections.append(current_section)
+                
+            # Process each section
+            for section in sections:
+                if section['metadata']:
+                    content_soup = BeautifulSoup('', 'html.parser')
+                    for element in section['content']:
+                        content_soup.append(element)
+                    await self._process_document_section(self.pdf, section['metadata'], content_soup)
+                    
             # Output PDF
             self.pdf.output(str(output_file))
+            logger.info("pdf_generated", output_path=str(output_file))
             
         except Exception as e:
-            logger.error("pdf_generation_error", 
+            logger.error("pdf_generation_error",
                         error=str(e),
                         error_type=type(e).__name__,
                         traceback=traceback.format_exc())
             raise PDFGenerationError(f"Failed to generate PDF: {str(e)}")
             
+    async def _process_document_section(self, pdf: NovaPDF, metadata: dict, content_soup: BeautifulSoup) -> None:
+        """Process a complete document section with metadata and content."""
+        try:
+            # Add section separator if not first section
+            if pdf.page_no() > 1 or pdf.get_y() > 30:
+                pdf.add_page()  # Start each document on a new page
+                
+            # Add metadata block with better styling
+            pdf.set_fill_color(246, 248, 250)  # Lighter gray background
+            start_y = pdf.get_y()
+            pdf.rect(pdf.get_x(), start_y, 190, 35, 'F')  # Taller box for metadata
+            
+            # Add title with better spacing
+            if self.has_unicode:
+                pdf.set_font('Unicode', 'B', 16)
+            else:
+                pdf.set_font('Helvetica', 'B', 16)
+                
+            pdf.set_x(pdf.get_x() + 8)  # Slightly more indent
+            title = metadata.get('title', 'Untitled Document')
+            pdf.write(10, title)
+            pdf.ln(8)
+            
+            # Add metadata details with better layout
+            if self.has_unicode:
+                pdf.set_font('Unicode', 'I', 9)
+            else:
+                pdf.set_font('Helvetica', 'I', 9)
+                
+            pdf.set_x(pdf.get_x() + 8)
+            pdf.set_text_color(80, 80, 80)  # Darker gray for metadata
+            date = metadata.get('date', 'Unknown')
+            filename = metadata.get('filename', 'Unknown')
+            pdf.write(4, f"Date: {date}")
+            pdf.ln(4)
+            pdf.set_x(pdf.get_x() + 8)
+            pdf.write(4, f"Source: {filename}")
+            
+            # Reset formatting
+            pdf.set_text_color(0, 0, 0)
+            if self.has_unicode:
+                pdf.set_font('Unicode', '', 11)
+            else:
+                pdf.set_font('Helvetica', '', 11)
+            pdf.ln(20)  # More space after metadata block
+            
+            # Add a subtle line under metadata
+            pdf.line(pdf.get_x(), pdf.get_y() - 5, pdf.get_x() + 190, pdf.get_y() - 5)
+            pdf.ln(10)
+            
+            # Process content
+            await self._process_elements(pdf, content_soup)
+            
+        except Exception as e:
+            logger.error("document_section_processing_error",
+                        error=str(e),
+                        metadata=metadata,
+                        traceback=traceback.format_exc())
+
+    async def _process_embedded_document(self, pdf: NovaPDF, element: BeautifulSoup) -> None:
+        """Handle embedded document references with proper formatting."""
+        try:
+            # Parse link and metadata
+            link = element.find('a')
+            if not link:
+                return
+            
+            # Parse JSON metadata from comment
+            meta_comment = element.find(string=lambda text: isinstance(text, Comment))
+            embed_meta = json.loads(meta_comment.strip()) if meta_comment else {}
+            
+            file_path = link['href']
+            file_type = Path(file_path).suffix.lower()
+            
+            # Add document box
+            start_y = pdf.get_y()
+            pdf.rect(pdf.get_x(), start_y, 190, 30)
+            pdf.ln(2)
+            
+            # Add icon and title
+            if self.has_unicode:
+                pdf.set_font('Unicode', 'B', 11)
+            else:
+                pdf.set_font('Helvetica', 'B', 11)
+                
+            icon = {
+                '.pdf': '📄',
+                '.docx': '📝',
+                '.doc': '📝', 
+                '.pptx': '📊',
+                '.ppt': '📊'
+            }.get(file_type, '📎')
+            
+            if not self.has_unicode:
+                icon = f"[{file_type.upper()}]"
+            
+            pdf.set_x(pdf.get_x() + 5)  # Indent
+            pdf.write(5, f"{icon} {Path(file_path).name}")
+            pdf.ln(5)
+            
+            # Add metadata
+            if self.has_unicode:
+                pdf.set_font('Unicode', '', 9)
+            else:
+                pdf.set_font('Helvetica', '', 9)
+                
+            pdf.set_x(pdf.get_x() + 5)  # Indent
+            if embed_meta.get('preview'):
+                pdf.write(5, "📥 Preview available")
+            if embed_meta.get('embed'):
+                pdf.write(5, " 📎 Embedded content")
+            pdf.ln(8)
+            
+            # Reset position
+            pdf.ln(5)
+            
+        except Exception as e:
+            logger.error("embedded_document_processing_error",
+                        error=str(e),
+                        element=str(element)[:100])
+
     async def _process_elements(self, pdf: NovaPDF, soup: BeautifulSoup) -> None:
-        """Process HTML elements and add them to PDF."""
+        """Process HTML elements with improved formatting."""
+        current_section = None
+        list_level = 0
+        in_code_block = False
+        
         for element in soup.children:
             try:
-                if element.name is None:
-                    # Handle text content
-                    if isinstance(element, str) and element.strip():
-                        text = await self._sanitize_text(str(element.strip()))
-                        pdf.write(5, text)
+                # Skip metadata comments - handled by _process_document_section
+                if isinstance(element, Comment) and element.strip().startswith('Source:'):
                     continue
                     
-                # Log element type for debugging
-                logger.debug("processing_element", 
-                            element_type=element.name,
-                            text_preview=element.get_text()[:50] if element.get_text() else None)
-                
-                if element.name == 'hr':
-                    # Handle horizontal rule
+                # Handle empty or None elements
+                if not element or not hasattr(element, 'name'):
+                    continue
+                    
+                # Handle empty content marker with better styling
+                if element.name == 'p' and '[No content for' in element.get_text():
                     pdf.ln(5)
-                    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
-                    pdf.ln(5)
+                    # Add light gray box with italic text
+                    start_y = pdf.get_y()
+                    pdf.set_fill_color(246, 248, 250)
+                    height = 12  # Base height
+                    pdf.rect(pdf.get_x(), start_y, 190, height, 'F')
                     
-                elif element.name and element.name.startswith('h') and len(element.name) == 2:
-                    # Handle headers (h1, h2, etc)
-                    try:
-                        level = int(element.name[1])
-                        text = await self._sanitize_text(str(element.get_text()))
-                        font_size = {1: 24, 2: 20, 3: 16}.get(level, 14)
-                        
-                        # Use Unicode font if available, otherwise Helvetica
-                        if self.has_unicode:
-                            pdf.set_font('Unicode', 'B', font_size)
-                        else:
-                            pdf.set_font('Helvetica', 'B', font_size)
-                            
-                        pdf.ln(10)
-                        pdf.write(8, text)
-                        pdf.ln(10)
-                        
-                        # Reset to regular style
-                        if self.has_unicode:
-                            pdf.set_font('Unicode', '', font_size)
-                        else:
-                            pdf.set_font('Helvetica', '', font_size)
-                            
-                    except ValueError:
-                        logger.warning("invalid_header_level", 
-                                     element_name=element.name,
-                                     text=element.get_text()[:50])
-                        continue
-                    
-                elif element.name == 'p':
-                    # Handle paragraphs
-                    text = await self._sanitize_text(str(element.get_text()))
-                    pdf.write(5, text)
-                    pdf.ln(8)
-                    
-                elif element.name in ('ul', 'ol'):
-                    # Handle lists
-                    for i, item in enumerate(element.find_all('li'), 1):
-                        if element.name == 'ol':
-                            pdf.write(5, f"{i}. ")
-                        else:
-                            pdf.write(5, "* ")  # Use asterisk instead of bullet
-                        text = await self._sanitize_text(str(item.get_text()))
-                        pdf.write(5, text)
-                        pdf.ln(5)
-                    pdf.ln(3)
-                    
-                elif element.name == 'pre':
-                    # Handle code blocks with monospace font
                     if self.has_unicode:
-                        pdf.set_font('Unicode', '', 9)
+                        pdf.set_font('Unicode', 'I', 10)
                     else:
-                        pdf.set_font('Courier', '', 9)
-                    text = await self._sanitize_text(str(element.get_text()))
-                    pdf.write(5, text)
+                        pdf.set_font('Helvetica', 'I', 10)
+                    pdf.set_text_color(128, 128, 128)
+                    
+                    pdf.set_x(pdf.get_x() + 5)
+                    pdf.write(8, element.get_text())
+                    pdf.ln(10)
+                    
+                    # Reset formatting
+                    pdf.set_text_color(0, 0, 0)
+                    if self.has_unicode:
+                        pdf.set_font('Unicode', '', 11)
+                    else:
+                        pdf.set_font('Helvetica', '', 11)
+                    continue
+
+                # Handle code blocks with dynamic height
+                elif element.name == 'pre':
+                    in_code_block = True
+                    pdf.ln(5)
+                    
+                    # Calculate height based on content
+                    text = await self._sanitize_text(element.get_text())
+                    lines = text.split('\n')
+                    height = len(lines) * 4 + 10  # 4pt per line + padding
+                    
+                    # Add gray background
+                    start_y = pdf.get_y()
+                    pdf.set_fill_color(246, 248, 250)
+                    pdf.rect(pdf.get_x(), start_y, 190, height, 'F')
+                    
+                    # Add code with monospace font
+                    pdf.set_font('Courier', '', 9)
+                    for line in lines:
+                        pdf.set_x(pdf.get_x() + 5)
+                        pdf.write(4, line)
+                        pdf.ln(4)
+                    
+                    pdf.ln(5)
+                    in_code_block = False
+                    
+                    # Reset font
+                    if self.has_unicode:
+                        pdf.set_font('Unicode', '', 11)
+                    else:
+                        pdf.set_font('Helvetica', '', 11)
+                    continue
+
+                # Handle embedded documents with better spacing
+                if element.name == 'a' and element.get('href', '').endswith(('.pdf', '.docx', '.pptx', '.doc', '.ppt')):
+                    pdf.ln(8)  # Extra space before embedded doc
+                    await self._process_embedded_document(pdf, element)
+                    pdf.ln(8)  # Extra space after embedded doc
+                    continue
+
+                if element.name == 'hr':
+                    # Section separator
+                    pdf.ln(10)
+                    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+                    pdf.ln(10)
+                    
+                elif element.name and element.name.startswith('h'):
+                    # Header processing
+                    level = int(element.name[1])
+                    if level == 1:
+                        if current_section:
+                            pdf.ln(15)
+                        current_section = element.get_text()
+                        if self.has_unicode:
+                            pdf.set_font('Unicode', 'B', 16)
+                        else:
+                            pdf.set_font('Helvetica', 'B', 16)
+                    else:
+                        pdf.ln(10)
+                        size = max(16 - (level * 2), 11)  # Decrease size with header level
+                        if self.has_unicode:
+                            pdf.set_font('Unicode', 'B', size)
+                        else:
+                            pdf.set_font('Helvetica', 'B', size)
+                    
+                    text = await self._sanitize_text(element.get_text())
+                    pdf.write(8, text)
                     pdf.ln(8)
+                    
                     # Reset font
                     if self.has_unicode:
                         pdf.set_font('Unicode', '', 11)
                     else:
                         pdf.set_font('Helvetica', '', 11)
                     
+                elif element.name in ('ul', 'ol'):
+                    list_level += 1
+                    for item in element.find_all('li', recursive=False):
+                        pdf.ln(2)
+                        # Indent based on level
+                        pdf.set_x(pdf.get_x() + (list_level * 5))
+                        
+                        if element.name == 'ol':
+                            i = len(item.find_previous_siblings('li')) + 1
+                            pdf.write(5, f"{i}. ")
+                        else:
+                            pdf.write(5, "* ")  # Use asterisk instead of bullet
+                        
+                        text = await self._sanitize_text(item.get_text())
+                        pdf.write(5, text)
+                        pdf.ln(5)
+                    list_level -= 1
+                    
+                elif element.name == 'p' and not in_code_block:
+                    text = await self._sanitize_text(element.get_text())
+                    if text.strip():  # Only process non-empty paragraphs
+                        pdf.write(5, text)
+                        pdf.ln(8)
+                    
+                # Add extra spacing after each major section
+                if element.name == 'hr':
+                    pdf.ln(15)  # Extra space after section separator
+
             except Exception as e:
                 logger.error("element_processing_error",
                            element_type=element.name if hasattr(element, 'name') else type(element),
                            error=str(e),
                            traceback=traceback.format_exc())
-                raise
 
 async def generate_pdf_files(config: NovaConfig) -> bool:
     """Generate PDF files from consolidated markdown."""

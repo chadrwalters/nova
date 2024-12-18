@@ -1,38 +1,60 @@
 # Nova Document Processor
 
-A modern, async document processing pipeline for converting markdown to PDF with advanced styling and security features.
+A modern, async document processing pipeline for converting markdown to PDF with embedded document support and advanced validation.
 
 ## Features
 
-- Markdown to PDF conversion using markdown-it and WeasyPrint
-- GitHub-style formatting
-- Metadata extraction and processing
-- Secure content validation
-- Configurable styling and output options
-- Async processing pipeline
-- Structured logging
+### Core Processing
+- Async markdown processing pipeline
+- Secure content validation and sanitization
+- Frontmatter extraction and validation
+- Special character handling
+- Base64 content processing
+- Structured error handling
 
-### Document Processing Features
+### Document Support
+- **Markdown Files**
+  - UTF-8 encoding validation
+  - Structure validation
+  - Content safety checks
+  - Frontmatter processing
+  
+- **Embedded Documents**
+  - Word (.docx, .doc)
+    - Full text extraction
+    - Metadata preservation
+    - Author and timestamp tracking
+    
+  - PDF (.pdf)
+    - Text extraction
+    - Metadata extraction
+    - Reference validation
+    
+  - PowerPoint (.pptx, .ppt)
+    - Slide content extraction
+    - Notes processing
+    - Metadata tracking
 
-- **Word Documents (.docx, .doc)**
-  - Full text extraction with formatting
-  - Image preservation
-  - Metadata extraction (author, title, dates)
-  - Table conversion to markdown
-  
-- **PDF Documents (.pdf)**
-  - Text extraction with layout preservation
-  - Image extraction
-  - OCR support (optional)
-  - Metadata preservation
-  - Page-by-page processing
-  
-- **PowerPoint Presentations (.pptx, .ppt)**
-  - Slide text extraction
-  - Speaker notes support
-  - Image extraction
-  - Slide separation with customizable markers
-  - Metadata preservation
+### Security Features
+- Path traversal protection
+- Content safety validation
+- Secure file handling
+- Permission validation
+- Size limit enforcement
+
+### Metadata Management
+- Frontmatter validation
+- Filename metadata extraction
+- Document reference tracking
+- Historical context preservation
+- Processing status tracking
+
+### Error Handling
+- Configurable error tolerance
+- Structured error reporting
+- Validation error tracking
+- Processing error management
+- Detailed error logging
 
 ## Installation
 
@@ -42,63 +64,51 @@ A modern, async document processing pipeline for converting markdown to PDF with
    cd nova
    ```
 
-2. Run the installation script:
+2. Set up environment variables:
    ```bash
-   ./install.sh
+   NOVA_INPUT_DIR=path/to/input
+   NOVA_OFFICE_ASSETS_DIR=path/to/assets
+   NOVA_OFFICE_TEMP_DIR=path/to/temp
    ```
 
-   This will:
-   - Install Poetry if not already installed
-   - Create necessary directories
-   - Set up environment variables
-   - Install Python dependencies
-   - Install system dependencies (macOS/Linux)
-
-3. Verify the installation:
+3. Install dependencies:
    ```bash
-   poetry run nova --version
+   pip install -r requirements.txt
    ```
 
 ## Configuration
 
-Nova uses a YAML configuration file for customization. The default configuration is installed at `$NOVA_CONFIG_DIR/default_config.yaml`:
+The system uses a combination of:
+- Environment variables for paths
+- Configuration files for processing rules
+- Document handling specifications
 
-```yaml
-document_handling:
-  word_processing:
-    extract_images: true
-    preserve_formatting: true
-    table_handling: markdown
-    image_output_dir: "assets/images"
-    
-  pdf_processing:
-    extract_images: true
-    ocr_enabled: true
-    
-  powerpoint_processing:
-    extract_images: true
-    include_notes: true
-    slide_separator: "---"
-```
+Key configuration areas:
+- Document processing rules
+- Validation requirements
+- Error tolerance levels
+- Metadata handling
+- Logging preferences
 
 ## Usage
 
-1. Basic document processing:
-   ```bash
-   poetry run nova process --input input_dir --output output_dir
-   ```
+Process markdown files with embedded documents:
 
-2. Process with custom configuration:
-   ```bash
-   poetry run nova process --input input_dir --output output_dir --config config.yaml
-   ```
+```python
+from nova.core.validation import DocumentValidator
+from nova.core.config import load_config
 
-3. Process with custom assets directory:
-   ```bash
-   poetry run nova process --input input_dir --output output_dir --assets assets_dir
-   ```
+# Load configuration
+config = load_config('config.yaml')
 
-## Document Embedding
+# Initialize validator
+validator = DocumentValidator(config)
+
+# Process files
+await validator.validate_input_files(files)
+```
+
+### Document Embedding
 
 Nova supports embedding various document types in markdown files:
 
@@ -106,47 +116,89 @@ Nova supports embedding various document types in markdown files:
 # My Document
 
 Here's an embedded Word document:
-[Document Title](path/to/document.docx) <!-- {"embed": true, "extract_images": true} -->
+[Document Title](path/to/document.docx)<!-- {"embed": true} -->
 
-Here's an embedded PDF:
-[PDF Title](path/to/document.pdf) <!-- {"embed": true, "ocr": true} -->
+Here's an embedded PDF with preview:
+[PDF Title](path/to/document.pdf)<!-- {"embed": true, "preview": true} -->
 
 Here's an embedded PowerPoint:
-[Presentation Title](path/to/slides.pptx) <!-- {"embed": true, "include_notes": true} -->
+[Presentation Title](path/to/slides.pptx)<!-- {"embed": true} -->
+```
+
+## Error Handling
+
+The system provides three severity levels:
+- CRITICAL: Stops processing
+- ERROR: Logged but continues if in lenient mode
+- WARNING: Noted but doesn't affect processing
+
+Example error handling:
+
+```python
+from nova.core.errors import ErrorHandler, ProcessingError, ErrorSeverity
+
+error_handler = ErrorHandler()
+
+try:
+    # Process files
+    await validator.validate_input_files(files)
+except ProcessingError as e:
+    if e.severity == ErrorSeverity.CRITICAL:
+        raise
+    error_handler.add_error(e)
+```
+
+## Logging
+
+Structured logging with:
+- Timestamp tracking
+- Source identification
+- Error details
+- Processing status
+- Binary content filtering
+
+Example log configuration:
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+logger.info("processing_started",
+    input_files=len(files),
+    config=config.model_dump()
+)
 ```
 
 ## Environment Variables
 
-The following environment variables are set up by the installation script:
-
-- `NOVA_BASE_DIR`: Base directory for Nova (default: ~/Documents/Nova)
+Required environment variables:
 - `NOVA_INPUT_DIR`: Input directory for markdown files
-- `NOVA_OUTPUT_DIR`: Output directory for processed files
-- `NOVA_CONFIG_DIR`: Configuration directory
-- `NOVA_PROCESSING_DIR`: Directory for processing artifacts
-- `NOVA_OFFICE_ASSETS_DIR`: Directory for extracted assets
-- `NOVA_OFFICE_TEMP_DIR`: Temporary directory for processing
-- `NOVA_PHASE_MARKDOWN_PARSE`: Output directory for parsed markdown
-- `NOVA_PHASE_MARKDOWN_CONSOLIDATE`: Output directory for consolidated markdown
-- `NOVA_PHASE_PDF_GENERATE`: Output directory for generated PDFs
+- `NOVA_OFFICE_ASSETS_DIR`: Directory for document assets
+- `NOVA_OFFICE_TEMP_DIR`: Temporary processing directory
+
+Optional variables:
+- `NOVA_ERROR_TOLERANCE`: 'strict' or 'lenient' (default: 'lenient')
+- `NOVA_LOG_LEVEL`: Logging level (default: 'INFO')
 
 ## Development
 
 1. Set up development environment:
    ```bash
-   poetry install --with dev
+   python -m venv venv
+   source venv/bin/activate  # or venv\Scripts\activate on Windows
+   pip install -r requirements-dev.txt
    ```
 
 2. Run tests:
    ```bash
-   poetry run pytest tests/
+   pytest tests/
    ```
 
 3. Check code style:
    ```bash
-   poetry run black src/
-   poetry run flake8 src/
-   poetry run mypy src/
+   black src/
+   flake8 src/
+   mypy src/
    ```
 
 ## Contributing
@@ -156,6 +208,12 @@ The following environment variables are set up by the installation script:
 3. Make your changes
 4. Run tests
 5. Submit a pull request
+
+Please ensure your changes:
+- Include appropriate tests
+- Follow the existing code style
+- Update documentation as needed
+- Add entries to CHANGELOG.md
 
 ## License
 
