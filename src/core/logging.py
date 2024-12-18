@@ -1,95 +1,101 @@
-"""Logging configuration."""
-
-import sys
-from pathlib import Path
-from typing import Any, Dict
 import structlog
-from structlog.types import Processor
-from structlog.dev import ConsoleRenderer
-from structlog.processors import StackInfoRenderer
+import logging
+import sys
+import json
+from typing import Any, Dict, Union
+from pathlib import Path
+import threading
+from .base_config import LoggingConfig
 
-def configure_logging() -> None:
+# Thread-local storage for logger context
+_thread_local = threading.local()
+
+def _json_serializer(obj: Any, **kwargs) -> str:
+    """Custom JSON serializer for structlog that handles special types."""
+    if isinstance(obj, (Path, Exception)):
+        return str(obj)
+    if hasattr(obj, 'isoformat'):  # datetime objects
+        return obj.isoformat()
+    if isinstance(obj, bytes):
+        return f"[BINARY DATA: {len(obj)} bytes]"
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None:
     """Configure structured logging."""
+    if config is None:
+        config = LoggingConfig()
     
-    # Configure processors for structlog
+    # Handle both LoggingConfig and NovaConfig objects
+    if hasattr(config, 'logging'):
+        log_config = config.logging
+    else:
+        log_config = config
+
+    # Set logging level
+    level = getattr(logging, log_config.level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format='%(message)s',
+        stream=sys.stdout
+    )
+
+    # Configure structlog
     processors = [
-        # Add timestamps in a standard format
-        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
-        # Add log level
-        structlog.processors.add_log_level,
-        # Format the event dict to a string
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
-        # Add colors and pretty printing
-        ConsoleRenderer(
-            colors=True,
-            level_styles={  # Use proper ANSI color codes
-                'debug': '\x1b[36m',    # Cyan
-                'info': '\x1b[32m',     # Green
-                'warning': '\x1b[33m',  # Yellow
-                'error': '\x1b[31m',    # Red
-                'critical': '\x1b[41m', # Red background
-            },
-            sort_keys=True,
-            repr_native_str=False,
-            pad_event=25  # Fixed width for event messages
-        )
+        structlog.processors.UnicodeDecoder(),
     ]
+
+    # Add JSON renderer if format is json, otherwise use console renderer
+    if log_config.format == "json":
+        processors.append(
+            structlog.processors.JSONRenderer(
+                serializer=json.dumps,
+                default=_json_serializer
+            )
+        )
+    else:
+        processors.append(
+            structlog.processors.ConsoleRenderer(
+                colors=True,
+                level_styles={
+                    "debug": structlog.dev.ConsoleRenderer.get_default_level_styles()["debug"],
+                    "info": structlog.dev.ConsoleRenderer.get_default_level_styles()["info"],
+                    "warning": lambda text: f"\x1b[33m{text}\x1b[0m",  # Yellow
+                    "error": lambda text: f"\x1b[31m{text}\x1b[0m",    # Red
+                    "critical": lambda text: f"\x1b[41m{text}\x1b[0m", # Red background
+                }
+            )
+        )
 
     structlog.configure(
         processors=processors,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        wrapper_class=structlog.BoundLogger,
-        cache_logger_on_first_use=True,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True
     )
 
-# Alias for backward compatibility
-setup_logging = configure_logging
-
-def get_logger(name: str) -> structlog.BoundLogger:
-    """Get a logger instance.
+def get_logger(name: str = None) -> structlog.BoundLogger:
+    """Get a logger instance."""
+    logger = structlog.get_logger(name)
     
-    Args:
-        name: Name of the logger
+    # Bind thread-local context if it exists
+    context = getattr(_thread_local, 'context', {})
+    if context:
+        logger = logger.bind(**context)
         
-    Returns:
-        Configured logger instance
-    """
-    return structlog.get_logger(name)
+    return logger
 
-def get_file_logger(name: str) -> structlog.BoundLogger:
-    """Get a logger configured for file operations.
-    
-    Args:
-        name: Logger name
-        
-    Returns:
-        Configured logger
-    """
-    return structlog.get_logger(name).bind(
-        component="file_operations"
-    )
+def bind_logger_context(**kwargs) -> None:
+    """Bind context to thread-local storage."""
+    if not hasattr(_thread_local, 'context'):
+        _thread_local.context = {}
+    _thread_local.context.update(kwargs)
 
-def log_file_operation(
-    logger: structlog.BoundLogger,
-    operation: str,
-    file_path: Path,
-    category: str,
-    **kwargs
-) -> None:
-    """Log a file operation with consistent formatting.
-    
-    Args:
-        logger: Logger instance
-        operation: Operation being performed (read/write/create/delete)
-        file_path: Path to file
-        category: File category (markdown/html/pdf/temp)
-        **kwargs: Additional logging context
-    """
-    logger.info(
-        f"{operation} {category} file",
-        path=str(file_path),
-        operation=operation,
-        category=category,
-        **kwargs
-    )
+def clear_logger_context() -> None:
+    """Clear thread-local context."""
+    if hasattr(_thread_local, 'context'):
+        del _thread_local.context

@@ -1,160 +1,147 @@
-import asyncio
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional
 import structlog
-from datetime import datetime
+import json
+import shutil
+import asyncio
+import aiofiles
+from .config import NovaConfig
+from .processor import process_markdown_file
+from .docx_processor import WordProcessor
+from .errors import ErrorHandler, ProcessingError, ErrorSeverity
+from .logging import get_logger
 
-from src.core.models import ProcessingConfig
-from src.core.exceptions import PipelineError
-from src.processors.individual_processor import IndividualProcessor
-from src.processors.consolidation_processor import ConsolidationProcessor
-from src.processors.pdf_generator import PDFGenerator
-
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 class Pipeline:
-    """Main document processing pipeline."""
-
-    def __init__(self, config: ProcessingConfig):
-        """Initialize the pipeline.
-        
-        Args:
-            config: Processing configuration
-        """
+    """Document processing pipeline."""
+    
+    def __init__(self, config: NovaConfig):
         self.config = config
+        self.error_handler = ErrorHandler()
+        self.assets_dir = Path(config.document_handling.word_processing["image_output_dir"])
         
-        # Initialize processors
-        self.individual_processor = IndividualProcessor(config)
-        self.consolidation_processor = ConsolidationProcessor(config)
-        self.pdf_generator = PDFGenerator(config)
-        
-        # Create required directories
-        self._create_directories()
-
-    async def process(
-        self,
-        input_files: Optional[List[Path]] = None,
-        output_file: Optional[Path] = None
-    ) -> Path:
-        """Process markdown files through the pipeline.
-        
-        Args:
-            input_files: Optional list of specific files to process.
-                        If None, processes all markdown files in input directory.
-            output_file: Optional output file path.
-                        If None, uses default 'output.pdf' in output directory.
-            
-        Returns:
-            Path to generated PDF
-            
-        Raises:
-            PipelineError: If processing fails
-        """
+    async def process(self, input_path: Path, output_path: Path) -> bool:
+        """Process markdown files through the pipeline."""
         try:
-            # Get input files
-            files_to_process = input_files or self._get_input_files()
-            if not files_to_process:
-                raise PipelineError("No input files found")
+            # Validate input
+            if not input_path.exists():
+                logger.error("input_not_found", path=str(input_path))
+                return False
+            
+            # Handle directory input
+            if input_path.is_dir():
+                success = True
+                tasks = []
+                for file in input_path.glob("*.md"):
+                    logger.info("processing_file", file=str(file))
+                    tasks.append(process_markdown_file(file, output_path, self.config))
                 
-            logger.info(
-                "Starting pipeline",
-                file_count=len(files_to_process)
-            )
-            
-            # Process individual files
-            processed_docs = []
-            for file_path in files_to_process:
-                try:
-                    doc = await self.individual_processor.process_document(file_path)
-                    processed_docs.append(doc)
-                    logger.info(
-                        "Processed document",
-                        file=str(file_path)
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Failed to process document",
-                        file=str(file_path),
-                        error=str(e)
-                    )
-                    if not self.config.error_tolerance == "lenient":
-                        raise
-            
-            if not processed_docs:
-                raise PipelineError("No documents were successfully processed")
-            
-            # Consolidate documents
-            logger.info("Consolidating documents")
-            consolidated = await self.consolidation_processor.consolidate(
-                processed_docs
-            )
-            
-            # Generate PDF
-            logger.info("Generating PDF")
-            output_path = await self.pdf_generator.generate(consolidated)
-            
-            logger.info(
-                "Pipeline completed successfully",
-                output=str(output_path)
-            )
-            
-            return output_path
-            
-        except Exception as e:
-            logger.error("Pipeline failed", error=str(e))
-            raise PipelineError(
-                message=f"Pipeline failed: {str(e)}",
-                stage="pipeline",
-                details={"error": str(e)}
-            )
-
-    def _create_directories(self) -> None:
-        """Create required processing directories."""
-        dirs = [
-            self.config.input_dir,
-            self.config.output_dir,
-            self.config.processing_dir,
-            self.config.processing_dir / "individual",
-            self.config.processing_dir / "consolidated",
-            self.config.processing_dir / "attachments",
-            self.config.processing_dir / "temp"
-        ]
-        
-        for dir_path in dirs:
-            dir_path.mkdir(parents=True, exist_ok=True)
-
-    def _get_input_files(self) -> List[Path]:
-        """Get all markdown files from input directory.
-        
-        Returns:
-            List of markdown file paths
-        """
-        return sorted(
-            file for file in self.config.input_dir.rglob("*.md")
-            if file.is_file()
-        )
-
-    async def cleanup(self) -> None:
-        """Clean up temporary files and resources."""
-        try:
-            # Clean up temp directory
-            temp_dir = self.config.processing_dir / "temp"
-            if temp_dir.exists():
-                for file in temp_dir.iterdir():
-                    try:
-                        if file.is_file():
-                            file.unlink()
-                        elif file.is_dir():
-                            import shutil
-                            shutil.rmtree(file)
-                    except Exception as e:
-                        logger.warning(
-                            "Failed to clean up file",
-                            file=str(file),
-                            error=str(e)
-                        )
+                # Process files concurrently
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Check results
+                for file, result in zip(input_path.glob("*.md"), results):
+                    if isinstance(result, Exception):
+                        logger.error("file_processing_failed",
+                                   file=str(file),
+                                   error=str(result))
+                        success = False
+                    elif not result:
+                        success = False
                         
-            logger.info("Cleanup completed")
+                return success
+            
+            # Process single file
+            result = await process_markdown_file(input_path, output_path, self.config)
+            
+            return result
             
         except Exception as e:
-            logger.error("Cleanup failed", error=str(e)) 
+            self.error_handler.add_error(ProcessingError(
+                message=f"Pipeline processing failed: {str(e)}",
+                severity=ErrorSeverity.ERROR,
+                source="Pipeline.process",
+                details={"input": str(input_path), "output": str(output_path)}
+            ))
+            logger.error("pipeline_failed",
+                        error=str(e),
+                        input=str(input_path),
+                        output=str(output_path))
+            return False
+            
+    async def consolidate(self, input_path: Path, output_path: Path) -> bool:
+        """Consolidate processed markdown files."""
+        try:
+            # Validate input
+            if not input_path.exists():
+                logger.error("input_not_found", path=str(input_path))
+                return False
+                
+            # Create output directory if it doesn't exist
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            # Get all markdown files
+            markdown_files = sorted(input_path.glob("*.md"))
+            if not markdown_files:
+                logger.error("no_markdown_files", path=str(input_path))
+                return False
+                
+            # Initialize consolidated content
+            consolidated = []
+            metadata = {}
+            
+            # Process each file
+            for file in markdown_files:
+                try:
+                    # Read file content
+                    async with aiofiles.open(file, 'r', encoding='utf-8') as f:
+                        content = await f.read()
+                        
+                    # Read metadata if exists
+                    meta_file = file.with_suffix('.md.meta.json')
+                    if meta_file.exists():
+                        async with aiofiles.open(meta_file, 'r', encoding='utf-8') as f:
+                            file_meta = json.loads(await f.read())
+                            metadata[file.name] = file_meta
+                            
+                    # Add file separator if not first file
+                    if consolidated:
+                        consolidated.append("\n\n---\n\n")
+                        
+                    # Add file content
+                    consolidated.append(content)
+                    
+                except Exception as e:
+                    logger.error("file_consolidation_failed",
+                               file=str(file),
+                               error=str(e))
+                    return False
+                    
+            # Write consolidated content
+            output_file = output_path / "consolidated.md"
+            async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+                await f.write("\n".join(consolidated))
+                
+            # Write consolidated metadata
+            meta_file = output_file.with_suffix('.md.meta.json')
+            async with aiofiles.open(meta_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(metadata, indent=2) + '\n')
+                
+            logger.info("consolidation_complete",
+                       input=str(input_path),
+                       output=str(output_file))
+            return True
+            
+        except Exception as e:
+            self.error_handler.add_error(ProcessingError(
+                message=f"Consolidation failed: {str(e)}",
+                severity=ErrorSeverity.ERROR,
+                source="Pipeline.consolidate",
+                details={"input": str(input_path), "output": str(output_path)}
+            ))
+            logger.error("consolidation_failed",
+                        error=str(e),
+                        input=str(input_path),
+                        output=str(output_path))
+            return False

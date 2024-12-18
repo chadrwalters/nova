@@ -1,191 +1,162 @@
 # Nova Document Processor
 
-A sophisticated document processing pipeline for converting, consolidating, and formatting documents with a focus on PDF output optimization.
+A modern, async document processing pipeline for converting markdown to PDF with advanced styling and security features.
 
 ## Features
 
-- Multi-phase document processing pipeline
-- Structured metadata handling
-- Advanced PDF layout and formatting
-- Resource-aware processing
-- Robust error handling and validation
-- Support for multiple document formats (Markdown, Word, PowerPoint)
+- Markdown to PDF conversion using markdown-it and WeasyPrint
+- GitHub-style formatting
+- Metadata extraction and processing
+- Secure content validation
+- Configurable styling and output options
+- Async processing pipeline
+- Structured logging
+
+### Document Processing Features
+
+- **Word Documents (.docx, .doc)**
+  - Full text extraction with formatting
+  - Image preservation
+  - Metadata extraction (author, title, dates)
+  - Table conversion to markdown
+  
+- **PDF Documents (.pdf)**
+  - Text extraction with layout preservation
+  - Image extraction
+  - OCR support (optional)
+  - Metadata preservation
+  - Page-by-page processing
+  
+- **PowerPoint Presentations (.pptx, .ppt)**
+  - Slide text extraction
+  - Speaker notes support
+  - Image extraction
+  - Slide separation with customizable markers
+  - Metadata preservation
 
 ## Installation
 
 1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/nova.git
-cd nova
-```
+   ```bash
+   git clone https://github.com/yourusername/nova.git
+   cd nova
+   ```
 
-2. Install system dependencies:
-```bash
-# macOS
-brew install wkhtmltopdf
+2. Run the installation script:
+   ```bash
+   ./install.sh
+   ```
 
-# Ubuntu/Debian
-sudo apt-get update && sudo apt-get install -y wkhtmltopdf
-```
+   This will:
+   - Install Poetry if not already installed
+   - Create necessary directories
+   - Set up environment variables
+   - Install Python dependencies
+   - Install system dependencies (macOS/Linux)
 
-3. Install Python dependencies:
-```bash
-poetry install
+3. Verify the installation:
+   ```bash
+   poetry run nova --version
+   ```
+
+## Configuration
+
+Nova uses a YAML configuration file for customization. The default configuration is installed at `$NOVA_CONFIG_DIR/default_config.yaml`:
+
+```yaml
+document_handling:
+  word_processing:
+    extract_images: true
+    preserve_formatting: true
+    table_handling: markdown
+    image_output_dir: "assets/images"
+    
+  pdf_processing:
+    extract_images: true
+    ocr_enabled: true
+    
+  powerpoint_processing:
+    extract_images: true
+    include_notes: true
+    slide_separator: "---"
 ```
 
 ## Usage
 
-### Basic Usage
-```bash
-# Using the convenience script
-./consolidate.sh
+1. Basic document processing:
+   ```bash
+   poetry run nova process --input input_dir --output output_dir
+   ```
 
-# Direct CLI usage
-poetry run python -m src.cli.main consolidate \
-    --input-dir "path/to/input" \
-    --output-dir "path/to/output" \
-    --processing-dir "path/to/processing" \
-    --template-dir "src/resources/templates"
+2. Process with custom configuration:
+   ```bash
+   poetry run nova process --input input_dir --output output_dir --config config.yaml
+   ```
+
+3. Process with custom assets directory:
+   ```bash
+   poetry run nova process --input input_dir --output output_dir --assets assets_dir
+   ```
+
+## Document Embedding
+
+Nova supports embedding various document types in markdown files:
+
+```markdown
+# My Document
+
+Here's an embedded Word document:
+[Document Title](path/to/document.docx) <!-- {"embed": true, "extract_images": true} -->
+
+Here's an embedded PDF:
+[PDF Title](path/to/document.pdf) <!-- {"embed": true, "ocr": true} -->
+
+Here's an embedded PowerPoint:
+[Presentation Title](path/to/slides.pptx) <!-- {"embed": true, "include_notes": true} -->
 ```
 
-## Pipeline Phases
+## Environment Variables
 
-The processor operates in distinct phases:
+The following environment variables are set up by the installation script:
 
-1. **HTML_INDIVIDUAL**
-   - Converts individual markdown files to HTML
-   - Validates input markdown
-   - Processes embedded content
-   - Handles image references
-   - Preserves metadata
+- `NOVA_BASE_DIR`: Base directory for Nova (default: ~/Documents/Nova)
+- `NOVA_INPUT_DIR`: Input directory for markdown files
+- `NOVA_OUTPUT_DIR`: Output directory for processed files
+- `NOVA_CONFIG_DIR`: Configuration directory
+- `NOVA_PROCESSING_DIR`: Directory for processing artifacts
+- `NOVA_OFFICE_ASSETS_DIR`: Directory for extracted assets
+- `NOVA_OFFICE_TEMP_DIR`: Temporary directory for processing
+- `NOVA_PHASE_MARKDOWN_PARSE`: Output directory for parsed markdown
+- `NOVA_PHASE_MARKDOWN_CONSOLIDATE`: Output directory for consolidated markdown
+- `NOVA_PHASE_PDF_GENERATE`: Output directory for generated PDFs
 
-2. **MARKDOWN_CONSOLIDATED**
-   - Combines markdown files
-   - Maintains document order
-   - Preserves headers
-   - Handles cross-references
-   - Updates internal links
+## Development
 
-3. **HTML_CONSOLIDATED**
-   - Applies HTML template
-   - Processes consolidated markdown
-   - Handles resource paths
-   - Updates internal references
+1. Set up development environment:
+   ```bash
+   poetry install --with dev
+   ```
 
-4. **PDF**
-   - Applies PDF template
-   - Processes images
-   - Sets metadata
-   - Note: Headers and footers in wkhtmltopdf are explicitly forbidden
+2. Run tests:
+   ```bash
+   poetry run pytest tests/
+   ```
 
-## Configuration
-
-### Environment Variables
-Create a `.env` file with:
-```env
-NOVA_INPUT_DIR=/path/to/input
-NOVA_OUTPUT_DIR=/path/to/output
-NOVA_PROCESSING_DIR=/path/to/processing
-```
-
-### Style Configuration
-The default configuration (`config/default_config.yaml`) supports:
-
-```yaml
-style:
-  page_size: 'A4'
-  margin: '0.5in'
-  font_family: 'Arial'
-  font_size: '11pt'
-  line_height: '1.5'
-  colors:
-    text: '#333333'
-    headings: '#000000'
-    links: '#0066cc'
-```
-
-## Document Metadata
-
-Documents support rich metadata:
-- Title
-- Date
-- Author
-- Category
-- Tags
-- Summary
-- Status
-- Priority
-- Keywords
-- References
-- Related documents
-- Custom fields
-
-## Error Handling
-
-The processor implements comprehensive error handling:
-- Retry policies with exponential backoff
-- State tracking and recovery
-- Partial success handling
-- Resource cleanup
-- Detailed logging with binary content filtering
-
-## Resource Management
-
-- File operations using pathlib.Path
-- Memory usage monitoring
-- Disk space management
-- Proper file locking
-- Temporary file cleanup
-- Streaming for large files
-
-## Code Quality
-
-- Black formatter (max line length: 88)
-- Type hints with strict mypy
-- Google style docstrings
-- Comprehensive test coverage
-
-## Project Structure
-```
-nova/
-├── src/
-│   ├── core/
-│   │   ├── types.py           # Core data types
-│   │   ├── exceptions.py      # Custom exceptions
-│   │   ├── validation.py      # Input validation
-│   │   └── logging.py         # Logging configuration
-│   ├── processors/
-│   │   ├── markdown_processor.py
-│   │   ├── html_processor.py
-│   │   ├── pdf_processor.py
-│   │   └── word_processor.py
-│   └── resources/
-│       └── templates/         # HTML/PDF templates
-├── config/
-│   └── default_config.yaml    # Default configuration
-├── tests/                     # Test suite
-├── consolidate.sh            # Convenience script
-└── pyproject.toml           # Project dependencies
-```
-
-## Dependencies
-
-Key dependencies (from pyproject.toml):
-- Python ^3.10
-- markdown ^3.5.1
-- pdfkit ^1.0.0
-- structlog ^23.2.0
-- PyPDF2 ^3.0.1
-- python-docx ^0.8.11
-- python-pptx ^0.6.21
+3. Check code style:
+   ```bash
+   poetry run black src/
+   poetry run flake8 src/
+   poetry run mypy src/
+   ```
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Implement changes with tests
-4. Submit a pull request
+3. Make your changes
+4. Run tests
+5. Submit a pull request
 
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the MIT License - see the LICENSE file for details.

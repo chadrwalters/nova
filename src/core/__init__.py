@@ -1,1 +1,1 @@
-"""Core functionality modules.""" 
+"""Core functionality for Nova document processor.""" 
