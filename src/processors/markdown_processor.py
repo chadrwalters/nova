@@ -32,27 +32,29 @@ class MarkdownProcessor:
         # Override default hr renderer
         md.add_render_rule('hr', render_hr)
         
-        # Try to load plugins safely
-        try:
-            from mdit_py_plugins.front_matter import front_matter_plugin
-            md.use(front_matter_plugin)
-        except ImportError:
-            logger.warning("front_matter_plugin_not_available")
-            
-        try:
-            from mdit_py_plugins.footnote import footnote_plugin
-            md.use(footnote_plugin)
-        except ImportError:
-            logger.warning("footnote_plugin_not_available")
-            
-        try:
-            from mdit_py_plugins.tasklists import tasklists_plugin
-            md.use(tasklists_plugin)
-        except ImportError:
-            logger.warning("tasklists_plugin_not_available")
+        # Plugin mapping
+        plugin_mapping = {
+            'front_matter': ('mdit_py_plugins.front_matter', 'front_matter_plugin'),
+            'footnote': ('mdit_py_plugins.footnote', 'footnote_plugin'),
+            'tasklists': ('mdit_py_plugins.tasklists', 'tasklists_plugin'),
+        }
         
-        # Enable core features
-        md.enable(['table', 'strikethrough'])
+        # Load available plugins
+        for plugin_name, (module_path, plugin_func) in plugin_mapping.items():
+            try:
+                module = __import__(module_path, fromlist=[plugin_func])
+                plugin = getattr(module, plugin_func)
+                md.use(plugin)
+            except (ImportError, AttributeError) as e:
+                logger.warning(f"{plugin_name}_plugin_not_available", error=str(e))
+        
+        # Enable core features that are always available
+        core_features = ['table', 'strikethrough']
+        for feature in core_features:
+            try:
+                md.enable(feature)
+            except Exception as e:
+                logger.warning(f"failed_to_enable_{feature}", error=str(e))
         
         return md
 

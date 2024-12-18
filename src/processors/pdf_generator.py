@@ -98,10 +98,16 @@ class PDFGenerator:
         """Process HTML elements and add them to PDF."""
         for element in soup.children:
             if element.name is None:
-                # Handle text content
+                # Handle text content with formatting
                 if isinstance(element, str) and element.strip():
                     try:
-                        pdf.write(self.style_config.line_height, element.strip())
+                        text = element.strip()
+                        if element.parent and element.parent.name in ['strong', 'b']:
+                            pdf.set_font(self.default_font_family, style='B')
+                        elif element.parent and element.parent.name in ['em', 'i']:
+                            pdf.set_font(self.default_font_family, style='I')
+                        pdf.write(self.style_config.line_height, text)
+                        pdf.set_font(self.default_font_family)
                     except Exception as e:
                         logger.error("text_write_failed", error=str(e))
                 continue
@@ -118,11 +124,58 @@ class PDFGenerator:
                     pdf.ln(10)
                     pdf.set_font(self.default_font_family, size=self.default_font_size)
                 elif element.name == 'p':
-                    pdf.write(self.style_config.line_height, element.get_text())
+                    # Process paragraph with inline formatting
+                    for child in element.children:
+                        if isinstance(child, str):
+                            pdf.write(self.style_config.line_height, child)
+                        elif child.name in ['strong', 'b']:
+                            pdf.set_font(self.default_font_family, style='B')
+                            pdf.write(self.style_config.line_height, child.get_text())
+                            pdf.set_font(self.default_font_family)
+                        elif child.name in ['em', 'i']:
+                            pdf.set_font(self.default_font_family, style='I')
+                            pdf.write(self.style_config.line_height, child.get_text())
+                            pdf.set_font(self.default_font_family)
+                        elif child.name == 'code':
+                            pdf.set_font(self.style_config.code.font_family, size=self.style_config.code.font_size)
+                            pdf.set_fill_color(int(self.style_config.code.background[1:3], 16),
+                                            int(self.style_config.code.background[3:5], 16),
+                                            int(self.style_config.code.background[5:7], 16))
+                            pdf.write(self.style_config.line_height, f" {child.get_text()} ", fill=True)
+                            pdf.set_font(self.default_font_family, size=self.default_font_size)
                     pdf.ln(8)
                 elif element.name == 'pre':
-                    pdf.set_font(self.style_config.code.font_family, size=self.style_config.code.font_size)
-                    pdf.write(5, element.get_text())
+                    # Handle code blocks with syntax highlighting
+                    code_element = element.find('code')
+                    if code_element and 'class' in code_element.attrs:
+                        lang = code_element.attrs['class'][0].replace('language-', '')
+                        try:
+                            lexer = get_lexer_by_name(lang)
+                            formatter = HtmlFormatter(style='monokai')
+                            highlighted = highlight(code_element.get_text(), lexer, formatter)
+                            highlighted_soup = BeautifulSoup(highlighted, 'html.parser')
+                            
+                            pdf.set_font(self.style_config.code.font_family, size=self.style_config.code.font_size)
+                            pdf.set_fill_color(int(self.style_config.code.background[1:3], 16),
+                                            int(self.style_config.code.background[3:5], 16),
+                                            int(self.style_config.code.background[5:7], 16))
+                            
+                            for span in highlighted_soup.find_all('span', class_=True):
+                                style = formatter.style_defs[span['class'][0]]
+                                if 'color: ' in style:
+                                    color = style.split('color: ')[1].split(';')[0]
+                                    if color.startswith('#'):
+                                        r, g, b = self._parse_hex_color(color)
+                                        pdf.set_text_color(r, g, b)
+                                pdf.write(5, span.get_text())
+                                
+                            pdf.set_text_color(0, 0, 0)  # Reset text color
+                        except Exception as e:
+                            logger.warning("syntax_highlighting_failed", error=str(e))
+                            pdf.write(5, code_element.get_text())
+                    else:
+                        pdf.write(5, element.get_text())
+                        
                     pdf.ln(8)
                     pdf.set_font(self.default_font_family, size=self.default_font_size)
                 elif element.name in ('ul', 'ol'):
@@ -131,16 +184,35 @@ class PDFGenerator:
                             pdf.write(self.style_config.line_height, f"{i}. ")
                         else:
                             pdf.write(self.style_config.line_height, "• ")
-                        pdf.write(self.style_config.line_height, item.get_text())
+                        # Process list item with inline formatting
+                        for child in item.children:
+                            if isinstance(child, str):
+                                pdf.write(self.style_config.line_height, child)
+                            elif child.name in ['strong', 'b']:
+                                pdf.set_font(self.default_font_family, style='B')
+                                pdf.write(self.style_config.line_height, child.get_text())
+                                pdf.set_font(self.default_font_family)
+                            elif child.name in ['em', 'i']:
+                                pdf.set_font(self.default_font_family, style='I')
+                                pdf.write(self.style_config.line_height, child.get_text())
+                                pdf.set_font(self.default_font_family)
                         pdf.ln(5)
                     pdf.ln(3)
                 elif element.name == 'table':
-                    # Get table data
+                    # Get table data with formatting
                     rows = []
                     for row in element.find_all('tr'):
                         cells = []
                         for cell in row.find_all(['td', 'th']):
-                            cells.append(cell.get_text().strip())
+                            formatted_text = []
+                            for child in cell.children:
+                                if isinstance(child, str):
+                                    formatted_text.append(('normal', child.strip()))
+                                elif child.name in ['strong', 'b']:
+                                    formatted_text.append(('B', child.get_text().strip()))
+                                elif child.name in ['em', 'i']:
+                                    formatted_text.append(('I', child.get_text().strip()))
+                            cells.append(formatted_text)
                         rows.append(cells)
                         
                     if rows:
@@ -151,22 +223,31 @@ class PDFGenerator:
                         # Add headers
                         pdf.set_font(self.default_font_family, size=self.default_font_size, style='B')
                         for cell in rows[0]:
-                            pdf.cell(col_width, 10, cell, border=1)
+                            text = ''.join(t[1] for t in cell)
+                            pdf.cell(col_width, 10, text, border=1)
                         pdf.ln()
                         
-                        # Add data rows
-                        pdf.set_font(self.default_font_family, size=self.default_font_size)
+                        # Add data rows with formatting
                         for row in rows[1:]:
+                            max_height = 10
                             for cell in row:
-                                pdf.cell(col_width, 10, cell, border=1)
-                            pdf.ln()
+                                x = pdf.get_x()
+                                y = pdf.get_y()
+                                for style, text in cell:
+                                    pdf.set_font(self.default_font_family, size=self.default_font_size, 
+                                               style=style if style != 'normal' else '')
+                                    pdf.write(self.style_config.line_height, text + ' ')
+                                height = pdf.get_y() - y
+                                max_height = max(max_height, height)
+                                pdf.set_xy(x + col_width, y)
+                            pdf.ln(max_height)
                 elif element.name == 'hr':
                     pdf.ln(4)
                     x1 = pdf.get_x()
                     x2 = pdf.get_page_width() - pdf.get_r_margin()
                     y = pdf.get_y()
                     pdf.set_draw_color(*self._parse_hex_color(self.style_config.hr.color))
-                    pdf.set_line_width(self.style_config.hr.width)
+                    pdf.set_line_width(self._convert_numeric(str(self.style_config.hr.width)))
                     pdf.line(x1, y, x2, y)
                     pdf.ln(4)
             except Exception as e:
@@ -174,6 +255,10 @@ class PDFGenerator:
                              element=element.name, 
                              error=str(e))
                              
+            # Reset text properties after each element
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font(self.default_font_family, size=self.default_font_size)
+
     def _parse_hex_color(self, hex_color: str) -> tuple[int, int, int]:
         """Convert hex color to RGB tuple."""
         hex_color = hex_color.lstrip('#')
