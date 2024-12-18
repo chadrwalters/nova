@@ -114,12 +114,7 @@ class PDFHRConfig(BaseModel):
     def validate_width(cls, v):
         if isinstance(v, (int, float)):
             value = int(v)
-            if value < 1:
-                return 1
-            if value > 5:
-                return 5
-            return value
-        if isinstance(v, str):
+        elif isinstance(v, str):
             try:
                 # Remove any units and convert
                 clean_value = v.lower().strip()
@@ -131,14 +126,17 @@ class PDFHRConfig(BaseModel):
                 if not clean_value:
                     return 1  # Default width
                 value = int(float(clean_value))
-                if value < 1:
-                    return 1
-                if value > 5:
-                    return 5
-                return value
             except (ValueError, TypeError):
                 return 1  # Default to 1 on conversion error
-        return 1  # Default for any other type
+        else:
+            return 1  # Default for any other type
+            
+        # Clamp value to valid range
+        if value < 1:
+            return 1
+        if value > 5:
+            return 5
+        return value
 
     @validator('color')
     def validate_color(cls, v):
