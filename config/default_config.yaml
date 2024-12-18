@@ -91,10 +91,21 @@ security:
 
 logging:
   level: INFO
-  format: json
+  format: console
   file_path: null
   filter_binary: true
-  max_binary_length: 100 
+  max_binary_length: 100
+  filter_config: true
+  max_value_length: 200
+  format_style:
+    timestamp: cyan
+    level:
+      debug: blue
+      info: green
+      warning: yellow
+      error: red
+      critical: "red,bold"
+  console_format: "{timestamp} {level} {event} {extra}"
 
 document_handling:
   allowed_types:

@@ -12,13 +12,22 @@ _thread_local = threading.local()
 
 def _json_serializer(obj: Any, **kwargs) -> str:
     """Custom JSON serializer for structlog that handles special types."""
-    if isinstance(obj, (Path, Exception)):
-        return str(obj)
-    if hasattr(obj, 'isoformat'):  # datetime objects
-        return obj.isoformat()
-    if isinstance(obj, bytes):
-        return f"[BINARY DATA: {len(obj)} bytes]"
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+    try:
+        if isinstance(obj, (Path, Exception)):
+            return str(obj)
+        if hasattr(obj, 'isoformat'):  # datetime objects
+            return obj.isoformat()
+        if isinstance(obj, bytes):
+            return f"[BINARY DATA: {len(obj)} bytes]"
+        if callable(obj):  # Handle function objects
+            if hasattr(obj, '__name__'):
+                return f"[FUNCTION: {obj.__name__}]"
+            return "[LAMBDA FUNCTION]"  # Handle lambda functions
+        if hasattr(obj, '__dict__'):  # Handle custom objects
+            return str(obj)
+        return str(obj)  # Fall back to string representation
+    except Exception as e:
+        return f"[UNSERIALIZABLE OBJECT: {str(e)}]"
 
 def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None:
     """Configure structured logging."""
@@ -39,34 +48,58 @@ def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None
         stream=sys.stdout
     )
 
+    def filter_processor(logger, method_name, event_dict):
+        """Filter out large values and sensitive data."""
+        result = {}
+        for key, value in event_dict.items():
+            if key == "config":
+                result[key] = "[filtered config]"
+            elif callable(value):
+                result[key] = "[filtered function]"
+            elif isinstance(value, (dict, list)):
+                result[key] = "[filtered large object]"
+            elif isinstance(value, str) and len(value) > 200:
+                result[key] = value[:200] + "..."
+            else:
+                result[key] = value
+        return result
+
     # Configure structlog
     processors = [
         structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
+        filter_processor,
     ]
 
-    # Add JSON renderer if format is json, otherwise use console renderer
+    # Add renderer based on format
     if log_config.format == "json":
         processors.append(
             structlog.processors.JSONRenderer(
-                serializer=json.dumps,
                 default=_json_serializer
             )
         )
     else:
+        # Define ANSI color codes
+        COLORS = {
+            "debug": "\033[34m",     # Blue
+            "info": "\033[32m",      # Green
+            "warning": "\033[33m",   # Yellow
+            "error": "\033[31m",     # Red
+            "critical": "\033[1;31m"  # Bold Red
+        }
+        RESET = "\033[0m"
+
+        # Create color style dict with pre-formatted strings
+        level_styles = {
+            level: f"{color}%s{RESET}" for level, color in COLORS.items()
+        }
+
         processors.append(
-            structlog.processors.ConsoleRenderer(
+            structlog.dev.ConsoleRenderer(
                 colors=True,
-                level_styles={
-                    "debug": structlog.dev.ConsoleRenderer.get_default_level_styles()["debug"],
-                    "info": structlog.dev.ConsoleRenderer.get_default_level_styles()["info"],
-                    "warning": lambda text: f"\x1b[33m{text}\x1b[0m",  # Yellow
-                    "error": lambda text: f"\x1b[31m{text}\x1b[0m",    # Red
-                    "critical": lambda text: f"\x1b[41m{text}\x1b[0m", # Red background
-                }
+                level_styles=level_styles
             )
         )
 

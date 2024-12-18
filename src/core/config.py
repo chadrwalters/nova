@@ -36,9 +36,12 @@ class MarkdownConfig(BaseModel):
     typographer: bool = True
     linkify: bool = True
     breaks: bool = True
-    plugins: List[str] = Field(default_factory=lambda: [
-        "table", "strikethrough", "taskList", "linkify", "image", "footnote"
-    ])
+    plugins: List[str] = Field(
+        default=["table", "strikethrough", "taskList", "linkify", "image", "footnote"]
+    )
+
+    class Config:
+        validate_assignment = True
 
 class ProcessingConfig(BaseModel):
     error_tolerance: str = "lenient"
@@ -59,12 +62,14 @@ class ProcessingConfig(BaseModel):
 
     def model_post_init(self, __context):
         """Convert path strings to Path objects after env var expansion."""
-        # Only expand if paths are strings
+        # Expand environment variables before converting to Path
         for field in ['input_dir', 'processing_dir', 'phase_markdown_parse', 
                      'phase_markdown_consolidate', 'phase_pdf_generate', 'temp_dir']:
             value = getattr(self, field)
-            if isinstance(value, str):
-                setattr(self, field, Path(os.path.expandvars(value)))
+            if isinstance(value, (str, Path)):
+                # Convert to string, expand vars, then convert to Path
+                expanded = os.path.expandvars(str(value))
+                setattr(self, field, Path(expanded))
 
 class PDFPageConfig(BaseModel):
     """PDF page configuration."""
@@ -119,12 +124,10 @@ class PDFHRConfig(BaseModel):
                 # Remove any units and convert
                 clean_value = v.lower().strip()
                 # Handle relative units by converting to base value
-                if clean_value.endswith(('r', 'pt', 'px', 'em', 'rem', '%')):
-                    # Strip any unit and convert to base value
-                    for unit in ['r', 'pt', 'px', 'em', 'rem', '%']:
-                        if clean_value.endswith(unit):
-                            clean_value = clean_value[:-len(unit)].strip()
-                            break
+                for unit in ['r', 'pt', 'px', 'em', 'rem', '%']:
+                    if clean_value.endswith(unit):
+                        clean_value = clean_value[:-len(unit)].strip()
+                        break
                 if not clean_value:
                     return 1  # Default width
                 value = int(float(clean_value))
