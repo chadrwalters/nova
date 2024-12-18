@@ -3,42 +3,51 @@
 # Core Pipeline Structure
 pipeline:
   phases:
-    - HTML_INDIVIDUAL:
-        description: "Convert individual markdown files to HTML"
+    - MARKDOWN_PARSE:
+        description: "Parse markdown files using markdown-it"
+        output_dir: "01_markdown_parse"
         requirements:
           - Validate input markdown
-          - Process embedded content
+          - Process with Microsoft markitdown
+          - Convert Office formats:
+              * Word (.docx, .doc)
+              * PowerPoint (.pptx, .ppt)
+              * Excel (.xlsx, .xls)
+              * PDF (.pdf)
+          - Handle code blocks and tables
+          - Process GFM extensions
           - Handle image references
-          - Generate individual HTML
+          - Extract metadata from:
+              * Office documents
+              * PDF files
+              * Image EXIF data
           - Preserve metadata
+          - Save intermediate files to phase directory
         
-    - MARKDOWN_CONSOLIDATED:
-        description: "Combine markdown files"
+    - MARKDOWN_CONSOLIDATE:
+        description: "Combine markdown content"
+        output_dir: "02_markdown_consolidate"
         requirements:
           - Maintain document order
           - Preserve headers
           - Handle cross-references
           - Update internal links
+          - Merge metadata
+          - Read from previous phase directory
+          - Save consolidated output to phase directory
         
-    - HTML_CONSOLIDATED:
-        description: "Generate consolidated HTML"
+    - PDF_GENERATE:
+        description: "Generate final PDF using WeasyPrint"
+        output_dir: "03_pdf_generate"
         requirements:
-          - Apply HTML template
-          - Process consolidated markdown
-          - Handle resource paths
-          - Update internal references
-          
-    - PDF:
-        description: "Generate final PDF"
-        requirements:
-          - Apply PDF template
-          - Process images
+          - Apply PDF styling
+          - Process images and assets
           - Set metadata
-          - NO HEADERS OR FOOTERS: Headers and footers in wkhtmltopdf are explicitly forbidden due to:
-              * Increased complexity and failure rates with separate HTML context
-              * Resource constraints with complex documents and many images
-              * Unreliable rendering in multi-page documents
-              * Memory management issues during rendering passes
+          - Handle page breaks
+          - Manage fonts and styling
+          - Support Unicode and special characters
+          - Read from consolidate phase directory
+          - Generate final PDF in output directory
 
 # State Management
 state_tracking:
@@ -47,10 +56,11 @@ state_tracking:
     - processed_files
     - validation_results
     - resource_usage
-    - error_states
+    - phase_directories
   persistence:
-    - Use checkpoints for recovery
-    - Maintain processing history
+    - Maintain phase directory structure
+    - Keep intermediate files for debugging
+    - Clean up old files based on retention policy
     - Track partial results
 
 # Error Handling
@@ -64,7 +74,6 @@ error_handling:
     continue_on_non_critical: true
   cleanup:
     - Remove temporary files
-    - Release locks
     - Free resources
 
 # Resource Management
@@ -74,8 +83,8 @@ resource_management:
     - Implement proper locking
     - Clean up temporary files
   memory:
-    - Monitor usage
-    - Implement limits
+    - Monitor WeasyPrint memory usage
+    - Implement memory limits
     - Clean up regularly
   disk:
     - Track space usage
@@ -93,12 +102,16 @@ validation:
     - Markdown structure
     - Encoding
     - Size limits
-    - Content safety
+    - Content preservation
+    - Business context retention
+    - Personnel information accuracy
+    - Decision record completeness
   output:
-    - HTML validity
     - PDF structure
     - Image quality
     - Metadata presence
+    - Font embedding
+    - Unicode support
 
 # Code Quality
 code_quality:
@@ -137,20 +150,27 @@ security:
     - Check permissions
     - Handle symlinks safely
   content:
-    - Sanitize markdown
-    - Validate external refs
-    - Check embedded content
+    - Preserve sensitive business information
+    - Maintain personnel references
+    - Retain meeting context and decisions
+    - Track organizational changes
+    - Preserve historical context
+    - Document business relationships
+    - Maintain decision trails
+    - Record system architecture details
 
 # Performance
 performance:
   async_operations:
     - File I/O
-    - Network requests
     - Image processing
+    - PDF generation
   optimization:
-    - Cache results
+    - Cache markdown-it results
     - Batch operations
     - Stream large files
+    - Optimize image processing
+    - Efficient PDF generation
 
 # Logging
 logging:
@@ -184,6 +204,7 @@ configuration:
     - Type checking
     - Path existence
     - Value ranges
+    - Plugin compatibility
 
 # Development Workflow
 workflow:
@@ -196,3 +217,76 @@ workflow:
     - Test coverage check
     - Documentation update
     - Performance impact
+
+# Document Handling
+document_handling:
+  office_formats:
+    - Word:
+        extensions: [.docx, .doc]
+        metadata: [author, title, created, modified]
+        elements: [tables, images, headers, lists]
+    - PowerPoint:
+        extensions: [.pptx, .ppt]
+        metadata: [slides, notes, speaker_notes]
+        elements: [diagrams, charts, animations]
+    - Excel:
+        extensions: [.xlsx, .xls]
+        metadata: [sheets, formulas, named_ranges]
+        elements: [tables, charts, pivot_tables]
+    - PDF:
+        extensions: [.pdf]
+        metadata: [title, author, keywords]
+        elements: [text, images, forms]
+  conversion:
+    tool: markitdown
+    preserve:
+      - Document structure
+      - Formatting
+      - Tables
+      - Lists
+      - Images
+      - Metadata
+
+# Document Processing Configuration
+document_processing:
+  base_paths:
+    input: "${NOVA_INPUT_DIR}"
+    assets: "${NOVA_OFFICE_ASSETS_DIR}"
+    temp: "${NOVA_OFFICE_TEMP_DIR}"
+    
+  embedded_documents:
+    word:
+      extensions: [.docx, .doc]
+      processor: markitdown
+      extract_images: true
+      
+    pdf:
+      extensions: [.pdf]
+      processor: pdf2md
+      extract_text: true
+      preview_support: true
+      
+    powerpoint:
+      extensions: [.pptx, .ppt]
+      processor: pptx2md
+      extract_images: true
+      
+  error_handling:
+    missing_file:
+      level: warning
+      action: continue
+      template: |
+        > **Warning**: Embedded document not found
+        > - File: {filename}
+        > - Path: {path}
+        > Please ensure document exists in input directory
+        
+    processing_error:
+      level: error
+      action: retry
+      max_retries: 3
+      template: |
+        > **Error**: Failed to process document
+        > - File: {filename}
+        > - Error: {error}
+        > Processing failed after {retry_count} attempts
