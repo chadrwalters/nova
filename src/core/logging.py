@@ -1,101 +1,72 @@
-import structlog
+"""Logging configuration for Nova Document Processor."""
+
 import logging
-import sys
-import json
-from typing import Any, Dict, Union
-from pathlib import Path
-import threading
-from .base_config import LoggingConfig
+from typing import Any, Dict
 
-# Thread-local storage for logger context
-_thread_local = threading.local()
+import structlog
+from rich.logging import RichHandler
 
-def _json_serializer(obj: Any, **kwargs) -> str:
-    """Custom JSON serializer for structlog that handles special types."""
-    try:
-        if isinstance(obj, (Path, Exception)):
-            return str(obj)
-        if hasattr(obj, 'isoformat'):  # datetime objects
-            return obj.isoformat()
-        if isinstance(obj, bytes):
-            return f"[BINARY DATA: {len(obj)} bytes]"
-        if callable(obj):  # Handle function objects
-            if hasattr(obj, '__name__'):
-                return f"[FUNCTION: {obj.__name__}]"
-            return "[LAMBDA FUNCTION]"  # Handle lambda functions
-        if hasattr(obj, '__dict__'):  # Handle custom objects
-            return str(obj)
-        return str(obj)  # Fall back to string representation
-    except Exception as e:
-        return f"[UNSERIALIZABLE OBJECT: {str(e)}]"
+from .models import LoggingConfig
 
-def configure_logging(config: Union[LoggingConfig, 'NovaConfig'] = None) -> None:
-    """Configure structured logging."""
-    if config is None:
-        config = LoggingConfig()
+def setup_logging(config: LoggingConfig, verbose: bool = False) -> None:
+    """Configure logging with structlog and rich."""
     
-    # Handle both LoggingConfig and NovaConfig objects
-    if hasattr(config, 'logging'):
-        log_config = config.logging
-    else:
-        log_config = config
-
-    # Set logging level
-    level = getattr(logging, log_config.level.upper(), logging.INFO)
+    # Set log level
+    level = logging.DEBUG if verbose else getattr(logging, config.level.upper())
+    
+    # Configure standard logging
     logging.basicConfig(
         level=level,
-        format='%(message)s',
-        stream=sys.stdout
+        format="%(message)s",
+        handlers=[
+            RichHandler(
+                rich_tracebacks=True,
+                markup=True,
+                show_time=True,
+                show_path=True
+            )
+        ]
     )
 
     # Configure structlog
     processors = [
         structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
+        _filter_binary_data if config.filter_binary else structlog.processors.identity,
+        structlog.processors.JSONRenderer() if config.format == "json" else structlog.dev.ConsoleRenderer()
     ]
-
-    # Add renderer based on format
-    if log_config.format == "json":
-        processors.append(
-            structlog.processors.JSONRenderer(
-                default=_json_serializer
-            )
-        )
-    else:
-        processors.append(
-            structlog.dev.ConsoleRenderer(
-                colors=True
-            )
-        )
 
     structlog.configure(
         processors=processors,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True
+        cache_logger_on_first_use=True,
     )
 
-def get_logger(name: str = None) -> structlog.BoundLogger:
+def get_logger(name: str) -> structlog.BoundLogger:
     """Get a logger instance."""
-    logger = structlog.get_logger(name)
+    return structlog.get_logger(name)
+
+def _filter_binary_data(
+    logger: str,
+    method_name: str,
+    event_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Filter out binary data from logs."""
+    MAX_LENGTH = 100  # from config
     
-    # Bind thread-local context if it exists
-    context = getattr(_thread_local, 'context', {})
-    if context:
-        logger = logger.bind(**context)
-        
-    return logger
+    def _truncate(value: Any) -> str:
+        if isinstance(value, bytes):
+            return f"[BINARY DATA: {len(value)} bytes]"
+        if isinstance(value, str) and len(value) > MAX_LENGTH:
+            return f"{value[:MAX_LENGTH]}... [truncated]"
+        return value
 
-def bind_logger_context(**kwargs) -> None:
-    """Bind context to thread-local storage."""
-    if not hasattr(_thread_local, 'context'):
-        _thread_local.context = {}
-    _thread_local.context.update(kwargs)
-
-def clear_logger_context() -> None:
-    """Clear thread-local context."""
-    if hasattr(_thread_local, 'context'):
-        del _thread_local.context
+    return {
+        key: _truncate(value)
+        for key, value in event_dict.items()
+    }

@@ -1,3 +1,5 @@
-from .pdf_generator import generate_pdf_files
+"""Processors for Nova Document Processor."""
 
-__all__ = ['generate_pdf_files'] 
+from .markdown_processor import MarkdownProcessor
+
+__all__ = ["MarkdownProcessor"] 

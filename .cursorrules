@@ -5,7 +5,7 @@ pipeline:
   phases:
     - MARKDOWN_PARSE:
         description: "Parse markdown files using markdown-it"
-        output_dir: "01_markdown_parse"
+        output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
         requirements:
           - Validate input markdown
           - Process with Microsoft markitdown
@@ -26,7 +26,7 @@ pipeline:
         
     - MARKDOWN_CONSOLIDATE:
         description: "Combine markdown content"
-        output_dir: "02_markdown_consolidate"
+        output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
         requirements:
           - Maintain document order
           - Preserve headers
@@ -37,8 +37,8 @@ pipeline:
           - Save consolidated output to phase directory
         
     - PDF_GENERATE:
-        description: "Generate final PDF using WeasyPrint"
-        output_dir: "03_pdf_generate"
+        description: "Generate final PDF using FPDF"
+        output_dir: "${NOVA_PHASE_PDF_GENERATE}"
         requirements:
           - Apply PDF styling
           - Process images and assets
@@ -79,11 +79,13 @@ error_handling:
 # Resource Management
 resource_management:
   file_operations:
-    - Use pathlib.Path exclusively
-    - Implement proper locking
-    - Clean up temporary files
+    - Use environment variables for paths
+    - Convert to pathlib.Path only when needed
+    - No path manipulation in code
+    - Directory creation in shell only
+    - Clean up handled by shell script
   memory:
-    - Monitor WeasyPrint memory usage
+    - Monitor FPDF memory usage
     - Implement memory limits
     - Clean up regularly
   disk:
@@ -149,6 +151,10 @@ security:
     - Validate all paths
     - Check permissions
     - Handle symlinks safely
+    - No path traversal
+    - No relative paths
+    - No path manipulation in code
+    - Environment variables only
   content:
     - Preserve sensitive business information
     - Maintain personnel references
@@ -195,16 +201,22 @@ logging:
 # Configuration
 configuration:
   sources:
-    - Environment variables
-    - .env file
-    - CLI arguments
-    - Default config
+    - Environment variables (primary source for paths)
+    - .env file (defines environment structure)
+    - CLI arguments (for runtime options)
+    - Default config (for non-path settings)
   validation:
     - Required fields
     - Type checking
-    - Path existence
-    - Value ranges
+    - Environment variable presence
+    - Directory permissions
+    - Path structure integrity
     - Plugin compatibility
+  path_handling:
+    - All paths come from environment
+    - No path defaults in code
+    - No path manipulation in Python
+    - Shell script owns directory structure
 
 # Development Workflow
 workflow:
@@ -304,3 +316,122 @@ input_file_handling:
     - Track file access patterns
     - Log all file operations
     - Prevent write operations to input paths
+
+# Environment Variable Management
+environment:
+  precedence:
+    - Shell environment
+    - .env file
+    - Default values
+  required_variables:
+    - NOVA_BASE_DIR
+    - NOVA_INPUT_DIR
+    - NOVA_OUTPUT_DIR
+    - NOVA_PROCESSING_DIR
+    - NOVA_PHASE_MARKDOWN_PARSE
+    - NOVA_PHASE_MARKDOWN_CONSOLIDATE
+    - NOVA_PHASE_PDF_GENERATE
+    - NOVA_TEMP_DIR
+    - NOVA_OFFICE_ASSETS_DIR
+    - NOVA_OFFICE_TEMP_DIR
+  validation:
+    - All paths must be absolute
+    - No path traversal allowed
+    - Validate write permissions
+    - Create directories if missing
+  initialization:
+    - Load from .env first
+    - Shell script handles directory creation
+    - Python code uses environment vars directly
+    - No path manipulation in Python code
+
+# Path Handling
+path_handling:
+  principles:
+    - Single source of truth (.env file)
+    - No hardcoded paths in code
+    - No path manipulation in Python
+    - Shell script owns directory creation
+  directory_structure:
+    base: "${NOVA_BASE_DIR}"
+    phases:
+      - "${NOVA_PHASE_MARKDOWN_PARSE}"
+      - "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+      - "${NOVA_PHASE_PDF_GENERATE}"
+    temp: "${NOVA_TEMP_DIR}"
+    assets: "${NOVA_OFFICE_ASSETS_DIR}"
+  rules:
+    - All paths must be environment variables
+    - No string concatenation of paths
+    - No path resolution in Python
+    - No default paths in code
+
+# Input/Output Directory Structure
+directory_structure:
+  input:
+    base: "${NOVA_INPUT_DIR}"
+    rules:
+      - Read-only access
+      - No modification of input files
+      - Preserve original structure
+      - Support nested directories
+  processing:
+    base: "${NOVA_PROCESSING_DIR}"
+    phases:
+      - parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
+      - consolidate: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+      - generate: "${NOVA_PHASE_PDF_GENERATE}"
+    rules:
+      - Each phase has isolated directory
+      - Clean between runs
+      - Preserve phase outputs until next phase
+  output:
+    base: "${NOVA_OUTPUT_DIR}"
+    rules:
+      - Maintain input hierarchy
+      - Clean old outputs
+      - Version outputs
+  temp:
+    base: "${NOVA_TEMP_DIR}"
+    rules:
+      - Clean on startup
+      - Clean on completion
+      - No persistence between runs
+
+# File Access Patterns
+file_access:
+  input:
+    - Read-only access to input files
+    - No modification of originals
+    - Track file access patterns
+    - Log all read operations
+  processing:
+    - Write to phase directories only
+    - Clean between phases
+    - No cross-phase writes
+    - Log all operations
+  output:
+    - Write-only to output
+    - Version control outputs
+    - Clean old versions
+    - Log all writes
+
+# Directory Management
+directory_management:
+  creation:
+    owner: "shell script"
+    timing: "startup"
+    order:
+      - Base directories first
+      - Phase directories second
+      - Temp directories last
+  cleanup:
+    owner: "shell script"
+    timing:
+      - Before processing
+      - After each phase
+      - On completion
+    rules:
+      - Remove temp files
+      - Preserve phase outputs
+      - Archive old outputs
