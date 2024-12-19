@@ -13,17 +13,30 @@ import warnings
 import json
 import csv
 import xml.dom.minidom
-from html.parser import HTMLParser
-import html
+import time
 
 from markdown_it import MarkdownIt
 from markitdown import MarkItDown
 from markitdown._markitdown import FileConversionException, UnsupportedFormatException
-from tqdm import tqdm
+from rich.progress import (
+    Progress,
+    TextColumn,
+    BarColumn,
+    TaskProgressColumn,
+    TimeRemainingColumn,
+    TimeElapsedColumn,
+    SpinnerColumn
+)
 from PIL import Image
 from openai import OpenAI
 
 from .image_processor import ImageProcessor
+from ..core.state import StateManager
+
+from rich.console import Console
+from rich.theme import Theme
+
+from tqdm import tqdm
 
 # Filter PyMuPDF SWIG deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message="builtin type SwigPyPacked has no __module__ attribute")
@@ -47,6 +60,23 @@ from ..core.logging import get_logger
 
 logger = get_logger(__name__)
 
+custom_theme = Theme({
+    'title': 'bold blue',           # Section headers
+    'path': 'cyan',                 # File paths
+    'stats': 'bold cyan',           # Statistics
+    'success': 'green',             # Success messages
+    'warning': 'yellow',            # Warnings
+    'error': 'red',                 # Errors
+    'info': 'blue',                 # Info messages
+    'highlight': 'magenta',         # Important numbers
+    'detail': 'dim white',          # Additional details
+    'cache': 'cyan',                # Cache-related info
+    'progress': 'green',            # Progress indicators
+    'skip': 'yellow'                # Skipped items
+})
+
+console = Console(theme=custom_theme)
+
 @dataclass
 class ProcessingSummary:
     """Tracks processing statistics."""
@@ -55,10 +85,12 @@ class ProcessingSummary:
         'pdf': [],
         'office': [],
         'image': [],
+        'image_cached': [],
         'other': [],
         'text': []
     })
     skipped_files: Dict[str, List[Path]] = field(default_factory=lambda: {
+        'unchanged': [],
         'legacy_format': [],
         'unsupported_format': [],
         'error': []
@@ -84,67 +116,46 @@ class ProcessingSummary:
 
     def display(self) -> None:
         """Display processing summary."""
-        print("\n=== Processing Summary ===")
+        console.print("\n[bold blue]=== Processing Summary ===[/]")
         
         # Processed files
-        print("\nSuccessfully processed files:")
-        for file_type, files in self.processed_files.items():
-            if files:
-                print(f"  {file_type.title()}: {len(files)} files")
+        if any(files for files in self.processed_files.values()):
+            console.print("\n[bold]Processed files:[/]")
+            for file_type, files in self.processed_files.items():
+                if files:
+                    if file_type == 'image':
+                        cached_count = len(self.processed_files['image_cached'])
+                        fresh_count = len(files)
+                        if fresh_count or cached_count:
+                            console.print(f"  [green]Images: {fresh_count + cached_count} total[/]")
+                            console.print(f"    [green]- Freshly processed: {fresh_count}[/]")
+                            console.print(f"    [cyan]- From cache: {cached_count}[/]")
+                    elif file_type != 'image_cached':
+                        console.print(f"  [green]{file_type.title()}: {len(files)} files[/]")
 
         # Skipped files
         if any(files for files in self.skipped_files.values()):
-            print("\nSkipped files:")
+            console.print("\n[bold yellow]Skipped files:[/]")
             for reason, files in self.skipped_files.items():
                 if files:
-                    print(f"  {reason.replace('_', ' ').title()}: {len(files)} files")
+                    console.print(f"  [yellow]{reason.replace('_', ' ').title()}: {len(files)} files[/]")
 
         # Total summary
         total_processed = sum(len(files) for files in self.processed_files.values())
         total_skipped = sum(len(files) for files in self.skipped_files.values())
-        print(f"\nTotal files processed: {total_processed}")
-        print(f"Total files skipped: {total_skipped}")
+        console.print(f"\n[bold green]Total files processed: {total_processed}[/]")
+        console.print(f"[bold yellow]Total files skipped: {total_skipped}[/]")
 
-        # Detailed Warnings and Errors Section
-        if self.warnings or self.errors:
-            print("\n=== Processing Issues ===")
-            
-            if self.warnings:
-                print("\nConversion Warnings:")
-                print("─" * 100)  # Longer separator line
-                for i, warning in enumerate(self.warnings, 1):
-                    # Split warning into parts for better formatting
-                    if " (attachment in " in warning:
-                        file_info, error_msg = warning.split(": ", 1)
-                        file_part, location = file_info.split(" (attachment in ")
-                        location = location.rstrip(")")
-                        print(f"  {i}. File:     {file_part}")
-                        print(f"     Location: {location}")
-                        print(f"     Issue:    Failed to convert - will be skipped\n")
-                    else:
-                        print(f"  {i}. {warning}\n")
-            
-            if self.errors:
-                print("\nCritical Errors:")
-                print("─" * 100)  # Longer separator line
-                for i, error in enumerate(self.errors, 1):
-                    print(f"  {i}. {error}\n")
-            
-            # Summary of issues
-            print("Issues Summary:")
-            if self.warnings:
-                print(f"  Conversion Warnings: {len(self.warnings)}")
-            if self.errors:
-                print(f"  Critical Errors: {len(self.errors)}")
+        # Show warnings and errors if any
+        if self.warnings:
+            console.print("\n[bold yellow]Warnings:[/]")
+            for warning in self.warnings:
+                console.print(f"  [yellow]• {warning}[/]")
 
-        # Log detailed information at debug level only
-        logger.debug("=== Detailed Processing Summary ===")
-        for file_type, files in self.processed_files.items():
-            for f in files:
-                logger.debug(f"Processed {file_type}: {f}")
-        for reason, files in self.skipped_files.items():
-            for f in files:
-                logger.debug(f"Skipped ({reason}): {f}")
+        if self.errors:
+            console.print("\n[bold red]Errors:[/]")
+            for error in self.errors:
+                console.print(f"  [red]• {error}[/]")
 
 class MarkdownProcessor:
     """Processes markdown and office documents."""
@@ -155,17 +166,21 @@ class MarkdownProcessor:
         self.output_dir = Path(os.getenv('NOVA_PHASE_MARKDOWN_PARSE'))
         self.summary = ProcessingSummary()
         
+        # Initialize state manager
+        self.state_manager = StateManager(self.output_dir)
+        
+        # Add processing statistics
+        self.stats = {
+            'api_calls': 0,
+            'api_time_total': 0.0,
+            'cache_hits': 0,
+            'images_processed': 0
+        }
+        
         # Initialize markdown parser
         self.md = MarkdownIt('commonmark', {'typographer': config.markdown.typographer})
         self.md.enable('table')
         self.md.enable('strikethrough')
-        
-        # Add plugins
-        for plugin in config.markdown.plugins:
-            if plugin == 'linkify':
-                self.md.enable('linkify')
-            elif plugin == 'image':
-                self.md.enable('image')
         
         # Initialize OpenAI client if API key is available
         openai_key = os.getenv('OPEN_AI_KEY')
@@ -219,10 +234,6 @@ class MarkdownProcessor:
         openai_logger.setLevel(logging.WARNING)
         httpx_logger = logging.getLogger("httpx")
         httpx_logger.setLevel(logging.WARNING)
-
-    def _setup_directories(self) -> None:
-        """Create required directories if they don't exist."""
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _detect_encoding(self, file_path: Path) -> str:
         """Detect file encoding by trying common encodings."""
@@ -335,51 +346,49 @@ class MarkdownProcessor:
 
     def process_directory(self, input_dir: Path) -> None:
         """Process all files in a directory."""
-        print(f"\nProcessing directory: {input_dir}")
-        print("Starting markdown parse phase...")
+        # Header
+        console.rule("[bold blue]Phase 1: Markdown Parse[/]")
+        console.print(f"\nProcessing Directory: [cyan]{input_dir}[/]")
+        console.print("[blue]Starting Markdown Parse Phase...[/]\n")
         
-        # Get allowed extensions
-        markdown_exts = {'.md', '.markdown'}
-        office_exts = {'.docx', '.pptx', '.xlsx', '.pdf'}
-        image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.heic', '.HEIC', '.webp'}
-        text_exts = {'.html', '.csv', '.json', '.txt', '.xml'}  # Add text formats
-        allowed_exts = markdown_exts | office_exts | image_exts | text_exts  # Include text formats
-        
-        # First, collect all markdown files and their attachment directories
         markdown_files = []
         attachment_dirs = set()
         for file_path in input_dir.rglob('*'):
-            if file_path.is_file() and file_path.suffix.lower() in markdown_exts:
+            if file_path.is_file() and file_path.suffix.lower() in {'.md', '.markdown'}:
                 markdown_files.append(file_path)
-                # Add potential attachment directory
                 attachment_dir = file_path.parent / file_path.stem
                 if attachment_dir.is_dir():
                     attachment_dirs.add(attachment_dir)
         
-        # Then collect standalone files (not in attachment directories)
-        standalone_files = []
-        for file_path in input_dir.rglob('*'):
-            if file_path.is_file():
-                # Skip files we've already processed or that are in attachment dirs
-                if file_path.suffix.lower() in markdown_exts:
-                    continue
-                if any(str(file_path).startswith(str(d)) for d in attachment_dirs):
-                    continue
-                if file_path.suffix.lower() in office_exts:
-                    standalone_files.append(file_path)
-        
-        # Process all files with progress bar
-        total_files = len(markdown_files) + len(standalone_files)
-        with tqdm(total=total_files, desc="Processing files") as progress:
-            # Process markdown files first (they'll handle their own attachments)
+        with tqdm(total=len(markdown_files), 
+                 desc="Processing", 
+                 ncols=100,
+                 bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}',
+                 dynamic_ncols=True) as pbar:
             for file_path in markdown_files:
-                self.process_markdown_with_attachments(file_path, progress)
-            
-            # Process standalone files
-            for file_path in standalone_files:
-                self.process_file(file_path, progress)
+                if self.stats['api_calls'] > 0:
+                    avg_time = self.stats['api_time_total'] / self.stats['api_calls']
+                    pbar.set_postfix_str(f"API: {self.stats['api_calls']} calls ({avg_time:.1f}s)")
+                
+                if self.state_manager.needs_processing(file_path):
+                    filename = file_path.name[:37] + "..." if len(file_path.name) > 40 else file_path.name
+                    pbar.set_description(f"Processing {filename}")
+                    try:
+                        self.process_markdown_with_attachments(file_path, pbar)
+                        self.state_manager.update_state(file_path)
+                    except Exception as e:
+                        error = f"Failed to process {file_path.name}: {str(e)}"
+                        tqdm.write(f"\n[red]Error:[/] {error}")
+                        self.summary.add_error(error)
+                        self.summary.add_skipped('error', file_path)
+                else:
+                    filename = file_path.name[:37] + "..." if len(file_path.name) > 40 else file_path.name
+                    pbar.set_description(f"Skipping {filename}")
+                    self.summary.add_skipped('unchanged', file_path)
+                pbar.update(1)
         
-        # Display summary after processing
+        # Add spacing before summary
+        console.print("\n")
         self.summary.display()
 
     def process_file(self, input_path: Path, progress: tqdm) -> None:
@@ -464,8 +473,6 @@ class MarkdownProcessor:
         try:
             # Read HEIC file
             heif_file = pillow_heif.read_heif(str(heic_path))
-            
-            # Convert to PIL Image
             image = heif_file.to_pillow()
             
             # Save as JPG
@@ -475,7 +482,7 @@ class MarkdownProcessor:
         except Exception as e:
             if tmp_path.exists():
                 tmp_path.unlink()
-            raise e
+            raise FileConversionException(f"Failed to convert HEIC file: {str(e)}")
 
     def _convert_webp_to_jpg(self, webp_path: Path) -> Path:
         """Convert WebP image to JPG format."""
@@ -532,7 +539,7 @@ class MarkdownProcessor:
         except Exception as e:
             raise FileConversionException(f"Failed to convert PDF: {str(e)}")
 
-    def process_markdown_with_attachments(self, input_path: Path, progress: tqdm) -> None:
+    def process_markdown_with_attachments(self, input_path: Path, pbar: tqdm) -> None:
         """Process a markdown file and its attachments directory if it exists."""
         try:
             # Process the markdown file itself
@@ -553,7 +560,6 @@ class MarkdownProcessor:
                 output_attachments_dir = output_path.parent / output_path.stem
                 output_attachments_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Process each file in the attachments directory
                 for attachment in input_attachments_dir.iterdir():
                     if attachment.is_file():
                         suffix = attachment.suffix.lower()
@@ -572,77 +578,35 @@ class MarkdownProcessor:
                             f'({input_path.stem}/{filename})',  # Bare reference
                         ]
                         
-                        # Handle text-based formats
-                        if suffix in {'.html', '.csv', '.json', '.txt', '.xml'}:
+                        # Handle images
+                        if suffix in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.HEIC'}:
                             try:
-                                output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                result = self._convert_text_file_to_markdown(attachment)
-                                
-                                # Convert result to string if needed
-                                if not isinstance(result, str):
-                                    if hasattr(result, 'markdown'):
-                                        result = result.markdown
-                                    elif hasattr(result, 'text'):
-                                        result = result.text
-                                    else:
-                                        result = str(result)
-                                
-                                # Write markdown output
-                                with open(output_md, 'w', encoding='utf-8') as f:
-                                    f.write(result)
-                                
-                                # Update markdown content to reference the new markdown file
-                                new_ref = f'[{filename}]({output_path.stem}/{attachment.stem}.md)<!-- {{"embed":"true"}} -->'
-                                for old_ref in old_ref_patterns:
-                                    if old_ref in content:
-                                        content = content.replace(old_ref, new_ref)
-                                
-                                self.summary.add_processed('text', attachment)
-                            except (FileConversionException, UnsupportedFormatException, Exception) as e:
-                                warning = f"Could not process text file {attachment.name} (attachment in {rel_path}): {str(e)}"
-                                print(f"\nWarning: {warning}")
-                                self.summary.add_warning(warning)
-                                self.summary.add_skipped('error', attachment)
-                                
-                                # Replace reference with error note
-                                error_note = f"[⚠️ Failed to convert attachment: {filename} (Error: {str(e)})]<!-- {{'status':'error'}} -->"
-                                for old_ref in old_ref_patterns:
-                                    if old_ref in content:
-                                        content = content.replace(old_ref, error_note)
-                        
-                        # Handle images using our new ImageProcessor
-                        elif suffix in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.HEIC'}:
-                            try:
-                                # Process the image
+                                start_time = time.time()
                                 metadata = self.image_processor.process_image(attachment, output_attachments_dir)
                                 
-                                if metadata.error:
-                                    raise ProcessingError(metadata.error)
+                                # Update stats
+                                self.stats['api_calls'] = self.image_processor.stats['api_calls']
+                                self.stats['api_time_total'] = self.image_processor.stats['api_time_total']
+                                self.stats['cache_hits'] = self.image_processor.stats['cache_hits']
+                                self.stats['images_processed'] = self.image_processor.stats['images_processed']
                                 
-                                # Create markdown content with image metadata
-                                result = f"# Image: {attachment.name}\n\n"
-                                
-                                if metadata.description:
-                                    result += f"## Description\n\n{metadata.description}\n\n"
-                                
-                                result += f"## Metadata\n\n"
-                                result += f"- Dimensions: {metadata.width}x{metadata.height}\n"
-                                result += f"- Format: {metadata.format}\n"
-                                result += f"- Size: {metadata.size / 1024:.1f} KB\n"
-                                
-                                # Write markdown with metadata
-                                output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                with open(output_md, 'w', encoding='utf-8') as f:
-                                    f.write(result)
+                                # Update status but don't print
+                                processing_time = time.time() - start_time
+                                if processing_time >= 0.1:  # Only update for non-cached images
+                                    filename = os.path.basename(metadata.processed_path)
+                                    if len(filename) > 30:
+                                        filename = filename[:27] + "..."
+                                    tqdm.write(f"Processed {filename} ({processing_time:.1f}s)")
                                 
                                 # Update markdown content to reference both the image and its description
                                 # Keep the original directory structure in the path
                                 dir_name = input_path.stem  # e.g. "20241105 - Journal"
-                                image_path = f"{dir_name}/{os.path.basename(metadata.processed_path)}"
+                                processed_images_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
+                                image_path = f"../../{processed_images_dir.name}/{os.path.basename(metadata.processed_path)}"
                                 desc_path = f"{dir_name}/{attachment.stem}.md"
                                 
                                 # Create the new reference that includes both image and description
-                                new_ref = f'![{attachment.name}]({image_path})<!-- {{"embed":"true"}} -->'
+                                new_ref = f'![{filename}]({image_path})<!-- {{"embed":"true"}} -->'
                                 if metadata.description:
                                     new_ref += f'\n\n[Image Description]({desc_path})<!-- {{"embed":"true"}} -->'
                                 
@@ -651,58 +615,16 @@ class MarkdownProcessor:
                                     if old_ref in content:
                                         content = content.replace(old_ref, new_ref)
                                 
-                                self.summary.add_processed('image', attachment)
                             except Exception as e:
-                                warning = f"Could not process image {attachment.name} (attachment in {rel_path}): {str(e)}"
-                                print(f"\nWarning: {warning}")
-                                self.summary.add_warning(warning)
+                                warning = f"Could not process image {attachment.name}"
+                                console.print(f"\n[warning]Warning:[/] [path]{warning}[/]")
+                                console.print(f"[detail]Location:[/] [path]{rel_path}[/]")
+                                console.print(f"[detail]Reason:[/] [warning]{str(e)}[/]")
+                                self.summary.add_warning(f"{warning} - {str(e)}")
                                 self.summary.add_skipped('error', attachment)
                                 
                                 # Replace reference with error note but keep original image
                                 error_note = f'[{filename}]({input_path.stem}/{filename})<!-- {{"embed":"true"}} -->\n\n[⚠️ Failed to generate image description: {str(e)}]<!-- {{"status":"error"}} -->'
-                                for old_ref in old_ref_patterns:
-                                    if old_ref in content:
-                                        content = content.replace(old_ref, error_note)
-                        
-                        # Handle PDFs and Office documents
-                        elif suffix in {'.pdf', '.docx', '.pptx', '.xlsx'}:
-                            try:
-                                output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                
-                                # Special handling for PDFs
-                                if suffix == '.pdf' and PYMUPDF_SUPPORT:
-                                    result = self._convert_pdf_to_markdown(attachment)
-                                else:
-                                    result = self.converter.convert(
-                                        str(attachment),
-                                        image_dir=str(output_attachments_dir)
-                                    )
-                                
-                                # Convert result to string if needed
-                                if not isinstance(result, str):
-                                    if hasattr(result, 'markdown'):
-                                        result = result.markdown
-                                    elif hasattr(result, 'text'):
-                                        result = result.text
-                                    else:
-                                        result = str(result)
-                                
-                                with open(output_md, 'w', encoding='utf-8') as f:
-                                    f.write(result)
-                                # Update markdown content to reference the new markdown file
-                                new_ref = f'[{filename}]({output_path.stem}/{attachment.stem}.md)<!-- {{"embed":"true"}} -->'
-                                for old_ref in old_ref_patterns:
-                                    if old_ref in content:
-                                        content = content.replace(old_ref, new_ref)
-                                self.summary.add_processed('pdf' if suffix == '.pdf' else 'office', attachment)
-                            except (FileConversionException, UnsupportedFormatException, Exception) as e:
-                                warning = f"Could not process {suffix[1:].upper()} file {attachment.name} (attachment in {rel_path}): {str(e)}"
-                                print(f"\nWarning: {warning}")
-                                self.summary.add_warning(warning)
-                                self.summary.add_skipped('error', attachment)
-                                
-                                # Replace reference with error note
-                                error_note = f"[⚠️ Failed to convert {suffix[1:].upper()} file: {filename} (Error: {str(e)})]<!-- {{'status':'error'}} -->"
                                 for old_ref in old_ref_patterns:
                                     if old_ref in content:
                                         content = content.replace(old_ref, error_note)
@@ -712,16 +634,12 @@ class MarkdownProcessor:
                 f.write(content)
             
             self.summary.add_processed('markdown', input_path)
-            progress.set_description(f"Processing markdown: {input_path.name}")
-            progress.update(1)
             
         except Exception as e:
             error = f"Failed to process markdown file {input_path.name}: {str(e)}"
             print(f"\nError: {error}")
             self.summary.add_error(error)
             self.summary.add_skipped('error', input_path)
-            progress.update(1)
-            # Don't raise the error, just continue with the next file
 
     def _process_markdown_file(self, input_path: Path, output_path: Path) -> None:
         """Process a markdown file."""

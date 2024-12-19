@@ -83,6 +83,7 @@ directory_structure:
     output: "${NOVA_OUTPUT_DIR}"
     processing: "${NOVA_PROCESSING_DIR}"
     temp: "${NOVA_TEMP_DIR}"
+    src_resources: "${NOVA_SRC_RESOURCES_DIR}"
     phase_dirs:
       - markdown_parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
     image_dirs:
@@ -98,6 +99,7 @@ directory_structure:
     - No hardcoded paths
     - Shell script creates directories
     - Maintain proper permissions
+    - src/resources is read-only for prompts
 
 # State Management
 state_tracking:
@@ -212,3 +214,20 @@ phase_1_output:
       - Converted format
       - Generated descriptions
       - Preserved metadata
+
+# Source Resources
+src_resources:
+  location: "src/resources"
+  purpose: "Store system prompts and templates"
+  structure:
+    - prompts/: System prompts for AI interactions
+  rules:
+    - Directory is read-only during processing
+    - Changes require manual updates
+    - Version control all prompts
+    - Document any prompt modifications
+    - No dynamic content generation
+  access:
+    read_only: true
+    versioned: true
+    documented: true
