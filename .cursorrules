@@ -29,6 +29,10 @@ pipeline:
                 - size optimization
                 - metadata extraction
                 - description generation
+              temp_files:
+                - use_stable_names: true
+                - cleanup_after_processing: true
+                - preserve_originals: true
           - office_processor:
               formats:
                 - docx/doc
@@ -39,6 +43,13 @@ pipeline:
                 - text extraction
                 - image extraction
                 - metadata preservation
+              content_extraction:
+                - try_attributes:
+                    - text_content
+                    - markdown
+                    - text
+                - fallback_to_dict: true
+                - log_failures: true
 
 # Installation Requirements
 installation:
@@ -113,6 +124,22 @@ state_tracking:
     - Detect changes
     - Handle incremental updates
     - Maintain processing state
+
+# Temporary File Management
+temp_file_handling:
+  rules:
+    - Use stable, predictable names
+    - Track created temp files
+    - Clean up after processing
+    - Don't delete originals
+    - Log cleanup operations
+  locations:
+    - temp_dir: "${NOVA_TEMP_DIR}"
+    - office_temp: "${NOVA_OFFICE_TEMP_DIR}"
+  cleanup:
+    - timing: after_processing
+    - scope: only_temp_files
+    - logging: debug_level
 
 # Caching Strategy
 caching:

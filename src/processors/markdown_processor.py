@@ -14,6 +14,8 @@ import json
 import csv
 import xml.dom.minidom
 import time
+import re
+from datetime import datetime
 
 from markdown_it import MarkdownIt
 from markitdown import MarkItDown
@@ -37,6 +39,8 @@ from rich.console import Console
 from rich.theme import Theme
 
 from tqdm import tqdm
+
+from .office_processor import OfficeProcessor
 
 # Filter PyMuPDF SWIG deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message="builtin type SwigPyPacked has no __module__ attribute")
@@ -234,6 +238,8 @@ class MarkdownProcessor:
         openai_logger.setLevel(logging.WARNING)
         httpx_logger = logging.getLogger("httpx")
         httpx_logger.setLevel(logging.WARNING)
+
+        self.office_processor = OfficeProcessor()
 
     def _detect_encoding(self, file_path: Path) -> str:
         """Detect file encoding by trying common encodings."""
@@ -563,25 +569,12 @@ class MarkdownProcessor:
                 for attachment in input_attachments_dir.iterdir():
                     if attachment.is_file():
                         suffix = attachment.suffix.lower()
-                        
-                        # Build the patterns to match both full markdown links and bare references
                         filename = attachment.name
-                        filename_encoded = filename.replace('(', '%28').replace(')', '%29').replace(' ', '%20')
-                        dir_encoded = input_path.stem.replace(' ', '%20')
-                        old_ref_patterns = [
-                            f'[{filename}]({dir_encoded}/{filename_encoded})<!-- {{"embed":"true"}} -->',  # Full markdown link with encoding and comment
-                            f'[{filename}]({input_path.stem}/{filename_encoded})<!-- {{"embed":"true"}} -->',  # Full markdown link with partial encoding
-                            f'[{filename}]({input_path.stem}/{filename})<!-- {{"embed":"true"}} -->',  # Full markdown link without encoding
-                            f'[{filename}]({dir_encoded}/{filename_encoded})',  # Full markdown link with encoding
-                            f'[{filename}]({input_path.stem}/{filename_encoded})',  # Full markdown link with partial encoding
-                            f'[{filename}]({input_path.stem}/{filename})',  # Full markdown link without encoding
-                            f'({input_path.stem}/{filename})',  # Bare reference
-                        ]
                         
-                        # Handle images
+                        # Handle different file types
                         if suffix in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.HEIC'}:
                             try:
-                                start_time = time.time()
+                                start_time = time.time()  # Add start_time here
                                 metadata = self.image_processor.process_image(attachment, output_attachments_dir)
                                 
                                 # Update stats
@@ -593,19 +586,31 @@ class MarkdownProcessor:
                                 # Update status but don't print
                                 processing_time = time.time() - start_time
                                 if processing_time >= 0.1:  # Only update for non-cached images
-                                    filename = os.path.basename(metadata.processed_path)
-                                    if len(filename) > 30:
-                                        filename = filename[:27] + "..."
-                                    tqdm.write(f"Processed {filename} ({processing_time:.1f}s)")
+                                    display_name = os.path.basename(metadata.processed_path)
+                                    if len(display_name) > 30:
+                                        display_name = display_name[:27] + "..."
+                                    tqdm.write(f"Processed {display_name} ({processing_time:.1f}s)")
                                 
                                 # Update markdown content to reference both the image and its description
-                                # Keep the original directory structure in the path
-                                dir_name = input_path.stem  # e.g. "20241105 - Journal"
+                                dir_name = input_path.stem
                                 processed_images_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
                                 image_path = f"../../{processed_images_dir.name}/{os.path.basename(metadata.processed_path)}"
                                 desc_path = f"{dir_name}/{attachment.stem}.md"
                                 
-                                # Create the new reference that includes both image and description
+                                # Build reference patterns
+                                filename_encoded = filename.replace('(', '%28').replace(')', '%29').replace(' ', '%20')
+                                dir_encoded = input_path.stem.replace(' ', '%20')
+                                old_ref_patterns = [
+                                    f'![{filename}]({dir_encoded}/{filename_encoded})<!-- {{"embed":"true"}} -->',
+                                    f'![{filename}]({input_path.stem}/{filename_encoded})<!-- {{"embed":"true"}} -->',
+                                    f'![{filename}]({input_path.stem}/{filename})<!-- {{"embed":"true"}} -->',
+                                    f'![{filename}]({dir_encoded}/{filename_encoded})',
+                                    f'![{filename}]({input_path.stem}/{filename_encoded})',
+                                    f'![{filename}]({input_path.stem}/{filename})',
+                                    f'({input_path.stem}/{filename})'
+                                ]
+                                
+                                # Create the new reference
                                 new_ref = f'![{filename}]({image_path})<!-- {{"embed":"true"}} -->'
                                 if metadata.description:
                                     new_ref += f'\n\n[Image Description]({desc_path})<!-- {{"embed":"true"}} -->'
@@ -622,12 +627,40 @@ class MarkdownProcessor:
                                 console.print(f"[detail]Reason:[/] [warning]{str(e)}[/]")
                                 self.summary.add_warning(f"{warning} - {str(e)}")
                                 self.summary.add_skipped('error', attachment)
+                    
+                        elif suffix in {'.pdf', '.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls'}:
+                            try:
+                                # Use the dedicated office document processor
+                                result = self._process_office_document(attachment, output_attachments_dir)
                                 
-                                # Replace reference with error note but keep original image
-                                error_note = f'[{filename}]({input_path.stem}/{filename})<!-- {{"embed":"true"}} -->\n\n[⚠️ Failed to generate image description: {str(e)}]<!-- {{"status":"error"}} -->'
-                                for old_ref in old_ref_patterns:
-                                    if old_ref in content:
-                                        content = content.replace(old_ref, error_note)
+                                # Save the markdown output
+                                output_md = output_attachments_dir / f"{attachment.stem}.md"
+                                with open(output_md, 'w', encoding='utf-8') as f:
+                                    f.write(result)
+                                
+                                self.summary.add_processed('office', attachment)
+                                
+                            except Exception as e:
+                                self.summary.add_warning(f"Failed to process document {attachment.name}: {e}")
+                    
+                        elif suffix in {'.txt', '.csv', '.json', '.html', '.xml'}:
+                            try:
+                                # Convert text-based files
+                                result = self._convert_text_file_to_markdown(attachment)
+                                
+                                # Save the markdown output
+                                output_md = output_attachments_dir / f"{attachment.stem}.md"
+                                with open(output_md, 'w', encoding='utf-8') as f:
+                                    f.write(result)
+                                
+                                self.summary.add_processed('text', attachment)
+                                
+                            except Exception as e:
+                                self.summary.add_warning(f"Failed to process text file {attachment.name}: {e}")
+                    
+                        else:
+                            self.summary.add_skipped('unsupported_format', attachment)
+                            logger.warning(f"Skipping unsupported file format: {attachment.name}")
             
             # Write the processed markdown with updated references
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -656,3 +689,50 @@ class MarkdownProcessor:
         # Write processed markdown
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(content)
+
+    def process(self, markdown_path: Path) -> Dict:
+        """Process a markdown file."""
+        try:
+            # ... existing code ...
+
+            # Update image references in markdown content
+            content = markdown_path.read_text(encoding='utf-8')
+            updated_content = content
+
+            # Find and update HEIC image references
+            for match in re.finditer(r'!\[([^\]]*)\]\(([^)]+\.heic)\)', content, re.IGNORECASE):
+                alt_text, heic_path = match.groups()
+                jpg_path = heic_path[:-5] + '.jpg'  # Replace .heic with .jpg
+                updated_content = updated_content.replace(
+                    f'![{alt_text}]({heic_path})',
+                    f'![{alt_text}]({jpg_path})'
+                )
+
+            # Write updated content if changes were made
+            if content != updated_content:
+                markdown_path.write_text(updated_content, encoding='utf-8')
+                logger.info("Updated HEIC references in markdown", extra={
+                    'file': str(markdown_path)
+                })
+
+            # ... rest of existing code ...
+
+        except Exception as e:
+            logger.error(f"Failed to process markdown {markdown_path}: {e}")
+            raise ProcessingError(f"Failed to process {markdown_path.name}: {str(e)}")
+
+    def _process_office_document(self, attachment: Path, output_dir: Path) -> str:
+        """Process an office document using the dedicated processor."""
+        try:
+            return self.office_processor.process_document(attachment, output_dir)
+        except Exception as e:
+            logger.error(f"Failed to process office document {attachment.name}: {e}")
+            return (
+                f"# Processing Error: {attachment.name}\n\n"
+                f"Failed to process document. Error: {str(e)}\n\n"
+                f"## Document Information\n"
+                f"- File: {attachment.name}\n"
+                f"- Type: {attachment.suffix[1:].upper()}\n"
+                f"- Size: {attachment.stat().st_size / 1024:.1f} KB"
+            )
+        
