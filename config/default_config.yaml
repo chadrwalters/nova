@@ -1,18 +1,13 @@
 # Nova Document Processor Configuration
-# First Phase: Markdown Parse
 
-processing:
-  error_tolerance: lenient
-  max_retries: 3
-  max_file_size: 100  # MB
-  max_total_size: 500  # MB
-
+# Logging Configuration
 logging:
-  level: INFO
-  format: json
+  level: "INFO"
+  format: "json"
   filter_binary: true
   max_binary_length: 100
 
+# Markdown Processing
 markdown:
   typographer: true
   linkify: true
@@ -24,7 +19,8 @@ markdown:
     - linkify
     - image
 
-image_processing:
+# Image Processing
+image:
   quality: 85
   max_width: 1920
   max_height: 1080
@@ -33,8 +29,16 @@ image_processing:
   cache_duration: 86400  # 24 hours
   retry_attempts: 3
   timeout: 30
-  directories:
-    original: "${NOVA_ORIGINAL_IMAGES_DIR}"
-    processed: "${NOVA_PROCESSED_IMAGES_DIR}"
-    metadata: "${NOVA_IMAGE_METADATA_DIR}"
-    cache: "${NOVA_IMAGE_CACHE_DIR}"
+
+# Office Document Processing
+office:
+  preserve_images: true
+  ocr_enabled: true
+  max_image_size: 5242880  # 5MB
+
+# Processing Configuration
+processing:
+  error_tolerance: "lenient"
+  max_retries: 3
+  max_file_size: 100  # MB
+  max_total_size: 500  # MB

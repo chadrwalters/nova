@@ -14,7 +14,7 @@ from PIL import Image
 import pillow_heif
 from openai import OpenAI
 
-from ..core.config import NovaConfig, ImageProcessingConfig
+from ..core.models import NovaConfig, ImageProcessingConfig
 from ..core.errors import ProcessingError
 from ..core.logging import get_logger
 
@@ -44,6 +44,15 @@ class ImageProcessor:
         self.openai_client = openai_client
         self.vision_api_available = False
         self._setup_directories()
+        
+        # Add processing statistics
+        self.stats = {
+            'api_calls': 0,
+            'api_time_total': 0.0,
+            'cache_hits': 0,
+            'images_processed': 0
+        }
+        
         if openai_client:
             self._validate_vision_api()
             if self.vision_api_available:
@@ -105,10 +114,12 @@ class ImageProcessor:
     def _load_from_cache(self, image_path: Path) -> Optional[ImageMetadata]:
         """Load image metadata from cache if available and valid."""
         if not self.image_config.cache_enabled or not self.vision_api_available:
+            logger.debug(f"Cache disabled or Vision API unavailable for {image_path.name}")
             return None
 
         cache_path = self._get_cache_path(image_path)
         if not cache_path.exists():
+            logger.debug(f"No cache found for {image_path.name}")
             return None
 
         try:
@@ -117,19 +128,20 @@ class ImageProcessor:
             
             # Check cache expiration
             if time.time() - data['created_at'] > self.image_config.cache_duration:
-                logger.debug(f"Cache expired for {image_path}")
+                logger.info(f"Cache expired for {image_path.name}")
                 cache_path.unlink()
                 return None
 
             # Ensure cache has description
             if not data.get('description'):
-                logger.debug(f"Cache entry has no description for {image_path}")
+                logger.info(f"Invalid cache entry for {image_path.name} (no description)")
                 cache_path.unlink()
                 return None
 
+            logger.info(f"Using cached data for {image_path.name}")
             return ImageMetadata(**data)
         except Exception as e:
-            logger.warning(f"Failed to load cache for {image_path}: {e}")
+            logger.warning(f"Failed to load cache for {image_path.name}: {e}")
             try:
                 cache_path.unlink()
             except Exception:
@@ -199,6 +211,9 @@ class ImageProcessor:
             return None
 
         try:
+            start_time = time.time()
+            self.stats['api_calls'] += 1
+            
             with open(image_path, 'rb') as img_file:
                 image_data = base64.b64encode(img_file.read()).decode('utf-8')
 
@@ -222,6 +237,17 @@ class ImageProcessor:
                 }],
                 max_tokens=500
             )
+            
+            api_time = time.time() - start_time
+            self.stats['api_time_total'] += api_time
+            
+            if self.stats['api_calls'] % 5 == 0:  # Show stats every 5 calls
+                avg_time = self.stats['api_time_total'] / self.stats['api_calls']
+                logger.info(
+                    f"OpenAI Stats: {self.stats['api_calls']} calls, "
+                    f"avg {avg_time:.2f}s per call, "
+                    f"{self.stats['cache_hits']} cache hits"
+                )
             
             if not response.choices:
                 logger.error("No response choices returned from OpenAI")
@@ -284,67 +310,60 @@ class ImageProcessor:
         
         return "\n".join(lines)
 
-    def process_image(self, input_path: Path, output_dir: Path) -> ImageMetadata:
-        """Process an image file."""
+    def process_image(self, input_path: Path, output_dir: Path, markdown_dir: Optional[Path] = None) -> ImageMetadata:
+        """Process an image file.
+        
+        Args:
+            input_path: Path to input image
+            output_dir: Directory where markdown files will be written (for description only)
+            markdown_dir: Optional directory name for markdown references
+        """
         start_time = time.time()
-        logger.info("Processing image %s", input_path.name)
+        self.stats['images_processed'] += 1
         
         try:
-            # Create output directory if it doesn't exist
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Check cache only if we have vision API access
-            cached = None
-            if self.vision_api_available:
-                cached = self._load_from_cache(input_path)
-            if cached:
-                logger.debug("Using cached result for %s", input_path.name)
-                return cached
-            
-            # Save original
+            # Save original to NOVA_ORIGINAL_IMAGES_DIR
             original_path = self.image_config.original_dir / input_path.name
             shutil.copy2(input_path, original_path)
             
-            # Determine output format and path
+            # Process to NOVA_PROCESSED_IMAGES_DIR
             output_format = self.image_config.preferred_format.lower()
             output_filename = f"{input_path.stem}.{output_format}"
-            processed_path = output_dir / output_filename
+            processed_path = self.image_config.processed_dir / output_filename
             
             logger.debug("Converting %s to %s", input_path.name, output_format.upper())
             
             # Handle HEIC files specifically
             if input_path.suffix.lower() == '.heic':
-                logger.debug("Converting HEIC file")
-                heif_file = pillow_heif.read_heif(str(input_path))
-                image = Image.frombytes(
-                    heif_file.mode,
-                    heif_file.size,
-                    heif_file.data,
-                    "raw",
-                )
+                with pillow_heif.open_heif(str(input_path)) as heif_file:
+                    image = Image.frombytes(
+                        heif_file.mode,
+                        heif_file.size,
+                        heif_file.data,
+                        "raw",
+                    )
             else:
-                image = Image.open(input_path)
-            
-            # Convert to RGB if necessary
-            if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
-                logger.debug("Converting image mode from %s to RGB", image.mode)
-                image = image.convert('RGB')
-            
-            # Resize if needed while maintaining aspect ratio
-            if image.width > self.image_config.max_width or image.height > self.image_config.max_height:
-                logger.debug("Resizing image from %dx%d to max %dx%d", 
-                    image.width, image.height,
-                    self.image_config.max_width, self.image_config.max_height
-                )
-                image.thumbnail((self.image_config.max_width, self.image_config.max_height))
-            
-            # Save with specified quality
-            image.save(
-                processed_path,
-                format=output_format.upper(),
-                quality=self.image_config.quality,
-                optimize=True
-            )
+                with Image.open(input_path) as image:
+                    # Convert to RGB if necessary
+                    if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
+                        logger.debug("Converting image mode from %s to RGB", image.mode)
+                        image = image.convert('RGB')
+                    
+                    # Resize if needed while maintaining aspect ratio
+                    if image.width > self.image_config.max_width or image.height > self.image_config.max_height:
+                        logger.debug("Resizing image from %dx%d to max %dx%d", 
+                            image.width, image.height,
+                            self.image_config.max_width, self.image_config.max_height
+                        )
+                        image.thumbnail((self.image_config.max_width, self.image_config.max_height))
+                    
+                    # Save with specified quality
+                    image.save(
+                        processed_path,
+                        format=output_format.upper(),
+                        quality=self.image_config.quality,
+                        optimize=True
+                    )
             
             # Get image description
             description = self._get_image_description(processed_path)
@@ -371,7 +390,7 @@ class ImageProcessor:
             with open(metadata_path, 'w') as f:
                 json.dump(metadata.__dict__, f, indent=2)
             
-            # Save markdown
+            # Only write the markdown description file to the output directory
             markdown_path = output_dir / f"{input_path.stem}.md"
             with open(markdown_path, 'w') as f:
                 f.write(self._format_markdown(metadata))
@@ -400,7 +419,7 @@ class ImageProcessor:
                 error=error_msg
             )
             
-            # Save error markdown
+            # Only write the markdown description file to the output directory
             markdown_path = output_dir / f"{input_path.stem}.md"
             with open(markdown_path, 'w') as f:
                 f.write(self._format_markdown(metadata))
