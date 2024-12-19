@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import base64
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 import json
 import time
@@ -50,7 +50,9 @@ class ImageProcessor:
             'api_calls': 0,
             'api_time_total': 0.0,
             'cache_hits': 0,
-            'images_processed': 0
+            'images_processed': 0,
+            'heic_conversions': 0,
+            'heic_conversion_time': 0.0
         }
         
         if openai_client:
@@ -311,21 +313,53 @@ class ImageProcessor:
         return "\n".join(lines)
 
     def process_image(self, input_path: Path, output_dir: Path, markdown_dir: Optional[Path] = None) -> ImageMetadata:
-        """Process an image file.
-        
-        Args:
-            input_path: Path to input image
-            output_dir: Directory where markdown files will be written (for description only)
-            markdown_dir: Optional directory name for markdown references
-        """
+        """Process an image file."""
         start_time = time.time()
         self.stats['images_processed'] += 1
+        temp_files = []  # Track only temporary files
         
         try:
-            # Save original to NOVA_ORIGINAL_IMAGES_DIR
-            original_path = self.image_config.original_dir / input_path.name
-            shutil.copy2(input_path, original_path)
+            # Generate a stable output filename based on input
+            output_format = self.image_config.preferred_format.lower()
+            output_filename = f"{input_path.stem}.{output_format}"
+            processed_path = self.image_config.processed_dir / output_filename
             
+            # Handle HEIC conversion first if needed
+            if input_path.suffix.lower() == '.heic':
+                heic_start_time = time.time()
+                try:
+                    # Convert HEIC to JPG first
+                    heif_file = pillow_heif.read_heif(str(input_path))
+                    image = Image.frombytes(
+                        heif_file.mode,
+                        heif_file.size,
+                        heif_file.data,
+                        "raw",
+                    )
+                    
+                    # Create temporary JPG file with a stable name
+                    temp_path = self.image_config.original_dir / f"{input_path.stem}.jpg"
+                    image.save(temp_path, format='JPEG', quality=self.image_config.quality)
+                    temp_files.append(temp_path)  # Track for cleanup
+                    input_path = temp_path  # Use the temp file for further processing
+                    
+                    self.stats['heic_conversions'] += 1
+                    self.stats['heic_conversion_time'] += time.time() - heic_start_time
+                    logger.info(f"Converted HEIC to JPG", extra={
+                        'original': str(input_path),
+                        'conversion_time': f"{time.time() - heic_start_time:.2f}s"
+                    })
+                except Exception as e:
+                    self._cleanup_temp_files(temp_files)  # Clean up only temp files
+                    raise ProcessingError(f"Failed to convert HEIC file: {str(e)}")
+
+            # Save original to NOVA_ORIGINAL_IMAGES_DIR only if it's not a temp file
+            if not any(str(input_path) == str(temp) for temp in temp_files):
+                original_path = self.image_config.original_dir / input_path.name
+                shutil.copy2(input_path, original_path)
+            else:
+                original_path = input_path  # Use temp path for metadata
+
             # Process to NOVA_PROCESSED_IMAGES_DIR
             output_format = self.image_config.preferred_format.lower()
             output_filename = f"{input_path.stem}.{output_format}"
@@ -333,39 +367,30 @@ class ImageProcessor:
             
             logger.debug("Converting %s to %s", input_path.name, output_format.upper())
             
-            # Handle HEIC files specifically
-            if input_path.suffix.lower() == '.heic':
-                with pillow_heif.open_heif(str(input_path)) as heif_file:
-                    image = Image.frombytes(
-                        heif_file.mode,
-                        heif_file.size,
-                        heif_file.data,
-                        "raw",
+            # Now process the image (either original or converted JPG)
+            with Image.open(input_path) as image:
+                # Convert to RGB if necessary
+                if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
+                    logger.debug("Converting image mode from %s to RGB", image.mode)
+                    image = image.convert('RGB')
+                
+                # Resize if needed while maintaining aspect ratio
+                if image.width > self.image_config.max_width or image.height > self.image_config.max_height:
+                    logger.debug("Resizing image from %dx%d to max %dx%d", 
+                        image.width, image.height,
+                        self.image_config.max_width, self.image_config.max_height
                     )
-            else:
-                with Image.open(input_path) as image:
-                    # Convert to RGB if necessary
-                    if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
-                        logger.debug("Converting image mode from %s to RGB", image.mode)
-                        image = image.convert('RGB')
-                    
-                    # Resize if needed while maintaining aspect ratio
-                    if image.width > self.image_config.max_width or image.height > self.image_config.max_height:
-                        logger.debug("Resizing image from %dx%d to max %dx%d", 
-                            image.width, image.height,
-                            self.image_config.max_width, self.image_config.max_height
-                        )
-                        image.thumbnail((self.image_config.max_width, self.image_config.max_height))
-                    
-                    # Save with specified quality
-                    image.save(
-                        processed_path,
-                        format=output_format.upper(),
-                        quality=self.image_config.quality,
-                        optimize=True
-                    )
-            
-            # Get image description
+                    image.thumbnail((self.image_config.max_width, self.image_config.max_height))
+                
+                # Save with specified quality
+                image.save(
+                    processed_path,
+                    format=output_format.upper(),
+                    quality=self.image_config.quality,
+                    optimize=True
+                )
+
+            # Get image description using the processed image
             description = self._get_image_description(processed_path)
             if description:
                 logger.debug("Generated description (%d chars)", len(description))
@@ -395,11 +420,6 @@ class ImageProcessor:
             with open(markdown_path, 'w') as f:
                 f.write(self._format_markdown(metadata))
             
-            # Cache result
-            self._save_to_cache(input_path, metadata)
-            
-            logger.info("Completed processing %s (%.2fs)", input_path.name, metadata.processing_time)
-            
             return metadata
             
         except Exception as e:
@@ -424,4 +444,17 @@ class ImageProcessor:
             with open(markdown_path, 'w') as f:
                 f.write(self._format_markdown(metadata))
             
-            return metadata 
+            return metadata
+        finally:
+            # Clean up only temporary files
+            self._cleanup_temp_files(temp_files)
+
+    def _cleanup_temp_files(self, temp_files: List[Path]) -> None:
+        """Clean up temporary files only."""
+        for temp_file in temp_files:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink()
+                    logger.debug(f"Cleaned up temporary file: {temp_file}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {temp_file}: {e}")

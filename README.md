@@ -128,3 +128,24 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - markdown-it-py for markdown processing
 - markitdown for document conversion
+
+## Image Processing
+
+The system handles various image formats including HEIC files. Images are:
+- Converted to standard formats if needed
+- Optimized for size and quality
+- Given AI-generated descriptions when possible
+- Tracked with detailed metadata
+
+## Office Document Processing
+
+Supports various office document formats:
+- PDF files
+- Microsoft Office documents (docx, xlsx, pptx)
+- Legacy Office formats (doc, xls, ppt)
+
+Documents are converted to markdown with:
+- Preserved formatting where possible
+- Extracted images and assets
+- Detailed metadata and technical information
+- Fallback content when conversion fails
