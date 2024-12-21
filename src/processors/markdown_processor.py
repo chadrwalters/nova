@@ -101,10 +101,19 @@ class ProcessingSummary:
     })
     warnings: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    image_stats: Dict[str, int] = field(default_factory=lambda: {
+        'total_processed': 0,
+        'descriptions_generated': 0,
+        'heic_conversions': 0,
+        'cache_hits': 0,
+        'api_calls': 0
+    })
 
     def add_processed(self, file_type: str, path: Path) -> None:
         """Add a successfully processed file."""
         self.processed_files[file_type].append(path)
+        if file_type == 'image':
+            self.image_stats['total_processed'] += 1
 
     def add_skipped(self, reason: str, path: Path) -> None:
         """Add a skipped file."""
@@ -118,6 +127,10 @@ class ProcessingSummary:
         """Add an error message."""
         self.errors.append(message)
 
+    def update_image_stats(self, stats: Dict[str, int]) -> None:
+        """Update image processing statistics."""
+        self.image_stats.update(stats)
+
     def display(self) -> None:
         """Display processing summary."""
         console.print("\n[bold blue]=== Processing Summary ===[/]")
@@ -128,12 +141,20 @@ class ProcessingSummary:
             for file_type, files in self.processed_files.items():
                 if files:
                     if file_type == 'image':
-                        cached_count = len(self.processed_files['image_cached'])
+                        cached_count = len(self.processed_files.get('image_cached', []))
                         fresh_count = len(files)
                         if fresh_count or cached_count:
                             console.print(f"  [green]Images: {fresh_count + cached_count} total[/]")
                             console.print(f"    [green]- Freshly processed: {fresh_count}[/]")
                             console.print(f"    [cyan]- From cache: {cached_count}[/]")
+                            
+                            # Display image processing details
+                            if self.image_stats['total_processed'] > 0:
+                                console.print("\n[bold]Image Processing Details:[/]")
+                                console.print(f"  [green]Descriptions Generated: {self.image_stats['descriptions_generated']}[/]")
+                                console.print(f"  [green]HEIC Conversions: {self.image_stats['heic_conversions']}[/]")
+                                console.print(f"  [green]Cache Hits: {self.image_stats['cache_hits']}[/]")
+                                console.print(f"  [green]API Calls: {self.image_stats['api_calls']}[/]")
                     elif file_type != 'image_cached':
                         console.print(f"  [green]{file_type.title()}: {len(files)} files[/]")
 
@@ -213,7 +234,7 @@ class MarkdownProcessor:
             logger.warning("OpenAI API key not found. Image descriptions will be limited.")
         
         # Initialize image processor
-        self.image_processor = ImageProcessor(config, openai_client)
+        self.image_processor = ImageProcessor(config, openai_client, self.summary)
         
         # Initialize document converter with image support
         self.converter = MarkItDown(
@@ -566,6 +587,9 @@ class MarkdownProcessor:
                 output_attachments_dir = output_path.parent / output_path.stem
                 output_attachments_dir.mkdir(parents=True, exist_ok=True)
                 
+                # Track all file conversions
+                converted_files = {}
+                
                 for attachment in input_attachments_dir.iterdir():
                     if attachment.is_file():
                         suffix = attachment.suffix.lower()
@@ -574,8 +598,12 @@ class MarkdownProcessor:
                         # Handle different file types
                         if suffix in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.HEIC'}:
                             try:
-                                start_time = time.time()  # Add start_time here
+                                start_time = time.time()
                                 metadata = self.image_processor.process_image(attachment, output_attachments_dir)
+                                
+                                # Track the conversion
+                                if hasattr(self.image_processor, 'converted_files'):
+                                    converted_files[attachment.name] = os.path.basename(metadata.processed_path)
                                 
                                 # Update stats
                                 self.stats['api_calls'] = self.image_processor.stats['api_calls']
@@ -601,12 +629,20 @@ class MarkdownProcessor:
                                 filename_encoded = filename.replace('(', '%28').replace(')', '%29').replace(' ', '%20')
                                 dir_encoded = input_path.stem.replace(' ', '%20')
                                 old_ref_patterns = [
-                                    f'![{filename}]({dir_encoded}/{filename_encoded})<!-- {{"embed":"true"}} -->',
-                                    f'![{filename}]({input_path.stem}/{filename_encoded})<!-- {{"embed":"true"}} -->',
-                                    f'![{filename}]({input_path.stem}/{filename})<!-- {{"embed":"true"}} -->',
+                                    f'* JPG:![{filename}]({dir_encoded}/{filename_encoded})',
+                                    f'* HEIC![{filename}]({dir_encoded}/{filename_encoded})',
+                                    f'* JPG:![{filename}]({input_path.stem}/{filename_encoded})',
+                                    f'* HEIC![{filename}]({input_path.stem}/{filename_encoded})',
+                                    f'* JPG:![]({dir_encoded}/{filename_encoded})',
+                                    f'* HEIC![]({dir_encoded}/{filename_encoded})',
+                                    f'* JPG:![]({input_path.stem}/{filename_encoded})',
+                                    f'* HEIC![]({input_path.stem}/{filename_encoded})',
                                     f'![{filename}]({dir_encoded}/{filename_encoded})',
                                     f'![{filename}]({input_path.stem}/{filename_encoded})',
                                     f'![{filename}]({input_path.stem}/{filename})',
+                                    f'![]({dir_encoded}/{filename_encoded})',
+                                    f'![]({input_path.stem}/{filename_encoded})',
+                                    f'![]({input_path.stem}/{filename})',
                                     f'({input_path.stem}/{filename})'
                                 ]
                                 
@@ -615,10 +651,19 @@ class MarkdownProcessor:
                                 if metadata.description:
                                     new_ref += f'\n\n[Image Description]({desc_path})<!-- {{"embed":"true"}} -->'
                                 
-                                # Replace all old references with the new one
+                                # Replace all old references with the new one, preserving prefixes
                                 for old_ref in old_ref_patterns:
                                     if old_ref in content:
-                                        content = content.replace(old_ref, new_ref)
+                                        # Extract prefix if it exists
+                                        prefix = ""
+                                        if old_ref.startswith("* JPG:"):
+                                            prefix = "* JPG:"
+                                        elif old_ref.startswith("* HEIC"):
+                                            prefix = "* HEIC"
+                                        
+                                        # Add prefix to new reference
+                                        prefixed_new_ref = f"{prefix}{new_ref}" if prefix else new_ref
+                                        content = content.replace(old_ref, prefixed_new_ref)
                                 
                             except Exception as e:
                                 warning = f"Could not process image {attachment.name}"
@@ -638,11 +683,14 @@ class MarkdownProcessor:
                                 with open(output_md, 'w', encoding='utf-8') as f:
                                     f.write(result)
                                 
+                                # Track the conversion
+                                converted_files[attachment.name] = f"{attachment.stem}.md"
+                                
                                 self.summary.add_processed('office', attachment)
                                 
                             except Exception as e:
                                 self.summary.add_warning(f"Failed to process document {attachment.name}: {e}")
-                    
+                                
                         elif suffix in {'.txt', '.csv', '.json', '.html', '.xml'}:
                             try:
                                 # Convert text-based files
@@ -653,6 +701,9 @@ class MarkdownProcessor:
                                 with open(output_md, 'w', encoding='utf-8') as f:
                                     f.write(result)
                                 
+                                # Track the conversion
+                                converted_files[attachment.name] = f"{attachment.stem}.md"
+                                
                                 self.summary.add_processed('text', attachment)
                                 
                             except Exception as e:
@@ -661,6 +712,47 @@ class MarkdownProcessor:
                         else:
                             self.summary.add_skipped('unsupported_format', attachment)
                             logger.warning(f"Skipping unsupported file format: {attachment.name}")
+                
+                # Update all file references in the markdown content
+                for old_filename, new_filename in converted_files.items():
+                    # Build reference patterns
+                    old_filename_encoded = old_filename.replace('(', '%28').replace(')', '%29').replace(' ', '%20')
+                    dir_encoded = input_path.stem.replace(' ', '%20')
+                    old_ref_patterns = [
+                        f'* JPG:![{old_filename}]({dir_encoded}/{old_filename_encoded})',
+                        f'* HEIC![{old_filename}]({dir_encoded}/{old_filename_encoded})',
+                        f'* JPG:![{old_filename}]({input_path.stem}/{old_filename_encoded})',
+                        f'* HEIC![{old_filename}]({input_path.stem}/{old_filename_encoded})',
+                        f'* JPG:![]({dir_encoded}/{old_filename_encoded})',
+                        f'* HEIC![]({dir_encoded}/{old_filename_encoded})',
+                        f'* JPG:![]({input_path.stem}/{old_filename_encoded})',
+                        f'* HEIC![]({input_path.stem}/{old_filename_encoded})',
+                        f'![{old_filename}]({dir_encoded}/{old_filename_encoded})',
+                        f'![{old_filename}]({input_path.stem}/{old_filename_encoded})',
+                        f'![{old_filename}]({input_path.stem}/{old_filename})',
+                        f'![]({dir_encoded}/{old_filename_encoded})',
+                        f'![]({input_path.stem}/{old_filename_encoded})',
+                        f'![]({input_path.stem}/{old_filename})',
+                        f'({input_path.stem}/{old_filename})'
+                    ]
+                    
+                    # Create the new reference
+                    processed_images_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
+                    new_ref = f'![{old_filename}]({processed_images_dir.name}/{new_filename})<!-- {{"embed":"true"}} -->'
+                    
+                    # Replace all old references with the new one, preserving prefixes
+                    for old_ref in old_ref_patterns:
+                        if old_ref in content:
+                            # Extract prefix if it exists
+                            prefix = ""
+                            if old_ref.startswith("* JPG:"):
+                                prefix = "* JPG:"
+                            elif old_ref.startswith("* HEIC"):
+                                prefix = "* HEIC"
+                            
+                            # Add prefix to new reference
+                            prefixed_new_ref = f"{prefix}{new_ref}" if prefix else new_ref
+                            content = content.replace(old_ref, prefixed_new_ref)
             
             # Write the processed markdown with updated references
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -693,25 +785,62 @@ class MarkdownProcessor:
     def process(self, markdown_path: Path) -> Dict:
         """Process a markdown file."""
         try:
-            # ... existing code ...
-
-            # Update image references in markdown content
+            # Read the markdown content
             content = markdown_path.read_text(encoding='utf-8')
             updated_content = content
 
-            # Find and update HEIC image references
-            for match in re.finditer(r'!\[([^\]]*)\]\(([^)]+\.heic)\)', content, re.IGNORECASE):
-                alt_text, heic_path = match.groups()
-                jpg_path = heic_path[:-5] + '.jpg'  # Replace .heic with .jpg
-                updated_content = updated_content.replace(
-                    f'![{alt_text}]({heic_path})',
-                    f'![{alt_text}]({jpg_path})'
+            # Map old file extensions to new ones
+            extension_map = {
+                '.html': '.md',
+                '.csv': '.md',
+                '.txt': '.md',
+                '.json': '.md',
+                '.docx': '.md',
+                '.pptx': '.md',
+                '.xlsx': '.md',
+                '.pdf': '.md',
+                '.heic': '.png',
+                '.HEIC': '.png'
+            }
+
+            # Update all references in the markdown content
+            for old_ext, new_ext in extension_map.items():
+                # First, temporarily remove HTML comments
+                comments = {}
+                comment_count = 0
+                def save_comment(match):
+                    nonlocal comment_count
+                    key = f"__COMMENT_{comment_count}__"
+                    comments[key] = match.group(0)
+                    comment_count += 1
+                    return key
+                
+                updated_content = re.sub(r'<!--.*?-->', save_comment, updated_content, flags=re.DOTALL)
+                
+                # Handle standard markdown links with URL encoding
+                updated_content = re.sub(
+                    rf'\[([^\]]+)\]\(([^)]+){re.escape(old_ext)}(?:%29|\))',
+                    lambda m: f'[{m.group(1)}]({m.group(2)}{new_ext}{")" if m.group(0).endswith(")") else "%29"}',
+                    updated_content,
+                    flags=re.IGNORECASE
                 )
+                
+                # Handle image references with URL encoding
+                updated_content = re.sub(
+                    rf'!\[[^\]]*\]\(([^()]+){re.escape(old_ext)}\)',
+                    rf'![](\1{new_ext})',
+                    updated_content,
+                    flags=re.IGNORECASE
+                )
+                
+                # Restore HTML comments
+                for key, comment in comments.items():
+                    updated_content = updated_content.replace(key, comment)
 
             # Write updated content if changes were made
             if content != updated_content:
                 markdown_path.write_text(updated_content, encoding='utf-8')
-                logger.info("Updated HEIC references in markdown", extra={
+                logger.info("Updated file references in markdown", extra={
                     'file': str(markdown_path)
                 })
 
