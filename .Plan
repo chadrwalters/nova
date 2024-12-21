@@ -1,10 +1,10 @@
 Streamlined Implementation Plan for Nova Codebase Restructuring
 Task List
 1. Setup and Preparation
-1.1. Create Backup Branch [DONE]
+1.1. Create Backup Branch [TODO]
 Create branch refactor-backup
 Push full current state
-1.2. Create Working Branch [DONE]
+1.2. Create Working Branch [TODO]
 Create branch refactor-processors from main
 2. Processor Consolidation
 2.1. Image Processor Migration [TODO]
