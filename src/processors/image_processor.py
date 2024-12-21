@@ -9,16 +9,21 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 import json
 import time
+import re
+import logging
+import subprocess
 
 from PIL import Image
 import pillow_heif
 from openai import OpenAI
+from rich.console import Console
 
 from ..core.models import NovaConfig, ImageProcessingConfig
 from ..core.errors import ProcessingError
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
+console = Console()
 
 @dataclass
 class ImageMetadata:
@@ -37,28 +42,64 @@ class ImageMetadata:
 class ImageProcessor:
     """Handles image processing operations."""
 
-    def __init__(self, config: NovaConfig, openai_client: Optional[OpenAI] = None):
-        """Initialize image processor."""
+    def __init__(self, config: NovaConfig, openai_client: Optional[OpenAI] = None, summary: Optional['ProcessingSummary'] = None):
+        """Initialize processor.
+        
+        Args:
+            config: Nova configuration
+            openai_client: Optional OpenAI client instance
+            summary: Optional processing summary instance
+        """
         self.config = config
         self.image_config = config.image
-        self.openai_client = openai_client
         self.vision_api_available = False
-        self._setup_directories()
+        self.summary = summary
         
-        # Add processing statistics
+        # Initialize OpenAI client if key available
+        if openai_client:
+            self.openai_client = openai_client
+            console.print("[success]Using provided OpenAI client[/]")
+            self.vision_api_available = True
+        else:
+            openai_key = os.getenv('OPENAI_API_KEY')
+            if openai_key:
+                try:
+                    self.openai_client = OpenAI(api_key=openai_key)
+                    # Test the client with a minimal request
+                    response = self.openai_client.chat.completions.create(
+                        model="gpt-4-turbo-2024-04-09",
+                        messages=[{
+                            "role": "user",
+                            "content": "Test connection"
+                        }],
+                        max_tokens=1
+                    )
+                    console.print("[success]OpenAI client initialized successfully[/]")
+                    self.vision_api_available = True
+                except Exception as e:
+                    console.print(f"[error]Failed to initialize OpenAI client:[/] {str(e)}")
+                    self.openai_client = None
+            else:
+                console.print("[warning]No OpenAI API key found - image descriptions will be limited[/]")
+                self.openai_client = None
+        
+        # Initialize stats
         self.stats = {
+            'total_processed': 0,
+            'descriptions_generated': 0,
+            'heic_conversions': 0,
+            'cache_hits': 0,
             'api_calls': 0,
             'api_time_total': 0.0,
-            'cache_hits': 0,
             'images_processed': 0,
-            'heic_conversions': 0,
-            'heic_conversion_time': 0.0
+            'errors': 0
         }
         
-        if openai_client:
-            self._validate_vision_api()
-            if self.vision_api_available:
-                self._clear_cache()
+        # Setup directories
+        self._setup_directories()
+
+        # Store a record of files that changed extensions
+        self.converted_files = {}  # { "old_filename.ext": "new_filename.ext", ... }
 
     def _setup_directories(self) -> None:
         """Create required directories."""
@@ -176,7 +217,7 @@ class ImageProcessor:
             test_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
             
             response = self.openai_client.chat.completions.create(
-                model="gpt-4-turbo-2024-04-09",
+                model="gpt-4-turbo-2024-04-09",  # Use turbo model for testing
                 messages=[{
                     "role": "user",
                     "content": [
@@ -207,85 +248,98 @@ class ImageProcessor:
                 "has_response": hasattr(e, 'response')
             })
 
-    def _get_image_description(self, image_path: Path) -> Optional[str]:
-        """Get image description using OpenAI."""
-        if not self.openai_client or not self.vision_api_available:
-            return None
-
-        try:
-            start_time = time.time()
-            self.stats['api_calls'] += 1
+    def _generate_image_description(self, image_path: Path) -> Optional[str]:
+        """Generate a description for an image using OpenAI's vision model.
+        
+        Args:
+            image_path: Path to the image file
             
-            with open(image_path, 'rb') as img_file:
-                image_data = base64.b64encode(img_file.read()).decode('utf-8')
-
+        Returns:
+            Generated description or None if generation failed
+        """
+        if not self.vision_api_available or not self.openai_client:
+            return None
+            
+        try:
+            # Read image and encode as base64
+            with open(image_path, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                
             response = self.openai_client.chat.completions.create(
                 model="gpt-4-turbo-2024-04-09",
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "Describe this image in detail, focusing on its content, context, and any visible text or important elements."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_data}",
-                                "detail": "high"
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Please describe this image in detail, focusing on its key visual elements and composition."},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                }
                             }
-                        }
-                    ]
-                }],
+                        ]
+                    }
+                ],
                 max_tokens=500
             )
             
-            api_time = time.time() - start_time
-            self.stats['api_time_total'] += api_time
+            self.stats['api_calls'] += 1
+            description = response.choices[0].message.content
+            if description:
+                self.stats['descriptions_generated'] += 1
+            return description
             
-            if self.stats['api_calls'] % 5 == 0:  # Show stats every 5 calls
-                avg_time = self.stats['api_time_total'] / self.stats['api_calls']
-                logger.info(
-                    f"OpenAI Stats: {self.stats['api_calls']} calls, "
-                    f"avg {avg_time:.2f}s per call, "
-                    f"{self.stats['cache_hits']} cache hits"
-                )
-            
-            if not response.choices:
-                logger.error("No response choices returned from OpenAI")
-                return None
-                
-            return response.choices[0].message.content
-
         except Exception as e:
-            logger.error(f"Failed to get image description: {str(e)}")
+            logger.error(f"Failed to generate image description: {str(e)}")
+            self.stats['errors'] += 1
             return None
 
     def _format_markdown(self, metadata: ImageMetadata) -> str:
-        """Format image metadata as markdown."""
-        lines = [
+        """Format image metadata as markdown.
+        
+        Args:
+            metadata: Image metadata to format
+            
+        Returns:
+            str: Formatted markdown
+        """
+        lines = []
+        
+        # Add header with image name
+        lines.extend([
             f"# Image: {Path(metadata.original_path).name}",
             ""
-        ]
+        ])
         
+        # Add description in a collapsible section if available
         if metadata.description:
             lines.extend([
                 "## Description",
                 "",
+                "<details>",
+                "<summary>Click to expand description</summary>",
+                "",
                 metadata.description,
+                "</details>",
                 ""
             ])
         
+        # Add technical metadata in a table
         lines.extend([
-            "## Metadata",
+            "## Technical Details",
             "",
-            f"- Original Format: {Path(metadata.original_path).suffix[1:].upper()}",
-            f"- Converted Format: {metadata.format}",
-            f"- Dimensions: {metadata.width}x{metadata.height}",
-            f"- Size: {metadata.size / 1024:.1f} KB",
+            "| Property | Value |",
+            "|----------|-------|",
+            f"| Original Format | {Path(metadata.original_path).suffix[1:].upper()} |",
+            f"| Processed Format | {metadata.format} |",
+            f"| Dimensions | {metadata.width}x{metadata.height} pixels |",
+            f"| File Size | {metadata.size / 1024:.1f} KB |",
+            f"| Processing Time | {metadata.processing_time:.2f} seconds |",
             ""
         ])
         
+        # Add processing status
         if metadata.error:
             lines.extend([
                 "## Processing Errors",
@@ -293,8 +347,7 @@ class ImageProcessor:
                 f"⚠️ {metadata.error}",
                 ""
             ])
-        
-        if not metadata.description and self.openai_client:
+        elif not metadata.description and self.openai_client:
             if self.vision_api_available:
                 lines.extend([
                     "## Note",
@@ -312,142 +365,111 @@ class ImageProcessor:
         
         return "\n".join(lines)
 
-    def process_image(self, input_path: Path, output_dir: Path, markdown_dir: Optional[Path] = None) -> ImageMetadata:
-        """Process an image file."""
+    def process_image(self, input_path: Path, output_dir: Path) -> Optional[ImageMetadata]:
+        """Process a single image file.
+        
+        Args:
+            input_path: Path to input image
+            output_dir: Directory for processed images
+            
+        Returns:
+            ImageMetadata if successful, None if processing failed
+        """
         start_time = time.time()
-        self.stats['images_processed'] += 1
-        temp_files = []  # Track only temporary files
+        self.stats['total_processed'] += 1
         
         try:
-            # Generate a stable output filename based on input
-            output_format = self.image_config.preferred_format.lower()
-            output_filename = f"{input_path.stem}.{output_format}"
-            processed_path = self.image_config.processed_dir / output_filename
+            # Check cache first
+            cached_metadata = self._load_from_cache(input_path)
+            if cached_metadata:
+                self.stats['cache_hits'] += 1
+                return cached_metadata
             
-            # Handle HEIC conversion first if needed
-            if input_path.suffix.lower() == '.heic':
-                heic_start_time = time.time()
+            # Convert HEIC to PNG if needed
+            if input_path.suffix.lower() in ['.heic', '.heif']:
                 try:
-                    # Convert HEIC to JPG first
-                    heif_file = pillow_heif.read_heif(str(input_path))
-                    image = Image.frombytes(
-                        heif_file.mode,
-                        heif_file.size,
-                        heif_file.data,
-                        "raw",
-                    )
-                    
-                    # Create temporary JPG file with a stable name
-                    temp_path = self.image_config.original_dir / f"{input_path.stem}.jpg"
-                    image.save(temp_path, format='JPEG', quality=self.image_config.quality)
-                    temp_files.append(temp_path)  # Track for cleanup
+                    # Convert HEIC to PNG using sips
+                    temp_path = self.image_config.original_dir / f"{input_path.stem}.png"
+                    subprocess.run(['sips', '-s', 'format', 'png', str(input_path), '--out', str(temp_path)], check=True)
+                    # Track the conversion
+                    self.converted_files[input_path.name] = temp_path.name
                     input_path = temp_path  # Use the temp file for further processing
-                    
                     self.stats['heic_conversions'] += 1
-                    self.stats['heic_conversion_time'] += time.time() - heic_start_time
-                    logger.info(f"Converted HEIC to JPG", extra={
-                        'original': str(input_path),
-                        'conversion_time': f"{time.time() - heic_start_time:.2f}s"
-                    })
+                    
                 except Exception as e:
-                    self._cleanup_temp_files(temp_files)  # Clean up only temp files
+                    console.print(f"[error]HEIC conversion failed:[/] {str(e)}")
                     raise ProcessingError(f"Failed to convert HEIC file: {str(e)}")
-
-            # Save original to NOVA_ORIGINAL_IMAGES_DIR only if it's not a temp file
-            if not any(str(input_path) == str(temp) for temp in temp_files):
-                original_path = self.image_config.original_dir / input_path.name
-                shutil.copy2(input_path, original_path)
-            else:
-                original_path = input_path  # Use temp path for metadata
-
-            # Process to NOVA_PROCESSED_IMAGES_DIR
-            output_format = self.image_config.preferred_format.lower()
-            output_filename = f"{input_path.stem}.{output_format}"
-            processed_path = self.image_config.processed_dir / output_filename
             
-            logger.debug("Converting %s to %s", input_path.name, output_format.upper())
-            
-            # Now process the image (either original or converted JPG)
-            with Image.open(input_path) as image:
-                # Convert to RGB if necessary
-                if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
-                    logger.debug("Converting image mode from %s to RGB", image.mode)
-                    image = image.convert('RGB')
+            # Open and process image
+            with Image.open(input_path) as img:
+                # Get original dimensions
+                orig_width, orig_height = img.size
                 
-                # Resize if needed while maintaining aspect ratio
-                if image.width > self.image_config.max_width or image.height > self.image_config.max_height:
-                    logger.debug("Resizing image from %dx%d to max %dx%d", 
-                        image.width, image.height,
-                        self.image_config.max_width, self.image_config.max_height
-                    )
-                    image.thumbnail((self.image_config.max_width, self.image_config.max_height))
+                # Calculate new dimensions
+                max_width = self.image_config.max_width
+                max_height = self.image_config.max_height
                 
-                # Save with specified quality
-                image.save(
-                    processed_path,
-                    format=output_format.upper(),
-                    quality=self.image_config.quality,
-                    optimize=True
+                if orig_width > max_width or orig_height > max_height:
+                    # Calculate aspect ratio
+                    ratio = min(max_width/orig_width, max_height/orig_height)
+                    new_width = int(orig_width * ratio)
+                    new_height = int(orig_height * ratio)
+                    
+                    # Resize image
+                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    console.print(f"Resizing image {orig_width}x{orig_height} → max {max_width}x{max_height}")
+                
+                # Save processed image
+                output_path = output_dir / f"{input_path.stem}.png"
+                img.save(output_path, format='PNG', optimize=True)
+                
+                # Track the conversion if the extension changed
+                if input_path.suffix.lower() != '.png':
+                    self.converted_files[input_path.name] = output_path.name
+                
+                # Get image description
+                description = self._generate_image_description(output_path)
+                if description:
+                    self.stats['descriptions_generated'] += 1
+                else:
+                    console.print("No description generated")
+                
+                # Create metadata
+                metadata = ImageMetadata(
+                    original_path=str(input_path),
+                    processed_path=str(output_path),
+                    description=description,
+                    width=img.width,
+                    height=img.height,
+                    format='PNG',
+                    size=output_path.stat().st_size,
+                    created_at=time.time(),
+                    processing_time=time.time() - start_time
                 )
-
-            # Get image description using the processed image
-            description = self._get_image_description(processed_path)
-            if description:
-                logger.debug("Generated description (%d chars)", len(description))
-            else:
-                logger.debug("No image description available")
-            
-            # Create metadata
-            metadata = ImageMetadata(
-                original_path=str(original_path),
-                processed_path=str(processed_path),
-                description=description,
-                width=image.width,
-                height=image.height,
-                format=output_format.upper(),
-                size=processed_path.stat().st_size,
-                created_at=time.time(),
-                processing_time=time.time() - start_time
-            )
-            
-            # Save metadata
-            metadata_path = self.image_config.metadata_dir / f"{input_path.stem}.json"
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata.__dict__, f, indent=2)
-            
-            # Only write the markdown description file to the output directory
-            markdown_path = output_dir / f"{input_path.stem}.md"
-            with open(markdown_path, 'w') as f:
-                f.write(self._format_markdown(metadata))
-            
-            return metadata
-            
+                
+                # Save metadata
+                metadata_path = self.image_config.metadata_dir / f"{input_path.stem}.json"
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata.__dict__, f, indent=2)
+                
+                # Save to cache if we have a description
+                if description:
+                    self._save_to_cache(input_path, metadata)
+                
+                # Log processing stats
+                orig_size = input_path.stat().st_size
+                size_change = (metadata.size - orig_size) / orig_size * 100
+                console.print(
+                    f"Image processed: {orig_width}x{orig_height} → {img.width}x{img.height}, "
+                    f"{orig_size/1024:.1f}KB → {metadata.size/1024:.1f}KB "
+                    f"({size_change:.1f}% {'larger' if size_change > 0 else 'smaller'})"
+                )
+                
+                return metadata
+                
         except Exception as e:
-            error_msg = f"Failed to process image {input_path}: {str(e)}"
-            logger.error("Failed to process %s: %s", input_path.name, str(e))
-            
-            metadata = ImageMetadata(
-                original_path=str(input_path),
-                processed_path="",
-                description=None,
-                width=0,
-                height=0,
-                format="",
-                size=0,
-                created_at=time.time(),
-                processing_time=time.time() - start_time,
-                error=error_msg
-            )
-            
-            # Only write the markdown description file to the output directory
-            markdown_path = output_dir / f"{input_path.stem}.md"
-            with open(markdown_path, 'w') as f:
-                f.write(self._format_markdown(metadata))
-            
-            return metadata
-        finally:
-            # Clean up only temporary files
-            self._cleanup_temp_files(temp_files)
+            logger.error(f"Failed to process image {input_path}: {str(e)}")
+            return None
 
     def _cleanup_temp_files(self, temp_files: List[Path]) -> None:
         """Clean up temporary files only."""
@@ -458,3 +480,15 @@ class ImageProcessor:
                     logger.debug(f"Cleaned up temporary file: {temp_file}")
             except Exception as e:
                 logger.warning(f"Failed to clean up temporary file {temp_file}: {e}")
+
+    def _process_image(self, input_path: Path, output_path: Path) -> Path:
+        """Process an image file."""
+        if input_path.suffix.lower() == '.heic':
+            # Convert HEIC to PNG using sips
+            png_output = output_path.with_suffix('.png')
+            subprocess.run(['sips', '-s', 'format', 'png', str(input_path), '--out', str(png_output)], check=True)
+            return png_output
+        else:
+            # Copy other images as is
+            shutil.copy2(input_path, output_path)
+            return output_path
