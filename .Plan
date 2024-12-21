@@ -1,0 +1,38 @@
+Streamlined Implementation Plan for Nova Codebase Restructuring
+Task List
+1. Setup and Preparation
+1.1. Create Backup Branch [DONE]
+Create branch refactor-backup
+Push full current state
+1.2. Create Working Branch [DONE]
+Create branch refactor-processors from main
+2. Processor Consolidation
+2.1. Image Processor Migration [TODO]
+Compare src/processors/image_processor.py and src/nova/processors/image.py
+Create merged version in src/nova/processors/image_processor.py
+Update all imports
+Remove old file
+2.2. Markdown Processor Migration [TODO]
+Review src/nova/processors/components/markdown_handlers.py
+Consolidate any related markdown processing code
+Update imports
+2.3. Other Processor Migration [TODO]
+Identify any other processors in old structure
+Follow same pattern: compare, merge, remove
+3. Import Updates
+3.1. Update Core Imports [TODO]
+Update src/__init__.py
+Update src/nova/core/paths.py
+Update src/core/config.py
+3.2. Global Import Verification [TODO]
+Run global search for old import paths
+Update all references to new structure
+Verify no circular dependencies
+4. Cleanup
+4.1. Remove Old Structure [TODO]
+Remove src/processors/ directory
+Remove any empty directories
+Progress Tracking
+Current Progress: 0/9 tasks completed (0%)
+Next Steps
+Ready to begin with Task 1.1: Creating the backup branch. Would you like to proceed with this task?

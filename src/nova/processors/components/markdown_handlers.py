@@ -15,6 +15,7 @@ from . import ProcessorComponent
 from ...core.config import NovaConfig
 from ...core.errors import MarkdownProcessingError
 from ...core.logging import get_logger
+from ..image_processor import ImageProcessor
 
 logger = get_logger(__name__)
 console = Console()
