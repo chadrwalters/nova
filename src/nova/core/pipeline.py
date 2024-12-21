@@ -14,7 +14,7 @@ from .state import StateManager
 from .errors import NovaError, ProcessingError
 from .logging import get_logger
 from ..processors.markdown import MarkdownProcessor
-from ..processors.image import ImageProcessor
+from ..processors.image_processor import ImageProcessor
 from ..processors.office import OfficeProcessor
 from ..processors.components.markdown_handlers import ConsolidationHandler
 
