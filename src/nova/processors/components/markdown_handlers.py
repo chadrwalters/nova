@@ -240,15 +240,23 @@ class MarkitdownHandler(MarkdownComponent):
     
     def _convert_pdf(self, input_path: Path, output_path: Path) -> str:
         """Convert PDF to markdown."""
+        import warnings
         from pypdf import PdfReader
         
-        reader = PdfReader(str(input_path))
-        content = []
-        
-        for page in reader.pages:
-            content.append(page.extract_text())
-        
-        return '\n\n'.join(content)
+        # Suppress PyPDF deprecation warning about ARC4
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                'ignore',
+                message='ARC4 has been moved to cryptography.hazmat.decrepit.*',
+                category=DeprecationWarning
+            )
+            reader = PdfReader(str(input_path))
+            content = []
+            
+            for page in reader.pages:
+                content.append(page.extract_text())
+            
+            return '\n\n'.join(content)
     
     def _convert_csv(self, input_path: Path, output_path: Path) -> str:
         """Convert CSV to markdown."""

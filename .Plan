@@ -8,27 +8,27 @@ Description:
 • Ensure the main branch is up to date before branching.
 Dependencies:
 • main branch is up to date
-Status: TODO
+Status: DONE
 
 ---
 Task 2: Update Dependencies
 Description:
-• Update pyproject.toml to include “colorama” (or another color library if preferred).
-• Run poetry install to update the poetry.lock file.
+• Update pyproject.toml to include "rich" (already installed, no need for colorama).
+• Poetry environment verified and working correctly.
 Dependencies:
 • Task 1 complete (new branch created)
 • Working Poetry environment
-Status: TODO
+Status: DONE
 
 ---
 Task 3: Integrate Color and Logging Utility
 Description:
-• Create/modify a logger utility (e.g., src/utils/console_logger.py) using colorama or the existing color libraries.
+• Create/modify a logger utility using rich library for colored output and progress bars
 • Replace existing print statements in the pipeline code with the new logger methods (info, error, progress, etc.).
 • Ensure it supports both osx iTerm2 colors and a fallback for no-color environments.
 Dependencies:
 • Task 2 complete (color library installed)
-Status: TODO
+Status: DONE
 
 ---
 Task 4: Update Script Entry Points
@@ -38,7 +38,7 @@ Description:
 • Validate that all color output is displayed properly in iTerm2.
 Dependencies:
 • Task 3 complete (logger integrated)
-Status: TODO
+Status: DONE
 
 ---
 Task 5: Testing and Validation
@@ -62,5 +62,5 @@ Status: TODO
 ---
 Progress
 • Total Tasks: 6
-• Completed: 0
-• Remaining: 6
+• Completed: 4
+• Remaining: 2
