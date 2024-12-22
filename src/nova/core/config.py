@@ -77,6 +77,30 @@ class OfficeConfig(ProcessorConfig):
         "pdf": [".pdf"]
     }
 
+class ThreeFileSplitConfig(ProcessorConfig):
+    """Configuration for three file split processor."""
+    enabled: bool = True
+    options: Dict[str, Any] = {
+        "components": {
+            "three_file_split_processor": {
+                "config": {
+                    "output_files": {
+                        "summary": "summary.md",
+                        "raw_notes": "raw_notes.md",
+                        "attachments": "attachments.md"
+                    },
+                    "section_markers": {
+                        "summary": "---SUMMARY---",
+                        "raw_notes": "---RAW NOTES---",
+                        "attachments": "---ATTACHMENTS---"
+                    },
+                    "cross_linking": True,
+                    "preserve_headers": True
+                }
+            }
+        }
+    }
+
 class NovaConfig(BaseModel):
     """Main configuration model."""
     paths: PathsConfig
@@ -95,7 +119,8 @@ class NovaConfig(BaseModel):
             processors={
                 'markdown': MarkdownConfig(enabled=True),
                 'image': ImageConfig(enabled=True),
-                'office': OfficeConfig(enabled=True)
+                'office': OfficeConfig(enabled=True),
+                'three_file_split': ThreeFileSplitConfig(enabled=True)
             },
             openai=OpenAIConfig(
                 api_key=os.getenv('OPENAI_API_KEY'),
