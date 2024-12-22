@@ -1,72 +1,125 @@
-# AGENT MODE: Execute and Annotate Plan
+~~~~~
+# Title: Introduce New Markdown Aggregation Phase (MARKDOWN_AGGREGATE)
 
-Below is a Cursor-style plan with tasks, their statuses (TODO/DONE), and step-by-step details.  
-All work is done on a dedicated feature branch, and each phase is validated upon completion.  
+## Steps Overview
+1. Create Feature Branch (e.g., feature/markdown-aggregate)
+2. Update Config to Reference "markdown_aggregate" Directory
+3. Implement and Test _run_markdown_aggregate_phase
+4. Invoke New Phase in Pipeline process() After MARKDOWN_CONSOLIDATE
 
----
+## Detailed Tasks
 
-## Task 1: Switch to Feature Branch
-• Description:  
-  - Create and switch to a new Git feature branch (e.g., "feature/markdown_consolidate_phase").  
-  - Ensure main is up to date before branching.  
-• Dependencies: None  
-• Status: TODO  
+### 1. Create Feature Branch
+- Status: DONE
+- Description:  
+  - From the main or dev branch, create a new branch feature/markdown-aggregate.  
+  - Ensure the first commit logs the intent of adding a new aggregation phase.
 
----
+### 2. Update Config
+- Status: DONE
+- Description:  
+  - In environment/config files, add markdown_aggregate references (e.g., paths.phase_dirs['markdown_aggregate']).
+  - Ensure the directory is created with necessary permissions.
 
-## Task 2: Outline the New "markdown_consolidate" Phase
-• Description:  
-  - Draft a Python module or script (e.g., "pipeline/markdown_consolidate.py") that runs after markdown_parse.  
-  - Plan how each retrieved Markdown file merges with any matching attachments directory into a single file.  
-• Dependencies:  
-  - Task 1 complete (feature branch available)  
-• Status: TODO  
+### 3. Implement _run_markdown_aggregate_phase
+- Status: DONE
+- Description:
+  - Inside src/nova/core/pipeline.py, add the method below to merge all .md files from the markdown_consolidate phase into a single file:
+  
+    def _run_markdown_aggregate_phase(self) -> None:
+        """
+        Run the markdown aggregate phase, merging all consolidated markdown files
+        into a single markdown file.
+        """
+        input_dir = Path(self.config.paths.phase_dirs['markdown_consolidate'])
+        output_dir = Path(self.config.paths.phase_dirs['markdown_aggregate'])
+        state_dir = Path(self.config.paths.state_dir) / 'markdown_aggregate'
 
----
+        # Create phase directories
+        output_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True)
 
-## Task 3: Implement File/Attachments Merging Logic
-• Description:  
-  - For each .md file in the markdown_parse output, detect the attachments folder (if present).  
-  - Inline each attachment's Markdown content between "[Begin Attachment]" and "[End Attachment]".  
-  - Remove subdirectories in final output so only one cohesive .md file remains.  
-• Dependencies:  
-  - Task 2 complete (phase outline ready)  
-• Status: TODO  
+        try:
+            # Gather all markdown files
+            input_files = []
+            for ext in self.config.processors['markdown'].extensions:
+                input_files.extend(input_dir.glob(f'**/*{ext}'))
 
----
+            if not input_files:
+                warning("No markdown files found for aggregation")
+                return
 
-## Task 4: Validate Markdown Consolidation
-• Description:  
-  - Run script locally or in CI, ensuring that for each original .md, the final output merges attachments correctly.  
-  - Confirm no subfolders remain and references are properly replaced.  
-• Dependencies:  
-  - Task 3 complete (implementation done)  
-• Status: TODO  
+            # Single output file
+            merged_output_path = output_dir / "all_merged_markdown.md"
 
----
+            with merged_output_path.open("w", encoding="utf-8") as merged_output:
+                # Optional: intro header
+                merged_output.write("# Aggregated Markdown Files\n\n")
 
-## Task 5: Document the Changes
-• Description:  
-  - Update internal documentation or README to explain how "markdown_consolidate" works.  
-  - Note the feature branch name and how to run or test the new phase.  
-• Dependencies:  
-  - Task 4 complete (validation done)  
-• Status: TODO  
+                for md_file in input_files:
+                    try:
+                        rel_path = md_file.relative_to(input_dir)
+                        with md_file.open("r", encoding="utf-8") as f:
+                            file_content = f.read()
 
----
+                        merged_output.write("\n\n---\n\n")
+                        merged_output.write(f"## Start of file: {rel_path}\n\n")
+                        merged_output.write(file_content)
+                        merged_output.write(f"\n\n## End of file: {rel_path}\n")
 
-## Task 6: Create Pull Request
-• Description:  
-  - Push the feature branch to remote.  
-  - Open a pull request into main.  
-  - Request reviews and confirm final validation steps pass.  
-• Dependencies:  
-  - Task 5 complete (documentation ready)  
-• Status: TODO  
+                        self.state.update_file_state(
+                            phase='markdown_aggregate',
+                            file_path=str(rel_path),
+                            status='completed'
+                        )
+                    except Exception as e:
+                        error(f"Failed to merge {md_file}: {e}")
+                        self.state.update_file_state(
+                            phase='markdown_aggregate',
+                            file_path=str(md_file),
+                            status='failed',
+                            error=str(e)
+                        )
 
----
+            success(f"All markdown files merged into {merged_output_path}")
+
+        except Exception as e:
+            error(f"Failed to run markdown aggregate phase: {e}")
+            self.state.update_file_state(
+                phase='markdown_aggregate',
+                file_path='aggregate',
+                status='failed',
+                error=str(e)
+            )
+
+### 4. Invoke New Phase in Pipeline
+- Status: DONE
+- Description:
+  - In the process() method (src/nova/core/pipeline.py), after the call to _run_markdown_consolidate_phase, invoke _run_markdown_aggregate_phase:
+
+    def process(self) -> None:
+        try:
+            info("Starting pipeline processing...")
+            # Phase 1: MARKDOWN_PARSE
+            if self.config.processors['markdown'].enabled:
+                info("Starting MARKDOWN_PARSE phase...")
+                self._run_markdown_parse_phase()
+
+            # Phase 2: MARKDOWN_CONSOLIDATE
+            if self.config.processors['markdown'].enabled:
+                info("Starting MARKDOWN_CONSOLIDATE phase...")
+                self._run_markdown_consolidate_phase()
+
+            # Phase 3: MARKDOWN_AGGREGATE
+            if self.config.processors['markdown'].enabled:
+                info("Starting MARKDOWN_AGGREGATE phase...")
+                self._run_markdown_aggregate_phase()
+
+            success("Pipeline processing complete")
+        except Exception as e:
+            error(f"Pipeline processing failed: {e}")
+            raise ProcessingError(f"Pipeline processing failed: {str(e)}") from e
 
 ## Progress
-• Total Tasks: 6  
-• Completed: 0  
-• Remaining: 6  
+- Tasks: 4/4 Done
+~~~~~

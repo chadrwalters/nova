@@ -1,16 +1,20 @@
 # Nova Document Processor
 
-A modern document processing system for parsing, converting, and consolidating markdown files with embedded content support. The system handles various document formats, processes images, and maintains a structured output format.
+A modern document processing system for parsing, converting, and consolidating markdown files with embedded content support. The system handles various document formats, processes images, and maintains a structured output format while preserving file integrity and managing file sizes efficiently.
 
 ## Features
 
 ### Core Processing
 - Markdown file parsing and processing with markdown-it
 - Embedded content handling and conversion
-- Image optimization and description generation
+- Image optimization and description generation using AI
 - Document format conversion to markdown
 - Content consolidation with date-based sorting
-- File aggregation into a single document
+- File aggregation with intelligent size management
+- Three-phase processing pipeline:
+  1. MARKDOWN_PARSE: Initial parsing with size preservation
+  2. MARKDOWN_CONSOLIDATE: Content consolidation maintaining integrity
+  3. MARKDOWN_AGGREGATE: Efficient file merging with size optimization
 
 ### Document Support
 - **Markdown Files**
@@ -19,14 +23,16 @@ A modern document processing system for parsing, converting, and consolidating m
   - Embedded content processing
   - Link maintenance
   - Metadata preservation
+  - Size integrity preservation
+  - Efficient aggregation
   
 - **Images**
   - Format conversion (HEIC → JPG)
-  - Size optimization
-  - Quality preservation
-  - AI-generated descriptions
-  - Metadata extraction
-  - Cache management
+  - Size optimization with quality preservation
+  - AI-powered description generation
+  - Metadata extraction and preservation
+  - Cache management for API responses
+  - Efficient storage with original preservation
   
 - **Office Documents**
   - Word (.docx, .doc)
@@ -53,6 +59,26 @@ A modern document processing system for parsing, converting, and consolidating m
     - Encoding detection
     - Table formatting
     - Unicode support
+
+### File Size Management
+- **Phase-Specific Behavior**
+  - MARKDOWN_PARSE: Preserves original input file sizes
+  - MARKDOWN_CONSOLIDATE: Maintains individual file integrity while adding metadata
+  - MARKDOWN_AGGREGATE: Creates single output with size proportional to inputs
+  
+- **Optimization Features**
+  - Intelligent image compression
+  - Duplicate content elimination
+  - Metadata optimization
+  - Cache size management
+  - Temporary file cleanup
+  
+- **Monitoring and Control**
+  - Size tracking between phases
+  - Anomaly detection and alerts
+  - Detailed size statistics
+  - Configurable thresholds
+  - Automatic cleanup
 
 ### State Management
 - File hash tracking
@@ -152,15 +178,15 @@ ${NOVA_BASE_DIR}/
 ### Directory Purposes
 
 #### Input/Output
-- `_NovaInput/`: Place source documents here. Supports markdown files with embedded content, images, and office documents
+- `_NovaInput/`: Place source documents here. Supports markdown files with embedded content, images, and office documents. File sizes are preserved through processing.
 - `_NovaOutput/`: Contains the final processed output with converted and optimized content
 
 #### Processing Workspace (`_NovaProcessing/`)
-- `.state/`: Tracks processing status, file hashes, and modification times
+- `.state/`: Tracks processing status, file hashes, modification times, and file size metrics
 - `phases/`: Contains phase-specific processing outputs
-  - `markdown_parse/`: Initial parsing of markdown and conversion of other formats (contains only markdown files)
-  - `markdown_consolidate/`: Consolidates markdown files with their attachments and related content
-  - `markdown_aggregate/`: Combines all consolidated files into a single markdown document
+  - `markdown_parse/`: Initial parsing of markdown and conversion of other formats (preserves original file sizes)
+  - `markdown_consolidate/`: Consolidates markdown files with their attachments while maintaining size integrity
+  - `markdown_aggregate/`: Combines all consolidated files into a single markdown document with size approximately equal to sum of inputs
 - `images/`: Handles all image-related processing
   - `original/`: Stores original images in their source format
   - `processed/`: Contains optimized and converted images

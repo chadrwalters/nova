@@ -4,6 +4,8 @@ import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from cryptography.utils import CryptographyDeprecationWarning
+import os
+import shutil
 
 # Suppress warnings
 warnings.filterwarnings('ignore', category=CryptographyDeprecationWarning)
@@ -148,92 +150,39 @@ class Pipeline:
                 warning("No markdown files found for consolidation")
                 return
             
-            # Group files by their root directory
-            file_groups = {}
+            # Filter out attachments (files in a directory named after another markdown file)
+            main_files = []
             for input_file in input_files:
-                # Get the root directory (either parent or grandparent)
-                root_dir = input_file.parent
-                if root_dir.name == input_file.stem:
-                    # This is a file in its own directory, use parent as root
-                    root_dir = root_dir.parent
-                
                 # Skip if this is an attachment (in a directory with same name as a markdown file)
-                if root_dir.name == root_dir.parent.stem:
+                if input_file.parent.name == input_file.parent.parent.stem:
                     continue
-                
-                # Find the main file for this group
-                main_file = None
-                if input_file.parent.name == input_file.stem:
-                    # This is the main file (directory named after it)
-                    main_file = input_file
-                elif input_file.parent == root_dir:
-                    # This is a root-level file
-                    # Check if there's a directory with the same name
-                    potential_dir = root_dir / input_file.stem
-                    if potential_dir.is_dir():
-                        # This is a main file with attachments
-                        main_file = input_file
-                    else:
-                        # This is a standalone file - check if it's referenced by another file
-                        is_attachment = False
-                        for other_file in input_files:
-                            if other_file != input_file and other_file.stem == root_dir.name:
-                                is_attachment = True
-                                break
-                        if not is_attachment:
-                            # This is a standalone file not referenced by others
-                            main_file = input_file
-                
-                if main_file:
-                    # Use the root directory as the key for grouping
-                    group_key = root_dir
-                    if main_file.parent == root_dir:
-                        # For standalone files, use their own name as the key
-                        group_key = main_file.stem
-                    
-                    # Check if we already have a main file for this group
-                    if group_key in file_groups:
-                        # If both files have attachments, keep the one with more attachments
-                        current_main = file_groups[group_key]
-                        current_dir = current_main.parent / current_main.stem
-                        new_dir = main_file.parent / main_file.stem
-                        
-                        if current_dir.is_dir() and new_dir.is_dir():
-                            current_attachments = len(list(current_dir.glob('*.md')))
-                            new_attachments = len(list(new_dir.glob('*.md')))
-                            if new_attachments > current_attachments:
-                                file_groups[group_key] = main_file
-                        elif new_dir.is_dir():
-                            # New file has attachments, old one doesn't
-                            file_groups[group_key] = main_file
-                    else:
-                        file_groups[group_key] = main_file
+                main_files.append(input_file)
             
             with create_progress() as progress:
-                task = progress.add_task("Consolidating markdown files", total=len(file_groups))
+                task = progress.add_task("Consolidating markdown files", total=len(main_files))
                 
-                for root_dir, main_file in file_groups.items():
+                for input_file in main_files:
                     try:
                         # Get the output path - always in root of output directory
-                        output_path = output_dir / main_file.name
+                        output_path = output_dir / input_file.name
                         
                         # Process the file and its attachments
-                        self.processors['markdown_consolidate'].process(main_file, output_path)
+                        self.processors['markdown_consolidate'].process(input_file, output_path)
                         
                         # Update state
                         self.state.update_file_state(
                             phase='markdown_consolidate',
-                            file_path=str(main_file.relative_to(input_dir)),
+                            file_path=str(input_file.relative_to(input_dir)),
                             status='completed'
                         )
                         
                         progress.advance(task)
                         
                     except Exception as e:
-                        error(f"Failed to consolidate {main_file}: {e}")
+                        error(f"Failed to consolidate {input_file}: {e}")
                         self.state.update_file_state(
                             phase='markdown_consolidate',
-                            file_path=str(main_file.relative_to(input_dir)),
+                            file_path=str(input_file.relative_to(input_dir)),
                             status='failed',
                             error=str(e)
                         )
@@ -319,3 +268,69 @@ class Pipeline:
                 status='failed',
                 error=str(e)
             )
+
+    def _handle_binary_file(self, file_path: Path) -> None:
+        """Handle a binary file by moving it to the appropriate processing directory and creating markdown representation.
+        
+        Args:
+            file_path: Path to the binary file
+            
+        Returns:
+            Optional[Path]: Path to the markdown representation if created
+        """
+        # Get relative path from input directory to maintain structure
+        rel_path = file_path.relative_to(Path(os.getenv('NOVA_INPUT_DIR')))
+        
+        # Determine the appropriate directory based on file type
+        suffix = file_path.suffix.lower()
+        
+        if suffix in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.webp'}:
+            # Image files go to images/original and processed
+            original_dir = Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR'))
+            processed_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
+            
+            # Create output directories with parent structure
+            original_path = original_dir / rel_path
+            processed_path = processed_dir / rel_path
+            original_path.parent.mkdir(parents=True, exist_ok=True)
+            processed_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy to original directory
+            shutil.copy2(file_path, original_path)
+            
+            # Process image
+            try:
+                self.image_processor.process(original_path, processed_path)
+                logger.info(f"Processed image {file_path} to {processed_path}")
+            except Exception as e:
+                logger.error(f"Failed to process image {file_path}: {e}")
+                
+        elif suffix in {'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'}:
+            # Office documents go to office/assets
+            target_dir = Path(os.getenv('NOVA_OFFICE_ASSETS_DIR'))
+            
+            # Create output directory with parent structure
+            target_path = target_dir / rel_path
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy to assets directory
+            shutil.copy2(file_path, target_path)
+            
+            try:
+                # Create markdown representation in markdown_parse directory
+                markdown_dir = Path(os.getenv('NOVA_PHASE_MARKDOWN_PARSE'))
+                markdown_path = markdown_dir / rel_path.parent / (file_path.stem + '.md')
+                markdown_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Convert to markdown using markdown handler
+                content = self.markdown_handler.convert_document(target_path, markdown_path)
+                with open(markdown_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                logger.info(f"Created markdown representation at {markdown_path}")
+                
+            except Exception as e:
+                logger.error(f"Failed to convert office document {file_path}: {e}")
+        else:
+            # Other binary files are not processed
+            logger.warning(f"Skipping unsupported binary file: {file_path}")
+            return
