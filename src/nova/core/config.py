@@ -56,6 +56,7 @@ class MarkdownConfig(ProcessorConfig):
         "copy_images": True,
         "update_paths": True
     }
+    typographer: bool = True
 
 class ImageConfig(ProcessorConfig):
     """Configuration for image processor."""
@@ -86,9 +87,9 @@ class NovaConfig(BaseModel):
         return cls(
             paths=PathsConfig.from_nova_paths(paths),
             processors={
-                'markdown': MarkdownConfig(),
-                'image': ImageConfig(),
-                'office': OfficeConfig()
+                'markdown': MarkdownConfig(enabled=True),
+                'image': ImageConfig(enabled=True),
+                'office': OfficeConfig(enabled=True)
             },
             openai=OpenAIConfig(
                 api_key=os.getenv('OPENAI_API_KEY'),

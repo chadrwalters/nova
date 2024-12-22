@@ -21,6 +21,7 @@ openai = "^1.14.0"
 pyexiftool = "^0.5.5"
 python-magic = "^0.4.27"
 xxhash = "^3.4.1"
+chardet = "^5.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = ">=23.0.0,<24.0.0"

@@ -13,9 +13,9 @@ from .config import NovaConfig, MarkdownConfig, ImageConfig, OfficeConfig
 from .state import StateManager
 from .errors import NovaError, ProcessingError
 from .logging import get_logger
-from ..processors.markdown import MarkdownProcessor
-from ..processors.image import ImageProcessor
-from ..processors.office import OfficeProcessor
+from ..processors.markdown_processor import MarkdownProcessor
+from ..processors.image_processor import ImageProcessor
+from ..processors.office_processor import OfficeProcessor
 from ..processors.components.markdown_handlers import ConsolidationHandler
 
 class Pipeline:
@@ -50,7 +50,10 @@ class Pipeline:
         }
         
         # Initialize consolidation handler
-        self.consolidation_handler = ConsolidationHandler(self.config)
+        self.consolidation_handler = ConsolidationHandler(
+            processor_config=self.config.processors['markdown'],
+            nova_config=self.config
+        )
         
     def process(self) -> None:
         """Run the processing pipeline."""
