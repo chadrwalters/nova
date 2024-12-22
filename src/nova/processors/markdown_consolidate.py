@@ -41,6 +41,12 @@ class MarkdownConsolidateProcessor(BaseProcessor):
             Path to processed file
         """
         try:
+            # If this is a file in a directory that matches a parent markdown file,
+            # skip it as it will be processed as an attachment
+            parent_dir = input_path.parent
+            if parent_dir.name == parent_dir.parent.stem:
+                return input_path
+            
             # Ensure output directory exists
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
