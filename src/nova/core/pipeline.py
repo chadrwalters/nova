@@ -271,7 +271,7 @@ class Pipeline:
                 return
 
             # Single output file
-            output_filename = self.config.processors['markdown'].aggregate.output_filename
+            output_filename = self.config.processors['markdown'].aggregate['output_filename']
             merged_output_path = output_dir / output_filename
 
             with merged_output_path.open("w", encoding="utf-8") as merged_output:
@@ -284,15 +284,15 @@ class Pipeline:
                         with md_file.open("r", encoding="utf-8") as f:
                             file_content = f.read()
 
-                        if self.config.processors['markdown'].aggregate.add_separators:
+                        if self.config.processors['markdown'].aggregate['add_separators']:
                             merged_output.write("\n\n---\n\n")
                         
-                        if self.config.processors['markdown'].aggregate.include_file_headers:
+                        if self.config.processors['markdown'].aggregate['include_file_headers']:
                             merged_output.write(f"## Start of file: {rel_path}\n\n")
                         
                         merged_output.write(file_content)
                         
-                        if self.config.processors['markdown'].aggregate.include_file_headers:
+                        if self.config.processors['markdown'].aggregate['include_file_headers']:
                             merged_output.write(f"\n\n## End of file: {rel_path}\n")
 
                         self.state.update_file_state(
