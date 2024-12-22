@@ -1,66 +1,72 @@
-Plan for Implementing Color-Coded Console Output with Progress Bars on a Dedicated Branch
-Below is a step-by-step plan in a Cursor-friendly format. Each task includes its current status (TODO or DONE). After all tasks are listed, there is a final progress indicator showing how many tasks are completed versus how many remain.
+# AGENT MODE: Execute and Annotate Plan
+
+Below is a Cursor-style plan with tasks, their statuses (TODO/DONE), and step-by-step details.  
+All work is done on a dedicated feature branch, and each phase is validated upon completion.  
 
 ---
-Task 1: Create a Feature Branch
-Description:
-• Create and switch to a new Git branch (e.g., "feature/improved-console-output") for these updates.
-• Ensure the main branch is up to date before branching.
-Dependencies:
-• main branch is up to date
-Status: DONE
+
+## Task 1: Switch to Feature Branch
+• Description:  
+  - Create and switch to a new Git feature branch (e.g., "feature/markdown_consolidate_phase").  
+  - Ensure main is up to date before branching.  
+• Dependencies: None  
+• Status: TODO  
 
 ---
-Task 2: Update Dependencies
-Description:
-• Update pyproject.toml to include "rich" (already installed, no need for colorama).
-• Poetry environment verified and working correctly.
-Dependencies:
-• Task 1 complete (new branch created)
-• Working Poetry environment
-Status: DONE
+
+## Task 2: Outline the New "markdown_consolidate" Phase
+• Description:  
+  - Draft a Python module or script (e.g., "pipeline/markdown_consolidate.py") that runs after markdown_parse.  
+  - Plan how each retrieved Markdown file merges with any matching attachments directory into a single file.  
+• Dependencies:  
+  - Task 1 complete (feature branch available)  
+• Status: TODO  
 
 ---
-Task 3: Integrate Color and Logging Utility
-Description:
-• Create/modify a logger utility using rich library for colored output and progress bars
-• Replace existing print statements in the pipeline code with the new logger methods (info, error, progress, etc.).
-• Ensure it supports both osx iTerm2 colors and a fallback for no-color environments.
-Dependencies:
-• Task 2 complete (color library installed)
-Status: DONE
+
+## Task 3: Implement File/Attachments Merging Logic
+• Description:  
+  - For each .md file in the markdown_parse output, detect the attachments folder (if present).  
+  - Inline each attachment's Markdown content between "[Begin Attachment]" and "[End Attachment]".  
+  - Remove subdirectories in final output so only one cohesive .md file remains.  
+• Dependencies:  
+  - Task 2 complete (phase outline ready)  
+• Status: TODO  
 
 ---
-Task 4: Update Script Entry Points
-Description:
-• Update consolidate.sh and install.sh scripts to ensure the new logger is imported and used (if these scripts call Python code).
-• Keep the rest of the workflow (directory creation, environment variable checks) intact.
-• Validate that all color output is displayed properly in iTerm2.
-Dependencies:
-• Task 3 complete (logger integrated)
-Status: DONE
+
+## Task 4: Validate Markdown Consolidation
+• Description:  
+  - Run script locally or in CI, ensuring that for each original .md, the final output merges attachments correctly.  
+  - Confirm no subfolders remain and references are properly replaced.  
+• Dependencies:  
+  - Task 3 complete (implementation done)  
+• Status: TODO  
 
 ---
-Task 5: Testing and Validation
-Description:
-• Run the pipeline locally in iTerm2 (macOS) to confirm color-coded logs and progress bars appear.
-• Verify that, under a --no-color or minimal environment, the script still runs without throwing errors.
-• (Optional) Compare console logs against existing logs to ensure no regressions in data format.
-Dependencies:
-• Task 4 complete (scripts updated)
-Status: TODO
+
+## Task 5: Document the Changes
+• Description:  
+  - Update internal documentation or README to explain how "markdown_consolidate" works.  
+  - Note the feature branch name and how to run or test the new phase.  
+• Dependencies:  
+  - Task 4 complete (validation done)  
+• Status: TODO  
 
 ---
-Task 6: Documentation and Pull Request
-Description:
-• Update README or any internal docs to briefly describe the new logging system.
-• Open a pull request from "feature/improved-console-output" into the main branch and request reviews.
-Dependencies:
-• Task 5 complete (tests pass, validated on iTerm2)
-Status: TODO
+
+## Task 6: Create Pull Request
+• Description:  
+  - Push the feature branch to remote.  
+  - Open a pull request into main.  
+  - Request reviews and confirm final validation steps pass.  
+• Dependencies:  
+  - Task 5 complete (documentation ready)  
+• Status: TODO  
 
 ---
-Progress
-• Total Tasks: 6
-• Completed: 4
-• Remaining: 2
+
+## Progress
+• Total Tasks: 6  
+• Completed: 0  
+• Remaining: 6  
