@@ -14,6 +14,7 @@ from .state import StateManager
 from .errors import NovaError, ProcessingError
 from .logging import get_logger, create_progress, info, warning, error, success, path
 from ..processors.markdown_processor import MarkdownProcessor
+from ..processors.markdown_consolidate import MarkdownConsolidateProcessor
 from ..processors.image_processor import ImageProcessor
 from ..processors.office_processor import OfficeProcessor
 from ..processors.components.markdown_handlers import ConsolidationHandler
@@ -39,6 +40,10 @@ class Pipeline:
                 processor_config=self.config.processors['markdown'],
                 nova_config=self.config
             ),
+            'markdown_consolidate': MarkdownConsolidateProcessor(
+                processor_config=self.config.processors['markdown'],
+                nova_config=self.config
+            ),
             'image': ImageProcessor(
                 processor_config=self.config.processors['image'],
                 nova_config=self.config
@@ -48,12 +53,6 @@ class Pipeline:
                 nova_config=self.config
             )
         }
-        
-        # Initialize consolidation handler
-        self.consolidation_handler = ConsolidationHandler(
-            processor_config=self.config.processors['markdown'],
-            nova_config=self.config
-        )
         
     def process(self) -> None:
         """Run the processing pipeline."""
@@ -145,34 +144,36 @@ class Pipeline:
                 warning("No markdown files found for consolidation")
                 return
             
-            # Group files by type/category based on filename pattern
-            journal_files = [f for f in input_files if 'Journal' in f.stem]
-            other_files = [f for f in input_files if 'Journal' not in f.stem]
-            
             with create_progress() as progress:
-                # Consolidate journal entries
-                if journal_files:
-                    task = progress.add_task("Consolidating journal entries", total=1)
-                    journal_output = output_dir / 'consolidated_journal.md'
-                    self.consolidation_handler.consolidate_markdown(journal_files, journal_output)
-                    self.state.update_file_state(
-                        phase='markdown_consolidate',
-                        file_path='consolidated_journal.md',
-                        status='completed'
-                    )
-                    progress.advance(task)
+                task = progress.add_task("Consolidating markdown files", total=len(input_files))
                 
-                # Consolidate other files
-                if other_files:
-                    task = progress.add_task("Consolidating other documents", total=1)
-                    other_output = output_dir / 'consolidated_documents.md'
-                    self.consolidation_handler.consolidate_markdown(other_files, other_output)
-                    self.state.update_file_state(
-                        phase='markdown_consolidate',
-                        file_path='consolidated_documents.md',
-                        status='completed'
-                    )
-                    progress.advance(task)
+                for input_file in input_files:
+                    try:
+                        # Get relative path but preserve directory structure
+                        relative_path = input_file.relative_to(input_dir)
+                        output_path = output_dir / relative_path
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Process the file and its attachments
+                        self.processors['markdown_consolidate'].process(input_file, output_path)
+                        
+                        # Update state
+                        self.state.update_file_state(
+                            phase='markdown_consolidate',
+                            file_path=str(relative_path),
+                            status='completed'
+                        )
+                        
+                        progress.advance(task)
+                        
+                    except Exception as e:
+                        error(f"Failed to consolidate {input_file}: {e}")
+                        self.state.update_file_state(
+                            phase='markdown_consolidate',
+                            file_path=str(relative_path),
+                            status='failed',
+                            error=str(e)
+                        )
             
         except Exception as e:
             error(f"Failed to consolidate markdown: {e}")
