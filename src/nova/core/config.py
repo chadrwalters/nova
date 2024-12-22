@@ -57,6 +57,12 @@ class MarkdownConfig(ProcessorConfig):
         "update_paths": True
     }
     typographer: bool = True
+    aggregate: Dict[str, Any] = {
+        "enabled": True,
+        "output_filename": "all_merged_markdown.md",
+        "include_file_headers": True,
+        "add_separators": True
+    }
 
 class ImageConfig(ProcessorConfig):
     """Configuration for image processor."""
