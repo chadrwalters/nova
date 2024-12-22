@@ -85,6 +85,40 @@ pipeline:
                 fallback_to_dict: true
                 log_failures: true
 
+    - MARKDOWN_CONSOLIDATE:
+        description: "Consolidate markdown files with their attachments"
+        output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+        processor: "MarkdownConsolidateProcessor"
+        components:
+          - consolidate_processor:
+              config:
+                group_by_root: true
+                handle_attachments: true
+                preserve_structure: true
+              handlers:
+                - AttachmentHandler:
+                    copy_attachments: true
+                    update_references: true
+                - ContentHandler:
+                    merge_content: true
+                    preserve_headers: true
+
+    - MARKDOWN_AGGREGATE:
+        description: "Aggregate all consolidated markdown files into a single file"
+        output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+        processor: "MarkdownAggregateProcessor"
+        components:
+          - aggregate_processor:
+              config:
+                output_filename: "all_merged_markdown.md"
+                include_file_headers: true
+                add_separators: true
+              handlers:
+                - ContentHandler:
+                    merge_files: true
+                    preserve_structure: true
+                    add_file_markers: true
+
 # Installation Requirements
 installation:
   package_management:
@@ -129,6 +163,8 @@ directory_structure:
     temp: "${NOVA_TEMP_DIR}"
     phase_dirs:
       - markdown_parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
+      - markdown_consolidate: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+      - markdown_aggregate: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
     image_dirs:
       - original: "${NOVA_ORIGINAL_IMAGES_DIR}"
       - processed: "${NOVA_PROCESSED_IMAGES_DIR}"
