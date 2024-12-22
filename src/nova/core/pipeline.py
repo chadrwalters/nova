@@ -143,55 +143,98 @@ class Pipeline:
                 warning("No markdown files found for consolidation")
                 return
             
-            # Group files by their parent directory
+            # Group files by their root directory
             file_groups = {}
             for input_file in input_files:
-                relative_path = input_file.relative_to(input_dir)
+                # Get the root directory (either parent or grandparent)
+                root_dir = input_file.parent
+                if root_dir.name == input_file.stem:
+                    # This is a file in its own directory, use parent as root
+                    root_dir = root_dir.parent
                 
-                # If file is in a directory with the same name as the file,
-                # it's an attachment and will be processed with its parent file
-                if relative_path.parent.name == relative_path.parent.parent.stem:
+                # Skip if this is an attachment (in a directory with same name as a markdown file)
+                if root_dir.name == root_dir.parent.stem:
                     continue
                 
-                # If file is named same as its parent directory,
-                # it's the main file for that directory
-                if input_file.stem == input_file.parent.name:
-                    file_groups[input_file] = 'main'
-                else:
-                    # Regular file, not in a special directory
-                    file_groups[input_file] = 'regular'
+                # Find the main file for this group
+                main_file = None
+                if input_file.parent.name == input_file.stem:
+                    # This is the main file (directory named after it)
+                    main_file = input_file
+                elif input_file.parent == root_dir:
+                    # This is a root-level file
+                    # Check if there's a directory with the same name
+                    potential_dir = root_dir / input_file.stem
+                    if potential_dir.is_dir():
+                        # This is a main file with attachments
+                        main_file = input_file
+                    else:
+                        # This is a standalone file - check if it's referenced by another file
+                        is_attachment = False
+                        for other_file in input_files:
+                            if other_file != input_file and other_file.stem == root_dir.name:
+                                is_attachment = True
+                                break
+                        if not is_attachment:
+                            # This is a standalone file not referenced by others
+                            main_file = input_file
+                
+                if main_file:
+                    # Use the root directory as the key for grouping
+                    group_key = root_dir
+                    if main_file.parent == root_dir:
+                        # For standalone files, use their own name as the key
+                        group_key = main_file.stem
+                    
+                    # Check if we already have a main file for this group
+                    if group_key in file_groups:
+                        # If both files have attachments, keep the one with more attachments
+                        current_main = file_groups[group_key]
+                        current_dir = current_main.parent / current_main.stem
+                        new_dir = main_file.parent / main_file.stem
+                        
+                        if current_dir.is_dir() and new_dir.is_dir():
+                            current_attachments = len(list(current_dir.glob('*.md')))
+                            new_attachments = len(list(new_dir.glob('*.md')))
+                            if new_attachments > current_attachments:
+                                file_groups[group_key] = main_file
+                        elif new_dir.is_dir():
+                            # New file has attachments, old one doesn't
+                            file_groups[group_key] = main_file
+                    else:
+                        file_groups[group_key] = main_file
             
             with create_progress() as progress:
                 task = progress.add_task("Consolidating markdown files", total=len(file_groups))
                 
-                for input_file, file_type in file_groups.items():
+                for root_dir, main_file in file_groups.items():
                     try:
                         # Get the output path - always in root of output directory
-                        output_path = output_dir / input_file.name
+                        output_path = output_dir / main_file.name
                         
                         # Process the file and its attachments
-                        self.processors['markdown_consolidate'].process(input_file, output_path)
+                        self.processors['markdown_consolidate'].process(main_file, output_path)
                         
                         # Update state
                         self.state.update_file_state(
                             phase='markdown_consolidate',
-                            file_path=str(input_file.relative_to(input_dir)),
+                            file_path=str(main_file.relative_to(input_dir)),
                             status='completed'
                         )
                         
                         progress.advance(task)
                         
                     except Exception as e:
-                        error(f"Failed to consolidate {input_file}: {e}")
+                        error(f"Failed to consolidate {main_file}: {e}")
                         self.state.update_file_state(
                             phase='markdown_consolidate',
-                            file_path=str(input_file.relative_to(input_dir)),
+                            file_path=str(main_file.relative_to(input_dir)),
                             status='failed',
                             error=str(e)
                         )
-            
+                        
         except Exception as e:
-            error(f"Failed to consolidate markdown: {e}")
+            error(f"Failed to run markdown consolidate phase: {e}")
             self.state.update_file_state(
                 phase='markdown_consolidate',
                 file_path='consolidation',

@@ -48,32 +48,41 @@ class MarkdownConsolidateProcessor(BaseProcessor):
             with open(input_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Check for attachments in two ways:
-            # 1. Directory with same name as the markdown file
-            # 2. Files in a directory that matches this file's name
+            # Find attachments in two ways:
+            # 1. Directory with same name as markdown file
+            # 2. Other markdown files in the same directory
             attachments = []
             
             # Case 1: Directory with same name as markdown file
-            same_name_dir = input_path.parent / input_path.stem
-            if same_name_dir.is_dir():
-                for attachment_path in same_name_dir.rglob('*.md'):
-                    attachments.append((attachment_path, same_name_dir))
+            attachments_dir = input_path.parent / input_path.stem
+            if attachments_dir.is_dir():
+                # Process all markdown files in attachments directory
+                for attachment_path in sorted(attachments_dir.rglob('*.md')):
+                    try:
+                        with open(attachment_path, 'r', encoding='utf-8') as f:
+                            attachment_content = f.read()
+                        
+                        # Add attachment markers and content
+                        rel_path = attachment_path.relative_to(attachments_dir)
+                        content += f"\n\n[Begin Attachment: {rel_path}]\n\n{attachment_content}\n\n[End Attachment: {rel_path}]\n"
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to process attachment {attachment_path}: {e}")
             
-            # Case 2: If this file is named the same as its parent directory,
-            # all other .md files in this directory are attachments
-            if input_path.parent.name == input_path.stem:
-                for sibling in input_path.parent.glob('*.md'):
-                    if sibling != input_path:  # Don't include self
-                        attachments.append((sibling, input_path.parent))
-            
-            # Merge all attachments
-            for attachment_path, base_dir in attachments:
-                with open(attachment_path, 'r', encoding='utf-8') as f:
-                    attachment_content = f.read()
-                
-                # Add attachment markers and content
-                rel_path = attachment_path.relative_to(base_dir)
-                content += f"\n\n[Begin Attachment: {rel_path}]\n\n{attachment_content}\n\n[End Attachment: {rel_path}]\n"
+            # Case 2: Other markdown files in the same directory
+            if input_path.parent.name != input_path.stem:  # Only if not in its own directory
+                for sibling in sorted(input_path.parent.glob('*.md')):
+                    if sibling != input_path:  # Skip the main file
+                        try:
+                            with open(sibling, 'r', encoding='utf-8') as f:
+                                attachment_content = f.read()
+                            
+                            # Add attachment markers and content
+                            rel_path = sibling.relative_to(input_path.parent)
+                            content += f"\n\n[Begin Attachment: {rel_path}]\n\n{attachment_content}\n\n[End Attachment: {rel_path}]\n"
+                            
+                        except Exception as e:
+                            self.logger.error(f"Failed to process attachment {sibling}: {e}")
             
             # Write consolidated content
             with open(output_path, 'w', encoding='utf-8') as f:
