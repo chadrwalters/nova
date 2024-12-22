@@ -165,23 +165,26 @@ class MarkdownProcessor(BaseProcessor):
         )
     
     def process(self, input_file: Path, output_file: Path) -> None:
-        """Process a markdown file.
+        """Process a markdown file and its attachments.
         
         Args:
             input_file: Path to input file
             output_file: Path to output file
         """
         try:
-            # If the file is a binary file (image, office doc, etc.), move it to the appropriate processing directory
-            if self._is_binary_file(input_file):
-                self._handle_binary_file(input_file)
-                return
-                
             # Process markdown file
             with open(input_file, 'r', encoding='utf-8') as f:
                 content = f.read()
                 
-            # Process the markdown content
+            # Process attachments directory if it exists
+            attachments_dir = input_file.parent / input_file.stem
+            if attachments_dir.exists() and attachments_dir.is_dir():
+                for attachment in attachments_dir.glob('**/*'):
+                    if attachment.is_file():
+                        if self._is_binary_file(attachment):
+                            self._handle_binary_file(attachment)
+                            
+            # Process the markdown content (after handling attachments so we can update links)
             processed_content = self._process_markdown(content)
             
             # Write the processed content
@@ -214,33 +217,66 @@ class MarkdownProcessor(BaseProcessor):
         return file_path.suffix.lower() in binary_extensions
         
     def _handle_binary_file(self, file_path: Path) -> None:
-        """Handle a binary file by moving it to the appropriate processing directory.
+        """Handle a binary file by moving it to the appropriate processing directory and creating markdown representation.
         
         Args:
             file_path: Path to the binary file
+            
+        Returns:
+            Optional[Path]: Path to the markdown representation if created
         """
         # Determine the appropriate directory based on file type
         suffix = file_path.suffix.lower()
         
         if suffix in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.webp'}:
-            # Image files go to images/original
-            target_dir = Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR'))
+            # Image files go to images/original and processed
+            original_dir = Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR'))
+            processed_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
+            original_dir.mkdir(parents=True, exist_ok=True)
+            processed_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy to original directory
+            original_path = original_dir / file_path.name
+            shutil.copy2(file_path, original_path)
+            
+            # Process image
+            try:
+                processed_path = processed_dir / file_path.name
+                self.image_processor.process(original_path, processed_path)
+                logger.info(f"Processed image {file_path} to {processed_path}")
+            except Exception as e:
+                logger.error(f"Failed to process image {file_path}: {e}")
+                
         elif suffix in {'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'}:
             # Office documents go to office/assets
             target_dir = Path(os.getenv('NOVA_OFFICE_ASSETS_DIR'))
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy to assets directory
+            target_path = target_dir / file_path.name
+            shutil.copy2(file_path, target_path)
+            
+            try:
+                # Create markdown representation in markdown_parse directory
+                markdown_dir = Path(os.getenv('NOVA_PHASE_MARKDOWN_PARSE'))
+                # Use relative path from input dir to maintain structure
+                rel_path = file_path.relative_to(Path(os.getenv('NOVA_INPUT_DIR')))
+                markdown_path = markdown_dir / rel_path.parent / (file_path.stem + '.md')
+                markdown_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Convert to markdown using markdown handler
+                content = self.markdown_handler.convert_document(target_path, markdown_path)
+                with open(markdown_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                logger.info(f"Created markdown representation at {markdown_path}")
+                
+            except Exception as e:
+                logger.error(f"Failed to convert office document {file_path}: {e}")
         else:
             # Other binary files are not processed
             logger.warning(f"Skipping unsupported binary file: {file_path}")
             return
-            
-        # Create target directory if it doesn't exist
-        target_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Copy the file to the appropriate directory
-        target_path = target_dir / file_path.name
-        shutil.copy2(file_path, target_path)
-        logger.info(f"Moved binary file {file_path} to {target_path}")
-        
+    
     def _process_markdown(self, content: str) -> str:
         """Process markdown content.
         
@@ -250,8 +286,8 @@ class MarkdownProcessor(BaseProcessor):
         Returns:
             str: Processed markdown content
         """
-        # TODO: Implement markdown processing
-        return content
+        # Process with markdown-it
+        return self.md.render(content)
     
     def _process_pdf(self, input_path: Path, output_path: Path) -> Path:
         """Process a PDF file.

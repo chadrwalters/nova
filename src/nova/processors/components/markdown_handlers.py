@@ -78,7 +78,7 @@ class MarkitdownHandler(MarkdownComponent):
             self.logger.error(f"Failed to process {source_path}: {e}")
             raise ProcessingError(f"Failed to process {source_path}: {e}") from e
     
-    def convert_document(self, input_path: Path, output_path: Path) -> Path:
+    def convert_document(self, input_path: Path, output_path: Path) -> str:
         """Convert a document to markdown format.
         
         Args:
@@ -86,7 +86,7 @@ class MarkitdownHandler(MarkdownComponent):
             output_path: Path to output markdown file
             
         Returns:
-            Path to converted markdown file
+            str: Converted markdown content
         """
         try:
             self.logger.info(f"Converting document: {input_path}")
@@ -113,26 +113,23 @@ class MarkitdownHandler(MarkdownComponent):
             self.logger.error(f"Failed to convert {input_path}: {e}")
             raise ProcessingError(f"Failed to convert {input_path}: {e}") from e
     
-    def _convert_docx(self, input_path: Path, output_path: Path) -> Path:
+    def _convert_docx(self, input_path: Path, output_path: Path) -> str:
         """Convert DOCX to markdown."""
         from docx import Document
         
-        doc = Document(input_path)
+        doc = Document(str(input_path))
         content = []
         
         for para in doc.paragraphs:
             content.append(para.text)
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n\n'.join(content))
-        
-        return output_path
+        return '\n\n'.join(content)
     
-    def _convert_pptx(self, input_path: Path, output_path: Path) -> Path:
+    def _convert_pptx(self, input_path: Path, output_path: Path) -> str:
         """Convert PPTX to markdown."""
         from pptx import Presentation
         
-        prs = Presentation(input_path)
+        prs = Presentation(str(input_path))
         content = []
         
         for slide in prs.slides:
@@ -142,50 +139,118 @@ class MarkitdownHandler(MarkdownComponent):
                     slide_content.append(shape.text)
             content.append('\n'.join(slide_content))
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n\n'.join(content))
-        
-        return output_path
+        return '\n\n'.join(content)
     
-    def _convert_xlsx(self, input_path: Path, output_path: Path) -> Path:
+    def _convert_xlsx(self, input_path: Path, output_path: Path) -> str:
         """Convert XLSX to markdown."""
         from openpyxl import load_workbook
+        from datetime import datetime
         
-        wb = load_workbook(input_path)
+        def format_cell_value(value):
+            """Format cell value for markdown."""
+            if value is None:
+                return ''
+            elif isinstance(value, datetime):
+                return value.strftime('%Y-%m-%d')  # Format dates as YYYY-MM-DD
+            else:
+                return str(value).strip()
+        
+        wb = load_workbook(str(input_path))
         content = []
         
         for sheet in wb:
-            sheet_content = []
-            for row in sheet.iter_rows():
-                row_content = []
-                for cell in row:
-                    if cell.value:
-                        row_content.append(str(cell.value))
-                if row_content:
-                    sheet_content.append(' | '.join(row_content))
-            content.append('\n'.join(sheet_content))
+            # Add sheet name as header
+            content.append(f"# {sheet.title}\n")
+            
+            # Process each sheet
+            row_idx = 1
+            while row_idx <= sheet.max_row:
+                # Find the start of a table (non-empty row)
+                if any(cell.value for cell in sheet[row_idx]):
+                    table_content = []
+                    header_cells = list(sheet[row_idx])
+                    
+                    # Look ahead for merged header rows
+                    next_row_idx = row_idx + 1
+                    while next_row_idx <= sheet.max_row:
+                        next_row = list(sheet[next_row_idx])
+                        if not any(cell.value for cell in next_row):
+                            break
+                        if all(isinstance(cell.value, (str, type(None))) for cell in next_row):
+                            header_cells.extend(next_row)
+                            next_row_idx += 1
+                        else:
+                            break
+                    
+                    # Build header from merged rows
+                    headers = []
+                    for cell in header_cells:
+                        value = format_cell_value(cell.value)
+                        if value:
+                            headers.append(value)
+                    
+                    # Skip if no valid headers
+                    if not headers:
+                        row_idx = next_row_idx
+                        continue
+                    
+                    # Add header row
+                    table_content.append(' | '.join(headers))
+                    
+                    # Add separator row
+                    table_content.append('|'.join(['---' for _ in headers]))
+                    
+                    # Process data rows
+                    data_start_row = next_row_idx
+                    while data_start_row <= sheet.max_row:
+                        row = list(sheet[data_start_row])
+                        row_content = []
+                        is_empty_row = True
+                        
+                        # Process each cell in the row
+                        for cell in row[:len(headers)]:  # Only process cells up to header count
+                            value = format_cell_value(cell.value)
+                            row_content.append(value)
+                            if value:
+                                is_empty_row = False
+                        
+                        # Skip empty rows
+                        if is_empty_row:
+                            data_start_row += 1
+                            continue
+                        
+                        # Pad row if needed
+                        while len(row_content) < len(headers):
+                            row_content.append('')
+                        
+                        # Add data row
+                        table_content.append(' | '.join(row_content))
+                        data_start_row += 1
+                    
+                    # Add table to content with spacing
+                    content.extend(['', *table_content, ''])
+                    row_idx = data_start_row
+                else:
+                    row_idx += 1
+            
+            # Add blank line between sheets
+            content.append('')
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n\n'.join(content))
-        
-        return output_path
+        return '\n'.join(content)
     
-    def _convert_pdf(self, input_path: Path, output_path: Path) -> Path:
+    def _convert_pdf(self, input_path: Path, output_path: Path) -> str:
         """Convert PDF to markdown."""
         from pypdf import PdfReader
         
-        reader = PdfReader(input_path)
+        reader = PdfReader(str(input_path))
         content = []
         
         for page in reader.pages:
             content.append(page.extract_text())
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n\n'.join(content))
-        
-        return output_path
+        return '\n\n'.join(content)
     
-    def _convert_csv(self, input_path: Path, output_path: Path) -> Path:
+    def _convert_csv(self, input_path: Path, output_path: Path) -> str:
         """Convert CSV to markdown."""
         import csv
         import chardet
@@ -203,10 +268,7 @@ class MarkitdownHandler(MarkdownComponent):
             for row in reader:
                 content.append(' | '.join(row))
         
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(content))
-        
-        return output_path
+        return '\n'.join(content)
     
     def _process_image_match(self, match: re.Match, source_path: Path) -> str:
         """Process a single image match and return updated markdown."""
