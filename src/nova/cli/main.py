@@ -2,16 +2,16 @@
 
 import os
 import sys
-import logging as py_logging
-import argparse
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+import argparse
 
 from ..core import logging as nova_logging
 from ..core.paths import NovaPaths
 from ..core.pipeline import Pipeline
 from ..core.config import NovaConfig, PathsConfig, MarkdownConfig, ImageConfig, OfficeConfig
 from ..core.errors import NovaError
+from ..core.logging import info, error, success, warning
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
@@ -58,17 +58,16 @@ def parse_args() -> argparse.Namespace:
     
     return parser.parse_args()
 
-def setup_environment(args: argparse.Namespace) -> Tuple[NovaPaths, py_logging.Logger]:
+def setup_environment(args: argparse.Namespace) -> Tuple[NovaPaths, None]:
     """Setup environment for processing.
     
     Args:
         args: Command line arguments
         
     Returns:
-        Tuple of paths and logger
+        Tuple of paths and None (logger no longer needed in return)
     """
     # Setup logging
-    logger = nova_logging.get_logger(__name__)
     nova_logging.setup_logger(
         log_file=Path(os.path.expanduser('~/nova.log')),
         level=args.log_level
@@ -78,10 +77,10 @@ def setup_environment(args: argparse.Namespace) -> Tuple[NovaPaths, py_logging.L
     try:
         paths = NovaPaths.from_env()
     except Exception as e:
-        logger.error(f"Failed to load paths from environment: {e}")
+        error(f"Failed to load paths from environment: {e}")
         sys.exit(1)
     
-    return paths, logger
+    return paths, None
 
 def main() -> int:
     """Main entry point."""
@@ -89,7 +88,7 @@ def main() -> int:
     args = parse_args()
     
     # Setup environment
-    paths, logger = setup_environment(args)
+    paths, _ = setup_environment(args)
     
     # Create pipeline configuration
     try:
@@ -98,15 +97,43 @@ def main() -> int:
         
         # Create and run pipeline
         pipeline = Pipeline(config)
+        
+        if args.dry_run:
+            info("Dry run mode - showing what would be processed:")
+            # Add dry run logic here
+            return 0
+            
+        if args.show_state:
+            info("Current processing state:")
+            # Add state display logic here
+            return 0
+            
+        if args.scan:
+            info("Directory structure:")
+            # Add directory scan logic here
+            return 0
+            
+        if args.reset:
+            warning("Resetting processing state...")
+            # Add reset logic here
+            return 0
+        
+        # Check if input directory exists
+        input_dir = Path(config.paths.input_dir)
+        if not input_dir.exists():
+            error(f"Input directory does not exist: {input_dir}")
+            return 1
+        
         pipeline.process()
+        success("Processing completed successfully")
         return 0
         
     except NovaError as e:
-        logger.error(str(e))
+        error(str(e))
         return 1
         
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        error(f"Unexpected error: {str(e)}")
         return 1
 
 if __name__ == "__main__":
