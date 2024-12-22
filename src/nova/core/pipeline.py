@@ -89,11 +89,18 @@ class Pipeline:
         for ext in self.config.processors['markdown'].extensions:
             for md_file in input_dir.glob(f'**/*{ext}'):
                 try:
+                    # Get relative path but exclude phase directory names to prevent nesting
                     relative_path = md_file.relative_to(input_dir)
+                    
+                    # Skip if path contains phase directory names or is in a phase directory
+                    if any(part in str(relative_path).lower() for part in ['markdown_parse', 'markdown_consolidate', 'phases']):
+                        self.logger.debug(f"Skipping file in phase directory: {md_file}")
+                        continue
+                        
                     output_path = output_dir / relative_path
                     output_path.parent.mkdir(parents=True, exist_ok=True)
                     
-                    # Process the file
+                    # Process the file and its attachments
                     self.processors['markdown'].process(md_file, output_path)
                     
                     # Update state

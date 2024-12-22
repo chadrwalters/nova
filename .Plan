@@ -1,63 +1,66 @@
-Plan for Upgrading the Directory Layout on a Dedicated Git Branch
+Plan for Implementing Color-Coded Console Output with Progress Bars on a Dedicated Branch
 Below is a step-by-step plan in a Cursor-friendly format. Each task includes its current status (TODO or DONE). After all tasks are listed, there is a final progress indicator showing how many tasks are completed versus how many remain.
+
 ---
-Task 1: Create a New Git Branch
+Task 1: Create a Feature Branch
 Description:
-Create and switch to a new branch (e.g., "feature/refactor-directory-layout") for the directory layout changes.
+• Create and switch to a new Git branch (e.g., "feature/improved-console-output") for these updates.
+• Ensure the main branch is up to date before branching.
 Dependencies:
-• The main branch is up to date.
-Status: DONE
----
-Task 2: Define the New Directory Structure
-Description:
-Determine precisely which directories and file paths should store final output versus intermediates, caches, and logs.
-Dependencies:
-• Task 1 complete (branch created).
-Status: DONE
----
-Task 3: Implement Changes Incrementally in the Pipeline
-Description:
-• Update environment variables, scripts, and code references to place files in the newly defined locations.
-• Consolidate caches and clearly separate final vs. intermediate outputs.
-• Move binary files directly to their processing directories instead of copying to phase 1.
-Dependencies:
-• Task 2 complete (new structure defined).
-Status: DONE
----
-Task 4: Test and Validate on the Branch
-Description:
-• Run local tests to confirm final outputs are where they should be and temporary files are captured appropriately.
-• Compare results from the new branch with the old structure to ensure no regressions.
-Dependencies:
-• Task 3 complete (changes implemented).
-Status: DONE
----
-Task 5: Document the New Structure
-Description:
-• Update the README and any relevant docs with diagrams or text explaining the revised directory layout.
-• Specify how to clean up or retain intermediates if needed.
-Dependencies:
-• Task 4 complete (testing and validation done).
-Status: DONE
----
-Task 6: Open a Pull Request and Review
-Description:
-• Open a pull request from "feature/refactor-directory-layout" into the main branch.
-• Gather feedback, run CI tests, and address any issues.
-Dependencies:
-• Task 5 complete (documentation updated).
+• main branch is up to date
 Status: TODO
+
 ---
-Task 7: Post-Merge Cleanup
+Task 2: Update Dependencies
 Description:
-• Remove local or archived test files.
-• Monitor the pipeline to confirm the new structure is stable.
-• Optionally delete the feature branch if no longer needed.
+• Update pyproject.toml to include “colorama” (or another color library if preferred).
+• Run poetry install to update the poetry.lock file.
 Dependencies:
-• Task 6 complete (PR merged).
+• Task 1 complete (new branch created)
+• Working Poetry environment
 Status: TODO
+
+---
+Task 3: Integrate Color and Logging Utility
+Description:
+• Create/modify a logger utility (e.g., src/utils/console_logger.py) using colorama or the existing color libraries.
+• Replace existing print statements in the pipeline code with the new logger methods (info, error, progress, etc.).
+• Ensure it supports both osx iTerm2 colors and a fallback for no-color environments.
+Dependencies:
+• Task 2 complete (color library installed)
+Status: TODO
+
+---
+Task 4: Update Script Entry Points
+Description:
+• Update consolidate.sh and install.sh scripts to ensure the new logger is imported and used (if these scripts call Python code).
+• Keep the rest of the workflow (directory creation, environment variable checks) intact.
+• Validate that all color output is displayed properly in iTerm2.
+Dependencies:
+• Task 3 complete (logger integrated)
+Status: TODO
+
+---
+Task 5: Testing and Validation
+Description:
+• Run the pipeline locally in iTerm2 (macOS) to confirm color-coded logs and progress bars appear.
+• Verify that, under a --no-color or minimal environment, the script still runs without throwing errors.
+• (Optional) Compare console logs against existing logs to ensure no regressions in data format.
+Dependencies:
+• Task 4 complete (scripts updated)
+Status: TODO
+
+---
+Task 6: Documentation and Pull Request
+Description:
+• Update README or any internal docs to briefly describe the new logging system.
+• Open a pull request from "feature/improved-console-output" into the main branch and request reviews.
+Dependencies:
+• Task 5 complete (tests pass, validated on iTerm2)
+Status: TODO
+
 ---
 Progress
-• Total Tasks: 7
-• Completed: 5
-• Remaining: 2
+• Total Tasks: 6
+• Completed: 0
+• Remaining: 6
