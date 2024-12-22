@@ -1,7 +1,8 @@
 """Processor for splitting aggregated markdown into summary, raw notes, and attachments."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Tuple, Set
 
 from ..core.config import ProcessorConfig, NovaConfig
 from ..core.errors import ProcessingError
@@ -16,6 +17,10 @@ class ThreeFileSplitProcessor(BaseProcessor):
         self.section_markers = self.config.components["three_file_split_processor"]["config"]["section_markers"]
         self.cross_linking = self.config.components["three_file_split_processor"]["config"]["cross_linking"]
         self.preserve_headers = self.config.components["three_file_split_processor"]["config"]["preserve_headers"]
+        
+        # Regex patterns for finding references
+        self.attachment_ref_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')  # Image/attachment references
+        self.heading_pattern = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)  # Markdown headings
 
     def process(self, input_path: Path, output_path: Path) -> Path:
         """Process the aggregated markdown file into three separate files.
@@ -34,11 +39,18 @@ class ThreeFileSplitProcessor(BaseProcessor):
             # Split content into sections
             summary_content, raw_notes_content, attachments_content = self._split_content(content)
             
-            # Add cross-links if enabled
+            # Process attachments first to gather reference information
+            attachments_content, attachment_anchors = self._process_attachments(attachments_content)
+            
+            # Add cross-links and process references
             if self.cross_linking:
                 summary_content = self._add_cross_links(summary_content, "summary")
                 raw_notes_content = self._add_cross_links(raw_notes_content, "raw_notes")
                 attachments_content = self._add_cross_links(attachments_content, "attachments")
+                
+                # Update references in summary and raw notes
+                summary_content = self._update_attachment_refs(summary_content, attachment_anchors)
+                raw_notes_content = self._update_attachment_refs(raw_notes_content, attachment_anchors)
             
             # Write output files
             output_path.mkdir(parents=True, exist_ok=True)
@@ -91,6 +103,67 @@ class ThreeFileSplitProcessor(BaseProcessor):
             '\n'.join(sections["raw_notes"]),
             '\n'.join(sections["attachments"])
         )
+    
+    def _process_attachments(self, content: str) -> Tuple[str, Dict[str, str]]:
+        """Process attachments section to create anchors for cross-referencing.
+        
+        Args:
+            content: Attachments section content
+            
+        Returns:
+            Tuple of (processed_content, anchor_mapping)
+        """
+        anchor_mapping = {}  # Maps original paths to anchor IDs
+        lines = content.split('\n')
+        processed_lines = []
+        
+        for line in lines:
+            # Find attachment references
+            for match in self.attachment_ref_pattern.finditer(line):
+                alt_text, path = match.groups()
+                # Create a unique anchor ID
+                anchor_id = self._create_anchor_id(path)
+                anchor_mapping[path] = anchor_id
+                # Add anchor to the line
+                line = f'<a id="{anchor_id}"></a>\n{line}'
+            processed_lines.append(line)
+        
+        return '\n'.join(processed_lines), anchor_mapping
+    
+    def _update_attachment_refs(self, content: str, attachment_anchors: Dict[str, str]) -> str:
+        """Update attachment references to point to the attachments file with anchors.
+        
+        Args:
+            content: Section content
+            attachment_anchors: Mapping of original paths to anchor IDs
+            
+        Returns:
+            Content with updated references
+        """
+        attachments_file = self.output_files["attachments"]
+        
+        def replace_ref(match: re.Match) -> str:
+            alt_text, path = match.groups()
+            if path in attachment_anchors:
+                return f'![{alt_text}]({attachments_file}#{attachment_anchors[path]})'
+            return match.group(0)
+        
+        return self.attachment_ref_pattern.sub(replace_ref, content)
+    
+    def _create_anchor_id(self, path: str) -> str:
+        """Create a unique anchor ID from a path.
+        
+        Args:
+            path: Original file path
+            
+        Returns:
+            Sanitized anchor ID
+        """
+        # Remove file extension and special characters
+        base = Path(path).stem
+        # Convert to lowercase and replace spaces/special chars with hyphens
+        anchor = re.sub(r'[^a-z0-9]+', '-', base.lower()).strip('-')
+        return f'attachment-{anchor}'
     
     def _add_cross_links(self, content: str, section: str) -> str:
         """Add cross-links to other sections at the top of the content.
