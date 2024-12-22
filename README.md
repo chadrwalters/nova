@@ -11,10 +11,11 @@ A modern document processing system for parsing, converting, and consolidating m
 - Document format conversion to markdown
 - Content consolidation with date-based sorting
 - File aggregation with intelligent size management
-- Three-phase processing pipeline:
+- Four-phase processing pipeline:
   1. MARKDOWN_PARSE: Initial parsing with size preservation
   2. MARKDOWN_CONSOLIDATE: Content consolidation maintaining integrity
   3. MARKDOWN_AGGREGATE: Efficient file merging with size optimization
+  4. MARKDOWN_SPLIT_THREEFILES: Split content into summary, raw notes, and attachments
 
 ### Document Support
 - **Markdown Files**
@@ -104,6 +105,15 @@ A modern document processing system for parsing, converting, and consolidating m
 - State preservation
 - Detailed logging
 
+### Output Structure
+- **Three-File Organization**
+  - `summary.md`: High-level overview and key points
+  - `raw_notes.md`: Detailed notes and chronological entries
+  - `attachments.md`: Referenced files and metadata
+  - Cross-linking between files for easy navigation
+  - Consistent structure and formatting
+  - Preserved context and relationships
+
 ## Installation
 
 1. Clone the repository:
@@ -158,12 +168,13 @@ The Nova Document Processor uses a carefully organized directory structure to ma
 ${NOVA_BASE_DIR}/
 ├── _NovaInput/              # Source documents and attachments
 ├── _NovaOutput/             # Final processed output
-└── _NovaProcessing/         # Processing workspace and intermediates
+└── _NovaProcessing/         # Processing workspace
     ├── .state/             # Processing state and tracking
     ├── phases/             # Phase-specific processing
-    │   ├── markdown_parse/        # Initial markdown parsing (markdown files only)
+    │   ├── markdown_parse/        # Initial markdown parsing
     │   ├── markdown_consolidate/  # Consolidated output with attachments
-    │   └── markdown_aggregate/    # Single aggregated markdown file
+    │   ├── markdown_aggregate/    # Single aggregated markdown file
+    │   └── markdown_split/        # Three-file split output
     ├── images/             # Image processing workspace
     │   ├── original/      # Original images
     │   ├── processed/     # Optimized images
@@ -187,6 +198,7 @@ ${NOVA_BASE_DIR}/
   - `markdown_parse/`: Initial parsing of markdown and conversion of other formats (preserves original file sizes)
   - `markdown_consolidate/`: Consolidates markdown files with their attachments while maintaining size integrity
   - `markdown_aggregate/`: Combines all consolidated files into a single markdown document with size approximately equal to sum of inputs
+  - `markdown_split/`: Splits content into summary, raw notes, and attachments
 - `images/`: Handles all image-related processing
   - `original/`: Stores original images in their source format
   - `processed/`: Contains optimized and converted images
@@ -212,6 +224,7 @@ NOVA_TEMP_DIR="${NOVA_PROCESSING_DIR}/temp"
 NOVA_PHASE_MARKDOWN_PARSE="${NOVA_PROCESSING_DIR}/phases/markdown_parse"
 NOVA_PHASE_MARKDOWN_CONSOLIDATE="${NOVA_PROCESSING_DIR}/phases/markdown_consolidate"
 NOVA_PHASE_MARKDOWN_AGGREGATE="${NOVA_PROCESSING_DIR}/phases/markdown_aggregate"
+NOVA_PHASE_MARKDOWN_SPLIT="${NOVA_PROCESSING_DIR}/phases/markdown_split"
 
 # Image directories
 NOVA_ORIGINAL_IMAGES_DIR="${NOVA_PROCESSING_DIR}/images/original"
