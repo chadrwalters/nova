@@ -19,6 +19,7 @@ from ..processors.markdown_processor import MarkdownProcessor
 from ..processors.markdown_consolidate import MarkdownConsolidateProcessor
 from ..processors.image_processor import ImageProcessor
 from ..processors.office_processor import OfficeProcessor
+from ..processors.three_file_split_processor import ThreeFileSplitProcessor
 
 class Pipeline:
     """Main processing pipeline."""
@@ -52,6 +53,10 @@ class Pipeline:
             'office': OfficeProcessor(
                 processor_config=self.config.processors['office'],
                 nova_config=self.config
+            ),
+            'three_file_split': ThreeFileSplitProcessor(
+                processor_config=self.config.processors['three_file_split'],
+                nova_config=self.config
             )
         }
         
@@ -74,6 +79,11 @@ class Pipeline:
             if self.config.processors['markdown'].enabled:
                 info("Starting MARKDOWN_AGGREGATE phase...")
                 self._run_markdown_aggregate_phase()
+            
+            # Phase 4: MARKDOWN_SPLIT_THREEFILES
+            if self.config.processors['three_file_split'].enabled:
+                info("Starting MARKDOWN_SPLIT_THREEFILES phase...")
+                self._run_markdown_split_phase()
             
             success("Pipeline processing complete")
             
@@ -265,6 +275,42 @@ class Pipeline:
             self.state.update_file_state(
                 phase='markdown_aggregate',
                 file_path='aggregate',
+                status='failed',
+                error=str(e)
+            )
+
+    def _run_markdown_split_phase(self) -> None:
+        """Run the markdown split phase."""
+        input_path = Path(self.config.paths.phase_dirs['markdown_aggregate']) / self.config.processors['markdown'].aggregate['output_filename']
+        output_dir = Path(self.config.paths.phase_dirs['markdown_split'])
+        state_dir = Path(self.config.paths.state_dir) / 'markdown_split'
+        
+        # Create phase directories
+        output_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            if not input_path.exists():
+                warning("No aggregated markdown file found for splitting")
+                return
+            
+            # Process the aggregated file
+            self.processors['three_file_split'].process(input_path, output_dir)
+            
+            # Update state
+            self.state.update_file_state(
+                phase='markdown_split',
+                file_path=str(input_path.name),
+                status='completed'
+            )
+            
+            info(f"Split markdown files created in {output_dir}")
+            
+        except Exception as e:
+            error(f"Failed to run markdown split phase: {e}")
+            self.state.update_file_state(
+                phase='markdown_split',
+                file_path=str(input_path.name),
                 status='failed',
                 error=str(e)
             )
