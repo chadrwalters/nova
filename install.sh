@@ -29,45 +29,49 @@ if ! command -v poetry &> /dev/null; then
     curl -sSL https://install.python-poetry.org | python3 -
 fi
 
-# Check for .env file and set it up if needed
+# Create .env file if it doesn't exist
 if [ ! -f .env ]; then
-    print_status "$YELLOW" "Creating .env file..."
+    echo "Creating .env file..."
     
-    # Get base directory
-    default_dir="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
-    print_status "$CYAN" "Enter base directory for Nova (default: $default_dir):"
-    read -r base_dir
-    base_dir=${base_dir:-$default_dir}
+    # Get base directory from user or use default
+    read -p "Enter base directory for Nova (default: ${HOME}/Library/Mobile Documents/com~apple~CloudDocs): " base_dir
+    base_dir=${base_dir:-"${HOME}/Library/Mobile Documents/com~apple~CloudDocs"}
     
-    # Create .env file
+    # Set up environment variables
     cat > .env << EOL
-# Nova Document Processor Environment Configuration
-
-# Base Directory
+# Base directories
 NOVA_BASE_DIR="$base_dir"
-
-# Input/Output Directories
 NOVA_INPUT_DIR="\${NOVA_BASE_DIR}/_NovaInput"
 NOVA_OUTPUT_DIR="\${NOVA_BASE_DIR}/_NovaOutput"
 NOVA_PROCESSING_DIR="\${NOVA_BASE_DIR}/_NovaProcessing"
-NOVA_TEMP_DIR="\${NOVA_BASE_DIR}/_NovaTemp"
+NOVA_TEMP_DIR="\${NOVA_PROCESSING_DIR}/temp"
 
-# Phase Directory
-NOVA_PHASE_MARKDOWN_PARSE="\${NOVA_PROCESSING_DIR}/01_markdown_parse"
+# Phase directories
+NOVA_PHASE_MARKDOWN_PARSE="\${NOVA_PROCESSING_DIR}/phases/markdown_parse"
 
-# Image Processing Directories
+# Image directories
 NOVA_ORIGINAL_IMAGES_DIR="\${NOVA_PROCESSING_DIR}/images/original"
 NOVA_PROCESSED_IMAGES_DIR="\${NOVA_PROCESSING_DIR}/images/processed"
 NOVA_IMAGE_METADATA_DIR="\${NOVA_PROCESSING_DIR}/images/metadata"
 NOVA_IMAGE_CACHE_DIR="\${NOVA_PROCESSING_DIR}/images/cache"
 
-# Office Document Processing
+# Office directories
 NOVA_OFFICE_ASSETS_DIR="\${NOVA_PROCESSING_DIR}/office/assets"
 NOVA_OFFICE_TEMP_DIR="\${NOVA_PROCESSING_DIR}/office/temp"
 
-# API Keys
-OPENAI_API_KEY=your_openai_key_here
+# OpenAI API configuration
+OPENAI_API_KEY="your-api-key-here"
+
+# Processing configuration
+NOVA_LOG_LEVEL="INFO"
+NOVA_MAX_WORKERS=4
+NOVA_BATCH_SIZE=100
+NOVA_ENABLE_IMAGE_PROCESSING=true
+NOVA_ENABLE_OFFICE_PROCESSING=true
+NOVA_ENABLE_CACHE=true
 EOL
+
+    echo ".env file created successfully"
 fi
 
 # Install dependencies

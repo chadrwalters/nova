@@ -110,3 +110,78 @@
 - Use type hints
 - Document classes and methods
 - Keep functions focused and small
+
+# Directory Structure Guidelines
+
+## Overview
+
+The Nova Document Processor uses a structured directory layout to manage files throughout the processing pipeline. When contributing, it's important to understand and maintain this structure.
+
+## Key Principles
+
+1. **Separation of Concerns**
+   - Input files remain untouched in `_NovaInput`
+   - Processing happens in `_NovaProcessing`
+   - Final output goes to `_NovaOutput`
+
+2. **Processing Organization**
+   - Each processing phase has its own directory
+   - Intermediate files are kept separate from final output
+   - Cache and temporary files have designated locations
+
+3. **State Management**
+   - Processing state is tracked in `.state`
+   - File hashes and timestamps are preserved
+   - Cache invalidation is handled automatically
+
+## Directory Structure
+
+```bash
+${NOVA_BASE_DIR}/
+├── _NovaInput/              # Source files (READ ONLY)
+├── _NovaOutput/             # Final output (WRITE ONLY)
+└── _NovaProcessing/         # Processing workspace
+    ├── .state/             # Processing state
+    ├── phases/             # Processing phases
+    ├── images/             # Image processing
+    ├── office/             # Office document processing
+    └── temp/              # Temporary files
+```
+
+## Development Guidelines
+
+1. **File Operations**
+   - Use `NovaPaths` class for all path operations
+   - Never hardcode paths; use environment variables
+   - Clean up temporary files after processing
+
+2. **State Management**
+   - Update state files atomically
+   - Preserve file metadata
+   - Handle concurrent access safely
+
+3. **Cache Handling**
+   - Cache API responses appropriately
+   - Implement proper cache invalidation
+   - Monitor cache size and cleanup
+
+4. **Error Handling**
+   - Clean up temporary files on errors
+   - Maintain consistent state
+   - Log all file operations
+
+## Code Organization
+
+When adding new features:
+1. Use the `NovaPaths` class for path management
+2. Follow the established directory structure
+3. Add appropriate cleanup handlers
+4. Update tests to verify path handling
+
+## Testing
+
+When writing tests:
+1. Use temporary directories
+2. Clean up test files
+3. Mock file operations when appropriate
+4. Verify directory structure

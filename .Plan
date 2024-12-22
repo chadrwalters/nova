@@ -1,66 +1,63 @@
-# Step-by-Step Plan (Cursor AI Composer Mode)
-
-**Step 1: Setup and Preparation**  
-1.1. Create Backup Branch ✓ [DONE]
- • Task: Create branch named "refactor-backup" from the current state  
- • Action: Push the full current state to this backup branch  
-
-1.2. Create Working Branch ✓ [DONE]
- • Task: Create branch named "refactor-processors" from main  
- • Action: Ensure the new branch is up to date with main before starting work  
-
+Plan for Upgrading the Directory Layout on a Dedicated Git Branch
+Below is a step-by-step plan in a Cursor-friendly format. Each task includes its current status (TODO or DONE). After all tasks are listed, there is a final progress indicator showing how many tasks are completed versus how many remain.
 ---
-
-**Step 2: Processor Consolidation** [DONE]
-2.1. Image Processor Migration ✓ [DONE]
- • Compare "src/processors/image_processor.py" and "src/nova/processors/image.py" - Already consolidated
- • Merge or refactor code into a single file at "src/nova/processors/image_processor.py" - Completed
- • Update all imports referencing the old file paths - Completed
- • Remove or archive the old file once finished - Completed
-
-2.2. Markdown Processor Migration ✓ [DONE]
- • Review all markdown-related files, such as "src/nova/processors/components/markdown_handlers.py" - Completed  
- • Consolidate any overlapping code into a single, cohesive markdown processor under "src/nova/processors/markdown_processor.py" - Completed  
- • Update any outdated imports that refer to the old directories - Completed  
- • Removed old markdown.py file - Completed
-
-2.3. Other Processor Migration ✓ [DONE]
- • Identify any additional processors in the old "src/processors" directory - Completed  
- • Compare them to any counterparts in "src/nova/processors" - Completed  
- • Merge, update imports, and remove old or duplicate files - Completed  
- • Renamed office.py to office_processor.py for consistency - Completed
-
+Task 1: Create a New Git Branch
+Description:
+Create and switch to a new branch (e.g., "feature/refactor-directory-layout") for the directory layout changes.
+Dependencies:
+• The main branch is up to date.
+Status: DONE
 ---
-
-**Step 3: Import Updates** [DONE]
-3.1. Update Core Imports ✓ [DONE]
- • Review files such as "src/__init__.py" and "src/nova/core/paths.py" - Completed  
- • Update references to core modules if they still point to "src/core" instead of "src/nova/core" - Completed  
- • Fixed redundant core imports in paths.py - Completed
- • Removed old src/cli directory - Completed
-
-3.2. Global Import Verification ✓ [DONE]
- • Perform a global search for old import paths, like "src.processors" or "src.core" - Completed  
- • Update each to the new "src.nova.processors" or "src.nova.core" path - Completed  
- • Watch for potential circular dependencies or module not found errors - Completed  
-
+Task 2: Define the New Directory Structure
+Description:
+Determine precisely which directories and file paths should store final output versus intermediates, caches, and logs.
+Dependencies:
+• Task 1 complete (branch created).
+Status: DONE
 ---
-
-**Step 4: Cleanup** [DONE]
-4.1. Remove Old Structure ✓ [DONE]
- • After confirming all imports work, remove the outdated "src/processors/" directory - Completed  
- • Remove any empty or unused directories - Completed  
- • Perform final checks to ensure no references remain to the removed files - Completed  
- • Migrated validation module to src/nova/core - Completed
- • Removed old src/core directory - Completed
-
+Task 3: Implement Changes Incrementally in the Pipeline
+Description:
+• Update environment variables, scripts, and code references to place files in the newly defined locations.
+• Consolidate caches and clearly separate final vs. intermediate outputs.
+• Move binary files directly to their processing directories instead of copying to phase 1.
+Dependencies:
+• Task 2 complete (new structure defined).
+Status: DONE
 ---
-
-**Progress Tracking**  
-• Total Tasks: 9 (subtasks included)  
-• Current Progress: 9/9 tasks completed  
-• Next Step: All tasks completed! Ready to run consolidate.sh  
-
+Task 4: Test and Validate on the Branch
+Description:
+• Run local tests to confirm final outputs are where they should be and temporary files are captured appropriately.
+• Compare results from the new branch with the old structure to ensure no regressions.
+Dependencies:
+• Task 3 complete (changes implemented).
+Status: DONE
 ---
-
-All tasks have been completed successfully. Would you like to run the consolidate.sh script to verify everything works?
+Task 5: Document the New Structure
+Description:
+• Update the README and any relevant docs with diagrams or text explaining the revised directory layout.
+• Specify how to clean up or retain intermediates if needed.
+Dependencies:
+• Task 4 complete (testing and validation done).
+Status: DONE
+---
+Task 6: Open a Pull Request and Review
+Description:
+• Open a pull request from "feature/refactor-directory-layout" into the main branch.
+• Gather feedback, run CI tests, and address any issues.
+Dependencies:
+• Task 5 complete (documentation updated).
+Status: TODO
+---
+Task 7: Post-Merge Cleanup
+Description:
+• Remove local or archived test files.
+• Monitor the pipeline to confirm the new structure is stable.
+• Optionally delete the feature branch if no longer needed.
+Dependencies:
+• Task 6 complete (PR merged).
+Status: TODO
+---
+Progress
+• Total Tasks: 7
+• Completed: 5
+• Remaining: 2

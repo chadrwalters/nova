@@ -164,92 +164,94 @@ class MarkdownProcessor(BaseProcessor):
             nova_config=self.nova_config
         )
     
-    def process(self, input_path: Path, output_path: Path) -> Path:
-        """Process a markdown file and its attachments.
+    def process(self, input_file: Path, output_file: Path) -> None:
+        """Process a markdown file.
         
         Args:
-            input_path: Path to input file
-            output_path: Path to output file
-            
-        Returns:
-            Path to processed file
+            input_file: Path to input file
+            output_file: Path to output file
         """
         try:
-            # Find attachments directory (same name as markdown file without .md)
-            attachments_dir = input_path.parent / input_path.stem
-            output_attachments_dir = output_path.parent / output_path.stem
-            
-            # Read and process markdown content
-            with open(input_path, 'r', encoding='utf-8') as f:
+            # If the file is a binary file (image, office doc, etc.), move it to the appropriate processing directory
+            if self._is_binary_file(input_file):
+                self._handle_binary_file(input_file)
+                return
+                
+            # Process markdown file
+            with open(input_file, 'r', encoding='utf-8') as f:
                 content = f.read()
+                
+            # Process the markdown content
+            processed_content = self._process_markdown(content)
             
-            # Process markdown content
-            processed_content = self.markdown_handler.process_markdown(content, input_path)
-            
-            # Process attachments if they exist
-            if attachments_dir.exists() and attachments_dir.is_dir():
-                logger.info(f"Processing attachments directory: {attachments_dir}")
-                
-                # Create output attachments directory
-                output_attachments_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Track link updates
-                link_updates = {}
-                
-                # Process each file in attachments directory
-                for file_path in attachments_dir.glob('**/*'):
-                    if file_path.is_file():
-                        try:
-                            # Get relative path to maintain directory structure
-                            rel_path = file_path.relative_to(attachments_dir)
-                            output_file = output_attachments_dir / rel_path
-                            
-                            # Create parent directories if needed
-                            output_file.parent.mkdir(parents=True, exist_ok=True)
-                            
-                            # Process based on file type
-                            suffix = file_path.suffix.lower()
-                            if suffix in ['.pdf']:
-                                output_file = output_file.with_suffix('.md')
-                                output_file = self.markdown_handler.convert_document(file_path, output_file)
-                                self.summary.add_processed('pdf', file_path)
-                            elif suffix in ['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls', '.csv']:
-                                output_file = output_file.with_suffix('.md')
-                                output_file = self.markdown_handler.convert_document(file_path, output_file)
-                                self.summary.add_processed('office', file_path)
-                            elif suffix in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic']:
-                                output_file = self.image_processor.process(file_path, output_file)
-                                self.summary.add_processed('image', file_path)
-                            else:
-                                # Just copy other files
-                                shutil.copy2(file_path, output_file)
-                                self.summary.add_processed('other', file_path)
-                            
-                            # Update link if file was converted
-                            if output_file.suffix != file_path.suffix:
-                                old_rel = rel_path.as_posix()
-                                new_rel = output_file.relative_to(output_attachments_dir).as_posix()
-                                link_updates[old_rel] = new_rel
-                                
-                        except Exception as e:
-                            logger.error(f"Failed to process attachment {file_path.name}: {e}")
-                            self.summary.add_skipped('error', file_path)
-                
-                # Update links in markdown content if needed
-                if link_updates:
-                    for old_path, new_path in link_updates.items():
-                        processed_content = processed_content.replace(old_path, new_path)
-            
-            # Write processed content
-            with open(output_path, 'w', encoding='utf-8') as f:
+            # Write the processed content
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(processed_content)
-            
-            return output_path
-            
+                
         except Exception as e:
-            logger.error(f"Failed to process {input_path}: {e}")
-            self.summary.add_skipped('error', input_path)
-            raise ProcessingError(f"Failed to process {input_path}: {e}") from e
+            logger.error(f"Failed to process {input_file}: {e}")
+            raise
+            
+    def _is_binary_file(self, file_path: Path) -> bool:
+        """Check if a file is binary.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            bool: True if file is binary, False otherwise
+        """
+        # Common binary file extensions
+        binary_extensions = {
+            # Images
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.webp',
+            # Office documents
+            '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf',
+            # Other
+            '.zip', '.rar', '.7z', '.tar', '.gz'
+        }
+        return file_path.suffix.lower() in binary_extensions
+        
+    def _handle_binary_file(self, file_path: Path) -> None:
+        """Handle a binary file by moving it to the appropriate processing directory.
+        
+        Args:
+            file_path: Path to the binary file
+        """
+        # Determine the appropriate directory based on file type
+        suffix = file_path.suffix.lower()
+        
+        if suffix in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.webp'}:
+            # Image files go to images/original
+            target_dir = Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR'))
+        elif suffix in {'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'}:
+            # Office documents go to office/assets
+            target_dir = Path(os.getenv('NOVA_OFFICE_ASSETS_DIR'))
+        else:
+            # Other binary files are not processed
+            logger.warning(f"Skipping unsupported binary file: {file_path}")
+            return
+            
+        # Create target directory if it doesn't exist
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy the file to the appropriate directory
+        target_path = target_dir / file_path.name
+        shutil.copy2(file_path, target_path)
+        logger.info(f"Moved binary file {file_path} to {target_path}")
+        
+    def _process_markdown(self, content: str) -> str:
+        """Process markdown content.
+        
+        Args:
+            content: Markdown content to process
+            
+        Returns:
+            str: Processed markdown content
+        """
+        # TODO: Implement markdown processing
+        return content
     
     def _process_pdf(self, input_path: Path, output_path: Path) -> Path:
         """Process a PDF file.

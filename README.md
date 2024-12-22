@@ -124,22 +124,99 @@ Basic usage:
 
 ## Directory Structure
 
+The Nova Document Processor uses a carefully organized directory structure to manage input files, processing stages, and final output. All paths are configurable through environment variables.
+
+### Base Structure
 ```
-nova/
-├── input/                    # Source files
-├── output/                   # Final output
-└── processing/              # Processing workspace
-    ├── phases/             # Phase-specific output
-    ├── images/             # Image processing
+${NOVA_BASE_DIR}/
+├── _NovaInput/              # Source documents and attachments
+├── _NovaOutput/             # Final processed output
+└── _NovaProcessing/         # Processing workspace and intermediates
+    ├── .state/             # Processing state and tracking
+    ├── phases/             # Phase-specific processing
+    │   ├── markdown_parse/     # Initial markdown parsing (markdown files only)
+    │   └── markdown_consolidate/  # Consolidated output
+    ├── images/             # Image processing workspace
     │   ├── original/      # Original images
     │   ├── processed/     # Optimized images
-    │   ├── metadata/      # Image metadata
-    │   └── cache/         # API responses
+    │   ├── metadata/      # Image metadata and descriptions
+    │   └── cache/         # OpenAI API response cache
     ├── office/            # Office document processing
-    │   ├── assets/       # Extracted assets
-    │   └── temp/         # Processing workspace
-    └── temp/              # Temporary files
+    │   ├── assets/       # Extracted document assets
+    │   └── temp/         # Conversion workspace
+    └── temp/              # General temporary files
 ```
+
+### Directory Purposes
+
+#### Input/Output
+- `_NovaInput/`: Place source documents here. Supports markdown files with embedded content, images, and office documents
+- `_NovaOutput/`: Contains the final processed output with converted and optimized content
+
+#### Processing Workspace (`_NovaProcessing/`)
+- `.state/`: Tracks processing status, file hashes, and modification times
+- `phases/`: Contains phase-specific processing outputs
+  - `markdown_parse/`: Initial parsing of markdown and conversion of other formats (contains only markdown files)
+  - `markdown_consolidate/`: Final consolidated markdown output
+- `images/`: Handles all image-related processing
+  - `original/`: Stores original images in their source format
+  - `processed/`: Contains optimized and converted images
+  - `metadata/`: Stores image metadata and AI-generated descriptions
+  - `cache/`: Caches API responses for image processing
+- `office/`: Manages office document processing
+  - `assets/`: Stores extracted assets from office documents
+  - `temp/`: Temporary workspace for document conversion
+- `temp/`: General temporary files that are cleaned up after processing
+
+### Environment Variables
+
+The directory structure is configured through environment variables:
+```bash
+# Base directories
+NOVA_BASE_DIR="/path/to/base"
+NOVA_INPUT_DIR="${NOVA_BASE_DIR}/_NovaInput"
+NOVA_OUTPUT_DIR="${NOVA_BASE_DIR}/_NovaOutput"
+NOVA_PROCESSING_DIR="${NOVA_BASE_DIR}/_NovaProcessing"
+NOVA_TEMP_DIR="${NOVA_PROCESSING_DIR}/temp"
+
+# Phase directories
+NOVA_PHASE_MARKDOWN_PARSE="${NOVA_PROCESSING_DIR}/phases/markdown_parse"
+
+# Image directories
+NOVA_ORIGINAL_IMAGES_DIR="${NOVA_PROCESSING_DIR}/images/original"
+NOVA_PROCESSED_IMAGES_DIR="${NOVA_PROCESSING_DIR}/images/processed"
+NOVA_IMAGE_METADATA_DIR="${NOVA_PROCESSING_DIR}/images/metadata"
+NOVA_IMAGE_CACHE_DIR="${NOVA_PROCESSING_DIR}/images/cache"
+
+# Office directories
+NOVA_OFFICE_ASSETS_DIR="${NOVA_PROCESSING_DIR}/office/assets"
+NOVA_OFFICE_TEMP_DIR="${NOVA_PROCESSING_DIR}/office/temp"
+```
+
+### File Management
+
+- **Input Files**: Place all source files in `_NovaInput/`. The directory structure within input is preserved in the output.
+- **Intermediate Files**: All processing artifacts are contained within `_NovaProcessing/` and its subdirectories.
+- **Temporary Files**: Automatically cleaned up after processing from the `temp/` directories.
+- **Cache Management**: Image processing results are cached in `images/cache/` to avoid redundant API calls.
+- **State Tracking**: Processing state is maintained in `.state/` to support incremental processing.
+
+### Best Practices
+
+1. **Input Organization**
+   - Keep related files together in subdirectories
+   - Use consistent naming conventions
+   - Include necessary attachments in the same directory
+
+2. **Output Handling**
+   - Treat `_NovaOutput/` as read-only
+   - Don't manually modify processed files
+   - Use `--force` to regenerate output if needed
+
+3. **Cleanup**
+   - Temporary files are automatically managed
+   - Cache can be cleared with `--clean-cache`
+   - Use `--clean-all` to remove all processing artifacts
 
 ## Contributing
 
