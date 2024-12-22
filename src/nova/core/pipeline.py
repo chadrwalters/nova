@@ -68,6 +68,11 @@ class Pipeline:
                 info("Starting MARKDOWN_CONSOLIDATE phase...")
                 self._run_markdown_consolidate_phase()
             
+            # Phase 3: MARKDOWN_AGGREGATE
+            if self.config.processors['markdown'].enabled:
+                info("Starting MARKDOWN_AGGREGATE phase...")
+                self._run_markdown_aggregate_phase()
+            
             success("Pipeline processing complete")
             
         except Exception as e:
@@ -238,6 +243,79 @@ class Pipeline:
             self.state.update_file_state(
                 phase='markdown_consolidate',
                 file_path='consolidation',
+                status='failed',
+                error=str(e)
+            )
+
+    def _run_markdown_aggregate_phase(self) -> None:
+        """
+        Run the markdown aggregate phase, merging all consolidated markdown files
+        into a single markdown file.
+        """
+        input_dir = Path(self.config.paths.phase_dirs['markdown_consolidate'])
+        output_dir = Path(self.config.paths.phase_dirs['markdown_aggregate'])
+        state_dir = Path(self.config.paths.state_dir) / 'markdown_aggregate'
+
+        # Create phase directories
+        output_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Gather all markdown files
+            input_files = []
+            for ext in self.config.processors['markdown'].extensions:
+                input_files.extend(input_dir.glob(f'**/*{ext}'))
+
+            if not input_files:
+                warning("No markdown files found for aggregation")
+                return
+
+            # Single output file
+            output_filename = self.config.processors['markdown'].aggregate.output_filename
+            merged_output_path = output_dir / output_filename
+
+            with merged_output_path.open("w", encoding="utf-8") as merged_output:
+                # Optional: intro header
+                merged_output.write("# Aggregated Markdown Files\n\n")
+
+                for md_file in input_files:
+                    try:
+                        rel_path = md_file.relative_to(input_dir)
+                        with md_file.open("r", encoding="utf-8") as f:
+                            file_content = f.read()
+
+                        if self.config.processors['markdown'].aggregate.add_separators:
+                            merged_output.write("\n\n---\n\n")
+                        
+                        if self.config.processors['markdown'].aggregate.include_file_headers:
+                            merged_output.write(f"## Start of file: {rel_path}\n\n")
+                        
+                        merged_output.write(file_content)
+                        
+                        if self.config.processors['markdown'].aggregate.include_file_headers:
+                            merged_output.write(f"\n\n## End of file: {rel_path}\n")
+
+                        self.state.update_file_state(
+                            phase='markdown_aggregate',
+                            file_path=str(rel_path),
+                            status='completed'
+                        )
+                    except Exception as e:
+                        error(f"Failed to merge {md_file}: {e}")
+                        self.state.update_file_state(
+                            phase='markdown_aggregate',
+                            file_path=str(md_file),
+                            status='failed',
+                            error=str(e)
+                        )
+
+            success(f"All markdown files merged into {merged_output_path}")
+
+        except Exception as e:
+            error(f"Failed to run markdown aggregate phase: {e}")
+            self.state.update_file_state(
+                phase='markdown_aggregate',
+                file_path='aggregate',
                 status='failed',
                 error=str(e)
             )
