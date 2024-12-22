@@ -29,6 +29,9 @@ from ..core.summary import ProcessingSummary
 logger = get_logger(__name__)
 console = Console()
 
+# Create logs directory
+Path('logs').mkdir(exist_ok=True)
+
 @dataclass
 class ImageMetadata:
     """Metadata for processed images."""
@@ -200,7 +203,7 @@ class ImageProcessor(BaseProcessor):
             test_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
             
             response = self.openai_client.chat.completions.create(
-                model="gpt-4-turbo-2024-04-09",  # Use turbo model for testing
+                model="gpt-4-vision-preview",  # Use vision model for testing
                 messages=[{
                     "role": "user",
                     "content": [
@@ -234,6 +237,7 @@ class ImageProcessor(BaseProcessor):
     def _generate_image_description(self, image_path: Path) -> Optional[str]:
         """Generate a description for an image using OpenAI's vision model."""
         if not self.vision_api_available or not self.openai_client:
+            logger.warning("Vision API not available - skipping description generation")
             return None
             
         try:
@@ -242,7 +246,7 @@ class ImageProcessor(BaseProcessor):
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
                 
             response = self.openai_client.chat.completions.create(
-                model="gpt-4-turbo-2024-04-09",
+                model="gpt-4-vision-preview",
                 messages=[
                     {
                         "role": "user",
@@ -251,7 +255,8 @@ class ImageProcessor(BaseProcessor):
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                    "url": f"data:image/jpeg;base64,{base64_image}",
+                                    "detail": "high"
                                 }
                             }
                         ]
@@ -264,10 +269,22 @@ class ImageProcessor(BaseProcessor):
             description = response.choices[0].message.content
             if description:
                 self.stats['descriptions_generated'] += 1
+                
+                # Use correct path from nova_config
+                metadata_dir = self.nova_config.paths.image_dirs['metadata']
+                metadata_path = metadata_dir / f"{image_path.stem}_description.md"
+                metadata_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(metadata_path, 'w') as f:
+                    f.write(f"# Image Description: {image_path.name}\n\n")
+                    f.write(description)
+                    
+                logger.info(f"Saved image description to {metadata_path}")
+                
             return description
             
         except Exception as e:
-            logger.error(f"Failed to generate image description: {str(e)}")
+            logger.error(f"Failed to generate image description: {str(e)}", exc_info=True)
             self.stats['errors'] += 1
             return None
 
