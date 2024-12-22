@@ -21,8 +21,10 @@ from rich.console import Console
 from .base import BaseProcessor
 from .components.image_handlers import OpenAIImageHandler
 from ..core.config import ProcessorConfig, NovaConfig
-from ..core.errors import ProcessingError
+from ..core.errors import ProcessingError, ConfigurationError
 from ..core.logging import get_logger
+from ..core.openai import setup_openai_client
+from ..core.summary import ProcessingSummary
 
 logger = get_logger(__name__)
 console = Console()
@@ -44,21 +46,19 @@ class ImageMetadata:
 class ImageProcessor(BaseProcessor):
     """Handles image processing operations."""
 
-    def __init__(self, config: NovaConfig, openai_client: Optional[OpenAI] = None, summary: Optional['ProcessingSummary'] = None):
+    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
         """Initialize processor.
         
         Args:
-            config: Nova configuration
-            openai_client: Optional OpenAI client instance
-            summary: Optional processing summary instance
+            processor_config: Processor-specific configuration
+            nova_config: Global Nova configuration
         """
-        super().__init__(config)
-        self.image_config = config.image
+        super().__init__(processor_config, nova_config)
+        self.image_config = processor_config
         self.vision_api_available = False
-        self.summary = summary
         
         # Initialize OpenAI client
-        self._init_openai_client(openai_client)
+        self._init_openai_client()
         
         # Initialize stats
         self.stats = {
@@ -81,26 +81,32 @@ class ImageProcessor(BaseProcessor):
     def _setup_directories(self) -> None:
         """Create required directories."""
         # Create base directory first
-        self.image_config.base_dir.mkdir(parents=True, exist_ok=True)
+        base_dir = self.nova_config.paths.processing_dir / 'images'
+        base_dir.mkdir(parents=True, exist_ok=True)
         
         # Create subdirectories
-        self.image_config.original_dir.mkdir(parents=True, exist_ok=True)
-        self.image_config.processed_dir.mkdir(parents=True, exist_ok=True)
-        self.image_config.metadata_dir.mkdir(parents=True, exist_ok=True)
-        self.image_config.cache_dir.mkdir(parents=True, exist_ok=True)
+        original_dir = base_dir / 'original'
+        processed_dir = base_dir / 'processed'
+        metadata_dir = base_dir / 'metadata'
+        cache_dir = base_dir / 'cache'
+        
+        original_dir.mkdir(parents=True, exist_ok=True)
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
         
         logger.debug("Created image processing directories", extra={
-            "base_dir": str(self.image_config.base_dir),
-            "original_dir": str(self.image_config.original_dir),
-            "processed_dir": str(self.image_config.processed_dir),
-            "metadata_dir": str(self.image_config.metadata_dir),
-            "cache_dir": str(self.image_config.cache_dir)
+            "base_dir": str(base_dir),
+            "original_dir": str(original_dir),
+            "processed_dir": str(processed_dir),
+            "metadata_dir": str(metadata_dir),
+            "cache_dir": str(cache_dir)
         })
 
     def _get_cache_path(self, image_path: Path) -> Path:
         """Get cache file path for an image."""
         cache_name = f"{image_path.stem}_{image_path.stat().st_mtime}.json"
-        return self.image_config.cache_dir / cache_name
+        return self.nova_config.paths.image_dirs['cache'] / cache_name
 
     def _clear_cache(self) -> None:
         """Clear the cache directory."""
@@ -350,24 +356,90 @@ class ImageProcessor(BaseProcessor):
             shutil.copy2(input_path, output_path)
             return output_path
 
-    def process(self, input_path: Path) -> Path:
+    def process(self, input_path: Path, output_path: Path) -> Path:
         """Process an image file.
         
         Args:
-            input_path: Path to the image file
+            input_path: Path to input image
+            output_path: Path to output image
             
         Returns:
-            Path to the processed image file
+            Path to processed image
         """
-        output_dir = Path(self.nova_config.paths.output_dir) / input_path.relative_to(Path(self.nova_config.paths.input_dir))
-        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Create output directory if needed
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Process image based on type
+            suffix = input_path.suffix.lower()
+            if suffix in ['.heic', '.heif']:
+                # Convert HEIC to JPEG
+                heif_file = pillow_heif.read_heif(str(input_path))
+                img = Image.frombytes(
+                    heif_file.mode,
+                    heif_file.size,
+                    heif_file.data,
+                    "raw",
+                    heif_file.mode,
+                    heif_file.stride,
+                )
+                output_path = output_path.with_suffix('.jpg')
+                img = img.convert('RGB')
+                self.stats['heic_conversions'] += 1
+                img.save(output_path, optimize=True, quality=85)
+            else:
+                # Process other image types
+                with Image.open(input_path) as img:
+                    img.save(output_path, optimize=True, quality=85)
+            
+            # Update stats
+            self.stats['images_processed'] += 1
+            
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process {input_path}: {e}")
+            self.stats['errors'] += 1
+            raise ProcessingError(f"Failed to process {input_path}: {e}") from e
+
+    def _setup(self) -> None:
+        """Setup image processor requirements."""
+        # Initialize OpenAI client
+        try:
+            self.openai_client = setup_openai_client()
+            if self.openai_client:
+                logger.info("OpenAI integration enabled - image descriptions will be generated")
+            else:
+                logger.warning("OpenAI integration disabled - image descriptions will be limited")
+        except ConfigurationError as e:
+            logger.error(f"OpenAI configuration error: {str(e)}")
+            logger.warning("Continuing without OpenAI integration - image descriptions will be limited")
+            self.openai_client = None
         
-        metadata = self.process_image(input_path, output_dir.parent)
-        if metadata:
-            # Save metadata
-            metadata_path = output_dir.with_suffix('.json')
-            with open(metadata_path, 'w') as f:
-                json.dump(metadata.__dict__, f, indent=2)
-            return Path(metadata.processed_path)
+        # Initialize processing summary
+        self.summary = ProcessingSummary()
         
-        raise ProcessingError(f"Failed to process image: {input_path}")
+        # Initialize stats
+        self.stats = {
+            'api_calls': 0,
+            'api_time_total': 0.0,
+            'cache_hits': 0,
+            'images_processed': 0,
+            'images_with_descriptions': 0,
+            'images_failed': 0
+        }
+
+    def _init_openai_client(self) -> None:
+        """Initialize OpenAI client."""
+        try:
+            self.openai_client = setup_openai_client()
+            if self.openai_client:
+                logger.info("OpenAI client initialized successfully")
+                self.vision_api_available = True
+            else:
+                logger.warning("OpenAI client not available - image descriptions will be limited")
+                self.vision_api_available = False
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI client: {e}")
+            self.vision_api_available = False
+            self.openai_client = None

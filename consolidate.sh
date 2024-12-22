@@ -48,20 +48,21 @@ show_help() {
     echo "Options:"
     echo "  --force, -f        Force processing of all files"
     echo "  --dry-run, -n      Show what would be processed without processing"
-    echo "  --show-state, -s   Display current processing state (simple|detailed|json)"
+    echo "  --show-state, -s   Display current processing state"
     echo "  --scan             Show directory structure"
+    echo "  --reset            Reset processing state"
+    echo "  --log-level        Set logging level (DEBUG|INFO|WARNING|ERROR)"
     echo "  --help, -h         Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0                      # Normal processing"
     echo "  $0 --force             # Force reprocess all files"
     echo "  $0 --dry-run           # Show what would be processed"
-    echo "  $0 --show-state simple # Show current state"
+    echo "  $0 --show-state        # Show current state"
     echo "  $0 --scan              # Show directory structure"
 }
 
 # Parse command line arguments
-COMMAND="process"
 ARGS=""
 
 while [[ $# -gt 0 ]]; do
@@ -75,17 +76,24 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --show-state|-s)
-            if [ -z "$2" ] || [[ "$2" == -* ]]; then
-                ARGS="$ARGS --show-state simple"
-                shift
-            else
-                ARGS="$ARGS --show-state $2"
-                shift 2
-            fi
+            ARGS="$ARGS --show-state"
+            shift
             ;;
         --scan)
-            COMMAND="scan"
+            ARGS="$ARGS --scan"
             shift
+            ;;
+        --reset)
+            ARGS="$ARGS --reset"
+            shift
+            ;;
+        --log-level)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo "Error: --log-level requires a value"
+                exit 1
+            fi
+            ARGS="$ARGS --log-level $2"
+            shift 2
             ;;
         --help|-h)
             show_help
@@ -104,7 +112,6 @@ echo
 echo "───────────────────────────────────── Nova Document Processor ────────────────────────────────────"
 echo
 
-# Run the processor
 # Run the processor with environment variables and any passed arguments
 NOVA_BASE_DIR="$NOVA_BASE_DIR" \
 NOVA_INPUT_DIR="$NOVA_INPUT_DIR" \
@@ -115,7 +122,7 @@ NOVA_TEMP_DIR="$NOVA_TEMP_DIR" \
 NOVA_PHASE_MARKDOWN_PARSE="$NOVA_PHASE_MARKDOWN_PARSE" \
 NOVA_OFFICE_ASSETS_DIR="$NOVA_OFFICE_ASSETS_DIR" \
 NOVA_OFFICE_TEMP_DIR="$NOVA_OFFICE_TEMP_DIR" \
-poetry run python -m src.cli.main "$COMMAND" "$NOVA_INPUT_DIR" $ARGS
+poetry run python -m src.nova.cli.main $ARGS
 
 exit_code=$?
 
