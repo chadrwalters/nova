@@ -47,3 +47,82 @@ processing:
   max_retries: 3
   max_file_size: 100  # MB
   max_total_size: 500  # MB
+
+# Pipeline Configuration
+pipeline:
+  phases:
+    - MARKDOWN_PARSE:
+        description: "Parse and process markdown files with embedded content"
+        output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
+        processor: "MarkdownProcessor"
+        file_size_behavior: "Maintains original input file sizes"
+        components:
+          - markdown_processor:
+              parser: "markdown-it"
+              config:
+                typographer: true
+                plugins:
+                  - table
+                  - strikethrough
+                  - linkify
+                  - image
+    
+    - MARKDOWN_CONSOLIDATE:
+        description: "Consolidate markdown files with their attachments"
+        output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+        processor: "MarkdownConsolidateProcessor"
+        file_size_behavior: "Maintains individual file sizes while adding metadata and attachments"
+        components:
+          - consolidate_processor:
+              config:
+                group_by_root: true
+                handle_attachments: true
+                preserve_structure: true
+    
+    - MARKDOWN_AGGREGATE:
+        description: "Aggregate all consolidated markdown files into a single file"
+        output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+        processor: "MarkdownAggregateProcessor"
+        file_size_behavior: "Creates single output file with size approximately equal to sum of input files"
+        components:
+          - aggregate_processor:
+              config:
+                output_filename: "all_merged_markdown.md"
+                include_file_headers: true
+                add_separators: true
+
+    - MARKDOWN_SPLIT_THREEFILES:
+        description: "Split aggregated markdown into separate files for summary, raw notes, and attachments"
+        output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+        processor: "ThreeFileSplitProcessor"
+        file_size_behavior: "Creates three output files with combined size approximately equal to input file"
+        components:
+          - three_file_split_processor:
+              config:
+                output_files:
+                  summary: "summary.md"
+                  raw_notes: "raw_notes.md"
+                  attachments: "attachments.md"
+                section_markers:
+                  summary: "---SUMMARY---"
+                  raw_notes: "---RAW NOTES---"
+                  attachments: "---ATTACHMENTS---"
+                cross_linking: true
+                preserve_headers: true
+              handlers:
+                - SplitHandler:
+                    create_summary: true
+                    create_raw_notes: true
+                    create_attachments: true
+                    link_references: true
+                    preserve_metadata: true
+
+# Directory Structure
+directory_structure:
+  base: "${NOVA_BASE_DIR}"
+  required_dirs:
+    phase_dirs:
+      - markdown_parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
+      - markdown_consolidate: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+      - markdown_aggregate: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+      - markdown_split: "${NOVA_PHASE_MARKDOWN_SPLIT}"
