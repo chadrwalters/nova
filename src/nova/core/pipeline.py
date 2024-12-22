@@ -17,7 +17,6 @@ from ..processors.markdown_processor import MarkdownProcessor
 from ..processors.markdown_consolidate import MarkdownConsolidateProcessor
 from ..processors.image_processor import ImageProcessor
 from ..processors.office_processor import OfficeProcessor
-from ..processors.components.markdown_handlers import ConsolidationHandler
 
 class Pipeline:
     """Main processing pipeline."""
@@ -151,8 +150,14 @@ class Pipeline:
                     try:
                         # Get relative path but preserve directory structure
                         relative_path = input_file.relative_to(input_dir)
-                        output_path = output_dir / relative_path
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Skip if this is a file in an attachments directory
+                        if relative_path.parent.name == relative_path.parent.parent.stem:
+                            progress.advance(task)
+                            continue
+                        
+                        # For consolidation phase, we want all files in the root
+                        output_path = output_dir / relative_path.name
                         
                         # Process the file and its attachments
                         self.processors['markdown_consolidate'].process(input_file, output_path)
