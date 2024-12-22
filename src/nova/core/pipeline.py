@@ -143,21 +143,31 @@ class Pipeline:
                 warning("No markdown files found for consolidation")
                 return
             
-            with create_progress() as progress:
-                task = progress.add_task("Consolidating markdown files", total=len(input_files))
+            # Group files by their parent directory
+            file_groups = {}
+            for input_file in input_files:
+                relative_path = input_file.relative_to(input_dir)
                 
-                for input_file in input_files:
+                # If file is in a directory with the same name as the file,
+                # it's an attachment and will be processed with its parent file
+                if relative_path.parent.name == relative_path.parent.parent.stem:
+                    continue
+                
+                # If file is named same as its parent directory,
+                # it's the main file for that directory
+                if input_file.stem == input_file.parent.name:
+                    file_groups[input_file] = 'main'
+                else:
+                    # Regular file, not in a special directory
+                    file_groups[input_file] = 'regular'
+            
+            with create_progress() as progress:
+                task = progress.add_task("Consolidating markdown files", total=len(file_groups))
+                
+                for input_file, file_type in file_groups.items():
                     try:
-                        # Get relative path but preserve directory structure
-                        relative_path = input_file.relative_to(input_dir)
-                        
-                        # Skip if this is a file in an attachments directory
-                        if relative_path.parent.name == relative_path.parent.parent.stem:
-                            progress.advance(task)
-                            continue
-                        
-                        # For consolidation phase, we want all files in the root
-                        output_path = output_dir / relative_path.name
+                        # Get the output path - always in root of output directory
+                        output_path = output_dir / input_file.name
                         
                         # Process the file and its attachments
                         self.processors['markdown_consolidate'].process(input_file, output_path)
@@ -165,7 +175,7 @@ class Pipeline:
                         # Update state
                         self.state.update_file_state(
                             phase='markdown_consolidate',
-                            file_path=str(relative_path),
+                            file_path=str(input_file.relative_to(input_dir)),
                             status='completed'
                         )
                         
@@ -175,7 +185,7 @@ class Pipeline:
                         error(f"Failed to consolidate {input_file}: {e}")
                         self.state.update_file_state(
                             phase='markdown_consolidate',
-                            file_path=str(relative_path),
+                            file_path=str(input_file.relative_to(input_dir)),
                             status='failed',
                             error=str(e)
                         )
