@@ -4,7 +4,6 @@ import os
 import shutil
 from pathlib import Path
 from typing import Set, Dict, List, Optional
-from dataclasses import dataclass, field
 import logging
 import sys
 import tempfile
@@ -31,17 +30,18 @@ from rich.progress import (
 )
 from PIL import Image
 from openai import OpenAI, OpenAIError
+from pydantic import BaseModel
 
+from .base import BaseProcessor
 from .image_processor import ImageProcessor
-from ..core.state import StateManager
-from ..core.errors import ConfigurationError
-
-from rich.console import Console
-from rich.theme import Theme
-
-from tqdm import tqdm
-
 from .office_processor import OfficeProcessor
+from .components.markdown_handlers import MarkitdownHandler
+from ..core.state import StateManager
+from ..core.config import NovaConfig, ProcessorConfig
+from ..core.errors import ConfigurationError, ProcessingError, NovaError
+from ..core.logging import get_logger
+from ..core.openai import setup_openai_client
+from ..core.summary import ProcessingSummary
 
 # Filter PyMuPDF SWIG deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message="builtin type SwigPyPacked has no __module__ attribute")
@@ -59,80 +59,40 @@ try:
 except ImportError:
     PYMUPDF_SUPPORT = False
 
-from ..core.config import NovaConfig
-from ..core.errors import ProcessingError
-from ..core.logging import get_logger
-
 logger = get_logger(__name__)
 
-custom_theme = Theme({
-    'title': 'bold blue',           # Section headers
-    'path': 'cyan',                 # File paths
-    'stats': 'bold cyan',           # Statistics
-    'success': 'green',             # Success messages
-    'warning': 'yellow',            # Warnings
-    'error': 'red',                 # Errors
-    'info': 'blue',                 # Info messages
-    'highlight': 'magenta',         # Important numbers
-    'detail': 'dim white',          # Additional details
-    'cache': 'cyan',                # Cache-related info
-    'progress': 'green',            # Progress indicators
-    'skip': 'yellow'                # Skipped items
-})
-
-console = Console(theme=custom_theme)
-
-def setup_openai_client() -> Optional[OpenAI]:
-    """Initialize OpenAI client with proper error handling."""
-    # Check both possible env var names
-    openai_key = os.getenv('OPENAI_API_KEY')
-    
-    if not openai_key:
-        logger.warning("OpenAI API key not found in environment variable OPENAI_API_KEY")
-        return None
-        
-    try:
-        client = OpenAI(api_key=openai_key)
-        
-        # Test the client with a minimal request
-        response = client.chat.completions.create(
-            model="gpt-4-turbo-2024-04-09",
-            messages=[{
-                "role": "user",
-                "content": "Test connection"
-            }],
-            max_tokens=1
-        )
-        
-        logger.info("OpenAI client initialized and tested successfully")
-        return client
-        
-    except OpenAIError as e:
-        error_msg = f"OpenAI API error: {str(e)}"
-        logger.error(error_msg)
-        raise ConfigurationError(error_msg)
-        
-    except Exception as e:
-        error_msg = f"Failed to initialize OpenAI client: {str(e)}"
-        logger.error(error_msg)
-        raise ConfigurationError(error_msg)
-
-class MarkdownProcessor:
+class MarkdownProcessor(BaseProcessor):
     """Processes markdown and office documents."""
     
-    def __init__(self, config: NovaConfig):
-        """Initialize processor with configuration."""
-        self.config = config
+    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
+        """Initialize processor.
+        
+        Args:
+            processor_config: Processor-specific configuration
+            nova_config: Global Nova configuration
+        """
+        super().__init__(processor_config, nova_config)
+        self._setup()
+    
+    def _setup(self) -> None:
+        """Setup markdown processor requirements."""
         self.output_dir = Path(os.getenv('NOVA_PHASE_MARKDOWN_PARSE'))
         self.summary = ProcessingSummary()
         
-        # Configure logging first
+        # Configure logging
         log_level = os.getenv('NOVA_LOG_LEVEL', 'INFO').upper()
-        logging.getLogger().handlers = []  # Remove all handlers from root logger
+        root_logger = logging.getLogger()
+        
+        # Close and remove existing handlers
+        for handler in root_logger.handlers[:]:
+            handler.close()
+            root_logger.removeHandler(handler)
+        
+        # Add new console handler
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-        logging.getLogger().addHandler(console_handler)
-        logging.getLogger().setLevel(log_level)
+        root_logger.addHandler(console_handler)
+        root_logger.setLevel(log_level)
         
         # Configure our logger
         logger.handlers = []  # Remove all handlers
@@ -161,273 +121,254 @@ class MarkdownProcessor:
         }
         
         # Initialize markdown parser
-        self.md = MarkdownIt('commonmark', {'typographer': config.markdown.typographer})
+        self.md = MarkdownIt('commonmark', {'typographer': self.nova_config.processors['markdown'].typographer})
         self.md.enable('table')
         self.md.enable('strikethrough')
         
         # Initialize OpenAI client with proper error handling
         try:
-            openai_client = setup_openai_client()
-            if openai_client:
+            self.openai_client = setup_openai_client()
+            if self.openai_client:
                 logger.info("OpenAI integration enabled - image descriptions will be generated")
             else:
                 logger.warning("OpenAI integration disabled - image descriptions will be limited")
-        except ConfigurationError as e:
+        except NovaError as e:
             logger.error(f"OpenAI configuration error: {str(e)}")
             logger.warning("Continuing without OpenAI integration - image descriptions will be limited")
-            openai_client = None
+            self.openai_client = None
         
         # Initialize image processor
         self.image_processor = ImageProcessor(
-            config=config,
-            openai_client=openai_client,
-            summary=self.summary
+            processor_config=self.nova_config.processors['image'],
+            nova_config=self.nova_config
         )
         logger.debug(f"Initialized image processor: {self.image_processor}")
         
         # Initialize markdown handler with image processor
         self.markdown_handler = MarkitdownHandler(
-            config=config,
-            image_processor=self.image_processor,
-            output_dir=self.output_dir
+            processor_config=self.nova_config.processors['markdown'],
+            nova_config=self.nova_config,
+            image_processor=self.image_processor
         )
         logger.debug(f"Initialized markdown handler with image processor: {self.markdown_handler.image_processor}")
         
         # Initialize document converter with image support
         self.converter = MarkItDown(
-            llm_client=openai_client,
-            llm_model="gpt-4-turbo-2024-04-09" if openai_client else None
+            llm_client=self.openai_client,
+            llm_model="gpt-4-turbo-2024-04-09" if self.openai_client else None
         )
         
-        self.office_processor = OfficeProcessor()
- 
-    def _process_markdown_file(self, input_path: Path, output_path: Path) -> None:
-        """Process a markdown file."""
+        # Initialize office processor
+        self.office_processor = OfficeProcessor(
+            processor_config=self.nova_config.processors['office'],
+            nova_config=self.nova_config
+        )
+    
+    def process(self, input_path: Path, output_path: Path) -> Path:
+        """Process a markdown file and its attachments.
+        
+        Args:
+            input_path: Path to input file
+            output_path: Path to output file
+            
+        Returns:
+            Path to processed file
+        """
         try:
-            # Read the markdown content
+            # Find attachments directory (same name as markdown file without .md)
+            attachments_dir = input_path.parent / input_path.stem
+            output_attachments_dir = output_path.parent / output_path.stem
+            
+            # Read and process markdown content
             with open(input_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Process markdown content using the handler
-            processed_content, stats = self.markdown_handler.process_markdown(content, input_path)
-            
-            # Write processed markdown
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(processed_content)
-            
-            # Update summary stats
-            if stats and 'images' in stats:
-                self.stats.update(stats)
-            
-        except Exception as e:
-            raise ProcessingError(f"Failed to process markdown file {input_path}: {e}")
-
-    def process_markdown_with_attachments(self, input_path: Path, pbar: tqdm) -> None:
-        """Process a markdown file and its attachments directory if it exists."""
-        try:
-            # Process the markdown file itself
-            rel_path = input_path.relative_to(os.getenv('NOVA_INPUT_DIR'))
-            output_path = self.output_dir / rel_path
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Read the markdown content
-            with open(input_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Process markdown content using the handler
-            logger.debug(f"Processing markdown with handler: {self.markdown_handler}")
-            logger.debug(f"Original content length: {len(content)}")
-            logger.debug(f"Original content: {content[:200]}...")  # First 200 chars
-            
+            # Process markdown content
             processed_content = self.markdown_handler.process_markdown(content, input_path)
             
-            logger.debug(f"Processed content length: {len(processed_content)}")
-            logger.debug(f"Processed content: {processed_content[:200]}...")  # First 200 chars
+            # Process attachments if they exist
+            if attachments_dir.exists() and attachments_dir.is_dir():
+                logger.info(f"Processing attachments directory: {attachments_dir}")
+                
+                # Create output attachments directory
+                output_attachments_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Track link updates
+                link_updates = {}
+                
+                # Process each file in attachments directory
+                for file_path in attachments_dir.glob('**/*'):
+                    if file_path.is_file():
+                        try:
+                            # Get relative path to maintain directory structure
+                            rel_path = file_path.relative_to(attachments_dir)
+                            output_file = output_attachments_dir / rel_path
+                            
+                            # Create parent directories if needed
+                            output_file.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            # Process based on file type
+                            suffix = file_path.suffix.lower()
+                            if suffix in ['.pdf']:
+                                output_file = output_file.with_suffix('.md')
+                                output_file = self.markdown_handler.convert_document(file_path, output_file)
+                                self.summary.add_processed('pdf', file_path)
+                            elif suffix in ['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls', '.csv']:
+                                output_file = output_file.with_suffix('.md')
+                                output_file = self.markdown_handler.convert_document(file_path, output_file)
+                                self.summary.add_processed('office', file_path)
+                            elif suffix in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic']:
+                                output_file = self.image_processor.process(file_path, output_file)
+                                self.summary.add_processed('image', file_path)
+                            else:
+                                # Just copy other files
+                                shutil.copy2(file_path, output_file)
+                                self.summary.add_processed('other', file_path)
+                            
+                            # Update link if file was converted
+                            if output_file.suffix != file_path.suffix:
+                                old_rel = rel_path.as_posix()
+                                new_rel = output_file.relative_to(output_attachments_dir).as_posix()
+                                link_updates[old_rel] = new_rel
+                                
+                        except Exception as e:
+                            logger.error(f"Failed to process attachment {file_path.name}: {e}")
+                            self.summary.add_skipped('error', file_path)
+                
+                # Update links in markdown content if needed
+                if link_updates:
+                    for old_path, new_path in link_updates.items():
+                        processed_content = processed_content.replace(old_path, new_path)
             
-            # Write processed markdown
+            # Write processed content
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(processed_content)
             
-            # Process attachments directory if it exists
-            input_attachments_dir = input_path.parent / input_path.stem
-            if input_attachments_dir.exists() and input_attachments_dir.is_dir():
-                output_attachments_dir = output_path.parent / output_path.stem
-                output_attachments_dir.mkdir(parents=True, exist_ok=True)
-                
-                for attachment in input_attachments_dir.iterdir():
-                    if attachment.is_file():
-                        suffix = attachment.suffix.lower()
-                        filename = attachment.name
-                        
-                        # Handle different file types
-                        if suffix in {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.HEIC'}:
-                            try:
-                                start_time = time.time()
-                                metadata = self.image_processor.process_image(attachment, output_attachments_dir)
-                                
-                                # Update stats
-                                self.stats['api_calls'] = self.image_processor.stats['api_calls']
-                                self.stats['api_time_total'] = self.image_processor.stats['api_time_total']
-                                self.stats['cache_hits'] = self.image_processor.stats['cache_hits']
-                                self.stats['images_processed'] = self.image_processor.stats['images_processed']
-                                
-                                # Update status but don't print
-                                processing_time = time.time() - start_time
-                                if processing_time >= 0.1:  # Only update for non-cached images
-                                    display_name = os.path.basename(metadata.processed_path)
-                                    if len(display_name) > 30:
-                                        display_name = display_name[:27] + "..."
-                                    tqdm.write(f"Processed {display_name} ({processing_time:.1f}s)")
-                                
-                            except Exception as e:
-                                warning = f"Could not process image {attachment.name}"
-                                console.print(f"\n[warning]Warning:[/] [path]{warning}[/]")
-                                console.print(f"[detail]Location:[/] [path]{rel_path}[/]")
-                                console.print(f"[detail]Reason:[/] [warning]{str(e)}[/]")
-                                self.summary.add_warning(f"{warning} - {str(e)}")
-                                self.summary.add_skipped('error', attachment)
-                
-                        elif suffix in {'.pdf', '.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls'}:
-                            try:
-                                # Use the dedicated office document processor
-                                result = self._process_office_document(attachment, output_attachments_dir)
-                                
-                                # Save the markdown output
-                                output_md = output_attachments_dir / f"{attachment.stem}.md"
-                                with open(output_md, 'w', encoding='utf-8') as f:
-                                    f.write(result)
-                                
-                                self.summary.add_processed('office', attachment)
-                                
-                            except Exception as e:
-                                self.summary.add_warning(f"Failed to process document {attachment.name}: {e}")
-                                self.summary.add_skipped('error', attachment)
-                                
-                        else:
-                            # Copy other files directly
-                            try:
-                                shutil.copy2(attachment, output_attachments_dir / attachment.name)
-                                self.summary.add_processed('text', attachment)
-                            except Exception as e:
-                                self.summary.add_warning(f"Failed to copy file {attachment.name}: {e}")
-                                self.summary.add_skipped('error', attachment)
-            
-            self.summary.add_processed('markdown', input_path)
+            return output_path
             
         except Exception as e:
-            error = f"Failed to process markdown file {input_path.name}: {str(e)}"
-            print(f"\nError: {error}")
-            self.summary.add_error(error)
+            logger.error(f"Failed to process {input_path}: {e}")
             self.summary.add_skipped('error', input_path)
-
-    def process_directory(self, input_dir: Path) -> None:
-        """Process all files in a directory."""
-        try:
-            # Track overall stats
-            stats = {
-                'markdown': 0,
-                'office': 0,
-                'text': 0,
-                'skipped': 0,
-                'errors': [],
-                'images': {
-                    'total': 0,
-                    'processed': 0,
-                    'with_description': 0,
-                    'failed': 0,
-                    'heic_converted': 0,
-                    'total_original_size': 0,
-                    'total_processed_size': 0,
-                    'formats': {}
-                }
-            }
+            raise ProcessingError(f"Failed to process {input_path}: {e}") from e
+    
+    def _process_pdf(self, input_path: Path, output_path: Path) -> Path:
+        """Process a PDF file.
+        
+        Args:
+            input_path: Path to input file
+            output_path: Path to output file
             
-            # Process each file
-            for file_path in self._get_input_files(input_dir):
-                try:
-                    # Get relative path for output
-                    rel_path = file_path.relative_to(input_dir)
-                    output_path = self.output_dir / rel_path
-                    
-                    # Create output directory
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    # Process based on file type
-                    if self._is_markdown_file(file_path):
-                        stats['markdown'] += 1
-                        content = self._read_file(file_path)
-                        processed_content, file_stats = self.markdown_handler.process_markdown(content, file_path)
-                        if file_stats and 'images' in file_stats:
-                            stats['images']['total'] += file_stats['images']['total']
-                            stats['images']['processed'] += file_stats['images']['processed']
-                            stats['images']['with_description'] += file_stats['images']['with_description']
-                            stats['images']['failed'] += file_stats['images']['failed']
-                            stats['images']['heic_converted'] += file_stats['images']['heic_converted']
-                            stats['images']['total_original_size'] += file_stats['images']['total_original_size']
-                            stats['images']['total_processed_size'] += file_stats['images']['total_processed_size']
-                            # Update format counts
-                            for fmt, count in file_stats['images'].get('formats', {}).items():
-                                stats['images']['formats'][fmt] = stats['images']['formats'].get(fmt, 0) + count
-                        self._write_file(output_path, processed_content)
-                        
-                    elif self._is_office_file(file_path):
-                        stats['office'] += 1
-                        content = self.markdown_handler.convert_document(file_path)
-                        self._write_file(output_path.with_suffix('.md'), content)
-                        
-                    else:
-                        stats['text'] += 1
-                        content = self._read_file(file_path)
-                        self._write_file(output_path, content)
-                        
-                except Exception as e:
-                    error = f"Could not process {file_path.name} - {str(e)}"
-                    stats['errors'].append(error)
-                    stats['skipped'] += 1
-                    logger.error(error)
-                    continue
+        Returns:
+            Path to processed file
+        """
+        # Convert PDF to markdown using markitdown
+        md_output = output_path.with_suffix('.md')
+        content = self.markdown_handler.convert_document(input_path)
+        
+        # Create output directory if needed
+        md_output.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write markdown output
+        with open(md_output, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        return md_output
+    
+    def _process_office_doc(self, input_path: Path, output_path: Path) -> Path:
+        """Process an office document.
+        
+        Args:
+            input_path: Path to input file
+            output_path: Path to output file
             
-            # Print processing summary
-            console.print("\n\n=== Processing Summary ===\n")
-            
-            console.print("[title]Processed files:[/]")
-            console.print(f"  [stats]Markdown:[/] [highlight]{stats['markdown']}[/] files")
-            console.print(f"  [stats]Office:[/] [highlight]{stats['office']}[/] files")
-            console.print(f"  [stats]Text:[/] [highlight]{stats['text']}[/] files")
-            
-            if stats['images']['total'] > 0:
-                size_reduction = ((stats['images']['total_original_size'] - stats['images']['total_processed_size']) 
-                                / stats['images']['total_original_size'] * 100) if stats['images']['total_processed_size'] > 0 else 0
+        Returns:
+            Path to processed file
+        """
+        # Convert office doc to markdown using markitdown
+        md_output = output_path.with_suffix('.md')
+        
+        # Create output directory if needed
+        md_output.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Handle CSV files differently
+        if input_path.suffix.lower() == '.csv':
+            try:
+                # First detect the encoding
+                encoding = self._detect_encoding(input_path)
                 
-                console.print("\n[title]Image Processing:[/]")
-                console.print(f"  [stats]Total Images:[/] [highlight]{stats['images']['total']}[/]")
-                console.print(f"  [stats]Successfully Processed:[/] [highlight]{stats['images']['processed']}/{stats['images']['total']}[/]")
-                console.print(f"  [stats]With Descriptions:[/] [highlight]{stats['images']['with_description']}[/]")
-                console.print(f"  [stats]Failed:[/] [highlight]{stats['images']['failed']}[/]")
-                console.print(f"  [stats]HEIC Conversions:[/] [highlight]{stats['images']['heic_converted']}[/]")
-                console.print(f"  [stats]Original Size:[/] [highlight]{stats['images']['total_original_size']/1024/1024:.1f}MB[/]")
-                console.print(f"  [stats]Processed Size:[/] [highlight]{stats['images']['total_processed_size']/1024/1024:.1f}MB[/]")
-                console.print(f"  [stats]Size Reduction:[/] [highlight]{size_reduction:.1f}%[/]")
+                # Read the file with detected encoding
+                with open(input_path, 'r', encoding=encoding) as f:
+                    content = f.read()
                 
-                if stats['images']['formats']:
-                    console.print("\n[stats]Image Formats:[/]")
-                    for fmt, count in stats['images']['formats'].items():
-                        console.print(f"  • {fmt.upper()}: [highlight]{count}[/]")
+                # Convert CSV to markdown table
+                reader = csv.reader(content.splitlines())
+                rows = list(reader)
+                if not rows:
+                    result = f"*Empty CSV file*\n\n*File encoding: {encoding}*"
+                else:
+                    # Create markdown table
+                    md_table = []
+                    # Header
+                    md_table.append("| " + " | ".join(rows[0]) + " |")
+                    # Separator
+                    md_table.append("| " + " | ".join(["---"] * len(rows[0])) + " |")
+                    # Data rows
+                    for row in rows[1:]:
+                        # Ensure row has same number of columns as header
+                        while len(row) < len(rows[0]):
+                            row.append("")
+                        # Escape any pipe characters in cells
+                        escaped_row = [cell.replace('|', '\\|') for cell in row]
+                        md_table.append("| " + " | ".join(escaped_row) + " |")
+                    
+                    result = f"# {input_path.stem}\n\n" + "\n".join(md_table) + f"\n\n*File encoding: {encoding}*"
+                
+                # Write markdown output
+                with open(md_output, 'w', encoding='utf-8') as f:
+                    f.write(result)
+                
+                logger.info(f"Successfully converted CSV file: {input_path}")
+                
+            except Exception as e:
+                logger.error(f"Failed to convert CSV file {input_path}: {e}")
+                raise
+        else:
+            # Convert other office docs using markitdown
+            content = self.markdown_handler.convert_document(input_path)
             
-            if stats['skipped'] > 0:
-                console.print("\n[title]Skipped files:[/]")
-                console.print(f"  [error]Error:[/] [highlight]{stats['skipped']}[/] files")
+            # Write markdown output
+            with open(md_output, 'w', encoding='utf-8') as f:
+                f.write(content)
+        
+        return md_output
+    
+    def _process_image(self, input_path: Path, output_path: Path) -> Path:
+        """Process an image file.
+        
+        Args:
+            input_path: Path to input file
+            output_path: Path to output file
             
-            console.print(f"\n[stats]Total files processed:[/] [highlight]{stats['markdown'] + stats['office'] + stats['text']}[/]")
-            console.print(f"[stats]Total files skipped:[/] [highlight]{stats['skipped']}[/]")
-            
-            if stats['errors']:
-                console.print("\n[error]Warnings:[/]")
-                for error in stats['errors']:
-                    console.print(f"  • {error}")
-            
-        except Exception as e:
-            logger.error(f"Failed to process directory {input_dir}: {e}")
-            raise
- 
+        Returns:
+            Path to processed file
+        """
+        # Process image using image processor
+        return self.image_processor.process(input_path, output_path)
+    
+    def _detect_encoding(self, file_path: Path) -> str:
+        """Detect file encoding."""
+        import chardet
+        
+        # Read raw bytes
+        with open(file_path, 'rb') as f:
+            raw = f.read()
+        
+        # Detect encoding
+        result = chardet.detect(raw)
+        encoding = result['encoding']
+        
+        # Default to UTF-8 if detection fails
+        if not encoding:
+            encoding = 'utf-8'
+        
+        return encoding

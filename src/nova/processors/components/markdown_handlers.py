@@ -1,50 +1,39 @@
-"""Markdown handler components."""
+"""Markdown handling components for Nova processors."""
 
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional, List
 import re
 from datetime import datetime
-import csv
-import json
-import logging
 
-from markitdown import MarkItDown
-from rich.console import Console
-
-from . import ProcessorComponent
-from ...core.config import NovaConfig
-from ...core.errors import MarkdownProcessingError
+from . import MarkdownComponent
+from ...core.config import NovaConfig, ProcessorConfig
+from ...core.errors import ProcessingError
 from ...core.logging import get_logger
 from ..image_processor import ImageProcessor
 
-logger = get_logger(__name__)
-console = Console()
-
-class MarkitdownHandler(ProcessorComponent):
-    """Handles markdown processing using Microsoft's markitdown."""
+class MarkitdownHandler(MarkdownComponent):
+    """Handles markdown processing using markitdown."""
     
-    def __init__(self, config: NovaConfig, image_processor=None, output_dir=None):
+    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig, image_processor: Optional[ImageProcessor] = None):
         """Initialize handler.
         
         Args:
-            config: Nova configuration
+            processor_config: Processor-specific configuration
+            nova_config: Global Nova configuration
             image_processor: Optional image processor instance
-            output_dir: Optional output directory path
         """
-        super().__init__(config)
-        
-        # Initialize markdown converter
-        self.converter = MarkItDown()
-        
-        # Store image processor and output directory
+        super().__init__(processor_config, nova_config)
+        self.logger = get_logger(self.__class__.__name__)
         self.image_processor = image_processor
-        self.output_dir = output_dir
         
-        # Initialize logger
-        self.logger = logger
-        logger.debug(f"Initialized MarkitdownHandler with image_processor={image_processor}, output_dir={output_dir}")
+        # Add component-specific stats
+        self.stats.update({
+            'files_processed': 0,
+            'images_processed': 0,
+            'links_updated': 0
+        })
     
-    def process_markdown(self, content: str, source_path: Path) -> tuple[str, dict]:
+    def process_markdown(self, content: str, source_path: Path) -> str:
         """Process markdown content.
         
         Args:
@@ -52,29 +41,10 @@ class MarkitdownHandler(ProcessorComponent):
             source_path: Path to source file
             
         Returns:
-            Tuple of (processed content, stats)
+            Processed markdown content
         """
         try:
             self.logger.info(f"Processing markdown file: {source_path}")
-            
-            # Initialize stats for this file
-            file_stats = {
-                'images': {
-                    'total': 0,
-                    'processed': 0,
-                    'with_description': 0,
-                    'failed': 0,
-                    'heic_converted': 0,
-                    'total_original_size': 0,
-                    'total_processed_size': 0,
-                    'formats': {}
-                }
-            }
-            
-            # Check if we have image processor
-            if not self.image_processor:
-                self.logger.warning("No image processor available - skipping image processing")
-                return content, file_stats
             
             # Process images in the content
             self.logger.info("Processing images in markdown content")
@@ -82,75 +52,6 @@ class MarkitdownHandler(ProcessorComponent):
             # Regular expression to find image references
             # Handle both ![alt](path) and ![](path) formats, with optional whitespace
             image_pattern = r'^\*\s*(?:JPG|HEIC)(?::\s*|\s+)!\[(.*?)\]\(([^)]+)\)(?:\s*<!--\s*(\{.*?\})\s*-->)?$'
-            
-            def process_image_match(match) -> str:
-                """Process a single image match and return updated markdown."""
-                file_stats['images']['total'] += 1
-                
-                alt_text, image_path, metadata_json = match.groups()
-                self.logger.info(f"Processing image: {image_path}")
-                
-                # URL decode the image path
-                image_path = image_path.replace('%20', ' ')
-                
-                metadata = json.loads(metadata_json) if metadata_json else {}
-                
-                # Resolve image path relative to markdown file
-                full_image_path = source_path.parent / image_path
-                if not full_image_path.exists():
-                    error = f"Image not found: {full_image_path}"
-                    self.logger.warning(error)
-                    file_stats['images']['failed'] += 1
-                    return match.group(0)
-                
-                try:
-                    # Track original size
-                    original_size = full_image_path.stat().st_size
-                    file_stats['images']['total_original_size'] += original_size
-                    
-                    # Track format
-                    img_format = full_image_path.suffix.lower()
-                    file_stats['images']['formats'][img_format] = file_stats['images']['formats'].get(img_format, 0) + 1
-                    
-                    # Process image - store in same directory structure as original
-                    output_dir = source_path.parent / Path(image_path).parent
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    metadata = self.image_processor.process_image(
-                        input_path=full_image_path,
-                        output_dir=output_dir
-                    )
-                    
-                    if metadata:
-                        file_stats['images']['processed'] += 1
-                        file_stats['images']['total_processed_size'] += metadata.size
-                        
-                        # Get the processed image path relative to the markdown file
-                        processed_path = Path(metadata.processed_path)
-                        rel_path = processed_path.relative_to(source_path.parent)
-                        
-                        # URL encode spaces in the path
-                        rel_path_str = str(rel_path).replace(' ', '%20')
-                        
-                        if metadata.description:
-                            file_stats['images']['with_description'] += 1
-                            # Generate markdown with description and keep the format prefix
-                            prefix = match.group(0).split('!')[0]  # Get the "* JPG:" or "* HEIC:" part
-                            return f"{prefix}![{metadata.description}]({rel_path_str})"
-                        else:
-                            # Use original alt text if not empty, otherwise use filename
-                            alt = alt_text if alt_text else Path(image_path).stem
-                            prefix = match.group(0).split('!')[0]  # Get the "* JPG:" or "* HEIC:" part
-                            return f"{prefix}![{alt}]({rel_path_str})"
-                    else:
-                        file_stats['images']['failed'] += 1
-                        return match.group(0)
-                    
-                except Exception as e:
-                    error = f"Failed to process {full_image_path}: {str(e)}"
-                    self.logger.warning(error)
-                    file_stats['images']['failed'] += 1
-                    return match.group(0)
             
             # Process all images line by line
             lines = []
@@ -161,242 +62,225 @@ class MarkitdownHandler(ProcessorComponent):
                     match = re.match(image_pattern, line)
                     if match:
                         self.logger.info("Line matched pattern")
-                        lines.append(process_image_match(match))
+                        lines.append(self._process_image_match(match, source_path))
                     else:
                         self.logger.info("Line did not match pattern")
                         lines.append(line)
                 else:
                     lines.append(line)
             
-            # Log summary
-            if file_stats['images']['total'] > 0:
-                self.logger.info(f"Processed {file_stats['images']['processed']}/{file_stats['images']['total']} images")
-                self.logger.info(f"Generated descriptions for {file_stats['images']['with_description']} images")
-                if file_stats['images']['failed'] > 0:
-                    self.logger.warning(f"Failed to process {file_stats['images']['failed']} images")
+            # Update stats
+            self.stats['files_processed'] += 1
             
-            return '\n'.join(lines), file_stats
+            return '\n'.join(lines)
             
         except Exception as e:
             self.logger.error(f"Failed to process {source_path}: {e}")
-            raise MarkdownProcessingError(f"Failed to process {source_path}: {e}") from e
+            raise ProcessingError(f"Failed to process {source_path}: {e}") from e
     
-    def convert_document(self, input_path: Path) -> str:
-        """Convert a document to markdown.
+    def convert_document(self, input_path: Path, output_path: Path) -> Path:
+        """Convert a document to markdown format.
         
         Args:
-            input_path: Path to input file
+            input_path: Path to input document
+            output_path: Path to output markdown file
             
         Returns:
-            Markdown content
+            Path to converted markdown file
         """
         try:
-            # Handle CSV files differently
-            if input_path.suffix.lower() == '.csv':
-                print(f"Converting CSV file: {input_path}")  # Debug log
-                result = self._convert_csv_to_markdown(input_path)
-                print(f"CSV conversion result length: {len(result)}")  # Debug log
-                return result
+            self.logger.info(f"Converting document: {input_path}")
             
-            # Convert other documents using markitdown
-            # Use absolute path to handle spaces and special characters
-            abs_path = input_path.resolve()
-            print(f"Converting non-CSV file: {abs_path}")  # Debug log
+            # Create output directory if needed
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Try convert_local first
-            result = self.converter.convert_local(str(abs_path))
-            
-            if result is None:
-                raise MarkdownProcessingError(f"Failed to convert {input_path}: markitdown returned None")
-            
-            # Extract text content from result
-            if not result.text_content:
-                # Try to convert using convert() method instead
-                result = self.converter.convert(str(abs_path))
-                if not result.text_content:
-                    raise MarkdownProcessingError(f"Failed to convert {input_path}: no text content in result")
-            
-            # Add title if available
-            content = []
-            if hasattr(result, 'title') and result.title:
-                content.append(f"# {result.title}\n")
-            
-            # Add text content
-            content.append(result.text_content)
-            
-            return '\n'.join(content)
+            # Convert based on file type
+            suffix = input_path.suffix.lower()
+            if suffix in ['.docx', '.doc']:
+                return self._convert_docx(input_path, output_path)
+            elif suffix in ['.pptx', '.ppt']:
+                return self._convert_pptx(input_path, output_path)
+            elif suffix in ['.xlsx', '.xls']:
+                return self._convert_xlsx(input_path, output_path)
+            elif suffix == '.pdf':
+                return self._convert_pdf(input_path, output_path)
+            elif suffix == '.csv':
+                return self._convert_csv(input_path, output_path)
+            else:
+                raise ProcessingError(f"Unsupported document format: {suffix}")
             
         except Exception as e:
-            print(f"Error converting document: {str(e)}")  # Debug log
-            raise MarkdownProcessingError(f"Failed to convert {input_path}: {e}") from e
-            
-    def _convert_csv_to_markdown(self, input_path: Path) -> str:
-        """Convert CSV file to markdown table.
-        
-        Args:
-            input_path: Path to CSV file
-            
-        Returns:
-            Markdown content
-        """
-        try:
-            # First detect the encoding
-            encoding = self._detect_encoding(input_path)
-            
-            # Read the file with detected encoding
-            with open(input_path, 'r', encoding=encoding) as f:
-                content = f.read()
-            
-            # Convert CSV to markdown table
-            reader = csv.reader(content.splitlines())
-            rows = list(reader)
-            if not rows:
-                return f"*Empty CSV file*\n\n*File encoding: {encoding}*"
-            
-            # Create markdown table
-            md_table = []
-            # Header
-            md_table.append("| " + " | ".join(rows[0]) + " |")
-            # Separator
-            md_table.append("| " + " | ".join(["---"] * len(rows[0])) + " |")
-            # Data rows
-            for row in rows[1:]:
-                # Ensure row has same number of columns as header
-                while len(row) < len(rows[0]):
-                    row.append("")
-                # Escape any pipe characters in cells
-                escaped_row = [cell.replace('|', '\\|') for cell in row]
-                md_table.append("| " + " | ".join(escaped_row) + " |")
-            
-            return f"# {input_path.stem}\n\n" + "\n".join(md_table) + f"\n\n*File encoding: {encoding}*"
-            
-        except Exception as e:
-            raise MarkdownProcessingError(f"Failed to convert CSV file {input_path}: {e}")
-            
-    def _detect_encoding(self, file_path: Path) -> str:
-        """Detect file encoding by trying different encodings.
-        
-        Args:
-            file_path: Path to file to check
-            
-        Returns:
-            Detected encoding
-        """
-        encodings = ['utf-8-sig', 'utf-8', 'latin1', 'cp1252']
-        
-        for encoding in encodings:
-            try:
-                with open(file_path, 'r', encoding=encoding) as f:
-                    f.read()
-                return encoding
-            except UnicodeDecodeError:
-                continue
-        
-        raise UnicodeDecodeError(f"Could not decode {file_path} with any supported encoding")
+            self.logger.error(f"Failed to convert {input_path}: {e}")
+            raise ProcessingError(f"Failed to convert {input_path}: {e}") from e
     
-    def _handle_images(self, content: str, source_path: Path) -> tuple[str, dict]:
-        """Handle images in markdown content."""
+    def _convert_docx(self, input_path: Path, output_path: Path) -> Path:
+        """Convert DOCX to markdown."""
+        from docx import Document
+        
+        doc = Document(input_path)
+        content = []
+        
+        for para in doc.paragraphs:
+            content.append(para.text)
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n\n'.join(content))
+        
+        return output_path
+    
+    def _convert_pptx(self, input_path: Path, output_path: Path) -> Path:
+        """Convert PPTX to markdown."""
+        from pptx import Presentation
+        
+        prs = Presentation(input_path)
+        content = []
+        
+        for slide in prs.slides:
+            slide_content = []
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    slide_content.append(shape.text)
+            content.append('\n'.join(slide_content))
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n\n'.join(content))
+        
+        return output_path
+    
+    def _convert_xlsx(self, input_path: Path, output_path: Path) -> Path:
+        """Convert XLSX to markdown."""
+        from openpyxl import load_workbook
+        
+        wb = load_workbook(input_path)
+        content = []
+        
+        for sheet in wb:
+            sheet_content = []
+            for row in sheet.iter_rows():
+                row_content = []
+                for cell in row:
+                    if cell.value:
+                        row_content.append(str(cell.value))
+                if row_content:
+                    sheet_content.append(' | '.join(row_content))
+            content.append('\n'.join(sheet_content))
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n\n'.join(content))
+        
+        return output_path
+    
+    def _convert_pdf(self, input_path: Path, output_path: Path) -> Path:
+        """Convert PDF to markdown."""
+        from pypdf import PdfReader
+        
+        reader = PdfReader(input_path)
+        content = []
+        
+        for page in reader.pages:
+            content.append(page.extract_text())
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n\n'.join(content))
+        
+        return output_path
+    
+    def _convert_csv(self, input_path: Path, output_path: Path) -> Path:
+        """Convert CSV to markdown."""
+        import csv
+        import chardet
+        
+        # Detect encoding
+        with open(input_path, 'rb') as f:
+            raw = f.read()
+            result = chardet.detect(raw)
+            encoding = result['encoding']
+        
+        # Read CSV with detected encoding
+        content = []
+        with open(input_path, 'r', encoding=encoding) as f:
+            reader = csv.reader(f)
+            for row in reader:
+                content.append(' | '.join(row))
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(content))
+        
+        return output_path
+    
+    def _process_image_match(self, match: re.Match, source_path: Path) -> str:
+        """Process a single image match and return updated markdown."""
         try:
-            self.logger.debug("Starting _handle_images")
+            alt_text, image_path, metadata_json = match.groups()
+            self.logger.info(f"Processing image: {image_path}")
             
-            # Track image processing stats
-            stats = {
-                'total': 0,
-                'processed': 0,
-                'with_description': 0,
-                'failed': 0,
-                'total_original_size': 0,
-                'total_processed_size': 0,
-                'heic_converted': 0,
-                'formats': {},
-                'errors': []
-            }
+            # URL decode the image path
+            image_path = image_path.replace('%20', ' ')
             
-            # Regular expression to find image references
-            image_pattern = r'(.*)!\[(.*?)\]\(([^)]+)\)(?:\s*<!--\s*(\{.*?\})\s*-->)?'
+            # Resolve image path relative to markdown file
+            full_image_path = source_path.parent / image_path
+            if not full_image_path.exists():
+                error = f"Image not found: {full_image_path}"
+                self.logger.warning(error)
+                return match.group(0)
             
-            # Find all matches first to see what we're dealing with
-            matches = list(re.finditer(image_pattern, content))
-            if matches:
-                console.print(f"\n[title]Found {len(matches)} images in {source_path.name}[/]")
+            # Process image
+            output_dir = source_path.parent / Path(image_path).parent
+            output_dir.mkdir(parents=True, exist_ok=True)
             
-            def process_image_match(match) -> str:
-                """Process a single image match and return updated markdown."""
-                stats['total'] += 1
-                
-                prefix, alt_text, image_path, metadata_json = match.groups()
-                console.print(f"[info]Processing image:[/] [path]{image_path}[/]")
-                
-                metadata = json.loads(metadata_json) if metadata_json else {}
-                
-                # Resolve image path relative to markdown file
-                full_image_path = source_path.parent / image_path
-                if not full_image_path.exists():
-                    error = f"Image not found: {full_image_path}"
-                    console.print(f"[warning]{error}[/]")
-                    stats['failed'] += 1
-                    stats['errors'].append(error)
-                    return match.group(0)
-                
-                try:
-                    # Track original size
-                    stats['total_original_size'] += full_image_path.stat().st_size
-                    
-                    # Track format
-                    img_format = full_image_path.suffix.lower()
-                    stats['formats'][img_format] = stats['formats'].get(img_format, 0) + 1
-                    
-                    # Process image
-                    metadata = self.image_processor.process_image(
-                        input_path=full_image_path,
-                        output_dir=self.config.image.processed_dir,
-                        metadata_dir=self.config.image.metadata_dir
-                    )
-                    
-                    if metadata:
-                        stats['processed'] += 1
-                        stats['total_processed_size'] += metadata.size
-                        
-                        if metadata.description:
-                            stats['with_description'] += 1
-                        
-                        # Generate markdown
-                        description = metadata.description if metadata.description else alt_text
-                        processed_path = Path(metadata.processed_path).relative_to(self.config.output_dir)
-                        prefix_str = prefix if prefix else ""
-                        prefix_str = prefix_str.rstrip() + " " if prefix_str else ""
-                        return f"{prefix_str}![{description}]({processed_path})"
-                    else:
-                        stats['failed'] += 1
-                        return match.group(0)
-                    
-                except Exception as e:
-                    error = f"Failed to process {full_image_path}: {str(e)}"
-                    console.print(f"[warning]{error}[/]")
-                    stats['failed'] += 1
-                    stats['errors'].append(error)
-                    return match.group(0)
+            # Get the processed image path relative to the markdown file
+            processed_path = output_dir / full_image_path.name
+            rel_path = processed_path.relative_to(source_path.parent)
             
-            # Process all images
-            content = re.sub(image_pattern, process_image_match, content)
+            # URL encode spaces in the path
+            rel_path_str = str(rel_path).replace(' ', '%20')
             
-            return content, stats
+            # Use original alt text if not empty, otherwise use filename
+            alt = alt_text if alt_text else Path(image_path).stem
+            prefix = match.group(0).split('!')[0]  # Get the "* JPG:" or "* HEIC:" part
+            
+            # Update stats
+            self.stats['images_processed'] += 1
+            
+            return f"{prefix}![{alt}]({rel_path_str})"
             
         except Exception as e:
-            self.logger.error(f"Error in _handle_images: {e}")
-            raise MarkdownProcessingError(f"Failed to handle images: {e}") from e
+            error = f"Failed to process image match: {str(e)}"
+            self.logger.warning(error)
+            return match.group(0)
 
-class ConsolidationHandler(ProcessorComponent):
+class ConsolidationHandler(MarkdownComponent):
     """Handles markdown consolidation."""
     
-    def __init__(self, config: NovaConfig):
+    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
         """Initialize handler.
         
         Args:
-            config: Nova configuration
+            processor_config: Processor-specific configuration
+            nova_config: Global Nova configuration
         """
-        super().__init__(config)
-        self.parser = MarkItDown()
+        super().__init__(processor_config, nova_config)
+        self.logger = get_logger(self.__class__.__name__)
+        
+        # Add component-specific stats
+        self.stats.update({
+            'files_consolidated': 0,
+            'total_files': 0,
+            'total_size': 0
+        })
+    
+    def process_markdown(self, content: str, source_path: Path) -> str:
+        """Process markdown content.
+        
+        Args:
+            content: Markdown content to process
+            source_path: Path to source file
+            
+        Returns:
+            Processed markdown content
+        """
+        # This handler doesn't modify individual markdown files
+        return content
     
     def consolidate_markdown(self, input_files: List[Path], output_path: Path) -> Path:
         """Consolidate markdown files.
@@ -428,13 +312,20 @@ class ConsolidationHandler(ProcessorComponent):
                     
                     # Add processed content
                     consolidated_content.append(content)
+                    
+                    # Update stats
+                    self.stats['files_consolidated'] += 1
+                    self.stats['total_size'] += len(content)
             
             # Write consolidated content
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(consolidated_content))
             
+            # Update total files stat
+            self.stats['total_files'] = len(input_files)
+            
             return output_path
             
         except Exception as e:
-            raise MarkdownProcessingError(f"Failed to consolidate markdown: {e}") from e
+            raise ProcessingError(f"Failed to consolidate markdown: {e}") from e
