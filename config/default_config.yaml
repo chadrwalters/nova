@@ -18,6 +18,11 @@ markdown:
     - taskList
     - linkify
     - image
+  aggregate:
+    enabled: true
+    output_filename: "all_merged_markdown.md"
+    include_file_headers: true
+    add_separators: true
 
 # Image Processing
 image:
