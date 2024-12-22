@@ -10,19 +10,24 @@ import base64
 
 from . import ImageComponent
 from ...core.errors import ImageProcessingError
-from ...core.config import NovaConfig
+from ...core.config import NovaConfig, ProcessorConfig
 from ...core.logging import get_logger
 
 class OpenAIImageHandler(ImageComponent):
     """Handles image processing using OpenAI Vision."""
     
-    def __init__(self, config: NovaConfig):
-        """Initialize handler."""
-        super().__init__(config)
+    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
+        """Initialize handler.
+        
+        Args:
+            processor_config: Processor-specific configuration
+            nova_config: Global Nova configuration
+        """
+        super().__init__(processor_config, nova_config)
         self.logger = get_logger(self.__class__.__name__)
         
         # Initialize OpenAI client
-        self.client = OpenAI(api_key=config.openai.api_key)
+        self.client = OpenAI(api_key=nova_config.openai.api_key)
         
         # Add component-specific stats
         self.stats.update({

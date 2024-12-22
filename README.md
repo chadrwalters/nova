@@ -1,60 +1,81 @@
-# Nova Document Processor - Markdown Parse Phase
+# Nova Document Processor
 
-A modern document processing system for parsing and validating markdown files with embedded document support.
+A modern document processing system for parsing, converting, and consolidating markdown files with embedded content support. The system handles various document formats, processes images, and maintains a structured output format.
 
 ## Features
 
 ### Core Processing
-- Markdown file processing and validation
-- Secure content validation and sanitization
-- Frontmatter extraction and validation
-- Special character handling
-- Base64 content processing
-- Structured error handling
+- Markdown file parsing and processing with markdown-it
+- Embedded content handling and conversion
+- Image optimization and description generation
+- Document format conversion to markdown
+- Content consolidation with date-based sorting
 
 ### Document Support
 - **Markdown Files**
-  - UTF-8 encoding validation
-  - Structure validation
-  - Content safety checks
-  - Frontmatter processing
+  - UTF-8 encoding
+  - GFM compatibility
+  - Embedded content processing
+  - Link maintenance
+  - Metadata preservation
   
-- **Embedded Documents**
+- **Images**
+  - Format conversion (HEIC → JPG)
+  - Size optimization
+  - Quality preservation
+  - AI-generated descriptions
+  - Metadata extraction
+  - Cache management
+  
+- **Office Documents**
   - Word (.docx, .doc)
-    - Full text extraction
-    - Metadata preservation
-    - Author and timestamp tracking
+    - Text extraction with formatting
+    - Paragraph preservation
+    - Metadata tracking
     
-  - PDF (.pdf)
-    - Text extraction
-    - Metadata extraction
-    - Reference validation
+  - Excel (.xlsx, .xls)
+    - Table formatting
+    - Header preservation
+    - Data type handling
     
   - PowerPoint (.pptx, .ppt)
     - Slide content extraction
-    - Notes processing
-    - Metadata tracking
+    - Notes inclusion
+    - Asset preservation
+    
+  - PDF
+    - Text extraction
+    - Layout preservation
+    - Asset handling
+    
+  - CSV
+    - Encoding detection
+    - Table formatting
+    - Unicode support
 
-### Security Features
-- Path traversal protection
-- Content safety validation
-- Secure file handling
-- Permission validation
-- Size limit enforcement
+### State Management
+- File hash tracking
+- Processing status monitoring
+- Modification time tracking
+- Error state management
+- API usage metrics
+- Cache invalidation
+- Conversion history
 
-### Metadata Management
-- Frontmatter validation
-- Filename metadata extraction
-- Document reference tracking
-- Historical context preservation
-- Processing status tracking
+### Resource Management
+- Temporary file handling
+- Cache size control
+- Memory usage optimization
+- Disk space monitoring
+- File encoding management
 
 ### Error Handling
-- Configurable error tolerance
-- Structured error reporting
-- Validation error tracking
-- Processing error management
-- Detailed error logging
+- Configurable retry policies
+- Error type-specific handling
+- Partial success support
+- Resource cleanup
+- State preservation
+- Detailed logging
 
 ## Installation
 
@@ -64,61 +85,69 @@ A modern document processing system for parsing and validating markdown files wi
    cd nova
    ```
 
-2. Set up environment variables:
+2. Install dependencies using Poetry:
    ```bash
-   NOVA_INPUT_DIR=path/to/input
-   NOVA_OFFICE_ASSETS_DIR=path/to/assets
-   NOVA_OFFICE_TEMP_DIR=path/to/temp
+   poetry install
    ```
 
-3. Install dependencies:
+3. Create and configure .env file:
    ```bash
-   pip install -r requirements.txt
+   cp .env.example .env
+   # Edit .env with your settings
    ```
 
 ## Configuration
 
-The system uses a combination of:
-- Environment variables for paths
-- Configuration files for processing rules
-- Document handling specifications
+The system uses:
+- Environment variables for paths and settings
+- YAML configuration for processing rules
+- State files for tracking progress
+- Cache directories for optimization
 
 Key configuration areas:
-- Document processing rules
-- Validation requirements
-- Error tolerance levels
-- Metadata handling
-- Logging preferences
+- Input/output paths
+- Processing rules
+- OpenAI integration
+- Error handling
+- Resource limits
 
 ## Usage
 
-Process markdown files with embedded documents:
+Basic usage:
 
-```python
-from nova.core.validation import DocumentValidator
-from nova.core.config import load_config
-from nova.processors.markdown_processor import MarkdownProcessor
+```bash
+./consolidate.sh              # Process all files
+./consolidate.sh --scan      # Show directory structure
+./consolidate.sh --force     # Force reprocessing
+./consolidate.sh --dry-run   # Show what would be done
+```
 
-# Load configuration
-config = load_config()
+## Directory Structure
 
-# Initialize processor
-processor = MarkdownProcessor(config)
-
-# Process a file or directory
-processor.process_file("path/to/document.md")
-processor.process_directory("path/to/documents/")
+```
+nova/
+├── input/                    # Source files
+├── output/                   # Final output
+└── processing/              # Processing workspace
+    ├── phases/             # Phase-specific output
+    ├── images/             # Image processing
+    │   ├── original/      # Original images
+    │   ├── processed/     # Optimized images
+    │   ├── metadata/      # Image metadata
+    │   └── cache/         # API responses
+    ├── office/            # Office document processing
+    │   ├── assets/       # Extracted assets
+    │   └── temp/         # Processing workspace
+    └── temp/              # Temporary files
 ```
 
 ## Contributing
 
-Contributions are welcome! Please read our contributing guidelines first.
-
-Please ensure your changes:
-- Include appropriate tests
-- Follow the existing code style
-- Update documentation as needed
-- Add entries to CHANGELOG.md
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
 
 ## License
 
@@ -126,26 +155,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Dependencies
 
-- markdown-it-py for markdown processing
-- markitdown for document conversion
+Core dependencies:
+- markdown-it-py
+- Pillow
+- python-docx
+- PyMuPDF
+- openai
+- pydantic
+- rich
 
-## Image Processing
-
-The system handles various image formats including HEIC files. Images are:
-- Converted to standard formats if needed
-- Optimized for size and quality
-- Given AI-generated descriptions when possible
-- Tracked with detailed metadata
-
-## Office Document Processing
-
-Supports various office document formats:
-- PDF files
-- Microsoft Office documents (docx, xlsx, pptx)
-- Legacy Office formats (doc, xls, ppt)
-
-Documents are converted to markdown with:
-- Preserved formatting where possible
-- Extracted images and assets
-- Detailed metadata and technical information
-- Fallback content when conversion fails
+Development dependencies:
+- pytest
+- black
+- mypy
+- ruff

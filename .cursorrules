@@ -4,7 +4,7 @@
 pipeline:
   phases:
     - MARKDOWN_PARSE:
-        description: "Parse markdown files using Microsoft markitdown"
+        description: "Parse and process markdown files with embedded content"
         output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
         processor: "MarkdownProcessor"
         components:
@@ -17,6 +17,14 @@ pipeline:
                   - strikethrough
                   - linkify
                   - image
+              handlers:
+                - MarkitdownHandler:
+                    document_conversion: true
+                    image_processing: true
+                    metadata_preservation: true
+                - ConsolidationHandler:
+                    sort_by_date: true
+                    preserve_headers: true
           - image_processor:
               formats:
                 - png
@@ -25,31 +33,57 @@ pipeline:
                 - webp
                 - heic/HEIC
               operations:
-                - format conversion
-                - size optimization
-                - metadata extraction
-                - description generation
+                - format_conversion:
+                    heic_to_jpg: true
+                    optimize_quality: 85
+                - size_optimization:
+                    preserve_aspect_ratio: true
+                    max_dimensions: [1920, 1080]
+                - metadata:
+                    extract: true
+                    preserve_original: true
+                - description_generation:
+                    use_openai: true
+                    model: "gpt-4-vision-preview"
+                    cache_results: true
               temp_files:
-                - use_stable_names: true
-                - cleanup_after_processing: true
-                - preserve_originals: true
+                use_stable_names: true
+                cleanup_after_processing: true
+                preserve_originals: true
           - office_processor:
               formats:
-                - docx/doc
-                - pptx/ppt
-                - xlsx/xls
-                - pdf
+                - docx/doc:
+                    extract_text: true
+                    preserve_paragraphs: true
+                - pptx/ppt:
+                    extract_slides: true
+                    include_notes: true
+                - xlsx/xls:
+                    table_format: true
+                    preserve_headers: true
+                - pdf:
+                    extract_text: true
+                    preserve_layout: true
+                - csv:
+                    detect_encoding: true
+                    table_format: true
               operations:
-                - text extraction
-                - image extraction
-                - metadata preservation
+                - text_extraction:
+                    preserve_formatting: true
+                    handle_unicode: true
+                - image_extraction:
+                    process_embedded: true
+                    maintain_links: true
+                - metadata:
+                    preserve_all: true
+                    track_changes: true
               content_extraction:
-                - try_attributes:
-                    - text_content
-                    - markdown
-                    - text
-                - fallback_to_dict: true
-                - log_failures: true
+                try_attributes:
+                  - text_content
+                  - markdown
+                  - text
+                fallback_to_dict: true
+                log_failures: true
 
 # Installation Requirements
 installation:
@@ -118,11 +152,16 @@ state_tracking:
     - Processing status
     - Modification times
     - Error states
+    - Image cache status
+    - API usage metrics
+    - Conversion history
   operations:
     - Track processed files
     - Detect changes
     - Handle incremental updates
     - Maintain processing state
+    - Monitor API limits
+    - Cache management
 
 # Temporary File Management
 temp_file_handling:
@@ -150,10 +189,13 @@ caching:
       - Image descriptions
       - Processing metadata
       - API response times
+      - Vision model responses
+      - Error states
     invalidation:
       - Time-based expiration
       - Source file changes
       - Manual force refresh
+      - Model version changes
 
 # Console Output Standards
 console_output:
@@ -201,43 +243,80 @@ error_handling:
     delay_between_retries: 1
     backoff_factor: 2
   error_types:
-    - ProcessingError
-    - FileConversionException
-    - UnsupportedFormatException
+    - ProcessingError:
+        recoverable: true
+        retry: true
+    - FileConversionException:
+        recoverable: true
+        fallback: true
+    - UnsupportedFormatException:
+        recoverable: false
+        log_only: true
+    - OpenAIError:
+        recoverable: true
+        retry: true
+        backoff: true
+    - ConfigurationError:
+        recoverable: false
+        halt: true
   error_tolerance:
     allow_partial_success: true
     continue_on_non_critical: true
+    log_all_errors: true
+    track_error_counts: true
   cleanup:
     - Remove temporary files
     - Free resources
     - Log errors appropriately
+    - Update state tracking
+    - Preserve error context
 
 # Phase 1 Output Format
 phase_1_output:
   directory_structure:
     - processed_markdown/
         - Original directory structure preserved
-        - Processed .md files
-        - Image descriptions
+        - Processed .md files with embedded content
+        - Attachment directories maintained
+        - Image descriptions and metadata
     - images/
-        - original/: Original images
-        - processed/: Optimized images
-        - metadata/: Image metadata
-        - cache/: API responses
+        - original/: Original images (all formats)
+        - processed/: Optimized images (standard formats)
+        - metadata/: 
+            - Image technical metadata
+            - AI-generated descriptions
+            - Processing history
+        - cache/: 
+            - OpenAI API responses
+            - Vision model results
+            - Processing metrics
     - office/
-        - assets/: Extracted assets
-        - temp/: Temporary files
+        - assets/: 
+            - Extracted images and media
+            - Document resources
+        - temp/: 
+            - Conversion workspace
+            - Processing artifacts
   file_formats:
     markdown:
       - UTF-8 encoded
       - GFM compatible
       - Image references updated
       - Metadata preserved
+      - Embedded content converted
+      - Links maintained
     images:
-      - Optimized size
-      - Converted format
+      - Optimized size and quality
+      - Standard formats (jpg/png)
       - Generated descriptions
       - Preserved metadata
+      - Processing history
+    documents:
+      - Converted to markdown
+      - Formatting preserved
+      - Tables properly formatted
+      - Images extracted and linked
+      - Metadata maintained
 
 # Multi-Step Impl
 implementation_protocol:

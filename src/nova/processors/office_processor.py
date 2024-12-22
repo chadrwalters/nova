@@ -14,7 +14,10 @@ class OfficeProcessor(BaseProcessor):
     
     def _setup(self) -> None:
         """Setup office processor requirements."""
-        self.handler = OfficeDocumentHandler(self.nova_config)
+        self.handler = OfficeDocumentHandler(
+            processor_config=self.config,
+            nova_config=self.nova_config
+        )
     
     def process(self, input_path: Path) -> Path:
         """Process an office document.

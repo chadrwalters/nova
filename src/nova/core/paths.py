@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
-from pydantic import BaseModel
-from ..core.logging import get_logger
+from pydantic import BaseModel, ConfigDict
+from .logging import get_logger
 
 class NovaPaths(BaseModel):
     """Centralized path management for Nova document processor."""
@@ -38,9 +38,7 @@ class NovaPaths(BaseModel):
         'temp': None
     }
     
-    class Config:
-        """Pydantic config."""
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     @classmethod
     def from_env(cls) -> 'NovaPaths':

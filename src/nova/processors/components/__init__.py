@@ -4,18 +4,20 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any
 
-from ...core.config import NovaConfig
+from ...core.config import NovaConfig, ProcessorConfig
 
 class ProcessorComponent(ABC):
     """Base class for all processor components."""
     
-    def __init__(self, config: NovaConfig):
+    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
         """Initialize component.
         
         Args:
-            config: Nova configuration
+            processor_config: Processor-specific configuration
+            nova_config: Global Nova configuration
         """
-        self.config = config
+        self.config = processor_config
+        self.nova_config = nova_config
         self.stats = {
             'errors': 0,
             'warnings': 0,
