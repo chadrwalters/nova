@@ -40,9 +40,12 @@ echo -e "\n${CYAN}Creating required directories...${NC}"
 echo -e "${DIM}Creating base directory...${NC}"
 mkdir -p "${NOVA_BASE_DIR:?NOVA_BASE_DIR not set}"
 
-# Phase directory
-echo -e "${DIM}Creating phase directory...${NC}"
+# Phase directories
+echo -e "${DIM}Creating phase directories...${NC}"
 mkdir -p "${NOVA_PHASE_MARKDOWN_PARSE:?NOVA_PHASE_MARKDOWN_PARSE not set}"
+mkdir -p "${NOVA_PHASE_MARKDOWN_CONSOLIDATE:?NOVA_PHASE_MARKDOWN_CONSOLIDATE not set}"
+mkdir -p "${NOVA_PHASE_MARKDOWN_AGGREGATE:?NOVA_PHASE_MARKDOWN_AGGREGATE not set}"
+mkdir -p "${NOVA_PHASE_MARKDOWN_SPLIT:?NOVA_PHASE_MARKDOWN_SPLIT not set}"
 
 # Image processing directories
 echo -e "${DIM}Creating image processing directories...${NC}"

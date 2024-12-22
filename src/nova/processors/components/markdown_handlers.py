@@ -67,11 +67,13 @@ class MarkitdownHandler(MarkdownComponent):
                         self.logger.info("Line did not match pattern")
                         lines.append(line)
                 else:
+                    # Preserve original markdown line
                     lines.append(line)
             
             # Update stats
             self.stats['files_processed'] += 1
             
+            # Return processed content while preserving markdown format
             return '\n'.join(lines)
             
         except Exception as e:

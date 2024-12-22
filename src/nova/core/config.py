@@ -90,9 +90,9 @@ class ThreeFileSplitConfig(ProcessorConfig):
                         "attachments": "attachments.md"
                     },
                     "section_markers": {
-                        "summary": "---SUMMARY---",
-                        "raw_notes": "---RAW NOTES---",
-                        "attachments": "---ATTACHMENTS---"
+                        "summary": "--==SUMMARY==--",
+                        "raw_notes": "--==RAW NOTES==--",
+                        "attachments": "--==ATTACHMENTS==--"
                     },
                     "cross_linking": True,
                     "preserve_headers": True

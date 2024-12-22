@@ -234,31 +234,73 @@ class Pipeline:
             merged_output_path = output_dir / output_filename
 
             with merged_output_path.open("w", encoding="utf-8") as merged_output:
-                # Add summary marker
-                merged_output.write("---SUMMARY---\n\n")
-                
-                # Optional: intro header
-                merged_output.write("# Aggregated Markdown Files\n\n")
+                # Add summary marker and header
+                merged_output.write("--==SUMMARY==--\n\n")
+                merged_output.write("# Summary\n\n")
 
-                # Add raw notes marker
-                merged_output.write("\n---RAW NOTES---\n\n")
-
+                # Write summary content
                 for md_file in input_files:
                     try:
                         rel_path = md_file.relative_to(input_dir)
                         with md_file.open("r", encoding="utf-8") as f:
                             file_content = f.read()
+                            
+                            # Add file header
+                            if self.config.processors['markdown'].aggregate['include_file_headers']:
+                                merged_output.write(f"## Start of file: {rel_path}\n\n")
+                            
+                            # Write content up to raw notes marker
+                            raw_notes_marker = "--==RAW NOTES==--"
+                            if raw_notes_marker in file_content:
+                                summary_content = file_content.split(raw_notes_marker)[0].strip()
+                                merged_output.write(summary_content)
+                            else:
+                                merged_output.write(file_content)
+                            
+                            # Add file footer
+                            if self.config.processors['markdown'].aggregate['include_file_headers']:
+                                merged_output.write(f"\n\n## End of file: {rel_path}\n")
+                            
+                            # Add separator between files
+                            if self.config.processors['markdown'].aggregate['add_separators']:
+                                merged_output.write("\n\n---\n\n")
+                    except Exception as e:
+                        error(f"Failed to process summary for {md_file}: {e}")
+                        self.state.update_file_state(
+                            phase='markdown_aggregate',
+                            file_path=str(rel_path),
+                            status='failed',
+                            error=str(e)
+                        )
 
-                        if self.config.processors['markdown'].aggregate['add_separators']:
-                            merged_output.write("\n\n---\n\n")
-                        
-                        if self.config.processors['markdown'].aggregate['include_file_headers']:
-                            merged_output.write(f"## Start of file: {rel_path}\n\n")
-                        
-                        merged_output.write(file_content)
-                        
-                        if self.config.processors['markdown'].aggregate['include_file_headers']:
-                            merged_output.write(f"\n\n## End of file: {rel_path}\n")
+                # Add raw notes marker and header
+                merged_output.write("\n\n--==RAW NOTES==--\n\n")
+                merged_output.write("# Raw Notes\n\n")
+
+                # Write raw notes content
+                for md_file in input_files:
+                    try:
+                        rel_path = md_file.relative_to(input_dir)
+                        with md_file.open("r", encoding="utf-8") as f:
+                            file_content = f.read()
+                            
+                            # Add file header
+                            if self.config.processors['markdown'].aggregate['include_file_headers']:
+                                merged_output.write(f"## Start of file: {rel_path}\n\n")
+                            
+                            # Write content after raw notes marker
+                            raw_notes_marker = "--==RAW NOTES==--"
+                            if raw_notes_marker in file_content:
+                                raw_notes_content = file_content.split(raw_notes_marker)[1].strip()
+                                merged_output.write(raw_notes_content)
+                            
+                            # Add file footer
+                            if self.config.processors['markdown'].aggregate['include_file_headers']:
+                                merged_output.write(f"\n\n## End of file: {rel_path}\n")
+                            
+                            # Add separator between files
+                            if self.config.processors['markdown'].aggregate['add_separators']:
+                                merged_output.write("\n\n---\n\n")
 
                         self.state.update_file_state(
                             phase='markdown_aggregate',
@@ -267,16 +309,16 @@ class Pipeline:
                         )
                         
                     except Exception as e:
-                        error(f"Failed to aggregate {md_file}: {e}")
+                        error(f"Failed to process raw notes for {md_file}: {e}")
                         self.state.update_file_state(
                             phase='markdown_aggregate',
                             file_path=str(rel_path),
                             status='failed',
                             error=str(e)
                         )
-                
-                # Add attachments marker
-                merged_output.write("\n\n---ATTACHMENTS---\n\n")
+
+                # Add attachments marker and header
+                merged_output.write("\n\n--==ATTACHMENTS==--\n\n")
                 merged_output.write("# File Attachments\n\n")
                 
                 info(f"All markdown files merged into {merged_output_path}")

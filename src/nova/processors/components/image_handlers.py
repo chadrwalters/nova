@@ -7,6 +7,7 @@ from PIL import Image
 from openai import OpenAI
 import io
 import base64
+import shutil
 
 from . import ImageComponent
 from ...core.errors import ImageProcessingError
@@ -54,6 +55,21 @@ class OpenAIImageHandler(ImageComponent):
             if cached_result:
                 self.stats['cache_hits'] += 1
                 return cached_result
+            
+            # Handle SVG files
+            if input_path.suffix.lower() == '.svg':
+                # Copy SVG without processing
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(input_path, output_path)
+                metadata = {
+                    'format': 'SVG',
+                    'mode': 'vector',
+                    'size': input_path.stat().st_size,
+                    'original_path': str(input_path)
+                }
+                self.stats['images_processed'] += 1
+                self._cache_result(cache_key, metadata)
+                return metadata
             
             # Convert HEIC to JPEG if needed
             if input_path.suffix.lower() in ['.heic']:
