@@ -10,6 +10,7 @@ A modern document processing system for parsing, converting, and consolidating m
 - Image optimization and description generation
 - Document format conversion to markdown
 - Content consolidation with date-based sorting
+- File aggregation into a single document
 
 ### Document Support
 - **Markdown Files**
@@ -134,8 +135,9 @@ ${NOVA_BASE_DIR}/
 └── _NovaProcessing/         # Processing workspace and intermediates
     ├── .state/             # Processing state and tracking
     ├── phases/             # Phase-specific processing
-    │   ├── markdown_parse/     # Initial markdown parsing (markdown files only)
-    │   └── markdown_consolidate/  # Consolidated output
+    │   ├── markdown_parse/        # Initial markdown parsing (markdown files only)
+    │   ├── markdown_consolidate/  # Consolidated output with attachments
+    │   └── markdown_aggregate/    # Single aggregated markdown file
     ├── images/             # Image processing workspace
     │   ├── original/      # Original images
     │   ├── processed/     # Optimized images
@@ -157,7 +159,8 @@ ${NOVA_BASE_DIR}/
 - `.state/`: Tracks processing status, file hashes, and modification times
 - `phases/`: Contains phase-specific processing outputs
   - `markdown_parse/`: Initial parsing of markdown and conversion of other formats (contains only markdown files)
-  - `markdown_consolidate/`: Final consolidated markdown output
+  - `markdown_consolidate/`: Consolidates markdown files with their attachments and related content
+  - `markdown_aggregate/`: Combines all consolidated files into a single markdown document
 - `images/`: Handles all image-related processing
   - `original/`: Stores original images in their source format
   - `processed/`: Contains optimized and converted images
@@ -181,6 +184,8 @@ NOVA_TEMP_DIR="${NOVA_PROCESSING_DIR}/temp"
 
 # Phase directories
 NOVA_PHASE_MARKDOWN_PARSE="${NOVA_PROCESSING_DIR}/phases/markdown_parse"
+NOVA_PHASE_MARKDOWN_CONSOLIDATE="${NOVA_PROCESSING_DIR}/phases/markdown_consolidate"
+NOVA_PHASE_MARKDOWN_AGGREGATE="${NOVA_PROCESSING_DIR}/phases/markdown_aggregate"
 
 # Image directories
 NOVA_ORIGINAL_IMAGES_DIR="${NOVA_PROCESSING_DIR}/images/original"
