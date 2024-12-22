@@ -21,7 +21,8 @@ class NovaPaths(BaseModel):
     # Phase directories
     phase_dirs: Dict[str, Path] = {
         'markdown_parse': None,
-        'markdown_consolidate': None
+        'markdown_consolidate': None,
+        'markdown_aggregate': None
     }
     
     # Image directories
@@ -60,7 +61,8 @@ class NovaPaths(BaseModel):
             state_dir=processing_dir / '.state',
             phase_dirs={
                 'markdown_parse': processing_dir / 'phases/markdown_parse',
-                'markdown_consolidate': processing_dir / 'phases/markdown_consolidate'
+                'markdown_consolidate': processing_dir / 'phases/markdown_consolidate',
+                'markdown_aggregate': processing_dir / 'phases/markdown_aggregate'
             },
             image_dirs={
                 'original': processing_dir / 'images/original',
