@@ -389,7 +389,12 @@ class ImageProcessor(BaseProcessor):
             
             # Process image based on type
             suffix = input_path.suffix.lower()
-            if suffix in ['.heic', '.heif']:
+            if suffix == '.svg':
+                # SVG files are copied without processing
+                shutil.copy2(input_path, output_path)
+                self.stats['images_processed'] += 1
+                return output_path
+            elif suffix in ['.heic', '.heif']:
                 # Convert HEIC to JPEG
                 heif_file = pillow_heif.read_heif(str(input_path))
                 img = Image.frombytes(

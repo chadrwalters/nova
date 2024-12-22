@@ -4,10 +4,11 @@ import os
 from pathlib import Path
 import pytest
 from typing import Dict
+import re
 
 from nova.core.config import ProcessorConfig, NovaConfig, PathsConfig
 from nova.core.errors import ProcessingError
-from nova.processors.three_file_split_processor import ThreeFileSplitProcessor
+from nova.processors.three_file_split_processor import ThreeFileSplitProcessor, ContentType
 
 @pytest.fixture
 def test_paths(tmp_path) -> PathsConfig:
@@ -77,7 +78,7 @@ def test_split_content(processor, tmp_path):
     # Create test input file
     test_input = """# Test Document
 
----SUMMARY---
+--==SUMMARY==--
 # Project Overview
 This is a test summary section that provides a high-level overview.
 
@@ -86,7 +87,7 @@ This is a test summary section that provides a high-level overview.
 - Point 2 with reference to raw notes
 - Point 3 with another image: ![Test Image 2](images/test2.jpg)
 
----RAW NOTES---
+--==RAW NOTES==--
 # Detailed Notes
 These are the raw notes with more detailed information.
 
@@ -100,7 +101,7 @@ These are the raw notes with more detailed information.
 2. Spec 2 with image: ![Tech Spec](images/spec.png)
 3. Spec 3
 
----ATTACHMENTS---
+--==ATTACHMENTS==--
 # Project Attachments
 
 ## Images
@@ -192,4 +193,199 @@ def test_empty_content(processor, tmp_path):
     summary_content = summary_file.read_text()
     assert "Project Overview" not in summary_content
     assert "[Go to Raw Notes](raw_notes.md)" in summary_content
+    
+def test_content_detection(processor):
+    """Test content type detection logic."""
+    # Test summary content detection
+    summary_content = """
+## Refined Thoughts
+This is a refined analysis.
+
+## Key Insights
+- Important point 1
+- Important point 2
+"""
+    assert processor.detect_content_type(summary_content) == ContentType.SUMMARY
+
+    # Test raw notes content detection
+    raw_notes_content = """
+## Meeting Notes
+Today we discussed the project timeline.
+
+## Communication
+Email from the team about deadlines.
+"""
+    assert processor.detect_content_type(raw_notes_content) == ContentType.RAW_NOTES
+
+    # Test attachment content detection
+    attachment_content = """
+![Image](test.png)
+[Document](report.pdf)
+<!-- {"embed":"true"} -->
+"""
+    assert processor.detect_content_type(attachment_content) == ContentType.ATTACHMENTS
+
+    # Test content with mixed markers but in summary section
+    mixed_content = """
+## Refined Thoughts
+Analysis with an image ![test](image.png)
+"""
+    assert processor.detect_content_type(mixed_content, "SUMMARY") == ContentType.SUMMARY
+
+def test_content_preservation(processor, tmp_path):
+    """Test that no content is lost during splitting."""
+    # Create test input with known size
+    test_input = "A" * 1000 + "\n"  # Base content
+    test_input += "--==SUMMARY==--\n"
+    test_input += "## Refined Thoughts\n" + "B" * 2000 + "\n"  # Summary content
+    test_input += "--==RAW NOTES==--\n"
+    test_input += "## Meeting Notes\n" + "C" * 3000 + "\n"  # Raw notes content
+    test_input += "--==ATTACHMENTS==--\n"
+    test_input += "![Image](test.png)\n" + "D" * 1000 + "\n"  # Attachments content
+    
+    input_path = tmp_path / "test_input.md"
+    input_path.write_text(test_input)
+    output_path = tmp_path / "output"
+    
+    # Process the file
+    result_path = processor.process(input_path, output_path)
+    
+    # Read output files
+    summary_content = (result_path / "summary.md").read_text()
+    raw_notes_content = (result_path / "raw_notes.md").read_text()
+    attachments_content = (result_path / "attachments.md").read_text()
+    
+    # Verify content sizes
+    input_size = len(test_input.encode('utf-8'))
+    output_size = sum(
+        len(content.encode('utf-8')) 
+        for content in [summary_content, raw_notes_content, attachments_content]
+    )
+    
+    # Allow for some size difference due to navigation links and formatting
+    size_difference = abs(output_size - input_size)
+    assert size_difference < 1000, "Content size changed significantly"
+    
+    # Verify all content is preserved
+    assert "B" * 2000 in summary_content
+    assert "C" * 3000 in raw_notes_content
+    assert "D" * 1000 in attachments_content
+
+def test_navigation_and_references(processor, tmp_path):
+    """Test navigation links and reference updating."""
+    test_input = """
+--==SUMMARY==--
+# Summary
+## Refined Thoughts
+See [[Meeting Notes]] for details.
+![Design](design.png)
+[Report](report.pdf)
+
+--==RAW NOTES==--
+# Raw Notes
+## Meeting Notes
+Reference to [[Refined Thoughts]]
+![Architecture](arch.png)
+
+--==ATTACHMENTS==--
+# Attachments
+![Design](design.png)
+Design diagram showing the concept.
+
+![Architecture](arch.png)
+Architecture overview.
+
+[Report](report.pdf)
+Project report document.
+"""
+    
+    input_path = tmp_path / "test_input.md"
+    input_path.write_text(test_input)
+    output_path = tmp_path / "output"
+    
+    # Process the file
+    result_path = processor.process(input_path, output_path)
+    
+    # Read output files
+    summary_content = (result_path / "summary.md").read_text()
+    raw_notes_content = (result_path / "raw_notes.md").read_text()
+    attachments_content = (result_path / "attachments.md").read_text()
+    
+    # Test navigation links
+    assert "[Go to Raw Notes](raw_notes.md)" in summary_content
+    assert "[Go to Attachments](attachments.md)" in summary_content
+    assert "[Go to Summary](summary.md)" in raw_notes_content
+    assert "[Go to Summary](summary.md)" in attachments_content
+    
+    # Test section references
+    assert "raw_notes.md#meeting-notes" in summary_content
+    assert "summary.md#refined-thoughts" in raw_notes_content
+    
+    # Test attachment references
+    assert "attachments.md#" in summary_content
+    assert "attachments.md#" in raw_notes_content
+    
+    # Test anchors in attachments
+    assert '<a id="' in attachments_content
+    
+    # Verify bi-directional linking
+    assert all(
+        ref in summary_content 
+        for ref in ["raw_notes.md", "attachments.md"]
+    )
+    assert all(
+        ref in raw_notes_content 
+        for ref in ["summary.md", "attachments.md"]
+    )
+    assert all(
+        ref in attachments_content 
+        for ref in ["summary.md", "raw_notes.md"]
+    )
+
+def test_large_file_handling(processor, tmp_path):
+    """Test handling of large files (>400KB)."""
+    # Create large test input
+    large_content = "A" * 200_000  # Base content
+    summary_content = "B" * 100_000  # Summary section
+    raw_notes_content = "C" * 150_000  # Raw notes section
+    attachments_content = "D" * 50_000  # Attachments section
+    
+    test_input = (
+        large_content + "\n"
+        "--==SUMMARY==--\n"
+        "## Refined Thoughts\n" + summary_content + "\n"
+        "--==RAW NOTES==--\n"
+        "## Meeting Notes\n" + raw_notes_content + "\n"
+        "--==ATTACHMENTS==--\n"
+        "# Attachments\n" + attachments_content
+    )
+    
+    input_path = tmp_path / "large_test.md"
+    input_path.write_text(test_input)
+    output_path = tmp_path / "output"
+    
+    # Process the file
+    result_path = processor.process(input_path, output_path)
+    
+    # Verify files exist and have correct content
+    summary_file = result_path / "summary.md"
+    raw_notes_file = result_path / "raw_notes.md"
+    attachments_file = result_path / "attachments.md"
+    
+    assert summary_file.exists()
+    assert raw_notes_file.exists()
+    assert attachments_file.exists()
+    
+    # Verify content sizes
+    assert len(summary_file.read_text()) > 100_000
+    assert len(raw_notes_file.read_text()) > 150_000
+    assert len(attachments_file.read_text()) > 50_000
+    
+    # Verify processing completed without errors
+    assert processor.stats['content_sizes']['input'] > 400_000
+    total_output = sum(
+        processor.stats['content_sizes'][key] 
+        for key in ['summary', 'raw_notes', 'attachments']
+    )
+    assert total_output > 400_000
     

@@ -15,6 +15,7 @@ import xml.dom.minidom
 import time
 import re
 from datetime import datetime
+import base64
 
 from markdown_it import MarkdownIt
 from markitdown import MarkItDown
@@ -228,7 +229,7 @@ class MarkdownProcessor(BaseProcessor):
         # Determine the appropriate directory based on file type
         suffix = file_path.suffix.lower()
         
-        if suffix in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.webp'}:
+        if suffix in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.webp', '.svg'}:
             # Image files go to images/original and processed
             original_dir = Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR'))
             processed_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
@@ -242,10 +243,16 @@ class MarkdownProcessor(BaseProcessor):
             # Process image
             try:
                 processed_path = processed_dir / file_path.name
-                self.image_processor.process(original_path, processed_path)
-                logger.info(f"Processed image {file_path} to {processed_path}")
+                if suffix == '.svg':
+                    # For SVG files, just copy them without processing
+                    shutil.copy2(original_path, processed_path)
+                    logger.info(f"Copied SVG file {file_path} to {processed_path}")
+                else:
+                    # Process other image types
+                    self.image_processor.process(original_path, processed_path)
+                    logger.info(f"Processed image {file_path} to {processed_path}")
             except Exception as e:
-                logger.error(f"Failed to process image {file_path}: {e}")
+                logger.error(f"Failed to process {file_path}: {e}")
                 
         elif suffix in {'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf'}:
             # Office documents go to office/assets
@@ -286,8 +293,47 @@ class MarkdownProcessor(BaseProcessor):
         Returns:
             str: Processed markdown content
         """
-        # Process with markdown-it
-        return self.md.render(content)
+        # Regular expression to find base64 images
+        base64_pattern = r'!\[([^\]]*)\]\(data:image/([^;]+);base64,([^\)]+)\)'
+        
+        def replace_base64_image(match):
+            alt_text, image_format, base64_data = match.groups()
+            
+            try:
+                # Decode base64 data
+                image_data = base64.b64decode(base64_data)
+                
+                # Generate a unique filename
+                timestamp = int(time.time() * 1000)
+                filename = f"image_{timestamp}.{image_format}"
+                
+                # Save to original images directory
+                original_dir = Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR'))
+                original_dir.mkdir(parents=True, exist_ok=True)
+                original_path = original_dir / filename
+                
+                with open(original_path, 'wb') as f:
+                    f.write(image_data)
+                
+                # Process the image
+                processed_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR'))
+                processed_dir.mkdir(parents=True, exist_ok=True)
+                processed_path = processed_dir / filename
+                
+                self.image_processor.process(original_path, processed_path)
+                
+                # Return markdown with updated image reference
+                return f"![{alt_text}]({processed_path})"
+                
+            except Exception as e:
+                logger.error(f"Failed to process base64 image: {e}")
+                return match.group(0)  # Return original on error
+        
+        # Replace base64 images with file references
+        content = re.sub(base64_pattern, replace_base64_image, content)
+        
+        # Return the processed markdown content without rendering to HTML
+        return content
     
     def _process_pdf(self, input_path: Path, output_path: Path) -> Path:
         """Process a PDF file.

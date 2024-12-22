@@ -1,104 +1,129 @@
-Plan: Add a New Phase (MARKDOWN_SPLIT_THREEFILES) for Summaries, Raw Notes, and Attachments
-This plan outlines the steps to create a new pipeline phase that splits the final aggregated markdown into three separate files:
-A “Summary” file (e.g., summary.md)
-A “Raw Notes” file (e.g., raw_notes.md)
-An “Attachments” file (e.g., attachments.md)
-Below are detailed instructions to guide the implementation.
+Plan: Fix MARKDOWN_SPLIT_THREEFILES Phase to Properly Split Content
+This plan outlines the steps to fix the MARKDOWN_SPLIT_THREEFILES phase that currently fails to properly split the aggregated markdown into three separate files. The fix will ensure proper content distribution and preservation.
+
 ---
 Branch Strategy
 Create a Feature Branch
-✓ Name it something like: feature/add-triple-split-phase
-✓ Confirm Branch Exists
-✓ Ensure the branch is pushed to remote for collaboration or backup
-✓ Update main from remote, then rebase or merge into the feature branch if needed
+✓ Name it something like: fix/markdown-split-content-distribution
+✓ Branch from current main
+✓ Push branch to remote for collaboration
+✓ Keep in sync with main during development
+
 ---
 Implementation Steps
-1. Define the New Phase in Your Pipeline YAML
-(Example: “nova_pipeline.yaml” or wherever your pipeline is defined)
-Add a phase after MARKDOWN_AGGREGATE named MARKDOWN_SPLIT_THREEFILES. Set its description to reflect the creation of the three separate markdown files. Include any necessary configuration parameters (e.g., detection markers for summary, raw notes, and attachments).
+1. Fix Content Detection Logic
+(Example: "src/pipeline_processors/three_file_split_processor.py")
+Implement proper content detection and categorization logic to identify different types of content in the aggregated file.
+
 Example snippet:
-MARKDOWN_SPLIT_THREEFILES:
-description: "Split aggregated markdown into separate files for summary, raw notes, and attachments"
-output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
-processor: "ThreeFileSplitProcessor"
-file_size_behavior: "Creates three output files"
-components:
-three_file_split_processor:
-config:
-# Configuration for detection logic, paths, etc.
-handlers:
-SplitHandler:
-# Custom logic for splitting
-create_summary: true
-create_raw_notes: true
-create_attachments: true
-link_references: true
+```python
+class ThreeFileSplitProcessor:
+    def detect_content_type(self, content: str) -> ContentType:
+        """
+        Analyzes content to determine if it's summary, raw notes, or attachment
+        based on markers and content structure.
+        """
+        # Implementation details below in tasks
+```
+
 | Task ID | Description | Status |
 |---------|------------------------------------------------------------------|--------|
-| 1.1 | Insert the new phase in the pipeline definition | DONE |
-| 1.2 | Specify references to config in the new phase | DONE |
-| 1.3 | Commit & push changes to feature branch | DONE |
+| 1.1 | Implement robust marker detection (--==SUMMARY==-- etc.) | DONE |
+| 1.2 | Add content type detection based on headers and structure | DONE |
+| 1.3 | Create content categorization rules | DONE |
+| 1.4 | Add tests for content detection logic | DONE |
+
 ---
-2. Implement the Processor / Handler Logic
-(Example: “src/pipeline_processors/three_file_split_processor.py”)
-1) Read in the final aggregated markdown file (output from MARKDOWN_AGGREGATE).
-2) Search for markers indicating summary sections, raw notes (e.g., “--==RAW NOTES==--”), and attachments.
-3) Write each section to its respective file (summary.md, raw_notes.md, attachments.md).
-4) Insert cross-links as needed (e.g., from summary.md to raw_notes.md).
+2. Implement Content Distribution Logic
+Ensure proper distribution of content to the three output files based on content type and structure.
+
 Example structure:
-class ThreeFileSplitProcessor:
-def run(self, input_file: str, output_dir: str) -> None:
-"""
-Reads the final aggregated markdown file and splits it into three files:
-1) summary.md
-2) raw_notes.md
-3) attachments.md
-with cross-links where appropriate.
-"""
-# 1. Read the input file line by line
-# 2. Detect summary vs. raw notes vs. attachments
-# 3. Write lines to the correct output file
-# 4. Insert link references if needed (e.g., See raw notes)
-pass
+```python
+def distribute_content(self, content: str, content_type: ContentType) -> None:
+    """
+    Routes content to appropriate output file based on type:
+    - Analyzed/refined content → summary.md
+    - Original entries/notes → raw_notes.md
+    - References/attachments → attachments.md
+    """
+    # Implementation details below in tasks
+```
+
 | Task ID | Description | Status |
 |---------|----------------------------------------------------------------------------------|--------|
-| 2.1 | Create a new ThreeFileSplitProcessor class | DONE |
-| 2.2 | Implement logic to parse the aggregated file for summary, raw notes, attachments | DONE |
-| 2.3 | Write each section to the correct output file | DONE |
-| 2.4 | Commit & push changes to feature branch | DONE |
+| 2.1 | Implement summary content identification (look for "Refined Thoughts", "Analysis", etc.) | DONE |
+| 2.2 | Implement raw notes identification (original entries, communications) | DONE |
+| 2.3 | Implement attachment content identification (file refs, embedded content) | DONE |
+| 2.4 | Add content routing logic to appropriate files | DONE |
+| 2.5 | Add tests for content distribution | DONE |
+
 ---
-3. Cross-Linking Enhancements
-Possibly in the same processor or a utility function:
-• Within summary.md, add links to raw_notes.md and attachments.md.
-• If raw notes reference attachments, embed anchor links to attachments.md.
+3. Fix Content Preservation
+Ensure no content is lost during the split process and all relationships are maintained.
+
 | Task ID | Description | Status |
-|---------|--------------------------------------------------------------------|--------|
-| 3.1 | Implement link generation between summary/raw_notes/attachments | DONE |
-| 3.2 | Test link correctness in local environment / MD preview | DONE |
-| 3.3 | Commit & push changes to feature branch | DONE |
+|---------|------------------------------------------------------------------|--------|
+| 3.1 | Add content validation before and after split | DONE |
+| 3.2 | Implement size tracking for content preservation | DONE |
+| 3.3 | Add relationship tracking between split content | DONE |
+| 3.4 | Add tests for content preservation | DONE |
+
 ---
-4. Test and Validate
-• Run the pipeline end-to-end on sample data.
-• Confirm the new phase produces the desired three output files.
-• Check that internal markdown links resolve correctly.
+4. Enhance Navigation and References
+Implement proper cross-file navigation and reference updating.
+
 | Task ID | Description | Status |
 |---------|-----------------------------------------------------------|--------|
-| 4.1 | Run pipeline locally with test data | DONE |
-| 4.2 | Verify each output file is generated as expected | DONE |
-| 4.3 | Confirm summary → raw notes → attachments links are valid | DONE |
-| 4.4 | Commit & push changes to feature branch | DONE |
+| 4.1 | Add navigation header generation for each file | DONE |
+| 4.2 | Update internal references to point to correct files | DONE |
+| 4.3 | Add bi-directional linking between files | DONE |
+| 4.4 | Add tests for navigation and references | DONE |
+
 ---
-5. Merge to Main
-• Create a pull request from feature/add-triple-split-phase to main.
-• Review and merge upon approval.
+5. Testing and Validation
+Comprehensive testing of the fixed implementation.
+
 | Task ID | Description | Status |
-|---------|-----------------------------------------------|--------|
-| 5.1 | Open pull request for feature branch | DONE |
-| 5.2 | Incorporate review feedback | TODO |
-| 5.3 | Merge into main & confirm pipeline runs clean | TODO |
+|---------|-----------------------------------------------------------|--------|
+| 5.1 | Test with large files (>400KB) | DONE |
+| 5.2 | Test with various content types and structures | DONE |
+| 5.3 | Test navigation and reference integrity | DONE |
+| 5.4 | Test content preservation across splits | DONE |
+
 ---
+Expected Output Characteristics:
+
+1. summary.md (~100-150KB):
+   - All "Refined Thoughts" sections
+   - All "Analysis" sections
+   - All "Key Insights" sections
+   - Navigation links to other files
+   - Properly formatted headers
+
+2. raw_notes.md (~200-250KB):
+   - Original journal entries
+   - Meeting notes
+   - Direct communications
+   - Navigation links to other files
+   - Original timestamps and metadata
+
+3. attachments.md (~50-100KB):
+   - All file references
+   - All embedded content markers
+   - Image links
+   - PDF references
+   - Navigation links to other files
+
+Success Criteria:
+- No content loss (total size ≈ input size)
+- Proper content categorization
+- Working navigation
+- Maintained relationships
+- Preserved formatting
+- Complete test coverage
+
 Current Progress
-Tasks Completed: 15 of 15
-Tasks Remaining: 0 of 15
+Tasks Completed: 17 of 17
+Tasks Remaining: 0 of 17
 Progress: [===============] 100%
 ~~~~~

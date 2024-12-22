@@ -15,7 +15,66 @@ A modern document processing system for parsing, converting, and consolidating m
   1. MARKDOWN_PARSE: Initial parsing with size preservation
   2. MARKDOWN_CONSOLIDATE: Content consolidation maintaining integrity
   3. MARKDOWN_AGGREGATE: Efficient file merging with size optimization
-  4. MARKDOWN_SPLIT_THREEFILES: Split content into summary, raw notes, and attachments
+  4. MARKDOWN_SPLIT_THREEFILES: Intelligent content splitting with type detection
+     - Summary (30-40%): High-level insights and structured content
+     - Raw Notes (50-60%): Detailed chronological entries and logs
+     - Attachments (5-10%): File references and metadata
+
+### Content Markers and Organization
+The system uses specific markers to identify and organize content:
+
+#### Section Markers
+- `--==SUMMARY==--`: Indicates start of summary content
+  - Contains high-level overviews
+  - Key insights and decisions
+  - Structured content
+  
+- `--==RAW NOTES==--`: Indicates start of raw notes
+  - Detailed notes and logs
+  - Chronological entries
+  - Unstructured content
+  
+- `--==ATTACHMENTS==--`: Indicates start of attachments
+  - File references
+  - Embedded content
+  - Metadata
+
+#### Content Preservation
+- Input/output size validation
+- Content marker tracking
+- Section integrity verification
+- Cross-file navigation
+- Bi-directional linking
+
+### Validation and Troubleshooting
+
+#### Output Integrity Checks
+1. File Size Validation
+   - Summary file: Should contain 30-40% of aggregated content
+   - Raw notes file: Should contain 50-60% of aggregated content
+   - Attachments file: Should contain 5-10% of aggregated content
+   
+2. Content Validation
+   - Check for presence of all section markers
+   - Verify content type matches section
+   - Ensure no content loss during splits
+   - Validate cross-file references
+
+#### Common Issues and Solutions
+1. Missing Content
+   - Check section markers in aggregated file
+   - Verify content type detection rules
+   - Check file size ratios
+   
+2. Broken References
+   - Verify navigation links
+   - Check anchor generation
+   - Validate bi-directional links
+   
+3. Size Discrepancies
+   - Compare input/output sizes
+   - Check content distribution
+   - Verify preservation rules
 
 ### Document Support
 - **Markdown Files**

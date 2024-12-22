@@ -95,7 +95,7 @@ pipeline:
         description: "Split aggregated markdown into separate files for summary, raw notes, and attachments"
         output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
         processor: "ThreeFileSplitProcessor"
-        file_size_behavior: "Creates three output files with combined size approximately equal to input file"
+        file_size_behavior: "Creates three output files with content-appropriate sizes"
         components:
           - three_file_split_processor:
               config:
@@ -104,18 +104,16 @@ pipeline:
                   raw_notes: "raw_notes.md"
                   attachments: "attachments.md"
                 section_markers:
-                  summary: "---SUMMARY---"
-                  raw_notes: "---RAW NOTES---"
-                  attachments: "---ATTACHMENTS---"
+                  summary: "--==SUMMARY==--"
+                  raw_notes: "--==RAW NOTES==--"
+                  attachments: "--==ATTACHMENTS==--"
                 cross_linking: true
                 preserve_headers: true
               handlers:
-                - SplitHandler:
-                    create_summary: true
-                    create_raw_notes: true
-                    create_attachments: true
-                    link_references: true
-                    preserve_metadata: true
+                - ContentHandler:
+                    split_content: true
+                    add_navigation: true
+                    maintain_links: true
 
 # Directory Structure
 directory_structure:
