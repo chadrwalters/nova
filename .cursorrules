@@ -122,6 +122,30 @@ pipeline:
                     preserve_structure: true
                     add_file_markers: true
 
+    - MARKDOWN_SPLIT_THREEFILES:
+        description: "Split aggregated markdown into summary, raw notes, and attachments"
+        output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+        processor: "ThreeFileSplitProcessor"
+        file_size_behavior: "Creates three output files with content-appropriate sizes"
+        components:
+          - split_processor:
+              config:
+                output_files:
+                  summary: "summary.md"
+                  raw_notes: "raw_notes.md"
+                  attachments: "attachments.md"
+                section_markers:
+                  summary: "---SUMMARY---"
+                  raw_notes: "---RAW NOTES---"
+                  attachments: "---ATTACHMENTS---"
+                cross_linking: true
+                preserve_headers: true
+              handlers:
+                - ContentHandler:
+                    split_content: true
+                    add_navigation: true
+                    maintain_links: true
+
 # Installation Requirements
 installation:
   package_management:
@@ -168,6 +192,7 @@ directory_structure:
       - markdown_parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
       - markdown_consolidate: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
       - markdown_aggregate: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+      - markdown_split: "${NOVA_PHASE_MARKDOWN_SPLIT}"
     image_dirs:
       - original: "${NOVA_ORIGINAL_IMAGES_DIR}"
       - processed: "${NOVA_PROCESSED_IMAGES_DIR}"
