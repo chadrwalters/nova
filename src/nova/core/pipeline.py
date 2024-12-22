@@ -234,8 +234,14 @@ class Pipeline:
             merged_output_path = output_dir / output_filename
 
             with merged_output_path.open("w", encoding="utf-8") as merged_output:
+                # Add summary marker
+                merged_output.write("---SUMMARY---\n\n")
+                
                 # Optional: intro header
                 merged_output.write("# Aggregated Markdown Files\n\n")
+
+                # Add raw notes marker
+                merged_output.write("\n---RAW NOTES---\n\n")
 
                 for md_file in input_files:
                     try:
@@ -259,22 +265,27 @@ class Pipeline:
                             file_path=str(rel_path),
                             status='completed'
                         )
+                        
                     except Exception as e:
-                        error(f"Failed to merge {md_file}: {e}")
+                        error(f"Failed to aggregate {md_file}: {e}")
                         self.state.update_file_state(
                             phase='markdown_aggregate',
-                            file_path=str(md_file),
+                            file_path=str(rel_path),
                             status='failed',
                             error=str(e)
                         )
-
-            success(f"All markdown files merged into {merged_output_path}")
-
+                
+                # Add attachments marker
+                merged_output.write("\n\n---ATTACHMENTS---\n\n")
+                merged_output.write("# File Attachments\n\n")
+                
+                info(f"All markdown files merged into {merged_output_path}")
+                
         except Exception as e:
             error(f"Failed to run markdown aggregate phase: {e}")
             self.state.update_file_state(
                 phase='markdown_aggregate',
-                file_path='aggregate',
+                file_path='aggregation',
                 status='failed',
                 error=str(e)
             )
