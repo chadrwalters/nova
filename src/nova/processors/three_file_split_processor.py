@@ -13,10 +13,11 @@ class ThreeFileSplitProcessor(BaseProcessor):
     
     def _setup(self) -> None:
         """Setup processor requirements."""
-        self.output_files = self.config.components["three_file_split_processor"]["config"]["output_files"]
-        self.section_markers = self.config.components["three_file_split_processor"]["config"]["section_markers"]
-        self.cross_linking = self.config.components["three_file_split_processor"]["config"]["cross_linking"]
-        self.preserve_headers = self.config.components["three_file_split_processor"]["config"]["preserve_headers"]
+        config = self.config.options["components"]["three_file_split_processor"]["config"]
+        self.output_files = config["output_files"]
+        self.section_markers = config["section_markers"]
+        self.cross_linking = config["cross_linking"]
+        self.preserve_headers = config["preserve_headers"]
         
         # Regex patterns for finding references
         self.attachment_ref_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')  # Image/attachment references
