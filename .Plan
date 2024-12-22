@@ -1,125 +1,104 @@
-~~~~~
-# Title: Introduce New Markdown Aggregation Phase (MARKDOWN_AGGREGATE)
-
-## Steps Overview
-1. Create Feature Branch (e.g., feature/markdown-aggregate)
-2. Update Config to Reference "markdown_aggregate" Directory
-3. Implement and Test _run_markdown_aggregate_phase
-4. Invoke New Phase in Pipeline process() After MARKDOWN_CONSOLIDATE
-
-## Detailed Tasks
-
-### 1. Create Feature Branch
-- Status: DONE
-- Description:  
-  - From the main or dev branch, create a new branch feature/markdown-aggregate.  
-  - Ensure the first commit logs the intent of adding a new aggregation phase.
-
-### 2. Update Config
-- Status: DONE
-- Description:  
-  - In environment/config files, add markdown_aggregate references (e.g., paths.phase_dirs['markdown_aggregate']).
-  - Ensure the directory is created with necessary permissions.
-
-### 3. Implement _run_markdown_aggregate_phase
-- Status: DONE
-- Description:
-  - Inside src/nova/core/pipeline.py, add the method below to merge all .md files from the markdown_consolidate phase into a single file:
-  
-    def _run_markdown_aggregate_phase(self) -> None:
-        """
-        Run the markdown aggregate phase, merging all consolidated markdown files
-        into a single markdown file.
-        """
-        input_dir = Path(self.config.paths.phase_dirs['markdown_consolidate'])
-        output_dir = Path(self.config.paths.phase_dirs['markdown_aggregate'])
-        state_dir = Path(self.config.paths.state_dir) / 'markdown_aggregate'
-
-        # Create phase directories
-        output_dir.mkdir(parents=True, exist_ok=True)
-        state_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            # Gather all markdown files
-            input_files = []
-            for ext in self.config.processors['markdown'].extensions:
-                input_files.extend(input_dir.glob(f'**/*{ext}'))
-
-            if not input_files:
-                warning("No markdown files found for aggregation")
-                return
-
-            # Single output file
-            merged_output_path = output_dir / "all_merged_markdown.md"
-
-            with merged_output_path.open("w", encoding="utf-8") as merged_output:
-                # Optional: intro header
-                merged_output.write("# Aggregated Markdown Files\n\n")
-
-                for md_file in input_files:
-                    try:
-                        rel_path = md_file.relative_to(input_dir)
-                        with md_file.open("r", encoding="utf-8") as f:
-                            file_content = f.read()
-
-                        merged_output.write("\n\n---\n\n")
-                        merged_output.write(f"## Start of file: {rel_path}\n\n")
-                        merged_output.write(file_content)
-                        merged_output.write(f"\n\n## End of file: {rel_path}\n")
-
-                        self.state.update_file_state(
-                            phase='markdown_aggregate',
-                            file_path=str(rel_path),
-                            status='completed'
-                        )
-                    except Exception as e:
-                        error(f"Failed to merge {md_file}: {e}")
-                        self.state.update_file_state(
-                            phase='markdown_aggregate',
-                            file_path=str(md_file),
-                            status='failed',
-                            error=str(e)
-                        )
-
-            success(f"All markdown files merged into {merged_output_path}")
-
-        except Exception as e:
-            error(f"Failed to run markdown aggregate phase: {e}")
-            self.state.update_file_state(
-                phase='markdown_aggregate',
-                file_path='aggregate',
-                status='failed',
-                error=str(e)
-            )
-
-### 4. Invoke New Phase in Pipeline
-- Status: DONE
-- Description:
-  - In the process() method (src/nova/core/pipeline.py), after the call to _run_markdown_consolidate_phase, invoke _run_markdown_aggregate_phase:
-
-    def process(self) -> None:
-        try:
-            info("Starting pipeline processing...")
-            # Phase 1: MARKDOWN_PARSE
-            if self.config.processors['markdown'].enabled:
-                info("Starting MARKDOWN_PARSE phase...")
-                self._run_markdown_parse_phase()
-
-            # Phase 2: MARKDOWN_CONSOLIDATE
-            if self.config.processors['markdown'].enabled:
-                info("Starting MARKDOWN_CONSOLIDATE phase...")
-                self._run_markdown_consolidate_phase()
-
-            # Phase 3: MARKDOWN_AGGREGATE
-            if self.config.processors['markdown'].enabled:
-                info("Starting MARKDOWN_AGGREGATE phase...")
-                self._run_markdown_aggregate_phase()
-
-            success("Pipeline processing complete")
-        except Exception as e:
-            error(f"Pipeline processing failed: {e}")
-            raise ProcessingError(f"Pipeline processing failed: {str(e)}") from e
-
-## Progress
-- Tasks: 4/4 Done
+Plan: Add a New Phase (MARKDOWN_SPLIT_THREEFILES) for Summaries, Raw Notes, and Attachments
+This plan outlines the steps to create a new pipeline phase that splits the final aggregated markdown into three separate files:
+A “Summary” file (e.g., summary.md)
+A “Raw Notes” file (e.g., raw_notes.md)
+An “Attachments” file (e.g., attachments.md)
+Below are detailed instructions to guide the implementation.
+---
+Branch Strategy
+Create a Feature Branch
+✓ Name it something like: feature/add-triple-split-phase
+✓ Confirm Branch Exists
+✓ Ensure the branch is pushed to remote for collaboration or backup
+✓ Update main from remote, then rebase or merge into the feature branch if needed
+---
+Implementation Steps
+1. Define the New Phase in Your Pipeline YAML
+(Example: “nova_pipeline.yaml” or wherever your pipeline is defined)
+Add a phase after MARKDOWN_AGGREGATE named MARKDOWN_SPLIT_THREEFILES. Set its description to reflect the creation of the three separate markdown files. Include any necessary configuration parameters (e.g., detection markers for summary, raw notes, and attachments).
+Example snippet:
+MARKDOWN_SPLIT_THREEFILES:
+description: "Split aggregated markdown into separate files for summary, raw notes, and attachments"
+output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+processor: "ThreeFileSplitProcessor"
+file_size_behavior: "Creates three output files"
+components:
+three_file_split_processor:
+config:
+# Configuration for detection logic, paths, etc.
+handlers:
+SplitHandler:
+# Custom logic for splitting
+create_summary: true
+create_raw_notes: true
+create_attachments: true
+link_references: true
+| Task ID | Description | Status |
+|---------|------------------------------------------------------------------|--------|
+| 1.1 | Insert the new phase in the pipeline definition | DONE |
+| 1.2 | Specify references to config in the new phase | DONE |
+| 1.3 | Commit & push changes to feature branch | DONE |
+---
+2. Implement the Processor / Handler Logic
+(Example: “src/pipeline_processors/three_file_split_processor.py”)
+1) Read in the final aggregated markdown file (output from MARKDOWN_AGGREGATE).
+2) Search for markers indicating summary sections, raw notes (e.g., “--==RAW NOTES==--”), and attachments.
+3) Write each section to its respective file (summary.md, raw_notes.md, attachments.md).
+4) Insert cross-links as needed (e.g., from summary.md to raw_notes.md).
+Example structure:
+class ThreeFileSplitProcessor:
+def run(self, input_file: str, output_dir: str) -> None:
+"""
+Reads the final aggregated markdown file and splits it into three files:
+1) summary.md
+2) raw_notes.md
+3) attachments.md
+with cross-links where appropriate.
+"""
+# 1. Read the input file line by line
+# 2. Detect summary vs. raw notes vs. attachments
+# 3. Write lines to the correct output file
+# 4. Insert link references if needed (e.g., See raw notes)
+pass
+| Task ID | Description | Status |
+|---------|----------------------------------------------------------------------------------|--------|
+| 2.1 | Create a new ThreeFileSplitProcessor class | DONE |
+| 2.2 | Implement logic to parse the aggregated file for summary, raw notes, attachments | DONE |
+| 2.3 | Write each section to the correct output file | DONE |
+| 2.4 | Commit & push changes to feature branch | DONE |
+---
+3. Cross-Linking Enhancements
+Possibly in the same processor or a utility function:
+• Within summary.md, add links to raw_notes.md and attachments.md.
+• If raw notes reference attachments, embed anchor links to attachments.md.
+| Task ID | Description | Status |
+|---------|--------------------------------------------------------------------|--------|
+| 3.1 | Implement link generation between summary/raw_notes/attachments | DONE |
+| 3.2 | Test link correctness in local environment / MD preview | DONE |
+| 3.3 | Commit & push changes to feature branch | DONE |
+---
+4. Test and Validate
+• Run the pipeline end-to-end on sample data.
+• Confirm the new phase produces the desired three output files.
+• Check that internal markdown links resolve correctly.
+| Task ID | Description | Status |
+|---------|-----------------------------------------------------------|--------|
+| 4.1 | Run pipeline locally with test data | DONE |
+| 4.2 | Verify each output file is generated as expected | DONE |
+| 4.3 | Confirm summary → raw notes → attachments links are valid | DONE |
+| 4.4 | Commit & push changes to feature branch | DONE |
+---
+5. Merge to Main
+• Create a pull request from feature/add-triple-split-phase to main.
+• Review and merge upon approval.
+| Task ID | Description | Status |
+|---------|-----------------------------------------------|--------|
+| 5.1 | Open pull request for feature branch | DONE |
+| 5.2 | Incorporate review feedback | TODO |
+| 5.3 | Merge into main & confirm pipeline runs clean | TODO |
+---
+Current Progress
+Tasks Completed: 15 of 15
+Tasks Remaining: 0 of 15
+Progress: [===============] 100%
 ~~~~~
