@@ -137,3 +137,11 @@ case $exit_code in
         exit 1
         ;;
 esac
+
+git checkout -b refactor-backup
+git add .
+git commit -m "Create backup branch before refactoring processors"
+git push origin refactor-backup
+
+git checkout main
+git checkout -b refactor-processors

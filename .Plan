@@ -1,38 +1,60 @@
-Streamlined Implementation Plan for Nova Codebase Restructuring
-Task List
-1. Setup and Preparation
-1.1. Create Backup Branch [TODO]
-Create branch refactor-backup
-Push full current state
-1.2. Create Working Branch [TODO]
-Create branch refactor-processors from main
-2. Processor Consolidation
-2.1. Image Processor Migration [TODO]
-Compare src/processors/image_processor.py and src/nova/processors/image.py
-Create merged version in src/nova/processors/image_processor.py
-Update all imports
-Remove old file
-2.2. Markdown Processor Migration [TODO]
-Review src/nova/processors/components/markdown_handlers.py
-Consolidate any related markdown processing code
-Update imports
-2.3. Other Processor Migration [TODO]
-Identify any other processors in old structure
-Follow same pattern: compare, merge, remove
-3. Import Updates
-3.1. Update Core Imports [TODO]
-Update src/__init__.py
-Update src/nova/core/paths.py
-Update src/core/config.py
-3.2. Global Import Verification [TODO]
-Run global search for old import paths
-Update all references to new structure
-Verify no circular dependencies
-4. Cleanup
-4.1. Remove Old Structure [TODO]
-Remove src/processors/ directory
-Remove any empty directories
-Progress Tracking
-Current Progress: 0/9 tasks completed (0%)
-Next Steps
-Ready to begin with Task 1.1: Creating the backup branch. Would you like to proceed with this task?
+# Step-by-Step Plan (Cursor AI Composer Mode)
+
+**Step 1: Setup and Preparation**  
+1.1. Create Backup Branch ✓ [DONE]
+ • Task: Create branch named "refactor-backup" from the current state  
+ • Action: Push the full current state to this backup branch  
+
+1.2. Create Working Branch ✓ [DONE]
+ • Task: Create branch named "refactor-processors" from main  
+ • Action: Ensure the new branch is up to date with main before starting work  
+
+---
+
+**Step 2: Processor Consolidation** [IN PROGRESS]
+2.1. Image Processor Migration [NEXT]
+ • Compare "src/processors/image_processor.py" and "src/nova/processors/image.py"  
+ • Merge or refactor code into a single file at "src/nova/processors/image_processor.py"  
+ • Update all imports referencing the old file paths  
+ • Remove or archive the old file once finished  
+
+2.2. Markdown Processor Migration  
+ • Review all markdown-related files, such as "src/nova/processors/components/markdown_handlers.py"  
+ • Consolidate any overlapping code into a single, cohesive markdown processor under "src/nova/processors/markdown_processor.py"  
+ • Update any outdated imports that refer to the old directories  
+
+2.3. Other Processor Migration  
+ • Identify any additional processors in the old "src/processors" directory  
+ • Compare them to any counterparts in "src/nova/processors"  
+ • Merge, update imports, and remove old or duplicate files  
+
+---
+
+**Step 3: Import Updates**  
+3.1. Update Core Imports  
+ • Review files such as "src/__init__.py" and "src/nova/core/paths.py"  
+ • Update references to core modules if they still point to "src/core" instead of "src/nova/core"  
+
+3.2. Global Import Verification  
+ • Perform a global search for old import paths, like "src.processors" or "src.core"  
+ • Update each to the new "src.nova.processors" or "src.nova.core" path  
+ • Watch for potential circular dependencies or module not found errors  
+
+---
+
+**Step 4: Cleanup**  
+4.1. Remove Old Structure  
+ • After confirming all new imports work, remove the outdated "src/processors/" directory  
+ • Remove any empty or unused directories  
+ • Perform final checks to ensure no references remain to the removed files  
+
+---
+
+**Progress Tracking**  
+• Total Tasks: 9 (subtasks included)  
+• Current Progress: 2/9 tasks completed  
+• Next Step: Step 2.1 (Image Processor Migration)  
+
+---
+
+Ready to proceed with Step 2.1 - Image Processor Migration. Would you like me to continue?
