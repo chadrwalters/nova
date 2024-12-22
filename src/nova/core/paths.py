@@ -44,14 +44,19 @@ class NovaPaths(BaseModel):
     def from_env(cls) -> 'NovaPaths':
         """Create NovaPaths instance from environment variables."""
         base_dir = Path(os.getenv('NOVA_BASE_DIR', '.')).resolve()
-        processing_dir = Path(os.getenv('NOVA_PROCESSING_DIR', base_dir / 'processing'))
+        processing_dir = Path(os.getenv('NOVA_PROCESSING_DIR', base_dir / '_NovaProcessing'))
+        
+        # Ensure all paths are derived from base_dir
+        input_dir = Path(os.getenv('NOVA_INPUT_DIR', base_dir / '_NovaInput'))
+        output_dir = Path(os.getenv('NOVA_OUTPUT_DIR', base_dir / '_NovaOutput'))
+        temp_dir = Path(os.getenv('NOVA_TEMP_DIR', processing_dir / 'temp'))
         
         return cls(
             base_dir=base_dir,
-            input_dir=Path(os.getenv('NOVA_INPUT_DIR', base_dir / '_NovaInput')),
-            output_dir=Path(os.getenv('NOVA_OUTPUT_DIR', base_dir / '_NovaOutput')),
+            input_dir=input_dir,
+            output_dir=output_dir,
             processing_dir=processing_dir,
-            temp_dir=Path(os.getenv('NOVA_TEMP_DIR', base_dir / '_NovaTemp')),
+            temp_dir=temp_dir,
             state_dir=processing_dir / '.state',
             phase_dirs={
                 'markdown_parse': processing_dir / 'phases/markdown_parse',
