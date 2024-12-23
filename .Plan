@@ -1,129 +1,212 @@
-Plan: Fix MARKDOWN_SPLIT_THREEFILES Phase to Properly Split Content
-This plan outlines the steps to fix the MARKDOWN_SPLIT_THREEFILES phase that currently fails to properly split the aggregated markdown into three separate files. The fix will ensure proper content distribution and preservation.
+# Nova Document Processor Pipeline Fixes
 
----
-Branch Strategy
-Create a Feature Branch
-✓ Name it something like: fix/markdown-split-content-distribution
-✓ Branch from current main
-✓ Push branch to remote for collaboration
-✓ Keep in sync with main during development
+## Milestone 1: Fix Content Preservation ✓
+- [x] Debug file size reduction issue in markdown_parse phase
+  - Added size validation checks
+  - Implemented content integrity verification
+  - Added logging for content modifications
+  - Fixed content truncation issues
+  - Added tests for content preservation
 
----
-Implementation Steps
-1. Fix Content Detection Logic
-(Example: "src/pipeline_processors/three_file_split_processor.py")
-Implement proper content detection and categorization logic to identify different types of content in the aggregated file.
+Progress Update: Completed content preservation fixes
+- Added input file content validation
+- Added size tracking throughout processing
+- Added modification tracking
+- Added detailed logging
+- Added size verification at each step
 
-Example snippet:
-```python
-class ThreeFileSplitProcessor:
-    def detect_content_type(self, content: str) -> ContentType:
-        """
-        Analyzes content to determine if it's summary, raw notes, or attachment
-        based on markers and content structure.
-        """
-        # Implementation details below in tasks
-```
+## Milestone 2: Fix Directory Structure ✓
+- [x] Correct directory replication issues
+  - Removed incorrect subdirectory creation
+  - Implemented proper directory path handling
+  - Added directory structure validation
+  - Updated directory creation logic
+  - Added tests for directory structure
 
-| Task ID | Description | Status |
-|---------|------------------------------------------------------------------|--------|
-| 1.1 | Implement robust marker detection (--==SUMMARY==-- etc.) | DONE |
-| 1.2 | Add content type detection based on headers and structure | DONE |
-| 1.3 | Create content categorization rules | DONE |
-| 1.4 | Add tests for content detection logic | DONE |
+Progress Update: Completed directory structure fixes
+- Added source directory validation
+- Added target directory validation
+- Added structure comparison
+- Added progress tracking
+- Added detailed statistics
+- Fixed directory copying logic
+- Added proper error handling
 
----
-2. Implement Content Distribution Logic
-Ensure proper distribution of content to the three output files based on content type and structure.
+## Milestone 3: Fix Attachment Processing ✓
+- [x] Implement proper attachment handling
+  - Added attachment path resolution
+  - Implemented attachment content embedding
+  - Added attachment validation
+  - Fixed attachment directory copying
+  - Added tests for attachment processing
 
-Example structure:
-```python
-def distribute_content(self, content: str, content_type: ContentType) -> None:
-    """
-    Routes content to appropriate output file based on type:
-    - Analyzed/refined content → summary.md
-    - Original entries/notes → raw_notes.md
-    - References/attachments → attachments.md
-    """
-    # Implementation details below in tasks
-```
+Progress Update: Completed attachment processing fixes
+- Added metadata handling
+- Added URL decoding
+- Added proper path resolution
+- Added attachment markers
+- Added progress tracking
+- Added detailed statistics
+- Fixed image handling
+- Added error handling
 
-| Task ID | Description | Status |
-|---------|----------------------------------------------------------------------------------|--------|
-| 2.1 | Implement summary content identification (look for "Refined Thoughts", "Analysis", etc.) | DONE |
-| 2.2 | Implement raw notes identification (original entries, communications) | DONE |
-| 2.3 | Implement attachment content identification (file refs, embedded content) | DONE |
-| 2.4 | Add content routing logic to appropriate files | DONE |
-| 2.5 | Add tests for content distribution | DONE |
+## Milestone 4: Fix Content Processing ✓
+- [x] Implement proper content processing
+  - Added URL decoding for links and paths
+  - Fixed markdown link processing
+  - Implemented proper image reference handling
+  - Added content validation checks
+  - Added tests for content processing
 
----
-3. Fix Content Preservation
-Ensure no content is lost during the split process and all relationships are maintained.
+Progress Update: Completed content processing fixes
+- Added URL decoding and path normalization
+- Added link validation and processing
+- Added image reference handling
+- Added content validation
+- Added progress tracking
+- Added detailed statistics
+- Added error handling
+- Added size verification
 
-| Task ID | Description | Status |
-|---------|------------------------------------------------------------------|--------|
-| 3.1 | Add content validation before and after split | DONE |
-| 3.2 | Implement size tracking for content preservation | DONE |
-| 3.3 | Add relationship tracking between split content | DONE |
-| 3.4 | Add tests for content preservation | DONE |
+## Milestone 5: Testing and Validation ✓
+- [x] Implement comprehensive testing
+  - Added integration tests
+  - Added regression tests
+  - Added validation tests
+  - Added performance tests
+  - Added error handling tests
 
----
-4. Enhance Navigation and References
-Implement proper cross-file navigation and reference updating.
+Progress Update: Completed testing implementation
+- Added comprehensive test suite
+- Added environment setup fixtures
+- Added test file generation
+- Added content processing tests
+- Added image processing tests
+- Added directory structure tests
+- Added validation tests
+- Added error handling tests
+- Added structure report tests
 
-| Task ID | Description | Status |
-|---------|-----------------------------------------------------------|--------|
-| 4.1 | Add navigation header generation for each file | DONE |
-| 4.2 | Update internal references to point to correct files | DONE |
-| 4.3 | Add bi-directional linking between files | DONE |
-| 4.4 | Add tests for navigation and references | DONE |
+## Milestone 6: Output Format Fixes (Completed)
+- [x] Resolve file path handling and newline issues in the consolidation phase
+  - Ensure URLs and links remain intact on a single line
+  - Validate path concatenation and prevent undesired line breaks
+  - Added tests to verify correct link formatting
+  - Implemented proper line ending normalization
+  - Added content cleanup and validation
 
----
-5. Testing and Validation
-Comprehensive testing of the fixed implementation.
+- [x] Correct data URI image block markers
+  - Use proper attachment block markers ("--==ATTACHMENT_BLOCK: {filename}==--")
+  - Remove any malformed or duplicated END markers
+  - Validate that embedded image references are preserved
+  - Added proper base64 content handling
+  - Added duplicate image detection
+  - Added stable content hashing
+  - Added proper error handling
+  - Added comprehensive logging
 
-| Task ID | Description | Status |
-|---------|-----------------------------------------------------------|--------|
-| 5.1 | Test with large files (>400KB) | DONE |
-| 5.2 | Test with various content types and structures | DONE |
-| 5.3 | Test navigation and reference integrity | DONE |
-| 5.4 | Test content preservation across splits | DONE |
+- [x] Prevent content duplication in the aggregated file
+  - Implement a check for duplicate headers and remove them
+  - Ensure "Summary" and "Raw Notes" appear only once each
+  - Add new tests to confirm no repeated headers
 
----
-Expected Output Characteristics:
+- [x] Properly split content so summary, raw notes, and attachments are in correct files
+  - Update logic for identifying high-level summary vs. detailed notes
+  - Implement robust content filtering rules for summary and raw notes
+  - Validate that attachments are placed in attachments.md
 
-1. summary.md (~100-150KB):
-   - All "Refined Thoughts" sections
-   - All "Analysis" sections
-   - All "Key Insights" sections
-   - Navigation links to other files
-   - Properly formatted headers
+- [x] Restore non-empty raw notes file
+  - Include all detailed log entries and notes in raw_notes.md
+  - Maintain attachments separately to avoid empty raw notes
+  - Verify with new tests that raw_notes.md is populated
 
-2. raw_notes.md (~200-250KB):
-   - Original journal entries
-   - Meeting notes
-   - Direct communications
-   - Navigation links to other files
-   - Original timestamps and metadata
+- [x] Enhance attachment block formatting
+  - Added file type categorization
+  - Added metadata enrichment
+  - Added organized category sections
+  - Added proper block formatting
+  - Added content-based type detection
+  - Added binary file handling
+  - Added comprehensive logging
+  - Added detailed headers and descriptions
+  - Added error handling and recovery
+  - Added size tracking and validation
 
-3. attachments.md (~50-100KB):
-   - All file references
-   - All embedded content markers
-   - Image links
-   - PDF references
-   - Navigation links to other files
+- [x] Improve file separation markers
+  - Added visually distinct section markers
+  - Added clear start and end markers
+  - Added file block markers
+  - Added consistent marker widths
+  - Added descriptive marker text
+  - Added proper spacing
+  - Added section descriptions
+  - Added timestamp headers
+  - Added comprehensive logging
+  - Added error handling
 
-Success Criteria:
-- No content loss (total size ≈ input size)
-- Proper content categorization
-- Working navigation
-- Maintained relationships
-- Preserved formatting
-- Complete test coverage
+Progress Update: Completed file separation markers
+- Added visually distinct section markers
+- Added clear start and end markers
+- Added file block markers
+- Added consistent marker widths
+- Added descriptive marker text
+- Added proper spacing
+- Added section descriptions
+- Added timestamp headers
+- Added comprehensive logging
+- Added error handling
 
-Current Progress
-Tasks Completed: 17 of 17
-Tasks Remaining: 0 of 17
-Progress: [===============] 100%
-~~~~~
+## Implementation Order
+1. Content Preservation (Critical) ✓
+2. Directory Structure (Critical) ✓
+3. Attachment Processing (Critical) ✓
+4. Content Processing (High) ✓
+5. Testing and Validation (High) ✓
+6. Output Format Fixes (High) ✓
+   - File path and newline handling ✓
+   - Data URI image blocks ✓
+   - Content duplication ✓
+   - Content splitting ✓
+   - Raw notes restoration ✓
+   - Attachment formatting ✓
+   - File separation markers ✓
+
+## Success Criteria
+1. File sizes are preserved through parsing ✓
+2. Directory structure is correctly maintained ✓
+3. Attachments are properly processed and embedded ✓
+4. Content is properly decoded and formatted ✓
+5. All tests pass with good coverage ✓
+6. Final consolidated files, aggregated files, and split files contain correct, non-duplicated content, properly formatted attachments, distinct file markers, and accurate summary/raw notes
+   - Links and URLs remain intact on single lines ✓
+   - Paths are properly concatenated ✓
+   - Line endings are normalized ✓
+   - Data URI images are properly handled ✓
+   - Content duplication is prevented ✓
+   - Headers are deduplicated ✓
+   - Sections are properly organized ✓
+   - Content is intelligently classified ✓
+   - Section sizes meet expectations ✓
+   - Raw notes are properly populated ✓
+   - Raw notes contain all relevant content ✓
+   - Attachment blocks are properly formatted ✓
+   - Attachments are organized by type ✓
+   - File markers are clear and distinct ✓
+
+## Notes
+- Maintain backward compatibility
+- Implement robust validation and logging for each output file
+- Introduce structured tests for verifying correct marker usage
+- Provide descriptive console output for transformation steps
+- Continue to monitor file sizes, directory structure, and content integrity
+
+## Final Status
+All milestones have been successfully completed:
+1. Content Preservation (Critical) ✓
+2. Directory Structure (Critical) ✓
+3. Attachment Processing (Critical) ✓
+4. Content Processing (High) ✓
+5. Testing and Validation (High) ✓
+6. Output Format Fixes (High) ✓
+
+The Nova Document Processor pipeline now properly handles file paths, newlines, data URI images, content duplication, content splitting, raw notes, attachments, and file markers. All components are working together to produce well-organized, properly formatted output files with clear separation and distinct markers.

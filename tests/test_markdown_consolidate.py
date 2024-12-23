@@ -3,98 +3,92 @@
 import os
 from pathlib import Path
 import pytest
-import tempfile
-import shutil
 
 from nova.processors.markdown_consolidate import MarkdownConsolidateProcessor
-from nova.core.config import ProcessorConfig, NovaConfig, PathsConfig
-from nova.core.paths import NovaPaths
 from nova.core.errors import ProcessingError
+from nova.core.config import NovaConfig, ProcessorConfig, PathsConfig
 
 @pytest.fixture
-def test_paths():
-    """Create test paths."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        processing_dir = tmp_path / '_NovaProcessing'
-        
-        nova_paths = NovaPaths(
-            base_dir=tmp_path,
-            input_dir=tmp_path / '_NovaInput',
-            output_dir=tmp_path / '_NovaOutput',
-            processing_dir=processing_dir,
-            temp_dir=processing_dir / 'temp',
-            state_dir=processing_dir / '.state',
-            phase_dirs={
-                'markdown_parse': processing_dir / 'phases/markdown_parse',
-                'markdown_consolidate': processing_dir / 'phases/markdown_consolidate'
-            },
-            image_dirs={
-                'original': processing_dir / 'images/original',
-                'processed': processing_dir / 'images/processed',
-                'metadata': processing_dir / 'images/metadata',
-                'cache': processing_dir / 'images/cache'
-            },
-            office_dirs={
-                'assets': processing_dir / 'office/assets',
-                'temp': processing_dir / 'office/temp'
+def processor_config():
+    """Create test processor config."""
+    return ProcessorConfig(options={
+        'components': {
+            'consolidate_processor': {
+                'config': {
+                    'group_by_root': True,
+                    'handle_attachments': True,
+                    'preserve_structure': True,
+                    'attachment_markers': {
+                        'start': "--==ATTACHMENT_BLOCK: {filename}==--",
+                        'end': "--==ATTACHMENT_BLOCK_END==--"
+                    }
+                }
             }
-        )
-        
-        paths_config = PathsConfig(
-            base_dir=nova_paths.base_dir,
-            input_dir=nova_paths.input_dir,
-            output_dir=nova_paths.output_dir,
-            processing_dir=nova_paths.processing_dir,
-            temp_dir=nova_paths.temp_dir,
-            state_dir=nova_paths.state_dir,
-            phase_dirs=nova_paths.phase_dirs,
-            image_dirs=nova_paths.image_dirs,
-            office_dirs=nova_paths.office_dirs
-        )
-        
-        # Create required directories
-        for dir_path in [paths_config.input_dir, paths_config.output_dir, paths_config.processing_dir, 
-                        paths_config.temp_dir, paths_config.state_dir] + list(paths_config.phase_dirs.values()) + \
-                       list(paths_config.image_dirs.values()) + list(paths_config.office_dirs.values()):
-            dir_path.mkdir(parents=True, exist_ok=True)
-            
-        yield paths_config
+        }
+    })
 
 @pytest.fixture
-def processor(test_paths):
-    """Create a markdown consolidate processor instance."""
-    processor_config = ProcessorConfig(
-        name="markdown_consolidate",
-        output_dir=test_paths.phase_dirs['markdown_consolidate'],
-        processor="MarkdownConsolidateProcessor"
+def nova_config():
+    """Create test Nova config."""
+    paths_config = PathsConfig(
+        base_dir=Path("/tmp/nova"),
+        input_dir=Path("/tmp/nova/input"),
+        output_dir=Path("/tmp/nova/output"),
+        processing_dir=Path("/tmp/nova/processing"),
+        temp_dir=Path("/tmp/nova/temp"),
+        state_dir=Path("/tmp/nova/state"),
+        phase_dirs={
+            "markdown_parse": Path("/tmp/nova/processing/markdown_parse"),
+            "markdown_consolidate": Path("/tmp/nova/processing/markdown_consolidate"),
+            "markdown_aggregate": Path("/tmp/nova/processing/markdown_aggregate"),
+            "markdown_split": Path("/tmp/nova/processing/markdown_split")
+        },
+        image_dirs={
+            "original": Path("/tmp/nova/processing/images/original"),
+            "processed": Path("/tmp/nova/processing/images/processed"),
+            "metadata": Path("/tmp/nova/processing/images/metadata"),
+            "cache": Path("/tmp/nova/processing/images/cache")
+        },
+        office_dirs={
+            "assets": Path("/tmp/nova/processing/office/assets"),
+            "temp": Path("/tmp/nova/processing/office/temp")
+        }
     )
-    nova_config = NovaConfig(paths=test_paths)
+    return NovaConfig(paths=paths_config)
+
+@pytest.fixture
+def processor(processor_config, nova_config):
+    """Create test processor instance."""
     return MarkdownConsolidateProcessor(processor_config, nova_config)
 
 @pytest.fixture
-def test_files(test_paths):
-    """Create temporary test files and directories."""
+def test_files(tmp_path):
+    """Create test files and directories."""
     # Create main markdown file
-    main_md = test_paths.input_dir / "test.md"
-    main_md.write_text("# Main Document\n\nThis is the main content.")
+    main_md = tmp_path / "test.md"
+    main_md.write_text("# Main Document\n\nThis is the main content")
     
     # Create attachments directory
-    attachments_dir = test_paths.input_dir / "test"
+    attachments_dir = tmp_path / "test"
     attachments_dir.mkdir()
     
     # Create attachment files
     attachment1 = attachments_dir / "attachment1.md"
-    attachment1.write_text("## Attachment 1\n\nThis is attachment 1 content.")
+    attachment1.write_text("This is attachment 1 content")
     
-    attachment2 = attachments_dir / "subdir" / "attachment2.md"
-    attachment2.parent.mkdir(parents=True)
-    attachment2.write_text("## Attachment 2\n\nThis is attachment 2 content.")
+    subdir = attachments_dir / "subdir"
+    subdir.mkdir()
+    attachment2 = subdir / "attachment2.md"
+    attachment2.write_text("This is attachment 2 content")
     
-    yield {
+    # Create output directory
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    
+    return {
         'main_md': main_md,
         'attachments_dir': attachments_dir,
-        'output_dir': test_paths.output_dir
+        'output_dir': output_dir
     }
 
 def test_find_attachments_dir(processor, test_files):
@@ -107,13 +101,13 @@ def test_merge_attachments(processor, test_files):
     content = "# Original Content"
     merged = processor._merge_attachments(content, test_files['attachments_dir'])
     
-    assert "[Begin Attachment: attachment1.md]" in merged
+    assert "--==ATTACHMENT_BLOCK: attachment1.md==--" in merged
     assert "This is attachment 1 content" in merged
-    assert "[End Attachment: attachment1.md]" in merged
+    assert "--==ATTACHMENT_BLOCK_END==--" in merged
     
-    assert "[Begin Attachment: subdir/attachment2.md]" in merged
+    assert "--==ATTACHMENT_BLOCK: subdir/attachment2.md==--" in merged
     assert "This is attachment 2 content" in merged
-    assert "[End Attachment: subdir/attachment2.md]" in merged
+    assert "--==ATTACHMENT_BLOCK_END==--" in merged
     
 def test_process_with_attachments(processor, test_files):
     """Test processing a markdown file with attachments."""
@@ -126,11 +120,11 @@ def test_process_with_attachments(processor, test_files):
     content = output_path.read_text()
     assert "# Main Document" in content
     assert "This is the main content" in content
-    assert "[Begin Attachment: attachment1.md]" in content
+    assert "--==ATTACHMENT_BLOCK: attachment1.md==--" in content
     assert "This is attachment 1 content" in content
-    assert "[Begin Attachment: subdir/attachment2.md]" in content
+    assert "--==ATTACHMENT_BLOCK: subdir/attachment2.md==--" in content
     assert "This is attachment 2 content" in content
-    
+
 def test_process_without_attachments(processor, test_files):
     """Test processing a markdown file without attachments."""
     # Create a markdown file without attachments
@@ -146,7 +140,7 @@ def test_process_without_attachments(processor, test_files):
     content = output_path.read_text()
     assert "# No Attachments" in content
     assert "This file has no attachments" in content
-    assert "[Begin Attachment:" not in content
+    assert "--==ATTACHMENT_BLOCK:" not in content
     
 def test_process_error_handling(processor):
     """Test error handling during processing."""
@@ -155,3 +149,154 @@ def test_process_error_handling(processor):
             Path("nonexistent.md"),
             Path("output.md")
         )
+
+def test_validate_markers(processor):
+    """Test attachment marker validation."""
+    # Valid markers
+    content = """
+    Some content
+    --==ATTACHMENT_BLOCK: file1.md==--
+    Content 1
+    --==ATTACHMENT_BLOCK_END==--
+    More content
+    --==ATTACHMENT_BLOCK: file2.md==--
+    Content 2
+    --==ATTACHMENT_BLOCK_END==--
+    """
+    assert processor._validate_markers(content) is True
+    
+    # Mismatched count
+    content = """
+    Some content
+    --==ATTACHMENT_BLOCK: file1.md==--
+    Content 1
+    --==ATTACHMENT_BLOCK_END==--
+    --==ATTACHMENT_BLOCK: file2.md==--
+    Content 2
+    """
+    assert processor._validate_markers(content) is False
+    
+    # Invalid ordering
+    content = """
+    Some content
+    --==ATTACHMENT_BLOCK_END==--
+    Content 1
+    --==ATTACHMENT_BLOCK: file1.md==--
+    """
+    assert processor._validate_markers(content) is False
+
+def test_has_attachment_markers(processor):
+    """Test detection of existing attachment markers."""
+    # Content with markers
+    content = """Some content
+    --==ATTACHMENT_BLOCK: file.md==--
+    Content
+    --==ATTACHMENT_BLOCK_END==--
+    """
+    assert processor._has_attachment_markers(content) is True
+    
+    # Content without markers
+    content = "Some content\nwithout markers"
+    assert processor._has_attachment_markers(content) is False
+
+def test_normalize_references(processor):
+    """Test normalization of attachment references."""
+    # Test old-style markers
+    content = """# Document
+[Begin Attachment]: file1.md
+Content 1
+<attached file2.md>
+Content 2
+[attachment: file3.md]
+Content 3
+"""
+    normalized = processor._normalize_references(content)
+    
+    assert "--==ATTACHMENT_BLOCK: file1.md==--" in normalized
+    assert "--==ATTACHMENT_BLOCK: file2.md==--" in normalized
+    assert "--==ATTACHMENT_BLOCK: file3.md==--" in normalized
+    assert "[Begin Attachment]:" not in normalized
+    assert "<attached" not in normalized
+    assert "[attachment:" not in normalized
+
+def test_extract_metadata(processor):
+    """Test metadata extraction from content."""
+    content = """# Document
+<!-- {"author": "Test User", "date": "2024-03-20"} -->
+Some content
+<!-- {"tags": ["test", "markdown"]} -->
+More content
+"""
+    metadata = processor._extract_metadata(content)
+    
+    assert metadata["author"] == "Test User"
+    assert metadata["date"] == "2024-03-20"
+    assert "test" in metadata["tags"]
+    assert "markdown" in metadata["tags"]
+
+def test_process_with_existing_markers(processor, test_files):
+    """Test processing a file that already has attachment markers."""
+    # Create a file with existing markers
+    marked_attachment = test_files['attachments_dir'] / "marked.md"
+    marked_attachment.write_text("""--==ATTACHMENT_BLOCK: existing.md==--
+This content is already marked
+--==ATTACHMENT_BLOCK_END==--""")
+    
+    output_path = test_files['output_dir'] / "test.md"
+    result = processor.process(test_files['main_md'], output_path)
+    
+    content = output_path.read_text()
+    # Verify the existing markers are preserved
+    assert "--==ATTACHMENT_BLOCK: existing.md==--" in content
+    assert "This content is already marked" in content
+    # Verify other attachments are still processed
+    assert "--==ATTACHMENT_BLOCK: attachment1.md==--" in content
+    assert "This is attachment 1 content" in content
+
+def test_process_with_mixed_references(processor, test_files):
+    """Test processing a file with mixed reference styles."""
+    # Create a file with mixed reference styles
+    main_content = """# Main Document
+[Begin Attachment]: old_style.md
+Old style content
+<attached html_style.md>
+HTML style content
+[attachment: bracket_style.md]
+Bracket style content
+"""
+    test_files['main_md'].write_text(main_content)
+    
+    output_path = test_files['output_dir'] / "test.md"
+    result = processor.process(test_files['main_md'], output_path)
+    
+    content = output_path.read_text()
+    # Verify all references are normalized
+    assert "--==ATTACHMENT_BLOCK: old_style.md==--" in content
+    assert "--==ATTACHMENT_BLOCK: html_style.md==--" in content
+    assert "--==ATTACHMENT_BLOCK: bracket_style.md==--" in content
+    # Verify old formats are removed
+    assert "[Begin Attachment]:" not in content
+    assert "<attached" not in content
+    assert "[attachment:" not in content
+
+def test_process_with_metadata(processor, test_files):
+    """Test processing a file with metadata."""
+    # Create a file with metadata
+    main_content = """# Main Document
+<!-- {"title": "Test Document", "author": "Test User"} -->
+Some content
+<!-- {"category": "test", "tags": ["markdown", "test"]} -->
+More content
+"""
+    test_files['main_md'].write_text(main_content)
+    
+    output_path = test_files['output_dir'] / "test.md"
+    result = processor.process(test_files['main_md'], output_path)
+    
+    content = output_path.read_text()
+    # Verify metadata is preserved
+    assert '{"title": "Test Document"' in content
+    assert '{"category": "test"' in content
+    # Verify content is preserved
+    assert "Some content" in content
+    assert "More content" in content
