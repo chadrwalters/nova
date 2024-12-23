@@ -34,10 +34,26 @@ The system uses specific markers to identify and organize content:
   - Chronological entries
   - Unstructured content
   
-- `--==ATTACHMENTS==--`: Indicates start of attachments
+- `--==ATTACHMENTS==--`: Indicates start of attachments section
   - File references
   - Embedded content
   - Metadata
+
+#### Attachment Block Markers
+The system uses standardized markers to identify individual attachments within the content:
+
+```markdown
+--==ATTACHMENT_BLOCK: filename.md==--
+[Attachment content here]
+--==ATTACHMENT_BLOCK_END==--
+```
+
+These markers:
+- Clearly identify attachment boundaries
+- Include source filename for traceability
+- Match the section marker style
+- Support nested content
+- Preserve original formatting
 
 #### Content Preservation
 - Input/output size validation

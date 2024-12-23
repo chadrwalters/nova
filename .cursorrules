@@ -7,17 +7,13 @@ pipeline:
         description: "Parse and process markdown files with embedded content"
         output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
         processor: "MarkdownProcessor"
-        file_size_behavior: "Maintains original input file sizes"
         components:
           - markdown_processor:
-              parser: "markdown-it"
+              parser: "markitdown==0.0.1a3"
               config:
-                typographer: true
-                plugins:
-                  - table
-                  - strikethrough
-                  - linkify
-                  - image
+                document_conversion: true
+                image_processing: true
+                metadata_preservation: true
               handlers:
                 - MarkitdownHandler:
                     document_conversion: true
@@ -90,13 +86,15 @@ pipeline:
         description: "Consolidate markdown files with their attachments"
         output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
         processor: "MarkdownConsolidateProcessor"
-        file_size_behavior: "Maintains individual file sizes while adding metadata and attachments"
         components:
           - consolidate_processor:
               config:
                 group_by_root: true
                 handle_attachments: true
                 preserve_structure: true
+                attachment_markers:
+                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                  end: "--==ATTACHMENT_BLOCK_END==--"
               handlers:
                 - AttachmentHandler:
                     copy_attachments: true
@@ -109,7 +107,6 @@ pipeline:
         description: "Aggregate all consolidated markdown files into a single file"
         output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
         processor: "MarkdownAggregateProcessor"
-        file_size_behavior: "Creates single output file with size approximately equal to sum of input files"
         components:
           - aggregate_processor:
               config:
@@ -126,7 +123,6 @@ pipeline:
         description: "Split aggregated markdown into summary, raw notes, and attachments"
         output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
         processor: "ThreeFileSplitProcessor"
-        file_size_behavior: "Creates three output files with content-appropriate sizes"
         components:
           - split_processor:
               config:
@@ -138,6 +134,9 @@ pipeline:
                   summary: "--==SUMMARY==--"
                   raw_notes: "--==RAW NOTES==--"
                   attachments: "--==ATTACHMENTS==--"
+                attachment_markers:
+                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                  end: "--==ATTACHMENT_BLOCK_END==--"
                 content_type_rules:
                   summary:
                     - Contains high-level overviews
@@ -151,10 +150,6 @@ pipeline:
                     - Contains file references
                     - Contains embedded content
                     - Contains metadata
-                file_size_expectations:
-                  summary: "30-40% of aggregated content"
-                  raw_notes: "50-60% of aggregated content"
-                  attachments: "5-10% of aggregated content"
                 content_preservation:
                   validate_input_size: true
                   validate_output_size: true
@@ -446,22 +441,54 @@ implementation_protocol:
     - Preview upcoming work
     - Request explicit confirmation before proceeding 
 
-# File Size Management
-file_size_management:
-  rules:
-    - Preserve original file sizes through parsing phase
-    - Maintain individual file integrity during consolidation
-    - Aggregate phase output size should approximate sum of inputs
-    - No artificial file size inflation
-    - Log warnings for unexpected size changes
-  monitoring:
-    - Track file sizes between phases
-    - Compare input/output ratios
-    - Alert on anomalous growth
-    - Log size statistics
-  optimization:
-    - Compress images when possible
-    - Optimize text content
-    - Remove duplicate content
-    - Clean temporary data
-    - Preserve essential metadata only
+# Test Execution Requirements
+test_execution:
+  entry_point: "run_tests.sh"
+  requirements:
+    - Load environment variables
+    - Verify Python and pytest installation
+    - Create test directories
+    - Support command line options:
+        --verbose, -v: Show detailed test output
+        --coverage, -c: Generate coverage report
+        --fail-fast, -f: Stop on first failure
+        --test, -t: Run specific test file
+        --help, -h: Show help message
+    - Set up proper PYTHONPATH
+    - Clean up test artifacts
+    - Handle exit codes appropriately
+  
+  test_environment:
+    directories:
+      - tests/data: Test data files
+      - tests/output: Test output files
+      - tests/temp: Temporary test files
+    
+    variables:
+      PYTHONPATH: Include src directory
+      PYTEST_ARGS: Command line arguments
+      TEST_EXIT_CODE: Test execution result
+    
+    cleanup:
+      - Remove temporary files
+      - Preserve test outputs
+      - Clean test directories
+      - Reset environment
+  
+  test_coverage:
+    requirements:
+      - Track code coverage
+      - Generate coverage reports
+      - Identify untested code
+      - Set coverage targets
+    
+    reporting:
+      - Terminal output
+      - HTML reports
+      - Missing lines
+      - Branch coverage
+    
+    thresholds:
+      total_coverage: 80%
+      file_coverage: 70%
+      branch_coverage: 60%

@@ -11,7 +11,7 @@ from ...core.errors import ProcessingError
 from ...core.logging import get_logger
 
 class OfficeDocumentHandler(DocumentComponent):
-    """Handles office document processing."""
+    """Handler for office documents. Extracts raw content for MarkitdownHandler to process."""
     
     def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
         """Initialize handler.
@@ -26,55 +26,47 @@ class OfficeDocumentHandler(DocumentComponent):
         # Add component-specific stats
         self.stats.update({
             'files_processed': 0,
-            'images_extracted': 0,
-            'text_extracted': 0
+            'content_extracted': 0
         })
     
-    def process_document(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
-        """Process a document file.
+    def process_document(self, input_path: Path, output_path: Optional[Path] = None) -> Dict[str, Any]:
+        """Process a document.
         
         Args:
-            input_path: Path to input document
-            output_path: Path to output document
+            input_path: Path to the document
+            output_path: Optional path to save processed document
             
         Returns:
-            Dictionary containing document metadata
+            Dictionary containing processed content and metadata
+        """
+        return self.extract_content(input_path)
+    
+    def extract_content(self, input_path: Path) -> Dict[str, Any]:
+        """Extract raw content from an office document for MarkitdownHandler to process.
+        
+        Args:
+            input_path: Path to the document
+            
+        Returns:
+            Dictionary containing raw content and metadata
         """
         try:
-            self.logger.info(f"Processing document: {input_path}")
+            # Read raw file content
+            with open(input_path, 'rb') as f:
+                raw_content = f.read()
             
-            # Create output directory if needed
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Extract text content
-            text_content = self._extract_text(input_path)
-            
-            # Extract images
-            images = self._extract_images(input_path)
-            
-            # Update stats
-            self.stats['files_processed'] += 1
-            self.stats['images_extracted'] += len(images)
-            self.stats['text_extracted'] += len(text_content) > 0
-            
-            return {
+            # Return raw content and metadata for MarkitdownHandler
+            result = {
+                'content': raw_content,
                 'original_path': str(input_path),
-                'processed_path': str(output_path),
-                'text_content': text_content,
-                'images': [str(img) for img in images],
-                'created_at': datetime.now().timestamp()
+                'file_type': input_path.suffix.lower()[1:],  # Remove leading dot
+                'extraction_time': datetime.utcnow().isoformat() + "Z"
             }
             
+            self.stats['content_extracted'] += 1
+            self.logger.info(f"Extracted content from {input_path}")
+            return result
+            
         except Exception as e:
-            self.logger.error(f"Failed to process {input_path}: {e}")
-            raise ProcessingError(f"Failed to process {input_path}: {e}") from e
-    
-    def _extract_text(self, doc_path: Path) -> str:
-        """Extract text content from document."""
-        # TODO: Implement text extraction
-        return ""
-    
-    def _extract_images(self, doc_path: Path) -> List[Path]:
-        """Extract images from document."""
-        # TODO: Implement image extraction
-        return []
+            self.logger.error(f"Failed to extract content from {input_path}: {str(e)}")
+            raise ProcessingError(f"Content extraction failed: {str(e)}")

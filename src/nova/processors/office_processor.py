@@ -1,20 +1,26 @@
-"""Office document processor module for Nova document processor."""
+"""Office document processor for Nova."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, Any
+from datetime import datetime
 
-from pydantic import BaseModel
-
-from .base import BaseProcessor
+from ..core.base import BaseProcessor
+from ..core.config import NovaConfig, ProcessorConfig
+from ..core.logging import get_logger
 from .components.document_handlers import OfficeDocumentHandler
-from ..core.config import ProcessorConfig, NovaConfig
+from .components.markdown_handlers import MarkitdownHandler
 
 class OfficeProcessor(BaseProcessor):
     """Processor for office documents."""
     
     def _setup(self) -> None:
         """Setup office processor requirements."""
-        self.handler = OfficeDocumentHandler(
+        self.office_handler = OfficeDocumentHandler(
+            processor_config=self.config,
+            nova_config=self.nova_config
+        )
+        
+        self.markdown_handler = MarkitdownHandler(
             processor_config=self.config,
             nova_config=self.nova_config
         )
@@ -28,48 +34,26 @@ class OfficeProcessor(BaseProcessor):
         Returns:
             Path to the processed document
         """
-        # Process document and get metadata
+        # Extract raw content using office handler
+        extracted_data = self.office_handler.extract_content(input_path)
+        
+        # Determine output path
         output_path = Path(self.nova_config.paths.output_dir) / input_path.relative_to(Path(self.nova_config.paths.input_dir))
-        metadata = self.handler.process_document(input_path, output_path)
+        output_path = output_path.with_suffix('.md')
+        
+        # Process content using markdown handler
+        processed_content = self.markdown_handler.process_content(
+            content=extracted_data['content'],
+            metadata={
+                'original_path': extracted_data['original_path'],
+                'file_type': extracted_data['file_type'],
+                'extraction_time': extracted_data['extraction_time']
+            },
+            output_path=output_path
+        )
         
         # Save metadata
         metadata_path = output_path.with_suffix('.json')
-        self._cache_result(str(metadata_path), metadata)
+        self._cache_result(str(metadata_path), processed_content['metadata'])
         
         return output_path
-    
-    def _extract_text(self, doc_path: Path) -> str:
-        """Extract text content from document.
-        
-        Args:
-            doc_path: Path to the document
-            
-        Returns:
-            Extracted text content
-        """
-        # TODO: Implement text extraction
-        return ""
-    
-    def _extract_images(self, doc_path: Path) -> List[Path]:
-        """Extract images from document.
-        
-        Args:
-            doc_path: Path to the document
-            
-        Returns:
-            List of paths to extracted images
-        """
-        # TODO: Implement image extraction
-        return []
-    
-    def _preserve_metadata(self, doc_path: Path) -> Dict:
-        """Preserve document metadata.
-        
-        Args:
-            doc_path: Path to the document
-            
-        Returns:
-            Dictionary containing document metadata
-        """
-        # TODO: Implement metadata preservation
-        return {} 

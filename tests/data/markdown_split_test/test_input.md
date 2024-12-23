@@ -1,6 +1,6 @@
 # Test Document
 
----SUMMARY---
+--==SUMMARY==--
 # Project Overview
 This is a test summary section that provides a high-level overview.
 
@@ -9,7 +9,7 @@ This is a test summary section that provides a high-level overview.
 - Point 2 with reference to raw notes
 - Point 3 with another image: ![Test Image 2](images/test2.jpg)
 
----RAW NOTES---
+--==RAW NOTES==--
 # Detailed Notes
 These are the raw notes with more detailed information.
 
@@ -23,7 +23,7 @@ These are the raw notes with more detailed information.
 2. Spec 2 with image: ![Tech Spec](images/spec.png)
 3. Spec 3
 
----ATTACHMENTS---
+--==ATTACHMENTS==--
 # Project Attachments
 
 ## Images

@@ -78,6 +78,16 @@ pipeline:
                 group_by_root: true
                 handle_attachments: true
                 preserve_structure: true
+                attachment_markers:
+                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                  end: "--==ATTACHMENT_BLOCK_END==--"
+              handlers:
+                - AttachmentHandler:
+                    copy_attachments: true
+                    update_references: true
+                - ContentHandler:
+                    merge_content: true
+                    preserve_headers: true
     
     - MARKDOWN_AGGREGATE:
         description: "Aggregate all consolidated markdown files into a single file"
@@ -105,8 +115,29 @@ pipeline:
                   attachments: "attachments.md"
                 section_markers:
                   summary: "--==SUMMARY==--"
-                  raw_notes: "--==RAW NOTES==--"
+                  raw_notes: "--==RAW_NOTES==--"
                   attachments: "--==ATTACHMENTS==--"
+                attachment_markers:
+                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                  end: "--==ATTACHMENT_BLOCK_END==--"
+                content_type_rules:
+                  summary:
+                    - Contains high-level overviews
+                    - Contains key insights and decisions
+                    - Contains structured content
+                  raw_notes:
+                    - Contains detailed notes and logs
+                    - Contains chronological entries
+                    - Contains unstructured content
+                  attachments:
+                    - Contains file references
+                    - Contains embedded content
+                    - Contains metadata
+                content_preservation:
+                  validate_input_size: true
+                  validate_output_size: true
+                  track_content_markers: true
+                  verify_section_integrity: true
                 cross_linking: true
                 preserve_headers: true
               handlers:
@@ -114,6 +145,7 @@ pipeline:
                     split_content: true
                     add_navigation: true
                     maintain_links: true
+                    validate_content: true
 
 # Directory Structure
 directory_structure:

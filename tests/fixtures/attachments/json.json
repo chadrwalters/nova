@@ -1,0 +1,35 @@
+{
+  "users": [
+    {
+      "id": 1001,
+      "first_name": "Sarah",
+      "last_name": "Chen",
+      "email": "schen@example.com",
+      "active": true,
+      "preferences": {
+        "theme": "dark",
+        "notifications": false,
+        "language": "en-US"
+      },
+      "roles": ["admin", "developer"]
+    },
+    {
+      "id": 1002,
+      "first_name": "Marcus",
+      "last_name": "Rodriguez",
+      "email": "mrodriguez@example.com",
+      "active": true,
+      "preferences": {
+        "theme": "light",
+        "notifications": true,
+        "language": "es-MX"
+      },
+      "roles": ["user"]
+    }
+  ],
+  "metadata": {
+    "version": "2.1.0",
+    "generated_at": "2024-12-18T12:00:00Z",
+    "record_count": 2
+  }
+}

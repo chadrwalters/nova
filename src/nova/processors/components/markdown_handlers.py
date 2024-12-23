@@ -4,12 +4,23 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 import re
 from datetime import datetime
+from urllib.parse import unquote, quote
+import os
+import shutil
+from PIL import Image
 
 from . import MarkdownComponent
 from ...core.config import NovaConfig, ProcessorConfig
 from ...core.errors import ProcessingError
 from ...core.logging import get_logger
 from ..image_processor import ImageProcessor
+
+try:
+    import pillow_heif
+    HEIF_SUPPORT = True
+    pillow_heif.register_heif_opener()
+except ImportError:
+    HEIF_SUPPORT = False
 
 class MarkitdownHandler(MarkdownComponent):
     """Handles markdown processing using markitdown."""
@@ -80,67 +91,100 @@ class MarkitdownHandler(MarkdownComponent):
             self.logger.error(f"Failed to process {source_path}: {e}")
             raise ProcessingError(f"Failed to process {source_path}: {e}") from e
     
-    def convert_document(self, input_path: Path, output_path: Path) -> str:
-        """Convert a document to markdown format.
+    def convert_to_markdown(self, input_path: Path, output_path: Optional[Path] = None) -> str:
+        """Convert a file to markdown format.
         
         Args:
-            input_path: Path to input document
-            output_path: Path to output markdown file
+            input_path: Path to input file
+            output_path: Optional path to save markdown output
             
         Returns:
-            str: Converted markdown content
+            Converted markdown content
         """
         try:
-            self.logger.info(f"Converting document: {input_path}")
+            self.logger.info(f"Converting file to markdown: {input_path}")
             
-            # Create output directory if needed
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            # Get file type from suffix
+            suffix = input_path.suffix.lower()
             
             # Convert based on file type
-            suffix = input_path.suffix.lower()
             if suffix in ['.docx', '.doc']:
-                return self._convert_docx(input_path, output_path)
+                self.logger.info(f"Converting Word document: {input_path}")
+                content = self._convert_docx(input_path, output_path)
             elif suffix in ['.pptx', '.ppt']:
-                return self._convert_pptx(input_path, output_path)
+                self.logger.info(f"Converting PowerPoint presentation: {input_path}")
+                content = self._convert_pptx(input_path, output_path)
             elif suffix in ['.xlsx', '.xls']:
-                return self._convert_xlsx(input_path, output_path)
+                self.logger.info(f"Converting Excel workbook: {input_path}")
+                content = self._convert_xlsx(input_path, output_path)
             elif suffix == '.pdf':
-                return self._convert_pdf(input_path, output_path)
+                self.logger.info(f"Converting PDF document: {input_path}")
+                content = self._convert_pdf(input_path, output_path)
             elif suffix == '.csv':
-                return self._convert_csv(input_path, output_path)
+                self.logger.info(f"Converting CSV file: {input_path}")
+                content = self._convert_csv(input_path, output_path)
+            elif suffix in ['.txt', '.json', '.env', '.html']:
+                self.logger.info(f"Converting text file: {input_path}")
+                # For text files, read directly
+                with open(input_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            elif suffix in ['.jpg', '.jpeg', '.png', '.gif', '.heic']:
+                self.logger.info(f"Creating markdown reference for image: {input_path}")
+                # For images, create a markdown image reference
+                content = f"![{input_path.stem}]({input_path.name})"
             else:
-                raise ProcessingError(f"Unsupported document format: {suffix}")
+                error = f"Unsupported file format '{suffix}' for file: {input_path}"
+                self.logger.error(error)
+                raise ProcessingError(error)
+            
+            # Save to output file if specified
+            if output_path:
+                self.logger.info(f"Writing markdown output to: {output_path}")
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            
+            self.logger.info(f"Successfully converted {input_path} to markdown")
+            return content
             
         except Exception as e:
-            self.logger.error(f"Failed to convert {input_path}: {e}")
-            raise ProcessingError(f"Failed to convert {input_path}: {e}") from e
+            error = f"Failed to convert {input_path} (format: {suffix}): {str(e)}"
+            self.logger.error(error)
+            return f"# Error Converting {input_path.name}\n\nFile type: {suffix}\nError: {str(e)}\n"
     
     def _convert_docx(self, input_path: Path, output_path: Path) -> str:
         """Convert DOCX to markdown."""
         from docx import Document
         
+        self.logger.info(f"Opening Word document: {input_path}")
         doc = Document(str(input_path))
         content = []
         
+        self.logger.info(f"Extracting paragraphs from: {input_path}")
         for para in doc.paragraphs:
             content.append(para.text)
         
+        self.logger.info(f"Successfully extracted {len(content)} paragraphs from: {input_path}")
         return '\n\n'.join(content)
     
     def _convert_pptx(self, input_path: Path, output_path: Path) -> str:
         """Convert PPTX to markdown."""
         from pptx import Presentation
         
+        self.logger.info(f"Opening PowerPoint presentation: {input_path}")
         prs = Presentation(str(input_path))
         content = []
         
-        for slide in prs.slides:
+        self.logger.info(f"Processing slides from: {input_path}")
+        for i, slide in enumerate(prs.slides, 1):
             slide_content = []
+            self.logger.debug(f"Processing slide {i} from: {input_path}")
             for shape in slide.shapes:
                 if hasattr(shape, "text"):
                     slide_content.append(shape.text)
             content.append('\n'.join(slide_content))
         
+        self.logger.info(f"Successfully processed {len(prs.slides)} slides from: {input_path}")
         return '\n\n'.join(content)
     
     def _convert_xlsx(self, input_path: Path, output_path: Path) -> str:
@@ -157,18 +201,24 @@ class MarkitdownHandler(MarkdownComponent):
             else:
                 return str(value).strip()
         
+        self.logger.info(f"Opening Excel workbook: {input_path}")
         wb = load_workbook(str(input_path))
         content = []
         
+        self.logger.info(f"Processing {len(wb.sheetnames)} sheets from: {input_path}")
         for sheet in wb:
+            self.logger.debug(f"Processing sheet '{sheet.title}' from: {input_path}")
             # Add sheet name as header
             content.append(f"# {sheet.title}\n")
             
             # Process each sheet
             row_idx = 1
+            tables_found = 0
             while row_idx <= sheet.max_row:
                 # Find the start of a table (non-empty row)
                 if any(cell.value for cell in sheet[row_idx]):
+                    tables_found += 1
+                    self.logger.debug(f"Found table {tables_found} in sheet '{sheet.title}' at row {row_idx}")
                     table_content = []
                     header_cells = list(sheet[row_idx])
                     
@@ -204,6 +254,7 @@ class MarkitdownHandler(MarkdownComponent):
                     
                     # Process data rows
                     data_start_row = next_row_idx
+                    rows_processed = 0
                     while data_start_row <= sheet.max_row:
                         row = list(sheet[data_start_row])
                         row_content = []
@@ -228,16 +279,20 @@ class MarkitdownHandler(MarkdownComponent):
                         # Add data row
                         table_content.append(' | '.join(row_content))
                         data_start_row += 1
+                        rows_processed += 1
                     
+                    self.logger.debug(f"Processed {rows_processed} rows in table {tables_found}")
                     # Add table to content with spacing
                     content.extend(['', *table_content, ''])
                     row_idx = data_start_row
                 else:
                     row_idx += 1
             
+            self.logger.debug(f"Found {tables_found} tables in sheet '{sheet.title}'")
             # Add blank line between sheets
             content.append('')
         
+        self.logger.info(f"Successfully processed workbook with {len(wb.sheetnames)} sheets from: {input_path}")
         return '\n'.join(content)
     
     def _convert_pdf(self, input_path: Path, output_path: Path) -> str:
@@ -245,6 +300,7 @@ class MarkitdownHandler(MarkdownComponent):
         import warnings
         from pypdf import PdfReader
         
+        self.logger.info(f"Opening PDF document: {input_path}")
         # Suppress PyPDF deprecation warning about ARC4
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -255,9 +311,12 @@ class MarkitdownHandler(MarkdownComponent):
             reader = PdfReader(str(input_path))
             content = []
             
-            for page in reader.pages:
+            self.logger.info(f"Processing {len(reader.pages)} pages from: {input_path}")
+            for i, page in enumerate(reader.pages, 1):
+                self.logger.debug(f"Extracting text from page {i} of: {input_path}")
                 content.append(page.extract_text())
             
+            self.logger.info(f"Successfully extracted text from {len(reader.pages)} pages of: {input_path}")
             return '\n\n'.join(content)
     
     def _convert_csv(self, input_path: Path, output_path: Path) -> str:
@@ -266,46 +325,216 @@ class MarkitdownHandler(MarkdownComponent):
         import chardet
         
         # Detect encoding
+        self.logger.info(f"Detecting encoding for CSV file: {input_path}")
         with open(input_path, 'rb') as f:
             raw = f.read()
             result = chardet.detect(raw)
             encoding = result['encoding']
+        self.logger.debug(f"Detected encoding {encoding} for: {input_path}")
         
         # Read CSV with detected encoding
         content = []
+        self.logger.info(f"Reading CSV file with encoding {encoding}: {input_path}")
         with open(input_path, 'r', encoding=encoding) as f:
             reader = csv.reader(f)
+            rows_processed = 0
             for row in reader:
                 content.append(' | '.join(row))
+                rows_processed += 1
         
+        self.logger.info(f"Successfully processed {rows_processed} rows from: {input_path}")
         return '\n'.join(content)
     
+    def _validate_image_file(self, image_path: Path) -> tuple[bool, str]:
+        """Validate an image file.
+        
+        Args:
+            image_path: Path to the image file
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        self.logger.debug(f"Validating image file: {image_path}")
+        
+        if not image_path.exists():
+            self.logger.debug(f"Image file not found: {image_path}")
+            return False, f"Image file not found: {image_path}"
+            
+        if not image_path.is_file():
+            self.logger.debug(f"Path exists but is not a file: {image_path}")
+            return False, f"Path exists but is not a file: {image_path}"
+            
+        # Check if it's a supported image format
+        suffix = image_path.suffix.lower()
+        supported_formats = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.webp']
+        if suffix not in supported_formats:
+            self.logger.debug(f"Unsupported image format '{suffix}' for file: {image_path}")
+            return False, f"Unsupported image format '{suffix}' for file: {image_path}"
+            
+        # Check if file is readable
+        try:
+            image_path.open('rb').close()
+            self.logger.debug(f"Successfully validated image file: {image_path}")
+            return True, ""
+        except Exception as e:
+            self.logger.debug(f"File is not readable: {image_path} ({str(e)})")
+            return False, f"File is not readable: {image_path} ({str(e)})"
+    
+    def _convert_heic_to_jpeg(self, input_path: Path, output_path: Path) -> Optional[Path]:
+        """Convert HEIC image to JPEG.
+        
+        Args:
+            input_path: Path to HEIC image
+            output_path: Path to save JPEG image
+            
+        Returns:
+            Path to converted JPEG file or None if conversion failed
+        """
+        try:
+            self.logger.debug(f"Converting HEIC to JPEG: {input_path} -> {output_path}")
+            
+            if not HEIF_SUPPORT:
+                self.logger.warning("HEIC conversion not available - pillow-heif not installed")
+                return None
+                
+            # Open HEIC image using pillow-heif
+            heif_file = pillow_heif.read_heif(str(input_path))
+            image = Image.frombytes(
+                heif_file.mode,
+                heif_file.size,
+                heif_file.data,
+                "raw",
+                heif_file.mode,
+                heif_file.stride,
+            )
+            
+            # Save as JPEG
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            image.save(output_path, 'JPEG', quality=85)
+            self.logger.debug(f"Successfully converted HEIC to JPEG: {output_path}")
+            
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"Failed to convert HEIC to JPEG: {str(e)}")
+            self.logger.debug(f"Conversion error details: {type(e).__name__}: {str(e)}")
+            return None
+    
     def _process_image_match(self, match: re.Match, source_path: Path) -> str:
-        """Process a single image match and return updated markdown."""
+        """Process a single image match and return updated markdown.
+        
+        Args:
+            match: Regular expression match object containing image information
+            source_path: Path to the source markdown file
+            
+        Returns:
+            Updated markdown with processed image reference
+        """
         try:
             alt_text, image_path, metadata_json = match.groups()
             self.logger.info(f"Processing image: {image_path}")
+            self.logger.debug(f"Source markdown file: {source_path}")
+            self.logger.debug(f"Alt text: {alt_text}")
+            self.logger.debug(f"Metadata: {metadata_json}")
             
             # URL decode the image path
-            image_path = image_path.replace('%20', ' ')
+            try:
+                decoded_path = unquote(image_path)
+                if decoded_path != image_path:
+                    self.logger.debug(f"Decoded image path from {image_path} to {decoded_path}")
+                image_path = decoded_path
+            except Exception as e:
+                self.logger.warning(f"URL decoding failed for {image_path}: {str(e)}")
+                self.logger.debug(f"URL decoding error details: {type(e).__name__}: {str(e)}")
             
             # Resolve image path relative to markdown file
-            full_image_path = source_path.parent / image_path
-            if not full_image_path.exists():
-                error = f"Image not found: {full_image_path}"
-                self.logger.warning(error)
+            full_image_path = source_path.parent / Path(image_path)
+            self.logger.debug(f"Resolved full image path: {full_image_path}")
+            self.logger.debug(f"Source parent directory: {source_path.parent}")
+            
+            # Check multiple possible locations for the image
+            possible_paths = [
+                full_image_path,  # Original path
+                source_path.parent / Path(image_path).name,  # Just filename in same dir
+                Path(os.getenv('NOVA_ORIGINAL_IMAGES_DIR', '')) / Path(image_path).name,  # Original images dir
+                Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR', '')) / Path(image_path).name,  # Processed images dir
+            ]
+            
+            self.logger.debug("Checking possible image locations:")
+            for i, path in enumerate(possible_paths, 1):
+                self.logger.debug(f"  {i}. {path}")
+            
+            # Try to find and validate the image in any of the possible locations
+            image_found = False
+            found_path = None
+            validation_errors = []
+            
+            for path in possible_paths:
+                self.logger.debug(f"Checking path: {path}")
+                is_valid, error = self._validate_image_file(path)
+                if is_valid:
+                    image_found = True
+                    found_path = path
+                    self.logger.debug(f"Found valid image at: {path}")
+                    break
+                else:
+                    validation_errors.append(f"  - {path}: {error}")
+                    self.logger.debug(f"Validation failed: {error}")
+            
+            if not image_found:
+                # Log all validation errors for debugging
+                self.logger.warning(f"No valid image found for: {image_path}")
+                self.logger.debug("Validation results:")
+                for error in validation_errors:
+                    self.logger.debug(error)
                 return match.group(0)
             
             # Process image
             output_dir = source_path.parent / Path(image_path).parent
+            self.logger.debug(f"Creating output directory: {output_dir}")
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # Get the processed image path relative to the markdown file
-            processed_path = output_dir / full_image_path.name
-            rel_path = processed_path.relative_to(source_path.parent)
+            # Handle HEIC conversion if needed
+            if found_path.suffix.lower() == '.heic':
+                self.logger.debug("HEIC image detected, converting to JPEG")
+                jpeg_path = output_dir / f"{found_path.stem}.jpg"
+                converted_path = self._convert_heic_to_jpeg(found_path, jpeg_path)
+                if converted_path:
+                    found_path = converted_path
+                    self.logger.debug(f"Using converted JPEG: {found_path}")
+                else:
+                    self.logger.warning("HEIC conversion failed, using original file")
             
-            # URL encode spaces in the path
-            rel_path_str = str(rel_path).replace(' ', '%20')
+            # Copy image to output directory if needed
+            output_path = output_dir / found_path.name
+            self.logger.debug(f"Target output path: {output_path}")
+            
+            if found_path != output_path:
+                try:
+                    self.logger.debug(f"Copying image from {found_path} to {output_path}")
+                    shutil.copy2(found_path, output_path)
+                    self.logger.debug(f"Successfully copied image")
+                except Exception as e:
+                    self.logger.error(f"Failed to copy image: {str(e)}")
+                    self.logger.debug(f"Copy error details: {type(e).__name__}: {str(e)}")
+                    return match.group(0)
+            else:
+                self.logger.debug("Image already in correct location, no copy needed")
+            
+            # Get the processed image path relative to the markdown file
+            rel_path = output_path.relative_to(source_path.parent)
+            self.logger.debug(f"Relative path from markdown: {rel_path}")
+            
+            # URL encode the path properly
+            try:
+                # Split path into parts and encode each part separately
+                encoded_parts = [quote(part) for part in str(rel_path).split('/')]
+                rel_path_str = '/'.join(encoded_parts)
+                self.logger.debug(f"Encoded path: {rel_path_str}")
+            except Exception as e:
+                self.logger.warning(f"URL encoding failed for {rel_path}: {str(e)}")
+                self.logger.debug(f"URL encoding error details: {type(e).__name__}: {str(e)}")
+                rel_path_str = str(rel_path)
             
             # Use original alt text if not empty, otherwise use filename
             alt = alt_text if alt_text else Path(image_path).stem
@@ -313,12 +542,16 @@ class MarkitdownHandler(MarkdownComponent):
             
             # Update stats
             self.stats['images_processed'] += 1
+            self.logger.debug(f"Updated stats - images processed: {self.stats['images_processed']}")
             
-            return f"{prefix}![{alt}]({rel_path_str})"
+            result = f"{prefix}![{alt}]({rel_path_str})"
+            self.logger.debug(f"Generated markdown: {result}")
+            return result
             
         except Exception as e:
             error = f"Failed to process image match: {str(e)}"
             self.logger.warning(error)
+            self.logger.debug(f"Error details: {type(e).__name__}: {str(e)}")
             return match.group(0)
 
 class ConsolidationHandler(MarkdownComponent):

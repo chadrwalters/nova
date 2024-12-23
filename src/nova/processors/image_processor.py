@@ -23,7 +23,7 @@ from .components.image_handlers import OpenAIImageHandler
 from ..core.config import ProcessorConfig, NovaConfig
 from ..core.errors import ProcessingError, ConfigurationError
 from ..core.logging import get_logger
-from ..core.openai import setup_openai_client
+from ..core.openai import OpenAIClient
 from ..core.summary import ProcessingSummary
 
 logger = get_logger(__name__)
@@ -428,7 +428,7 @@ class ImageProcessor(BaseProcessor):
         """Setup image processor requirements."""
         # Initialize OpenAI client
         try:
-            self.openai_client = setup_openai_client()
+            self.openai_client = OpenAIClient()
             if self.openai_client:
                 logger.info("OpenAI integration enabled - image descriptions will be generated")
             else:
@@ -454,7 +454,7 @@ class ImageProcessor(BaseProcessor):
     def _init_openai_client(self) -> None:
         """Initialize OpenAI client."""
         try:
-            self.openai_client = setup_openai_client()
+            self.openai_client = OpenAIClient()
             if self.openai_client:
                 logger.info("OpenAI client initialized successfully")
                 self.vision_api_available = True
@@ -465,3 +465,52 @@ class ImageProcessor(BaseProcessor):
             logger.error(f"Failed to initialize OpenAI client: {e}")
             self.vision_api_available = False
             self.openai_client = None
+
+    def process_image(self, image_file: Path, metadata: dict = None) -> str:
+        """Process an image file and generate a description.
+
+        Args:
+            image_file: Path to the image file
+            metadata: Optional metadata for the image
+
+        Returns:
+            Generated description for the image
+        """
+        if not image_file.exists():
+            logger.warning(f"Image file not found: {image_file}")
+            return f"[Image not found: {image_file.name}]"
+
+        try:
+            # Use provided description from metadata if available
+            if metadata and 'description' in metadata:
+                return metadata['description']
+
+            # Generate description using OpenAI Vision API if available
+            if self.openai_client:
+                try:
+                    with open(image_file, 'rb') as f:
+                        image_data = f.read()
+                        response = self.openai_client.chat.completions.create(
+                            model="gpt-4-vision-preview",
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": "Please describe this image in a concise way."},
+                                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(image_data).decode()}"}}
+                                    ]
+                                }
+                            ],
+                            max_tokens=100
+                        )
+                        return response.choices[0].message.content
+                except Exception as e:
+                    logger.error(f"Error generating image description: {str(e)}")
+                    return f"[Image: {image_file.name}]"
+            else:
+                # Return basic description if OpenAI is not available
+                return f"[Image: {image_file.name}]"
+
+        except Exception as e:
+            logger.error(f"Error processing image {image_file}: {str(e)}")
+            return f"[Error processing image: {image_file.name}]"
