@@ -1,367 +1,106 @@
-# Nova Document Processor
+# Nova Core Module
 
-A modern document processing system for parsing, converting, and consolidating markdown files with embedded content support. The system handles various document formats, processes images, and maintains a structured output format while preserving file integrity and managing file sizes efficiently.
-
-## Features
-
-### Core Processing
-- Markdown file parsing and processing with markdown-it
-- Embedded content handling and conversion
-- Image optimization and description generation using AI
-- Document format conversion to markdown
-- Content consolidation with date-based sorting
-- File aggregation with intelligent size management
-- Four-phase processing pipeline:
-  1. MARKDOWN_PARSE: Initial parsing with size preservation
-  2. MARKDOWN_CONSOLIDATE: Content consolidation maintaining integrity
-  3. MARKDOWN_AGGREGATE: Efficient file merging with size optimization
-  4. MARKDOWN_SPLIT_THREEFILES: Intelligent content splitting with type detection
-     - Summary (30-40%): High-level insights and structured content
-     - Raw Notes (50-60%): Detailed chronological entries and logs
-     - Attachments (5-10%): File references and metadata
-
-### Content Markers and Organization
-The system uses specific markers to identify and organize content:
-
-#### Section Markers
-- `--==SUMMARY==--`: Indicates start of summary content
-  - Contains high-level overviews
-  - Key insights and decisions
-  - Structured content
-  
-- `--==RAW NOTES==--`: Indicates start of raw notes
-  - Detailed notes and logs
-  - Chronological entries
-  - Unstructured content
-  
-- `--==ATTACHMENTS==--`: Indicates start of attachments section
-  - File references
-  - Embedded content
-  - Metadata
-
-#### Attachment Block Markers
-The system uses standardized markers to identify individual attachments within the content:
-
-```markdown
---==ATTACHMENT_BLOCK: filename.md==--
-[Attachment content here]
---==ATTACHMENT_BLOCK_END==--
-```
-
-These markers:
-- Clearly identify attachment boundaries
-- Include source filename for traceability
-- Match the section marker style
-- Support nested content
-- Preserve original formatting
-
-#### Content Preservation
-- Input/output size validation
-- Content marker tracking
-- Section integrity verification
-- Cross-file navigation
-- Bi-directional linking
-
-### Validation and Troubleshooting
-
-#### Output Integrity Checks
-1. File Size Validation
-   - Summary file: Should contain 30-40% of aggregated content
-   - Raw notes file: Should contain 50-60% of aggregated content
-   - Attachments file: Should contain 5-10% of aggregated content
-   
-2. Content Validation
-   - Check for presence of all section markers
-   - Verify content type matches section
-   - Ensure no content loss during splits
-   - Validate cross-file references
-
-#### Common Issues and Solutions
-1. Missing Content
-   - Check section markers in aggregated file
-   - Verify content type detection rules
-   - Check file size ratios
-   
-2. Broken References
-   - Verify navigation links
-   - Check anchor generation
-   - Validate bi-directional links
-   
-3. Size Discrepancies
-   - Compare input/output sizes
-   - Check content distribution
-   - Verify preservation rules
-
-### Document Support
-- **Markdown Files**
-  - UTF-8 encoding
-  - GFM compatibility
-  - Embedded content processing
-  - Link maintenance
-  - Metadata preservation
-  - Size integrity preservation
-  - Efficient aggregation
-  
-- **Images**
-  - Format conversion (HEIC → JPG)
-  - Size optimization with quality preservation
-  - AI-powered description generation
-  - Metadata extraction and preservation
-  - Cache management for API responses
-  - Efficient storage with original preservation
-  
-- **Office Documents**
-  - Word (.docx, .doc)
-    - Text extraction with formatting
-    - Paragraph preservation
-    - Metadata tracking
-    
-  - Excel (.xlsx, .xls)
-    - Table formatting
-    - Header preservation
-    - Data type handling
-    
-  - PowerPoint (.pptx, .ppt)
-    - Slide content extraction
-    - Notes inclusion
-    - Asset preservation
-    
-  - PDF
-    - Text extraction
-    - Layout preservation
-    - Asset handling
-    
-  - CSV
-    - Encoding detection
-    - Table formatting
-    - Unicode support
-
-### File Size Management
-- **Phase-Specific Behavior**
-  - MARKDOWN_PARSE: Preserves original input file sizes
-  - MARKDOWN_CONSOLIDATE: Maintains individual file integrity while adding metadata
-  - MARKDOWN_AGGREGATE: Creates single output with size proportional to inputs
-  
-- **Optimization Features**
-  - Intelligent image compression
-  - Duplicate content elimination
-  - Metadata optimization
-  - Cache size management
-  - Temporary file cleanup
-  
-- **Monitoring and Control**
-  - Size tracking between phases
-  - Anomaly detection and alerts
-  - Detailed size statistics
-  - Configurable thresholds
-  - Automatic cleanup
-
-### State Management
-- File hash tracking
-- Processing status monitoring
-- Modification time tracking
-- Error state management
-- API usage metrics
-- Cache invalidation
-- Conversion history
-
-### Resource Management
-- Temporary file handling
-- Cache size control
-- Memory usage optimization
-- Disk space monitoring
-- File encoding management
-
-### Error Handling
-- Configurable retry policies
-- Error type-specific handling
-- Partial success support
-- Resource cleanup
-- State preservation
-- Detailed logging
-
-### Output Structure
-- **Three-File Organization**
-  - `summary.md`: High-level overview and key points
-  - `raw_notes.md`: Detailed notes and chronological entries
-  - `attachments.md`: Referenced files and metadata
-  - Cross-linking between files for easy navigation
-  - Consistent structure and formatting
-  - Preserved context and relationships
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/nova.git
-   cd nova
-   ```
-
-2. Install dependencies using Poetry:
-   ```bash
-   poetry install
-   ```
-
-3. Create and configure .env file:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
-
-## Configuration
-
-The system uses:
-- Environment variables for paths and settings
-- YAML configuration for processing rules
-- State files for tracking progress
-- Cache directories for optimization
-
-Key configuration areas:
-- Input/output paths
-- Processing rules
-- OpenAI integration
-- Error handling
-- Resource limits
-
-## Usage
-
-Basic usage:
-
-```bash
-./consolidate.sh              # Process all files
-./consolidate.sh --scan      # Show directory structure
-./consolidate.sh --force     # Force reprocessing
-./consolidate.sh --dry-run   # Show what would be done
-```
+This directory contains the core functionality of the Nova document processor. The code is organized as follows:
 
 ## Directory Structure
 
-The Nova Document Processor uses a carefully organized directory structure to manage input files, processing stages, and final output. All paths are configurable through environment variables.
-
-### Base Structure
 ```
-${NOVA_BASE_DIR}/
-├── _NovaInput/              # Source documents and attachments
-├── _NovaOutput/             # Final processed output
-└── _NovaProcessing/         # Processing workspace
-    ├── .state/             # Processing state and tracking
-    ├── phases/             # Phase-specific processing
-    │   ├── markdown_parse/        # Initial markdown parsing
-    │   ├── markdown_consolidate/  # Consolidated output with attachments
-    │   ├── markdown_aggregate/    # Single aggregated markdown file
-    │   └── markdown_split/        # Three-file split output
-    ├── images/             # Image processing workspace
-    │   ├── original/      # Original images
-    │   ├── processed/     # Optimized images
-    │   ├── metadata/      # Image metadata and descriptions
-    │   └── cache/         # OpenAI API response cache
-    ├── office/            # Office document processing
-    │   ├── assets/       # Extracted document assets
-    │   └── temp/         # Conversion workspace
-    └── temp/              # General temporary files
+core/
+├── config/                 # Configuration management
+│   ├── __init__.py
+│   ├── base.py            # Base configuration classes
+│   ├── paths.py           # Path configuration
+│   └── processor.py       # Processor configuration
+├── pipeline/              # Pipeline management
+│   ├── __init__.py
+│   ├── base.py           # Base pipeline classes
+│   ├── manager.py        # Pipeline orchestration
+│   └── phase.py          # Phase definitions
+├── processors/           # Base processor implementations
+│   ├── __init__.py
+│   ├── base.py          # Base processor class
+│   └── mixins/          # Reusable processor functionality
+├── utils/               # Core utilities
+│   ├── __init__.py
+│   ├── logging.py      # Logging configuration
+│   ├── retry.py        # Retry logic
+│   └── validation.py   # Validation utilities
+├── models/             # Core data models
+│   ├── __init__.py
+│   ├── document.py     # Document model
+│   └── state.py       # State management
+├── errors.py          # Error definitions
+└── __init__.py        # Core module initialization
+
+## Key Components
+
+1. Configuration (`config/`)
+   - Centralized configuration management
+   - Path handling and validation
+   - Processor-specific configuration
+
+2. Pipeline (`pipeline/`)
+   - Pipeline orchestration and management
+   - Phase definitions and transitions
+   - Error handling and recovery
+
+3. Processors (`processors/`)
+   - Base processor implementations
+   - Common processor functionality
+   - Reusable mixins
+
+4. Utilities (`utils/`)
+   - Logging configuration
+   - Retry mechanisms
+   - Validation utilities
+
+5. Models (`models/`)
+   - Core data structures
+   - State management
+   - Document representation
+
+## Usage
+
+The core module provides the foundation for the Nova document processor. Each component is designed to be:
+
+- Modular: Components can be used independently
+- Extensible: Easy to add new functionality
+- Reusable: Common patterns are abstracted into mixins
+- Type-safe: Full type hints and validation
+
+## Best Practices
+
+1. Keep the core module focused on essential functionality
+2. Use abstract base classes for interfaces
+3. Implement common functionality in mixins
+4. Maintain clear separation of concerns
+5. Document all public interfaces
+6. Include type hints and validation
+7. Follow consistent error handling patterns
+
+## Example
+
+```python
+from nova.core.pipeline import PipelineManager
+from nova.core.config import ProcessorConfig
+
+# Create pipeline manager
+manager = PipelineManager()
+
+# Configure and run pipeline
+config = ProcessorConfig(
+    enabled=True,
+    output_dir="output"
+)
+
+result = manager.run_pipeline(config)
 ```
 
-### Directory Purposes
+## Development
 
-#### Input/Output
-- `_NovaInput/`: Place source documents here. Supports markdown files with embedded content, images, and office documents. File sizes are preserved through processing.
-- `_NovaOutput/`: Contains the final processed output with converted and optimized content
+When adding new functionality to the core module:
 
-#### Processing Workspace (`_NovaProcessing/`)
-- `.state/`: Tracks processing status, file hashes, modification times, and file size metrics
-- `phases/`: Contains phase-specific processing outputs
-  - `markdown_parse/`: Initial parsing of markdown and conversion of other formats (preserves original file sizes)
-  - `markdown_consolidate/`: Consolidates markdown files with their attachments while maintaining size integrity
-  - `markdown_aggregate/`: Combines all consolidated files into a single markdown document with size approximately equal to sum of inputs
-  - `markdown_split/`: Splits content into summary, raw notes, and attachments
-- `images/`: Handles all image-related processing
-  - `original/`: Stores original images in their source format
-  - `processed/`: Contains optimized and converted images
-  - `metadata/`: Stores image metadata and AI-generated descriptions
-  - `cache/`: Caches API responses for image processing
-- `office/`: Manages office document processing
-  - `assets/`: Stores extracted assets from office documents
-  - `temp/`: Temporary workspace for document conversion
-- `temp/`: General temporary files that are cleaned up after processing
-
-### Environment Variables
-
-The directory structure is configured through environment variables:
-```bash
-# Base directories
-NOVA_BASE_DIR="/path/to/base"
-NOVA_INPUT_DIR="${NOVA_BASE_DIR}/_NovaInput"
-NOVA_OUTPUT_DIR="${NOVA_BASE_DIR}/_NovaOutput"
-NOVA_PROCESSING_DIR="${NOVA_BASE_DIR}/_NovaProcessing"
-NOVA_TEMP_DIR="${NOVA_PROCESSING_DIR}/temp"
-
-# Phase directories
-NOVA_PHASE_MARKDOWN_PARSE="${NOVA_PROCESSING_DIR}/phases/markdown_parse"
-NOVA_PHASE_MARKDOWN_CONSOLIDATE="${NOVA_PROCESSING_DIR}/phases/markdown_consolidate"
-NOVA_PHASE_MARKDOWN_AGGREGATE="${NOVA_PROCESSING_DIR}/phases/markdown_aggregate"
-NOVA_PHASE_MARKDOWN_SPLIT="${NOVA_PROCESSING_DIR}/phases/markdown_split"
-
-# Image directories
-NOVA_ORIGINAL_IMAGES_DIR="${NOVA_PROCESSING_DIR}/images/original"
-NOVA_PROCESSED_IMAGES_DIR="${NOVA_PROCESSING_DIR}/images/processed"
-NOVA_IMAGE_METADATA_DIR="${NOVA_PROCESSING_DIR}/images/metadata"
-NOVA_IMAGE_CACHE_DIR="${NOVA_PROCESSING_DIR}/images/cache"
-
-# Office directories
-NOVA_OFFICE_ASSETS_DIR="${NOVA_PROCESSING_DIR}/office/assets"
-NOVA_OFFICE_TEMP_DIR="${NOVA_PROCESSING_DIR}/office/temp"
-```
-
-### File Management
-
-- **Input Files**: Place all source files in `_NovaInput/`. The directory structure within input is preserved in the output.
-- **Intermediate Files**: All processing artifacts are contained within `_NovaProcessing/` and its subdirectories.
-- **Temporary Files**: Automatically cleaned up after processing from the `temp/` directories.
-- **Cache Management**: Image processing results are cached in `images/cache/` to avoid redundant API calls.
-- **State Tracking**: Processing state is maintained in `.state/` to support incremental processing.
-
-### Best Practices
-
-1. **Input Organization**
-   - Keep related files together in subdirectories
-   - Use consistent naming conventions
-   - Include necessary attachments in the same directory
-
-2. **Output Handling**
-   - Treat `_NovaOutput/` as read-only
-   - Don't manually modify processed files
-   - Use `--force` to regenerate output if needed
-
-3. **Cleanup**
-   - Temporary files are automatically managed
-   - Cache can be cleared with `--clean-cache`
-   - Use `--clean-all` to remove all processing artifacts
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Dependencies
-
-Core dependencies:
-- markdown-it-py
-- Pillow
-- python-docx
-- PyMuPDF
-- openai
-- pydantic
-- rich
-
-Development dependencies:
-- pytest
-- black
-- mypy
-- ruff
+1. Consider if it belongs in core or should be phase-specific
+2. Use existing abstractions and patterns
+3. Add appropriate tests and documentation
+4. Update this README if adding new components 

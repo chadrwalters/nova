@@ -1,20 +1,74 @@
 [tool.poetry]
 name = "nova"
 version = "0.1.0"
-description = "Nova Document Processor"
-authors = ["Chad Walters"]
+description = "Document processing pipeline for markdown files"
+authors = ["Chad Walters <chad@walters.io>"]
+readme = "README.md"
+packages = [{include = "nova", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.10"
+click = "^8.1.7"
+rich = "^13.7.0"
+openai = "^1.6.1"
+pydantic = "^2.5.3"
 markitdown = "^0.0.1a3"
-chardet = "^5.2.0"
-python-magic = "^0.4.27"
-Pillow = "^10.1.0"
-rich = "^13.9.4"
+markdown = "^3.5.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"
+pytest-asyncio = "^0.23.2"
+pytest-cov = "^4.1.0"
+black = "^23.12.1"
+isort = "^5.13.2"
+mypy = "^1.8.0"
+pylint = "^3.0.3"
+
+[tool.poetry.scripts]
+nova = "nova.core.__main__:cli"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[tool.pylint.messages_control]
+disable = [
+    "C0111",  # missing-docstring
+    "C0103",  # invalid-name
+    "C0330",  # bad-continuation
+    "C0326",  # bad-whitespace
+    "W0511",  # fixme
+    "R0903",  # too-few-public-methods
+    "R0913",  # too-many-arguments
+    "R0914",  # too-many-locals
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=nova --cov-report=term-missing"
+testpaths = ["tests"]
+asyncio_mode = "auto"
