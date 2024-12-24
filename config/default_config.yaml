@@ -57,15 +57,15 @@ pipeline:
         processor: "MarkdownProcessor"
         file_size_behavior: "Maintains original input file sizes"
         components:
-          - markdown_processor:
+          markdown_processor:
+            config:
               parser: "markdown-it"
-              config:
-                typographer: true
-                plugins:
-                  - table
-                  - strikethrough
-                  - linkify
-                  - image
+              typographer: true
+              plugins:
+                - table
+                - strikethrough
+                - linkify
+                - image
     
     - MARKDOWN_CONSOLIDATE:
         description: "Consolidate markdown files with their attachments"
@@ -73,21 +73,21 @@ pipeline:
         processor: "MarkdownConsolidateProcessor"
         file_size_behavior: "Maintains individual file sizes while adding metadata and attachments"
         components:
-          - consolidate_processor:
-              config:
-                group_by_root: true
-                handle_attachments: true
-                preserve_structure: true
-                attachment_markers:
-                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
-                  end: "--==ATTACHMENT_BLOCK_END==--"
-              handlers:
-                - AttachmentHandler:
-                    copy_attachments: true
-                    update_references: true
-                - ContentHandler:
-                    merge_content: true
-                    preserve_headers: true
+          consolidate_processor:
+            config:
+              group_by_root: true
+              handle_attachments: true
+              preserve_structure: true
+              attachment_markers:
+                start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                end: "--==ATTACHMENT_BLOCK_END==--"
+            handlers:
+              - AttachmentHandler:
+                  copy_attachments: true
+                  update_references: true
+              - ContentHandler:
+                  merge_content: true
+                  preserve_headers: true
     
     - MARKDOWN_AGGREGATE:
         description: "Aggregate all consolidated markdown files into a single file"
@@ -95,11 +95,11 @@ pipeline:
         processor: "MarkdownAggregateProcessor"
         file_size_behavior: "Creates single output file with size approximately equal to sum of input files"
         components:
-          - aggregate_processor:
-              config:
-                output_filename: "all_merged_markdown.md"
-                include_file_headers: true
-                add_separators: true
+          aggregate_processor:
+            config:
+              output_filename: "all_merged_markdown.md"
+              include_file_headers: true
+              add_separators: true
 
     - MARKDOWN_SPLIT_THREEFILES:
         description: "Split aggregated markdown into separate files for summary, raw notes, and attachments"
@@ -107,45 +107,45 @@ pipeline:
         processor: "ThreeFileSplitProcessor"
         file_size_behavior: "Creates three output files with content-appropriate sizes"
         components:
-          - three_file_split_processor:
-              config:
-                output_files:
-                  summary: "summary.md"
-                  raw_notes: "raw_notes.md"
-                  attachments: "attachments.md"
-                section_markers:
-                  summary: "--==SUMMARY==--"
-                  raw_notes: "--==RAW_NOTES==--"
-                  attachments: "--==ATTACHMENTS==--"
-                attachment_markers:
-                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
-                  end: "--==ATTACHMENT_BLOCK_END==--"
-                content_type_rules:
-                  summary:
-                    - Contains high-level overviews
-                    - Contains key insights and decisions
-                    - Contains structured content
-                  raw_notes:
-                    - Contains detailed notes and logs
-                    - Contains chronological entries
-                    - Contains unstructured content
-                  attachments:
-                    - Contains file references
-                    - Contains embedded content
-                    - Contains metadata
-                content_preservation:
-                  validate_input_size: true
-                  validate_output_size: true
-                  track_content_markers: true
-                  verify_section_integrity: true
-                cross_linking: true
-                preserve_headers: true
-              handlers:
-                - ContentHandler:
-                    split_content: true
-                    add_navigation: true
-                    maintain_links: true
-                    validate_content: true
+          three_file_split_processor:
+            config:
+              output_files:
+                summary: "summary.md"
+                raw_notes: "raw_notes.md"
+                attachments: "attachments.md"
+              section_markers:
+                summary: "--==SUMMARY==--"
+                raw_notes: "--==RAW_NOTES==--"
+                attachments: "--==ATTACHMENTS==--"
+              attachment_markers:
+                start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                end: "--==ATTACHMENT_BLOCK_END==--"
+              content_type_rules:
+                summary:
+                  - Contains high-level overviews
+                  - Contains key insights and decisions
+                  - Contains structured content
+                raw_notes:
+                  - Contains detailed notes and logs
+                  - Contains chronological entries
+                  - Contains unstructured content
+                attachments:
+                  - Contains file references
+                  - Contains embedded content
+                  - Contains metadata
+              content_preservation:
+                validate_input_size: true
+                validate_output_size: true
+                track_content_markers: true
+                verify_section_integrity: true
+              cross_linking: true
+              preserve_headers: true
+            handlers:
+              - ContentHandler:
+                  split_content: true
+                  add_navigation: true
+                  maintain_links: true
+                  validate_content: true
 
 # Directory Structure
 directory_structure:

@@ -1,212 +1,107 @@
-# Nova Document Processor Pipeline Fixes
+# Nova Dead Code Cleanup Plan
 
-## Milestone 1: Fix Content Preservation ✓
-- [x] Debug file size reduction issue in markdown_parse phase
-  - Added size validation checks
-  - Implemented content integrity verification
-  - Added logging for content modifications
-  - Fixed content truncation issues
-  - Added tests for content preservation
-
-Progress Update: Completed content preservation fixes
-- Added input file content validation
-- Added size tracking throughout processing
-- Added modification tracking
-- Added detailed logging
-- Added size verification at each step
-
-## Milestone 2: Fix Directory Structure ✓
-- [x] Correct directory replication issues
-  - Removed incorrect subdirectory creation
-  - Implemented proper directory path handling
-  - Added directory structure validation
-  - Updated directory creation logic
-  - Added tests for directory structure
-
-Progress Update: Completed directory structure fixes
-- Added source directory validation
-- Added target directory validation
-- Added structure comparison
-- Added progress tracking
-- Added detailed statistics
-- Fixed directory copying logic
-- Added proper error handling
-
-## Milestone 3: Fix Attachment Processing ✓
-- [x] Implement proper attachment handling
-  - Added attachment path resolution
-  - Implemented attachment content embedding
-  - Added attachment validation
-  - Fixed attachment directory copying
-  - Added tests for attachment processing
-
-Progress Update: Completed attachment processing fixes
-- Added metadata handling
-- Added URL decoding
-- Added proper path resolution
-- Added attachment markers
-- Added progress tracking
-- Added detailed statistics
-- Fixed image handling
-- Added error handling
-
-## Milestone 4: Fix Content Processing ✓
-- [x] Implement proper content processing
-  - Added URL decoding for links and paths
-  - Fixed markdown link processing
-  - Implemented proper image reference handling
-  - Added content validation checks
-  - Added tests for content processing
-
-Progress Update: Completed content processing fixes
-- Added URL decoding and path normalization
-- Added link validation and processing
-- Added image reference handling
-- Added content validation
-- Added progress tracking
-- Added detailed statistics
-- Added error handling
-- Added size verification
-
-## Milestone 5: Testing and Validation ✓
-- [x] Implement comprehensive testing
-  - Added integration tests
-  - Added regression tests
-  - Added validation tests
-  - Added performance tests
-  - Added error handling tests
-
-Progress Update: Completed testing implementation
-- Added comprehensive test suite
-- Added environment setup fixtures
-- Added test file generation
-- Added content processing tests
-- Added image processing tests
-- Added directory structure tests
-- Added validation tests
-- Added error handling tests
-- Added structure report tests
-
-## Milestone 6: Output Format Fixes (Completed)
-- [x] Resolve file path handling and newline issues in the consolidation phase
-  - Ensure URLs and links remain intact on a single line
-  - Validate path concatenation and prevent undesired line breaks
-  - Added tests to verify correct link formatting
-  - Implemented proper line ending normalization
-  - Added content cleanup and validation
-
-- [x] Correct data URI image block markers
-  - Use proper attachment block markers ("--==ATTACHMENT_BLOCK: {filename}==--")
-  - Remove any malformed or duplicated END markers
-  - Validate that embedded image references are preserved
-  - Added proper base64 content handling
-  - Added duplicate image detection
-  - Added stable content hashing
-  - Added proper error handling
-  - Added comprehensive logging
-
-- [x] Prevent content duplication in the aggregated file
-  - Implement a check for duplicate headers and remove them
-  - Ensure "Summary" and "Raw Notes" appear only once each
-  - Add new tests to confirm no repeated headers
-
-- [x] Properly split content so summary, raw notes, and attachments are in correct files
-  - Update logic for identifying high-level summary vs. detailed notes
-  - Implement robust content filtering rules for summary and raw notes
-  - Validate that attachments are placed in attachments.md
-
-- [x] Restore non-empty raw notes file
-  - Include all detailed log entries and notes in raw_notes.md
-  - Maintain attachments separately to avoid empty raw notes
-  - Verify with new tests that raw_notes.md is populated
-
-- [x] Enhance attachment block formatting
-  - Added file type categorization
-  - Added metadata enrichment
-  - Added organized category sections
-  - Added proper block formatting
-  - Added content-based type detection
-  - Added binary file handling
-  - Added comprehensive logging
-  - Added detailed headers and descriptions
-  - Added error handling and recovery
-  - Added size tracking and validation
-
-- [x] Improve file separation markers
-  - Added visually distinct section markers
-  - Added clear start and end markers
-  - Added file block markers
-  - Added consistent marker widths
-  - Added descriptive marker text
-  - Added proper spacing
-  - Added section descriptions
-  - Added timestamp headers
-  - Added comprehensive logging
-  - Added error handling
-
-Progress Update: Completed file separation markers
-- Added visually distinct section markers
-- Added clear start and end markers
-- Added file block markers
-- Added consistent marker widths
-- Added descriptive marker text
-- Added proper spacing
-- Added section descriptions
-- Added timestamp headers
-- Added comprehensive logging
-- Added error handling
-
-## Implementation Order
-1. Content Preservation (Critical) ✓
-2. Directory Structure (Critical) ✓
-3. Attachment Processing (Critical) ✓
-4. Content Processing (High) ✓
-5. Testing and Validation (High) ✓
-6. Output Format Fixes (High) ✓
-   - File path and newline handling ✓
-   - Data URI image blocks ✓
-   - Content duplication ✓
-   - Content splitting ✓
-   - Raw notes restoration ✓
-   - Attachment formatting ✓
-   - File separation markers ✓
+## Overview
+This plan outlines the systematic removal of dead code from the Nova codebase while maintaining core pipeline functionality. Each phase includes validation steps using cleanup.sh and consolidate.sh to ensure pipeline integrity.
 
 ## Success Criteria
-1. File sizes are preserved through parsing ✓
-2. Directory structure is correctly maintained ✓
-3. Attachments are properly processed and embedded ✓
-4. Content is properly decoded and formatted ✓
-5. All tests pass with good coverage ✓
-6. Final consolidated files, aggregated files, and split files contain correct, non-duplicated content, properly formatted attachments, distinct file markers, and accurate summary/raw notes
-   - Links and URLs remain intact on single lines ✓
-   - Paths are properly concatenated ✓
-   - Line endings are normalized ✓
-   - Data URI images are properly handled ✓
-   - Content duplication is prevented ✓
-   - Headers are deduplicated ✓
-   - Sections are properly organized ✓
-   - Content is intelligently classified ✓
-   - Section sizes meet expectations ✓
-   - Raw notes are properly populated ✓
-   - Raw notes contain all relevant content ✓
-   - Attachment blocks are properly formatted ✓
-   - Attachments are organized by type ✓
-   - File markers are clear and distinct ✓
+- All pipeline phases continue to work correctly
+- Directory structure remains intact and accessible
+- No regression in core functionality
+- Clean git history with meaningful commits
+
+## Validation Method
+For each phase:
+1. Run ./cleanup.sh
+2. Run ./consolidate.sh
+3. Verify all processing directories are created correctly
+4. Verify pipeline phases execute without errors
+
+## Phases
+
+### 1️⃣ Create Safety Net
+**Goal**: Establish a safe environment for code removal
+- [x] Create backup branch: `git checkout -b cleanup/dead-code-removal`
+- [ ] Create restore point: `git add . && git commit -m "chore: create restore point before dead code removal"`
+
+### 2️⃣ Remove Markitdown Processors
+**Goal**: Remove duplicate processor implementations
+- [ ] Delete src/nova/tools/markitdown/processors/office.py
+- [ ] Delete src/nova/tools/markitdown/processors/markdown.py
+- [ ] Delete src/nova/tools/markitdown/processors/image.py
+- [ ] Run validation
+- [ ] Commit: `git commit -m "refactor: remove unused markitdown processors"`
+
+### 3️⃣ Remove Parse Phase Directories
+**Goal**: Remove unused parse phase implementations
+- [ ] Delete src/nova/tools/bear/parse_phase/
+- [ ] Delete src/nova/tools/markdown/parse_phase/
+- [ ] Delete src/nova/tools/mcp/parse_phase/
+- [ ] Run validation
+- [ ] Commit: `git commit -m "refactor: remove unused parse phase directories"`
+
+### 4️⃣ Clean Up Core Pipeline
+**Goal**: Remove duplicate base processor implementation
+- [ ] Remove BaseProcessor class from src/nova/core/pipeline/processor.py
+- [ ] Verify base.py BaseProcessor remains intact
+- [ ] Run validation
+- [ ] Commit: `git commit -m "refactor: remove duplicate BaseProcessor"`
+
+### 5️⃣ Clean Up Utils
+**Goal**: Remove unused utility modules
+- [ ] Delete src/nova/utils/directory.py
+- [ ] Delete src/nova/utils/openai.py
+- [ ] Run validation
+- [ ] Commit: `git commit -m "refactor: remove unused utility modules"`
+
+### 6️⃣ Final Validation
+**Goal**: Ensure complete pipeline functionality
+- [ ] Run full pipeline test:
+  ```bash
+  ./cleanup.sh
+  ./consolidate.sh --force
+  ```
+- [ ] Verify all directories:
+  - [ ] Phase directories
+  - [ ] Image processing directories
+  - [ ] Office processing directories
+  - [ ] Temp directories
+  - [ ] State file
+- [ ] Merge to main:
+  ```bash
+  git checkout main
+  git merge cleanup/dead-code-removal
+  ```
+
+## Rollback Procedures
+
+### Immediate Rollback
+If a phase fails validation:
+```bash
+git reset --hard HEAD~1
+```
+
+### Complete Rollback
+If major issues are encountered:
+```bash
+git checkout main
+git branch -D cleanup/dead-code-removal
+```
+
+## Directory Checklist
+Verify these directories after each phase:
+- [ ] NOVA_PHASE_MARKDOWN_PARSE
+- [ ] NOVA_PHASE_MARKDOWN_CONSOLIDATE
+- [ ] NOVA_PHASE_MARKDOWN_AGGREGATE
+- [ ] NOVA_PHASE_MARKDOWN_SPLIT
+- [ ] NOVA_ORIGINAL_IMAGES_DIR
+- [ ] NOVA_PROCESSED_IMAGES_DIR
+- [ ] NOVA_IMAGE_METADATA_DIR
+- [ ] NOVA_IMAGE_CACHE_DIR
+- [ ] NOVA_OFFICE_ASSETS_DIR
+- [ ] NOVA_OFFICE_TEMP_DIR
 
 ## Notes
-- Maintain backward compatibility
-- Implement robust validation and logging for each output file
-- Introduce structured tests for verifying correct marker usage
-- Provide descriptive console output for transformation steps
-- Continue to monitor file sizes, directory structure, and content integrity
-
-## Final Status
-All milestones have been successfully completed:
-1. Content Preservation (Critical) ✓
-2. Directory Structure (Critical) ✓
-3. Attachment Processing (Critical) ✓
-4. Content Processing (High) ✓
-5. Testing and Validation (High) ✓
-6. Output Format Fixes (High) ✓
-
-The Nova Document Processor pipeline now properly handles file paths, newlines, data URI images, content duplication, content splitting, raw notes, attachments, and file markers. All components are working together to produce well-organized, properly formatted output files with clear separation and distinct markers.
+- Each phase should be executed sequentially
+- Validation must pass before proceeding to next phase
+- Document any unexpected behavior or issues
+- Keep commit messages clear and descriptive 

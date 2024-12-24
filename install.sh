@@ -3,103 +3,121 @@
 # Exit on error
 set -e
 
-# Color codes
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-DIM='\033[2m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Function to print status with color
-print_status() {
-    local color="$1"
-    local message="$2"
-    echo -e "${color}${message}${NC}"
+# Print step message
+print_step() {
+    echo -e "\n${YELLOW}$1${NC}"
 }
 
-# Print header
-echo -e "${BLUE}${BOLD}───────────────────────────────────── Nova Installation ────────────────────────────────────${NC}\n"
+# Print success message
+print_success() {
+    echo -e "${GREEN}$1${NC}"
+}
+
+# Print error message
+print_error() {
+    echo -e "${RED}$1${NC}"
+}
 
 # Check Python installation
-print_status "$CYAN" "Checking Python installation..."
+print_step "Checking Python installation..."
 if ! command -v python3 &> /dev/null; then
-    print_status "$RED" "✗ Error: Python 3 is required but not installed"
+    print_error "Python 3 is not installed"
     exit 1
-else
-    python_version=$(python3 --version)
-    print_status "$GREEN" "✓ Found $python_version"
 fi
 
-# Check Poetry installation and install if needed
-print_status "$CYAN" "Checking Poetry installation..."
-if ! command -v poetry &> /dev/null; then
-    print_status "$YELLOW" "Poetry not found. Installing..."
-    curl -sSL https://install.python-poetry.org | python3 -
-    print_status "$GREEN" "✓ Poetry installed successfully"
-else
-    poetry_version=$(poetry --version)
-    print_status "$GREEN" "✓ Found $poetry_version"
+python_version=$(python3 -V | cut -d' ' -f2)
+required_version="3.10.0"
+
+if [ "$(printf '%s\n' "$required_version" "$python_version" | sort -V | head -n1)" != "$required_version" ]; then
+    print_error "Python 3.10 or higher is required"
+    exit 1
 fi
+
+print_success "Python $python_version is installed"
+
+# Check Poetry installation
+print_step "Checking Poetry installation..."
+if ! command -v poetry &> /dev/null; then
+    print_step "Installing Poetry..."
+    curl -sSL https://install.python-poetry.org | python3 -
+fi
+
+print_success "Poetry is installed"
 
 # Create .env file if it doesn't exist
+print_step "Setting up environment..."
 if [ ! -f .env ]; then
-    print_status "$CYAN" "Creating .env file..."
-    
-    # Get base directory from user or use default
-    echo -e "${DIM}Enter base directory for Nova${NC}"
-    read -p "(default: ${HOME}/Library/Mobile Documents/com~apple~CloudDocs): " base_dir
-    base_dir=${base_dir:-"${HOME}/Library/Mobile Documents/com~apple~CloudDocs"}
-    
-    print_status "$CYAN" "Generating environment configuration..."
-    
-    # Set up environment variables
     cat > .env << EOL
+# Nova environment configuration
+
 # Base directories
-NOVA_BASE_DIR="$base_dir"
-NOVA_INPUT_DIR="\${NOVA_BASE_DIR}/_NovaInput"
-NOVA_OUTPUT_DIR="\${NOVA_BASE_DIR}/_NovaOutput"
-NOVA_PROCESSING_DIR="\${NOVA_BASE_DIR}/_NovaProcessing"
-NOVA_TEMP_DIR="\${NOVA_PROCESSING_DIR}/temp"
+NOVA_BASE_DIR=\${PWD}/data
+NOVA_INPUT_DIR=\${NOVA_BASE_DIR}/input
+NOVA_OUTPUT_DIR=\${NOVA_BASE_DIR}/output
+NOVA_PROCESSING_DIR=\${NOVA_BASE_DIR}/processing
+NOVA_TEMP_DIR=\${NOVA_BASE_DIR}/temp
 
 # Phase directories
-NOVA_PHASE_MARKDOWN_PARSE="\${NOVA_PROCESSING_DIR}/phases/markdown_parse"
+NOVA_PHASE_MARKDOWN_PARSE=\${NOVA_PROCESSING_DIR}/markdown_parse
+NOVA_PHASE_MARKDOWN_CONSOLIDATE=\${NOVA_PROCESSING_DIR}/markdown_consolidate
+NOVA_PHASE_MARKDOWN_AGGREGATE=\${NOVA_PROCESSING_DIR}/markdown_aggregate
+NOVA_PHASE_MARKDOWN_SPLIT=\${NOVA_PROCESSING_DIR}/markdown_split
 
 # Image directories
-NOVA_ORIGINAL_IMAGES_DIR="\${NOVA_PROCESSING_DIR}/images/original"
-NOVA_PROCESSED_IMAGES_DIR="\${NOVA_PROCESSING_DIR}/images/processed"
-NOVA_IMAGE_METADATA_DIR="\${NOVA_PROCESSING_DIR}/images/metadata"
-NOVA_IMAGE_CACHE_DIR="\${NOVA_PROCESSING_DIR}/images/cache"
+NOVA_ORIGINAL_IMAGES_DIR=\${NOVA_PROCESSING_DIR}/images/original
+NOVA_PROCESSED_IMAGES_DIR=\${NOVA_PROCESSING_DIR}/images/processed
+NOVA_IMAGE_METADATA_DIR=\${NOVA_PROCESSING_DIR}/images/metadata
+NOVA_IMAGE_CACHE_DIR=\${NOVA_PROCESSING_DIR}/images/cache
 
-# Office directories
-NOVA_OFFICE_ASSETS_DIR="\${NOVA_PROCESSING_DIR}/office/assets"
-NOVA_OFFICE_TEMP_DIR="\${NOVA_PROCESSING_DIR}/office/temp"
+# Office document directories
+NOVA_OFFICE_ASSETS_DIR=\${NOVA_PROCESSING_DIR}/office/assets
+NOVA_OFFICE_TEMP_DIR=\${NOVA_PROCESSING_DIR}/office/temp
 
-# OpenAI API configuration
-OPENAI_API_KEY="your-api-key-here"
-
-# Processing configuration
-NOVA_LOG_LEVEL="INFO"
-NOVA_MAX_WORKERS=4
-NOVA_BATCH_SIZE=100
-NOVA_ENABLE_IMAGE_PROCESSING=true
-NOVA_ENABLE_OFFICE_PROCESSING=true
-NOVA_ENABLE_CACHE=true
+# OpenAI configuration
+OPENAI_API_KEY=your_api_key_here
 EOL
 
-    print_status "$GREEN" "✓ .env file created successfully"
-    print_status "$YELLOW" "Note: Please update OPENAI_API_KEY in .env with your API key"
+    print_success "Created .env file"
+else
+    print_success ".env file already exists"
 fi
 
-# Install dependencies
-print_status "$CYAN" "Installing Python dependencies..."
-poetry install
-print_status "$GREEN" "✓ Dependencies installed successfully"
+# Create directory structure
+print_step "Creating directory structure..."
+source .env
 
-echo
-print_status "$GREEN" "✓ Installation complete!"
-print_status "$CYAN" "You can now run the processor using: ./consolidate.sh"
-echo
+mkdir -p "$NOVA_INPUT_DIR" \
+         "$NOVA_OUTPUT_DIR" \
+         "$NOVA_PROCESSING_DIR" \
+         "$NOVA_TEMP_DIR" \
+         "$NOVA_PHASE_MARKDOWN_PARSE" \
+         "$NOVA_PHASE_MARKDOWN_CONSOLIDATE" \
+         "$NOVA_PHASE_MARKDOWN_AGGREGATE" \
+         "$NOVA_PHASE_MARKDOWN_SPLIT" \
+         "$NOVA_ORIGINAL_IMAGES_DIR" \
+         "$NOVA_PROCESSED_IMAGES_DIR" \
+         "$NOVA_IMAGE_METADATA_DIR" \
+         "$NOVA_IMAGE_CACHE_DIR" \
+         "$NOVA_OFFICE_ASSETS_DIR" \
+         "$NOVA_OFFICE_TEMP_DIR"
+
+print_success "Directory structure created"
+
+# Install dependencies
+print_step "Installing dependencies..."
+poetry install
+
+print_success "Dependencies installed"
+
+# Final instructions
+print_step "Installation complete!"
+echo -e "\nTo get started:"
+echo -e "1. Edit .env file and set your OpenAI API key"
+echo -e "2. Place markdown files in ${YELLOW}$NOVA_INPUT_DIR${NC}"
+echo -e "3. Run ${YELLOW}poetry run nova --help${NC} to see available commands"
