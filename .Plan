@@ -48,10 +48,10 @@ For each phase:
 
 ### 5️⃣ Clean Up Utils
 **Goal**: Remove unused utility modules
-- [ ] Delete src/nova/utils/directory.py
-- [ ] Delete src/nova/utils/openai.py
-- [ ] Run validation
-- [ ] Commit: `git commit -m "refactor: remove unused utility modules"`
+- [x] Delete src/nova/utils/directory.py
+- [x] Delete src/nova/utils/openai.py
+- [x] Run validation
+- [x] Commit: `git commit -m "refactor: remove unused utility modules"`
 
 ### 6️⃣ Final Validation
 **Goal**: Ensure complete pipeline functionality
