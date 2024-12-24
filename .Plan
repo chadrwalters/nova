@@ -21,7 +21,7 @@ For each phase:
 ### 1️⃣ Create Safety Net
 **Goal**: Establish a safe environment for code removal
 - [x] Create backup branch: `git checkout -b cleanup/dead-code-removal`
-- [ ] Create restore point: `git add . && git commit -m "chore: create restore point before dead code removal"`
+- [x] Create restore point: `git add . && git commit -m "chore: create restore point before dead code removal"`
 
 ### 2️⃣ Remove Markitdown Processors
 **Goal**: Remove duplicate processor implementations
