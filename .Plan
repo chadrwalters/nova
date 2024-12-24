@@ -25,11 +25,11 @@ For each phase:
 
 ### 2️⃣ Remove Markitdown Processors
 **Goal**: Remove duplicate processor implementations
-- [ ] Delete src/nova/tools/markitdown/processors/office.py
-- [ ] Delete src/nova/tools/markitdown/processors/markdown.py
-- [ ] Delete src/nova/tools/markitdown/processors/image.py
-- [ ] Run validation
-- [ ] Commit: `git commit -m "refactor: remove unused markitdown processors"`
+- [x] Delete src/nova/tools/markitdown/processors/office.py
+- [x] Delete src/nova/tools/markitdown/processors/markdown.py
+- [x] Delete src/nova/tools/markitdown/processors/image.py
+- [x] Run validation
+- [x] Commit: `git commit -m "refactor: remove unused markitdown processors"`
 
 ### 3️⃣ Remove Parse Phase Directories
 **Goal**: Remove unused parse phase implementations
