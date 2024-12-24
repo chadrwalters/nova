@@ -33,11 +33,11 @@ For each phase:
 
 ### 3️⃣ Remove Parse Phase Directories
 **Goal**: Remove unused parse phase implementations
-- [ ] Delete src/nova/tools/bear/parse_phase/
-- [ ] Delete src/nova/tools/markdown/parse_phase/
-- [ ] Delete src/nova/tools/mcp/parse_phase/
-- [ ] Run validation
-- [ ] Commit: `git commit -m "refactor: remove unused parse phase directories"`
+- [x] Delete src/nova/tools/bear/parse_phase/
+- [x] Delete src/nova/tools/markdown/parse_phase/
+- [x] Delete src/nova/tools/mcp/parse_phase/
+- [x] Run validation
+- [x] Commit: `git commit -m "refactor: remove unused parse phase directories"`
 
 ### 4️⃣ Clean Up Core Pipeline
 **Goal**: Remove duplicate base processor implementation
