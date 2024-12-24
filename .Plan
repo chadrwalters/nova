@@ -41,10 +41,10 @@ For each phase:
 
 ### 4️⃣ Clean Up Core Pipeline
 **Goal**: Remove duplicate base processor implementation
-- [ ] Remove BaseProcessor class from src/nova/core/pipeline/processor.py
-- [ ] Verify base.py BaseProcessor remains intact
-- [ ] Run validation
-- [ ] Commit: `git commit -m "refactor: remove duplicate BaseProcessor"`
+- [x] Remove BaseProcessor class from src/nova/core/pipeline/processor.py
+- [x] Verify base.py BaseProcessor remains intact
+- [x] Run validation
+- [x] Commit: `git commit -m "refactor: remove duplicate BaseProcessor"`
 
 ### 5️⃣ Clean Up Utils
 **Goal**: Remove unused utility modules
