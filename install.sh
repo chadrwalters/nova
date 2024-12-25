@@ -235,11 +235,7 @@ install_dependencies() {
     
     # Install development tools
     log_info "Installing development tools..."
-    python3 -m pip install pre-commit pytest pytest-cov pytest-mock pytest-asyncio
-    
-    # Install pre-commit hooks
-    log_info "Installing pre-commit hooks..."
-    python3 -m pre_commit install
+    python3 -m pip install pytest pytest-cov pytest-mock pytest-asyncio
     
     # Verify pytest installation
     if ! python3 -m pytest --version > /dev/null 2>&1; then
