@@ -11,7 +11,8 @@ from nova.core.handlers.content_converters import (
     PptxConverter,
     XlsxConverter,
     PdfConverter,
-    CsvConverter
+    CsvConverter,
+    HtmlConverter
 )
 from nova.core.logging import get_logger
 
@@ -23,6 +24,7 @@ class ConversionResult:
     content: str
     metadata: Dict[str, Any]
     success: bool
+    converter_name: str
     error: Optional[str] = None
 
 class DocumentConverter:
@@ -38,7 +40,8 @@ class DocumentConverter:
             '.xlsx': XlsxConverter(),
             '.xls': XlsxConverter(),
             '.pdf': PdfConverter(),
-            '.csv': CsvConverter()
+            '.csv': CsvConverter(),
+            '.html': HtmlConverter()
         }
         
         # Initialize mimetypes
@@ -47,6 +50,7 @@ class DocumentConverter:
         mimetypes.add_type('application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx')
         mimetypes.add_type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx')
         mimetypes.add_type('application/vnd.openxmlformats-officedocument.presentationml.presentation', '.pptx')
+        mimetypes.add_type('text/html', '.html')
     
     async def convert_to_markdown(self, file_path: Path) -> ConversionResult:
         """Convert a document to markdown format.
@@ -69,6 +73,7 @@ class DocumentConverter:
                     content='',
                     metadata={'type': mime_type or 'application/octet-stream'},
                     success=False,
+                    converter_name='',
                     error=f"No converter available for {ext} files"
                 )
             
@@ -86,7 +91,8 @@ class DocumentConverter:
             return ConversionResult(
                 content=content,
                 metadata=metadata,
-                success=True
+                success=True,
+                converter_name=converter.__class__.__name__
             )
             
         except Exception as e:
@@ -96,5 +102,6 @@ class DocumentConverter:
                 content='',
                 metadata={'type': 'unknown'},
                 success=False,
+                converter_name='',
                 error=error
             ) 

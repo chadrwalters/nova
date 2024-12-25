@@ -5,6 +5,8 @@ import io
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Type, Optional
+import tempfile
+import os
 
 import aiofiles
 import docx
@@ -12,6 +14,7 @@ import openpyxl
 import PyPDF2
 from pptx import Presentation
 import yaml
+import markitdown
 
 class BaseContentConverter(ABC):
     """Base class for content converters."""
@@ -217,8 +220,20 @@ class CsvConverter(BaseContentConverter):
         Returns:
             Markdown representation of CSV data
         """
-        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-            content = await f.read()
+        # Try different encodings
+        encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252']
+        content = None
+        
+        for encoding in encodings:
+            try:
+                async with aiofiles.open(file_path, 'r', encoding=encoding) as f:
+                    content = await f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if content is None:
+            raise ValueError(f"Could not decode {file_path} with any of the attempted encodings")
         
         # Parse CSV content
         reader = csv.reader(io.StringIO(content))
@@ -230,17 +245,48 @@ class CsvConverter(BaseContentConverter):
         # Convert to markdown table
         markdown = []
         
-        # Add header row
-        markdown.append('| ' + ' | '.join(rows[0]) + ' |')
+        # Add header row with escaped pipes
+        header = [cell.replace('|', '\\|') for cell in rows[0]]
+        markdown.append('| ' + ' | '.join(header) + ' |')
         
         # Add separator row
         markdown.append('|' + '|'.join(['---'] * len(rows[0])) + '|')
         
-        # Add data rows
+        # Add data rows with escaped pipes and special character handling
         for row in rows[1:]:
-            markdown.append('| ' + ' | '.join(row) + ' |')
+            escaped_row = [cell.replace('|', '\\|').replace('\n', '<br>') for cell in row]
+            markdown.append('| ' + ' | '.join(escaped_row) + ' |')
         
         return '\n'.join(markdown)
+
+class HtmlConverter(BaseContentConverter):
+    """Converter for HTML files."""
+    
+    async def convert(self, file_path: Path) -> str:
+        """Convert HTML file to markdown.
+        
+        Args:
+            file_path: Path to HTML file
+            
+        Returns:
+            Markdown representation of HTML content
+        """
+        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+            content = await f.read()
+            
+        # Create a temporary file for the HTML content
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', encoding='utf-8', delete=False) as temp_file:
+            temp_file.write(content)
+            temp_path = temp_file.name
+            
+        try:
+            # Convert HTML to markdown using markitdown
+            converter = markitdown.MarkItDown()
+            result = converter.convert_local(temp_path, output_format="markdown")
+            return result.text_content
+        finally:
+            # Clean up temporary file
+            os.unlink(temp_path)
 
 class ContentConverterFactory:
     """Factory for creating content converters."""
@@ -254,7 +300,9 @@ class ContentConverterFactory:
         'xlsx': XlsxConverter,
         'xls': XlsxConverter,
         'pdf': PdfConverter,
-        'csv': CsvConverter
+        'csv': CsvConverter,
+        'html': HtmlConverter,
+        'htm': HtmlConverter
     }
     
     @classmethod

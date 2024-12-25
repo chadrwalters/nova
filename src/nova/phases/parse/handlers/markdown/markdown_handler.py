@@ -14,6 +14,8 @@ import mimetypes
 import base64
 import os
 import uuid
+import tempfile
+import markitdown
 
 from nova.phases.core.base_handler import BaseHandler, HandlerResult
 from nova.core.logging import get_logger
@@ -96,31 +98,45 @@ class MarkdownHandler(BaseHandler):
                         is_image = mime_type and mime_type.startswith('image/')
                         ext = Path(file_name).suffix.lower()
                         
-                        if is_image and ext in {'.heic', '.heif'} and self.image_processing:
-                            # Convert HEIC/HEIF to JPG
-                            result: ImageConversionResult = await self.image_converter.convert_image(Path(full_path))
-                            if result.success:
-                                # Save converted image
-                                new_name = f"{Path(file_name).stem}.{result.format}"
-                                target_file = markdown_dir / new_name
-                                async with aiofiles.open(target_file, 'wb') as f:
-                                    await f.write(result.content)
-                                self.logger.info(f"Converted {file_name} to {new_name}")
-                                
-                                # Update path for link
-                                file_name = new_name
-                                
-                                # Add dimensions to link text if not provided
-                                if not link_text:
-                                    link_text = f"{Path(file_name).stem} ({result.dimensions[0]}x{result.dimensions[1]})"
+                        if is_image:
+                            if ext in {'.heic', '.heif'} and self.image_processing:
+                                # Convert HEIC/HEIF to JPG
+                                result: ImageConversionResult = await self.image_converter.convert_image(Path(full_path))
+                                if result.success:
+                                    # Save converted image
+                                    new_name = f"{Path(file_name).stem}.{result.format}"
+                                    target_file = markdown_dir / new_name
+                                    async with aiofiles.open(target_file, 'wb') as f:
+                                        await f.write(result.content)
+                                    self.logger.info(f"Converted {file_name} to {new_name}")
+                                    file_name = new_name
+                                    
+                                    # Add dimensions to link text if not provided
+                                    if not link_text:
+                                        link_text = f"{Path(file_name).stem} ({result.dimensions[0]}x{result.dimensions[1]})"
+                                else:
+                                    # Fallback to copying original if conversion fails
+                                    target_file = markdown_dir / file_name
+                                    if not target_file.exists():
+                                        shutil.copy2(full_path, target_file)
+                                    self.logger.warning(f"Failed to convert {file_name}: {result.error}")
                             else:
-                                # Fallback to copying original if conversion fails
+                                # Copy non-HEIC image as is
                                 target_file = markdown_dir / file_name
                                 if not target_file.exists():
                                     shutil.copy2(full_path, target_file)
-                                self.logger.warning(f"Failed to convert {file_name}: {result.error}")
+                                    self.logger.info(f"Copied {file_name} to {target_file}")
+                            
+                            # Remove any existing files with same stem but different extensions
+                            for existing in markdown_dir.glob(f"{Path(file_name).stem}.*"):
+                                if existing != target_file:
+                                    try:
+                                        existing.unlink()
+                                        self.logger.info(f"Removed duplicate file: {existing}")
+                                    except Exception as e:
+                                        self.logger.warning(f"Failed to remove duplicate file {existing}: {str(e)}")
                         else:
-                            # Copy file to markdown's directory
+                            # Copy non-image file to markdown's directory
                             target_file = markdown_dir / file_name
                             if not target_file.exists():
                                 shutil.copy2(full_path, target_file)
@@ -177,22 +193,31 @@ class MarkdownHandler(BaseHandler):
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 content = await f.read()
             
+            if content is None:
+                content = ""
+            
             # Create output directory
             output_dir = Path(context['output_dir'])
             output_dir.mkdir(parents=True, exist_ok=True)
             
             # Process initial links
             content = await self._process_initial_links(content, output_dir, context['file_stem'])
+            if content is None:
+                content = ""
             
             # Process base64 encoded images if enabled
             if self.image_processing:
                 content = await self._process_base64_images(content, output_dir, context['file_stem'])
+                if content is None:
+                    content = ""
             
             # Process attachments if present
             if attachments:
                 self.logger.info(f"Processing {len(attachments)} attachments")
                 for attachment in attachments:
                     content = await self._process_attachment(content, attachment, output_dir, context['file_stem'])
+                    if content is None:
+                        content = ""
             
             # Write processed content
             output_file = output_dir / file_path.name
@@ -259,6 +284,9 @@ class MarkdownHandler(BaseHandler):
     
     async def _process_attachment(self, content: str, attachment: Path, output_dir: Path, file_stem: str) -> str:
         """Process an attachment and create markdown content for it."""
+        if content is None:
+            content = ""
+            
         try:
             # Create markdown's directory for attachments
             markdown_dir = output_dir / file_stem
@@ -268,6 +296,10 @@ class MarkdownHandler(BaseHandler):
             mime_type, _ = mimetypes.guess_type(str(attachment))
             is_image = mime_type and mime_type.startswith('image/')
             ext = attachment.suffix.lower()
+            
+            # Initialize target_file and markdown content
+            target_file = markdown_dir / attachment.name
+            markdown = ""
             
             if is_image:
                 # Handle image attachment
@@ -299,8 +331,7 @@ class MarkdownHandler(BaseHandler):
                             metadata = {
                                 'type': mime_type or 'application/octet-stream',
                                 'size': stats.st_size,
-                                'modified': datetime.fromtimestamp(stats.st_mtime).isoformat(),
-                                'conversion_error': result.error
+                                'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
                             }
                             markdown += f'<!-- {json.dumps(metadata)} -->\n'
                 else:
@@ -318,22 +349,49 @@ class MarkdownHandler(BaseHandler):
                             'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
                         }
                         markdown += f'<!-- {json.dumps(metadata)} -->\n'
+
+                # Remove any existing files with same stem but different extensions
+                for existing in markdown_dir.glob(f"{attachment.stem}.*"):
+                    if existing != target_file:
+                        try:
+                            existing.unlink()
+                            self.logger.info(f"Removed duplicate file: {existing}")
+                        except Exception as e:
+                            self.logger.warning(f"Failed to remove duplicate file {existing}: {str(e)}")
+
             else:
-                # Try to convert document to markdown if enabled
+                # Handle document attachment
+                # Copy file to markdown directory first
+                target_file = markdown_dir / attachment.name
+                if not target_file.exists():
+                    shutil.copy2(attachment, target_file)
+                
                 if self.document_conversion:
-                    result: ConversionResult = await self.document_converter.convert_to_markdown(attachment)
+                    # Convert document to markdown
+                    result = await self.document_converter.convert_to_markdown(attachment)
                     if result.success:
-                        # Add converted content with metadata
+                        # Create markdown with converted content and metadata
                         markdown = f'\n## {attachment.stem}\n\n{result.content}\n'
                         if self.metadata_preservation:
-                            markdown += f'<!-- {json.dumps(result.metadata)} -->\n'
+                            metadata = {
+                                'type': mime_type or 'application/octet-stream',
+                                'original_file': attachment.name,
+                                'converter': result.converter_name
+                            }
+                            markdown += f'<!-- {json.dumps(metadata)} -->\n'
+                            
+                        # Also save as separate markdown file
+                        md_filename = f"{attachment.stem}.md"
+                        md_file = markdown_dir / md_filename
+                        async with aiofiles.open(md_file, 'w', encoding='utf-8') as f:
+                            await f.write(f"# {attachment.stem}\n\n{result.content}\n")
+                            if self.metadata_preservation:
+                                await f.write(f'<!-- {json.dumps(metadata)} -->\n')
+                        self.logger.info(f"Created markdown file: {md_file}")
                     else:
-                        # Fallback to simple link if conversion fails
-                        target_file = markdown_dir / attachment.name
-                        if not target_file.exists():
-                            shutil.copy2(attachment, target_file)
+                        # If conversion fails, add link to original file
                         rel_path = f"{file_stem}/{attachment.name}"
-                        markdown = f'\n[{attachment.stem}]({rel_path})\n'
+                        markdown = f'\n[{attachment.stem}]({rel_path})<!-- {{"embed":"true"}} -->\n'
                         if self.metadata_preservation:
                             stats = attachment.stat()
                             metadata = {
@@ -344,12 +402,9 @@ class MarkdownHandler(BaseHandler):
                             }
                             markdown += f'<!-- {json.dumps(metadata)} -->\n'
                 else:
-                    # Simple link if conversion is disabled
-                    target_file = markdown_dir / attachment.name
-                    if not target_file.exists():
-                        shutil.copy2(attachment, target_file)
+                    # If document conversion is disabled, just add link to original file
                     rel_path = f"{file_stem}/{attachment.name}"
-                    markdown = f'\n[{attachment.stem}]({rel_path})\n'
+                    markdown = f'\n[{attachment.stem}]({rel_path})<!-- {{"embed":"true"}} -->\n'
                     if self.metadata_preservation:
                         stats = attachment.stat()
                         metadata = {
@@ -358,9 +413,10 @@ class MarkdownHandler(BaseHandler):
                             'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
                         }
                         markdown += f'<!-- {json.dumps(metadata)} -->\n'
-            
+
+            # Add markdown to content and return
             return content + markdown
-            
+
         except Exception as e:
             self.logger.error(f"Failed to process attachment {attachment}: {str(e)}")
             return content
