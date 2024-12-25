@@ -75,13 +75,13 @@ class DocumentComponent(ProcessorComponent):
 # Import content converters
 from .content_converters import (
     ContentConverterFactory,
-    HTMLConverter,
-    CSVConverter,
-    JSONConverter,
-    TextConverter,
-    OfficeConverter,
-    PDFConverter,
-    ImageConverter
+    BaseContentConverter,
+    MarkdownConverter,
+    DocxConverter,
+    PptxConverter,
+    XlsxConverter,
+    PdfConverter,
+    CsvConverter
 )
 
 __all__ = [
@@ -90,11 +90,11 @@ __all__ = [
     'ImageComponent',
     'DocumentComponent',
     'ContentConverterFactory',
-    'HTMLConverter',
-    'CSVConverter',
-    'JSONConverter',
-    'TextConverter',
-    'OfficeConverter',
-    'PDFConverter',
-    'ImageConverter'
+    'BaseContentConverter',
+    'MarkdownConverter',
+    'DocxConverter',
+    'PptxConverter',
+    'XlsxConverter',
+    'PdfConverter',
+    'CsvConverter'
 ] 

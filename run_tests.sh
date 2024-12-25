@@ -1,119 +1,113 @@
 #!/bin/bash
 
-# Source environment variables
+# Set up error handling
+set -e
+
+# Load environment variables
 if [ -f .env ]; then
     source .env
+fi
+
+# Activate virtual environment
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
 else
-    echo "Error: .env file not found"
+    echo "Error: Virtual environment not found. Please run ./install.sh first"
     exit 1
 fi
 
-# Check Python installation
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python 3 is required but not installed"
+# Verify pytest is installed
+if ! python -m pytest --version > /dev/null 2>&1; then
+    echo "Error: pytest not found. Please run ./install.sh to install dependencies"
     exit 1
 fi
 
-# Check pytest installation
-if ! python3 -c "import pytest" &> /dev/null; then
-    echo "Error: pytest is required but not installed"
-    echo "Installing pytest..."
-    python3 -m pip install pytest
-fi
+# Default values
+VERBOSE=false
+COVERAGE=false
+FAIL_FAST=false
+TEST_FILE=""
+PYTEST_ARGS=""
 
-# Parse command line arguments
-VERBOSE=0
-COVERAGE=0
-SPECIFIC_TEST=""
-FAIL_FAST=0
-
+# Parse command line options
 while [[ $# -gt 0 ]]; do
     case $1 in
         -v|--verbose)
-            VERBOSE=1
+            VERBOSE=true
+            PYTEST_ARGS="$PYTEST_ARGS -v"
             shift
             ;;
         -c|--coverage)
-            COVERAGE=1
+            COVERAGE=true
             shift
             ;;
         -f|--fail-fast)
-            FAIL_FAST=1
+            FAIL_FAST=true
+            PYTEST_ARGS="$PYTEST_ARGS -x"
             shift
             ;;
         -t|--test)
-            SPECIFIC_TEST="$2"
+            TEST_FILE="$2"
             shift
             shift
             ;;
         -h|--help)
             echo "Usage: $0 [options]"
             echo "Options:"
-            echo "  -v, --verbose     Show verbose test output"
-            echo "  -c, --coverage    Run tests with coverage report"
-            echo "  -f, --fail-fast   Stop on first test failure"
+            echo "  -v, --verbose     Show detailed test output"
+            echo "  -c, --coverage    Generate coverage report"
+            echo "  -f, --fail-fast   Stop on first failure"
             echo "  -t, --test FILE   Run specific test file"
             echo "  -h, --help        Show this help message"
             exit 0
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Use --help for usage information"
             exit 1
             ;;
     esac
 done
 
-# Set up test environment
-echo "Setting up test environment..."
+# Create test directories
+echo "===== Setting up Test Environment ====="
+mkdir -p tests/data
+mkdir -p tests/output
+mkdir -p tests/temp
 
-# Create test directories if they don't exist
-for dir in "data" "output" "temp"; do
-    mkdir -p "tests/$dir"
-done
-
-# Build pytest command
-PYTEST_CMD="python3 -m pytest"
-
-# Add options based on arguments
-if [ $VERBOSE -eq 1 ]; then
-    PYTEST_CMD="$PYTEST_CMD -v"
-fi
-
-if [ $COVERAGE -eq 1 ]; then
-    PYTEST_CMD="$PYTEST_CMD --cov=src/nova --cov-report=term-missing"
-fi
-
-if [ $FAIL_FAST -eq 1 ]; then
-    PYTEST_CMD="$PYTEST_CMD -x"
-fi
-
-# Add specific test if provided, otherwise run all tests
-if [ -n "$SPECIFIC_TEST" ]; then
-    if [ -f "tests/$SPECIFIC_TEST" ]; then
-        PYTEST_CMD="$PYTEST_CMD tests/$SPECIFIC_TEST"
-    else
-        echo "Error: Test file '$SPECIFIC_TEST' not found"
-        exit 1
-    fi
-else
-    PYTEST_CMD="$PYTEST_CMD tests/"
-fi
-
-# Set PYTHONPATH to include src directory
+# Set up Python path
 export PYTHONPATH="$PYTHONPATH:$(pwd)/src"
 
-# Run the tests
-echo "Running tests..."
-echo "Command: $PYTEST_CMD"
-$PYTEST_CMD
+# Build coverage command
+if [ "$COVERAGE" = true ]; then
+    COVERAGE_CMD="--cov=src --cov-report=html --cov-report=term-missing --cov-fail-under=80"
+else
+    COVERAGE_CMD=""
+fi
 
-# Store exit code
+# Run all tests
+echo -e "\n===== Running Tests ====="
+if [ -n "$TEST_FILE" ]; then
+    python -m pytest $PYTEST_ARGS $COVERAGE_CMD "$TEST_FILE"
+else
+    python -m pytest $PYTEST_ARGS $COVERAGE_CMD tests/
+fi
+
+# Store test exit code
 TEST_EXIT_CODE=$?
 
-# Clean up temporary test files
-echo "Cleaning up test environment..."
-rm -rf tests/temp/*
+# Clean up test artifacts
+echo -e "\n===== Cleaning Up Test Environment ====="
+find tests/temp -mindepth 1 -delete 2>/dev/null || true
 
-# Exit with test result
+# Preserve test outputs if coverage was requested
+if [ "$COVERAGE" = true ]; then
+    echo "Coverage report saved to htmlcov/"
+else
+    rm -rf tests/output/* 2>/dev/null || true
+fi
+
+# Deactivate virtual environment
+deactivate
+
+# Exit with test status
 exit $TEST_EXIT_CODE 

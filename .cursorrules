@@ -16,10 +16,12 @@ pipeline:
                 metadata_preservation: true
               handlers:
                 - MarkitdownHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
                     document_conversion: true
                     image_processing: true
                     metadata_preservation: true
                 - ConsolidationHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
                     sort_by_date: true
                     preserve_headers: true
           - image_processor:
@@ -97,9 +99,11 @@ pipeline:
                   end: "--==ATTACHMENT_BLOCK_END==--"
               handlers:
                 - AttachmentHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
                     copy_attachments: true
                     update_references: true
                 - ContentHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
                     merge_content: true
                     preserve_headers: true
 
@@ -114,10 +118,26 @@ pipeline:
                 include_file_headers: true
                 add_separators: true
               handlers:
-                - ContentHandler:
-                    merge_files: true
-                    preserve_structure: true
-                    add_file_markers: true
+                - AggregateHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    section_markers:
+                      start: "<!-- START_FILE: {filename} -->"
+                      end: "<!-- END_FILE: {filename} -->"
+                      separator: "\n---\n"
+                - NavigationHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    link_style: "text"
+                    position: "bottom"
+                    add_top_link: true
+                    templates:
+                      text:
+                        prev: "← Previous: [{title}]({link})"
+                        next: "Next: [{title}]({link}) →"
+                        top: "[↑ Back to Top](#table-of-contents)"
+                      arrow:
+                        prev: "←"
+                        next: "→"
+                        top: "↑"
 
     - MARKDOWN_SPLIT_THREEFILES:
         description: "Split aggregated markdown into summary, raw notes, and attachments"
@@ -159,6 +179,7 @@ pipeline:
                 preserve_headers: true
               handlers:
                 - ContentHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
                     split_content: true
                     add_navigation: true
                     maintain_links: true
@@ -492,3 +513,43 @@ test_execution:
       total_coverage: 80%
       file_coverage: 70%
       branch_coverage: 60%
+
+# Dependency Management
+dependency_management:
+  policy: "strict"
+  documentation: "docs/dependencies.md"
+  rules:
+    - Never change core dependencies without explicit approval
+    - Always consult docs/dependencies.md before suggesting changes
+    - Version changes require owner approval
+    - Maintain backward compatibility
+  core_dependencies:
+    brew:
+      - imagemagick@6
+      - ghostscript
+      - tesseract
+      - python@3.9
+      - poetry
+      - git
+      - coreutils
+      - findutils
+      - gnu-sed
+    python:
+      markitdown: "0.0.1a3"
+      pillow: "9.5.0"
+      python-magic: "0.4.27"
+      pyyaml: "6.0.1"
+      click: "8.1.7"
+      openai: "1.3.5"
+      tiktoken: "0.5.1"
+  change_protocol:
+    requires:
+      - Documentation of need
+      - Compatibility analysis
+      - Performance testing
+      - Owner approval
+    testing:
+      - Full test suite
+      - Performance benchmarks
+      - Image processing quality
+      - Phase completion verification

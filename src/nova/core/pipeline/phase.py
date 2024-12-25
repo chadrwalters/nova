@@ -1,116 +1,94 @@
-"""Pipeline phase definitions and configuration."""
+"""Pipeline phase implementation."""
 
-from dataclasses import dataclass
-from enum import Enum, auto
-from typing import Dict, Any, Optional, Type
+from typing import Dict, Any, Optional
+from pathlib import Path
 
 from ..config import ProcessorConfig, PipelineConfig
-from .base import BaseProcessor
-from ...phases.parse.processor import MarkdownProcessor
-from ...phases.consolidate.processor import ConsolidateProcessor
-from ...phases.aggregate.processor import AggregateProcessor
-from ...phases.split.processor import ThreeFileSplitProcessor
-
-class PhaseType(Enum):
-    """Pipeline phase types."""
-    MARKDOWN_PARSE = auto()
-    MARKDOWN_CONSOLIDATE = auto()
-    MARKDOWN_AGGREGATE = auto()
-    MARKDOWN_SPLIT_THREEFILES = auto()
-
-@dataclass
-class PhaseDefinition:
-    """Pipeline phase definition."""
-    type: PhaseType
-    name: str
-    description: str
-    processor_class: Type[BaseProcessor]
-
-# Define all pipeline phases
-PIPELINE_PHASES = [
-    PhaseDefinition(
-        type=PhaseType.MARKDOWN_PARSE,
-        name="Markdown Parse",
-        description="Parse and process markdown files with embedded content",
-        processor_class=MarkdownProcessor
-    ),
-    PhaseDefinition(
-        type=PhaseType.MARKDOWN_CONSOLIDATE,
-        name="Markdown Consolidate",
-        description="Consolidate markdown files with their attachments",
-        processor_class=ConsolidateProcessor
-    ),
-    PhaseDefinition(
-        type=PhaseType.MARKDOWN_AGGREGATE,
-        name="Markdown Aggregate",
-        description="Aggregate all consolidated markdown files into a single file",
-        processor_class=AggregateProcessor
-    ),
-    PhaseDefinition(
-        type=PhaseType.MARKDOWN_SPLIT_THREEFILES,
-        name="Markdown Split",
-        description="Split aggregated markdown into summary, raw notes, and attachments",
-        processor_class=ThreeFileSplitProcessor
-    )
-]
+from .types import PhaseDefinition
 
 class PipelinePhase:
     """Pipeline phase implementation."""
     
-    def __init__(self, definition: PhaseDefinition, processor_config: ProcessorConfig, pipeline_config: PipelineConfig):
+    def __init__(
+        self,
+        definition: PhaseDefinition,
+        processor_config: ProcessorConfig,
+        pipeline_config: PipelineConfig
+    ):
         """Initialize pipeline phase.
         
         Args:
             definition: Phase definition
-            processor_config: Phase-specific configuration
-            pipeline_config: Global pipeline configuration
+            processor_config: Processor configuration
+            pipeline_config: Pipeline configuration
         """
         self.definition = definition
         self.processor_config = processor_config
         self.pipeline_config = pipeline_config
-        self.processor = definition.processor_class(processor_config, pipeline_config)
-        self.state: Dict[str, Any] = {}
+        
+        # Set up phase attributes
+        self.name = definition.name
+        self.description = definition.description
+        self.type = definition.type
+        
+        # Set up phase directories
+        phase_dir = pipeline_config.paths.get_phase_dir(definition.type)
+        input_dir = processor_config.input_dir or pipeline_config.paths.input_dir
+        output_dir = Path(processor_config.output_dir) if processor_config.output_dir else phase_dir
+        
+        # Update processor configuration
+        processor_config.input_dir = input_dir
+        processor_config.output_dir = str(output_dir)
+        
+        # Set up phase state
+        self.state = {
+            'status': 'not started',
+            'input_dir': str(input_dir),
+            'output_dir': str(output_dir),
+            'phase_dir': str(phase_dir)
+        }
     
-    @property
-    def name(self) -> str:
-        """Get phase name."""
-        return self.definition.name
-    
-    @property
-    def description(self) -> str:
-        """Get phase description."""
-        return self.definition.description
+    def get_state(self) -> Dict[str, Any]:
+        """Get phase state.
+        
+        Returns:
+            Phase state dictionary
+        """
+        return {
+            'name': self.name,
+            'description': self.description,
+            'type': self.type.name,
+            'state': self.state
+        }
     
     def process(self, input_path: str, output_path: str) -> Dict[str, Any]:
-        """Process content through this phase.
+        """Process phase.
         
         Args:
             input_path: Path to input file or directory
             output_path: Path to output file or directory
             
         Returns:
-            Dict containing processing results
+            Dictionary containing processing results
         """
-        # Process content
-        result = self.processor.process(input_path, output_path)
-        
         # Update state
-        self.state.update({
-            'last_run': result,
-            'status': 'completed'
-        })
+        self.state['status'] = 'processing'
         
-        return result
-    
-    def get_state(self) -> Dict[str, Any]:
-        """Get phase state.
-        
-        Returns:
-            Dict containing phase state
-        """
-        return {
-            'name': self.name,
-            'description': self.description,
-            'config': self.processor_config.dict(),
-            'state': self.state
-        } 
+        try:
+            # Create processor instance
+            processor_class = self.definition.get_processor_class()
+            processor = processor_class(self.processor_config, self.pipeline_config)
+            
+            # Process phase
+            result = processor.process(input_path, output_path)
+            
+            # Update state
+            self.state['status'] = 'completed'
+            self.state.update(result)
+            return result
+            
+        except Exception as e:
+            # Update state
+            self.state['status'] = 'failed'
+            self.state['error'] = str(e)
+            raise 

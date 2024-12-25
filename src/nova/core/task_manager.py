@@ -1,91 +1,234 @@
-"""Task manager for handling processing tasks."""
+"""Manages task tracking and context preservation for multi-step operations."""
 
-from typing import Any, Dict, List, Optional
+import json
 from pathlib import Path
-import asyncio
-from datetime import datetime
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, asdict
+from enum import Enum
+import aiofiles
+
+from .logging import get_logger, print_title, print_stats
+from .errors import FileError, with_retry, handle_errors
+
+logger = get_logger(__name__)
+
+class TaskStatus(Enum):
+    """Task status enumeration."""
+    TODO = "TODO"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+
+@dataclass
+class TaskContext:
+    """Context data for a task."""
+    input_files: List[Path]
+    output_files: List[Path]
+    metadata: Dict[str, Any]
+    dependencies: List[str]
+    artifacts: Dict[str, Path]
+
+@dataclass
+class Task:
+    """Represents a processing task."""
+    id: str  # Hierarchical ID (e.g., "1.2.3")
+    description: str
+    status: TaskStatus
+    success_criteria: List[str]
+    context: Optional[TaskContext] = None
+    parent_id: Optional[str] = None
+    subtasks: List['Task'] = None
+    
+    def __post_init__(self):
+        """Initialize subtasks list if None."""
+        if self.subtasks is None:
+            self.subtasks = []
+    
+    @property
+    def is_leaf(self) -> bool:
+        """Check if task is a leaf node (no subtasks)."""
+        return not self.subtasks
+    
+    @property
+    def progress(self) -> float:
+        """Calculate task progress (0-1)."""
+        if self.is_leaf:
+            return 1.0 if self.status == TaskStatus.DONE else 0.0
+        
+        if not self.subtasks:
+            return 0.0
+        
+        completed = sum(task.progress for task in self.subtasks)
+        return completed / len(self.subtasks)
 
 class TaskManager:
-    """Manages processing tasks and their execution."""
+    """Manages task tracking and context preservation."""
     
-    def __init__(self):
-        """Initialize task manager."""
-        self.tasks: Dict[str, Dict[str, Any]] = {}
-        self.task_queue = asyncio.Queue()
-        self.running = False
-        
-    def add_task(self, task_id: str, task_type: str, source_path: Path, dest_path: Path, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Add a task to the queue.
+    def __init__(self, state_file: Path):
+        """Initialize task manager.
         
         Args:
-            task_id: Unique task identifier
-            task_type: Type of task (e.g., 'copy', 'process', 'convert')
-            source_path: Source file path
-            dest_path: Destination file path
-            metadata: Optional metadata for the task
+            state_file: Path to state file
         """
-        task = {
-            'id': task_id,
-            'type': task_type,
-            'source': source_path,
-            'destination': dest_path,
-            'metadata': metadata or {},
-            'status': 'pending',
-            'created': datetime.now().isoformat(),
-            'started': None,
-            'completed': None,
-            'error': None
+        self.state_file = state_file
+        self.tasks: Dict[str, Task] = {}
+        self.current_task_id: Optional[str] = None
+    
+    @with_retry()
+    @handle_errors()
+    async def load_state(self) -> None:
+        """Load task state from file."""
+        if not self.state_file.exists():
+            return
+        
+        async with aiofiles.open(self.state_file, 'r') as f:
+            data = json.loads(await f.read())
+            
+        # Reconstruct tasks
+        for task_data in data['tasks']:
+            task = Task(**task_data)
+            self.tasks[task.id] = task
+        
+        self.current_task_id = data.get('current_task_id')
+    
+    @with_retry()
+    @handle_errors()
+    async def save_state(self) -> None:
+        """Save task state to file."""
+        data = {
+            'tasks': [asdict(task) for task in self.tasks.values()],
+            'current_task_id': self.current_task_id
         }
         
-        self.tasks[task_id] = task
-        self.task_queue.put_nowait(task)
-        
-    def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Get task details.
+        async with aiofiles.open(self.state_file, 'w') as f:
+            await f.write(json.dumps(data, indent=2))
+    
+    def add_task(
+        self,
+        description: str,
+        success_criteria: List[str],
+        parent_id: Optional[str] = None
+    ) -> Task:
+        """Add a new task.
         
         Args:
-            task_id: Task identifier
+            description: Task description
+            success_criteria: List of success criteria
+            parent_id: Optional parent task ID
             
         Returns:
-            Task details or None if not found
+            Created task
         """
-        return self.tasks.get(task_id)
+        # Generate task ID
+        if parent_id:
+            parent = self.tasks[parent_id]
+            task_id = f"{parent_id}.{len(parent.subtasks) + 1}"
+        else:
+            task_id = str(len([t for t in self.tasks.values() if not t.parent_id]) + 1)
         
-    def update_task(self, task_id: str, status: str, error: Optional[str] = None) -> None:
-        """Update task status.
+        # Create task
+        task = Task(
+            id=task_id,
+            description=description,
+            status=TaskStatus.TODO,
+            success_criteria=success_criteria,
+            parent_id=parent_id
+        )
+        
+        # Add to tasks dict
+        self.tasks[task_id] = task
+        
+        # Add to parent's subtasks if applicable
+        if parent_id:
+            self.tasks[parent_id].subtasks.append(task)
+        
+        return task
+    
+    def start_task(self, task_id: str) -> None:
+        """Start a task.
         
         Args:
-            task_id: Task identifier
-            status: New status
+            task_id: ID of task to start
+        """
+        task = self.tasks[task_id]
+        task.status = TaskStatus.IN_PROGRESS
+        self.current_task_id = task_id
+        
+        # Print task info
+        print_title(f"Starting Task {task_id}: {task.description}")
+        print_stats({
+            "Progress": f"{task.progress:.1%}",
+            "Status": task.status.value,
+            "Subtasks": len(task.subtasks)
+        })
+    
+    def complete_task(
+        self,
+        task_id: str,
+        context: Optional[TaskContext] = None
+    ) -> None:
+        """Complete a task.
+        
+        Args:
+            task_id: ID of task to complete
+            context: Optional context data to preserve
+        """
+        task = self.tasks[task_id]
+        task.status = TaskStatus.DONE
+        task.context = context
+        
+        if task_id == self.current_task_id:
+            self.current_task_id = None
+        
+        # Print completion info
+        print_title(f"Completed Task {task_id}: {task.description}")
+        print_stats({
+            "Progress": "100%",
+            "Status": task.status.value,
+            "Artifacts": len(context.artifacts) if context else 0
+        })
+    
+    def fail_task(
+        self,
+        task_id: str,
+        error: Optional[str] = None
+    ) -> None:
+        """Mark a task as failed.
+        
+        Args:
+            task_id: ID of task that failed
             error: Optional error message
         """
-        if task_id in self.tasks:
-            self.tasks[task_id].update({
-                'status': status,
-                'error': error,
-                'completed': datetime.now().isoformat() if status in ('completed', 'failed') else None
-            })
-            
-    def get_pending_tasks(self) -> List[Dict[str, Any]]:
-        """Get list of pending tasks.
+        task = self.tasks[task_id]
+        task.status = TaskStatus.FAILED
+        
+        if task_id == self.current_task_id:
+            self.current_task_id = None
+        
+        # Print failure info
+        print_title(f"Failed Task {task_id}: {task.description}")
+        print_stats({
+            "Status": task.status.value,
+            "Error": error or "Unknown error"
+        })
+    
+    def get_progress(self) -> Dict[str, Any]:
+        """Get overall progress statistics.
         
         Returns:
-            List of pending tasks
+            Dictionary of progress statistics
         """
-        return [task for task in self.tasks.values() if task['status'] == 'pending']
+        total_tasks = len(self.tasks)
+        completed = len([t for t in self.tasks.values() if t.status == TaskStatus.DONE])
+        failed = len([t for t in self.tasks.values() if t.status == TaskStatus.FAILED])
         
-    def get_failed_tasks(self) -> List[Dict[str, Any]]:
-        """Get list of failed tasks.
-        
-        Returns:
-            List of failed tasks
-        """
-        return [task for task in self.tasks.values() if task['status'] == 'failed']
-        
-    def clear_completed_tasks(self) -> None:
-        """Clear completed tasks from the task list."""
-        self.tasks = {
-            task_id: task 
-            for task_id, task in self.tasks.items() 
-            if task['status'] not in ('completed', 'failed')
-        } 
+        return {
+            "total_tasks": total_tasks,
+            "completed_tasks": completed,
+            "failed_tasks": failed,
+            "progress": completed / total_tasks if total_tasks > 0 else 0.0,
+            "current_task": self.current_task_id
+        }
+
+__all__ = ['TaskManager', 'Task', 'TaskContext', 'TaskStatus'] 

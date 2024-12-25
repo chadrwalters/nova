@@ -3,156 +3,42 @@
 # Logging Configuration
 logging:
   level: "INFO"
-  format: "json"
-  filter_binary: true
-  max_binary_length: 100
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    console:
+      class: "logging.StreamHandler"
+      level: "INFO"
+      formatter: "default"
+  use_rich: true
 
-# Markdown Processing
-markdown:
-  typographer: true
-  linkify: true
-  breaks: true
-  plugins:
-    - table
-    - strikethrough
-    - taskList
-    - linkify
-    - image
-  aggregate:
-    enabled: true
-    output_filename: "all_merged_markdown.md"
-    include_file_headers: true
-    add_separators: true
+# OpenAI Configuration
+openai:
+  enabled: true
+  model: "gpt-4-0125-preview"
+  max_tokens: 500
+  temperature: 0.7
+  retry:
+    max_retries: 3
+    delay_between_retries: 1.0
+    backoff_factor: 2.0
+    jitter: true
+    retry_on_errors:
+      - timeout
+      - connection_error
 
-# Image Processing
-image:
-  quality: 85
-  max_width: 1920
-  max_height: 1080
-  preferred_format: "png"
-  cache_enabled: true
-  cache_duration: 86400  # 24 hours
-  retry_attempts: 3
-  timeout: 30
-
-# Office Document Processing
-office:
-  preserve_images: true
-  ocr_enabled: true
-  max_image_size: 5242880  # 5MB
-
-# Processing Configuration
-processing:
-  error_tolerance: "lenient"
+# Global Retry Configuration
+retry:
   max_retries: 3
-  max_file_size: 100  # MB
-  max_total_size: 500  # MB
+  delay_between_retries: 1.0
+  backoff_factor: 2.0
+  jitter: true
+  retry_on_errors:
+    - timeout
+    - connection_error
 
-# Pipeline Configuration
-pipeline:
-  phases:
-    - MARKDOWN_PARSE:
-        description: "Parse and process markdown files with embedded content"
-        output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
-        processor: "MarkdownProcessor"
-        file_size_behavior: "Maintains original input file sizes"
-        components:
-          markdown_processor:
-            config:
-              parser: "markdown-it"
-              typographer: true
-              plugins:
-                - table
-                - strikethrough
-                - linkify
-                - image
-    
-    - MARKDOWN_CONSOLIDATE:
-        description: "Consolidate markdown files with their attachments"
-        output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
-        processor: "MarkdownConsolidateProcessor"
-        file_size_behavior: "Maintains individual file sizes while adding metadata and attachments"
-        components:
-          consolidate_processor:
-            config:
-              group_by_root: true
-              handle_attachments: true
-              preserve_structure: true
-              attachment_markers:
-                start: "--==ATTACHMENT_BLOCK: {filename}==--"
-                end: "--==ATTACHMENT_BLOCK_END==--"
-            handlers:
-              - AttachmentHandler:
-                  copy_attachments: true
-                  update_references: true
-              - ContentHandler:
-                  merge_content: true
-                  preserve_headers: true
-    
-    - MARKDOWN_AGGREGATE:
-        description: "Aggregate all consolidated markdown files into a single file"
-        output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
-        processor: "MarkdownAggregateProcessor"
-        file_size_behavior: "Creates single output file with size approximately equal to sum of input files"
-        components:
-          aggregate_processor:
-            config:
-              output_filename: "all_merged_markdown.md"
-              include_file_headers: true
-              add_separators: true
-
-    - MARKDOWN_SPLIT_THREEFILES:
-        description: "Split aggregated markdown into separate files for summary, raw notes, and attachments"
-        output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
-        processor: "ThreeFileSplitProcessor"
-        file_size_behavior: "Creates three output files with content-appropriate sizes"
-        components:
-          three_file_split_processor:
-            config:
-              output_files:
-                summary: "summary.md"
-                raw_notes: "raw_notes.md"
-                attachments: "attachments.md"
-              section_markers:
-                summary: "--==SUMMARY==--"
-                raw_notes: "--==RAW_NOTES==--"
-                attachments: "--==ATTACHMENTS==--"
-              attachment_markers:
-                start: "--==ATTACHMENT_BLOCK: {filename}==--"
-                end: "--==ATTACHMENT_BLOCK_END==--"
-              content_type_rules:
-                summary:
-                  - Contains high-level overviews
-                  - Contains key insights and decisions
-                  - Contains structured content
-                raw_notes:
-                  - Contains detailed notes and logs
-                  - Contains chronological entries
-                  - Contains unstructured content
-                attachments:
-                  - Contains file references
-                  - Contains embedded content
-                  - Contains metadata
-              content_preservation:
-                validate_input_size: true
-                validate_output_size: true
-                track_content_markers: true
-                verify_section_integrity: true
-              cross_linking: true
-              preserve_headers: true
-            handlers:
-              - ContentHandler:
-                  split_content: true
-                  add_navigation: true
-                  maintain_links: true
-                  validate_content: true
-
-# Directory Structure
-directory_structure:
-  base: "${NOVA_BASE_DIR}"
-  required_dirs:
-    phase_dirs:
-      - markdown_parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
-      - markdown_consolidate: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
-      - markdown_aggregate: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
-      - markdown_split: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+# Global Cache Configuration
+cache:
+  enabled: true
+  max_size: 1073741824  # 1GB
+  max_age: 2592000      # 30 days
+  cleanup_interval: 3600 # 1 hour
