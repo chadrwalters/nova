@@ -1,143 +1,94 @@
-"""
-Retry utilities for handling transient failures.
-"""
+"""Retry utilities for Nova."""
 
 import asyncio
 import functools
-import logging
-import time
-from typing import Type, Tuple, Optional, Callable, Any, List
+import random
+from typing import Any, Callable, Optional, Type, Union, List
 
-from nova.core.errors import NovaError
-from nova.core.utils.error_tracker import ErrorTracker
+from ..config.base import RetryConfig
+from ..logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def async_retry(
-    retries: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: Tuple[Type[Exception], ...] = (NovaError,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None
-):
-    """
-    Retry decorator for async functions.
+    max_retries: Optional[int] = None,
+    delay_between_retries: Optional[float] = None,
+    backoff_factor: Optional[float] = None,
+    jitter: Optional[bool] = None,
+    retry_on_errors: Optional[List[Union[Type[Exception], str]]] = None
+) -> Callable:
+    """Decorator for retrying async functions.
     
     Args:
-        retries: Maximum number of retries
-        delay: Initial delay between retries in seconds
-        backoff: Multiplier for delay between retries
-        exceptions: Tuple of exceptions to catch and retry
-        on_retry: Optional callback function called on each retry
+        max_retries: Maximum number of retries
+        delay_between_retries: Initial delay between retries in seconds
+        backoff_factor: Factor to multiply delay by after each retry
+        jitter: Whether to add random jitter to delay
+        retry_on_errors: List of exceptions or error strings to retry on
         
     Returns:
-        Decorated function that will retry on specified exceptions
+        Decorated function
     """
-    retry_config = RetryConfig(
-        max_retries=retries,
-        delay_between_retries=delay,
-        backoff_factor=backoff,
-        retry_on_errors=[e.__name__ for e in exceptions]
-    )
-    
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            last_exception = None
-            current_delay = retry_config.delay_between_retries
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Get retry config from first argument if it's a class method
+            if args and hasattr(args[0], 'config'):
+                instance_config = getattr(args[0].config, 'retry', {})
+                retry_config = RetryConfig(
+                    max_retries=max_retries or instance_config.get('max_retries', 3),
+                    delay_between_retries=delay_between_retries or instance_config.get('delay_between_retries', 1.0),
+                    backoff_factor=backoff_factor or instance_config.get('backoff_factor', 2.0),
+                    jitter=jitter if jitter is not None else instance_config.get('jitter', True),
+                    retry_on_errors=retry_on_errors or instance_config.get('retry_on_errors', [])
+                )
+            else:
+                retry_config = RetryConfig(
+                    max_retries=max_retries or 3,
+                    delay_between_retries=delay_between_retries or 1.0,
+                    backoff_factor=backoff_factor or 2.0,
+                    jitter=jitter if jitter is not None else True,
+                    retry_on_errors=retry_on_errors or []
+                )
             
-            for attempt in range(retry_config.max_retries + 1):
+            attempt = 0
+            while True:
                 try:
                     return await func(*args, **kwargs)
-                except exceptions as e:
-                    last_exception = e
-                    if attempt == retry_config.max_retries:
-                        raise
+                except Exception as e:
+                    attempt += 1
                     
-                    if on_retry:
-                        on_retry(e, attempt)
-                    
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{retry_config.max_retries} failed: {str(e)}. "
-                        f"Retrying in {current_delay:.2f}s..."
-                    )
-                    
-                    await asyncio.sleep(current_delay)
-                    current_delay *= retry_config.backoff_factor
-            
-            raise last_exception
-        
-        return wrapper
-    
-    return decorator
-
-def retry(
-    retries: int = 3,
-    delay: float = 1.0,
-    backoff: float = 2.0,
-    exceptions: Tuple[Type[Exception], ...] = (NovaError,),
-    on_retry: Optional[Callable[[Exception, int], None]] = None
-):
-    """
-    Retry decorator for synchronous functions.
-    
-    Args:
-        retries: Maximum number of retries
-        delay: Initial delay between retries in seconds
-        backoff: Multiplier for delay between retries
-        exceptions: Tuple of exceptions to catch and retry
-        on_retry: Optional callback function called on each retry
-        
-    Returns:
-        Decorated function that will retry on specified exceptions
-    """
-    retry_config = RetryConfig(
-        max_retries=retries,
-        delay_between_retries=delay,
-        backoff_factor=backoff,
-        exceptions=exceptions
-    )
-    
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            current_delay = retry_config.delay_between_retries
-            
-            for attempt in range(retry_config.max_retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except retry_config.exceptions as e:
-                    last_exception = e
-                    error_tracker.record_error(e)
-                    
-                    # Check if error is recoverable and should be retried
-                    if not getattr(e, 'retry', False):
-                        raise
-                    
-                    if attempt == retry_config.max_retries:
-                        logger.error(
-                            "Failed after %d retries: %s",
-                            retry_config.max_retries, str(e)
-                        )
-                        raise
-                    
-                    if on_retry:
-                        on_retry(e, attempt + 1)
-                    
-                    logger.warning(
-                        "Attempt %d/%d failed: %s. Retrying in %.1f seconds...",
-                        attempt + 1, retry_config.max_retries, str(e), current_delay
-                    )
-                    
-                    # Apply backoff if specified
-                    if getattr(last_exception, 'backoff', False):
-                        time.sleep(current_delay)
-                        current_delay *= retry_config.backoff_factor
+                    # Check if we should retry
+                    should_retry = False
+                    if retry_config.retry_on_errors:
+                        for error in retry_config.retry_on_errors:
+                            if isinstance(error, str) and error in str(e):
+                                should_retry = True
+                                break
+                            elif isinstance(error, type) and isinstance(e, error):
+                                should_retry = True
+                                break
                     else:
-                        time.sleep(current_delay)
-            
-            if last_exception:
-                raise last_exception
+                        # If no specific errors specified, retry on all exceptions
+                        should_retry = True
+                    
+                    if not should_retry or attempt >= retry_config.max_retries:
+                        raise
+                    
+                    # Calculate delay with exponential backoff
+                    delay = retry_config.delay_between_retries * (retry_config.backoff_factor ** (attempt - 1))
+                    
+                    # Add jitter if enabled
+                    if retry_config.jitter:
+                        delay *= (1 + random.random())
+                    
+                    logger.warning(
+                        f"Attempt {attempt} failed with error: {str(e)}. "
+                        f"Retrying in {delay:.2f} seconds..."
+                    )
+                    
+                    await asyncio.sleep(delay)
+        
         return wrapper
+    
     return decorator 

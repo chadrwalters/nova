@@ -1,10 +1,9 @@
-"""Base processor for Nova document processor."""
+"""Base processor module."""
 
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-import os
+from typing import Dict, Any, Union
 
-from ..config import ProcessorConfig, PipelineConfig, ComponentConfig
+from ..config import PipelineConfig, ProcessorConfig
 from ..logging import get_logger
 
 logger = get_logger(__name__)
@@ -12,22 +11,40 @@ logger = get_logger(__name__)
 class BaseProcessor:
     """Base processor class."""
     
-    def __init__(self, processor_config: ProcessorConfig, pipeline_config: PipelineConfig):
+    def __init__(self, processor_config: Union[ProcessorConfig, Dict[str, Any]], pipeline_config: PipelineConfig):
         """Initialize base processor.
         
         Args:
             processor_config: Processor configuration
             pipeline_config: Pipeline configuration
         """
+        logger.debug(f"Initializing processor with config: {processor_config}")
+        
+        # Create processor config if needed
+        if not isinstance(processor_config, ProcessorConfig):
+            try:
+                processor_config = ProcessorConfig(
+                    name=processor_config.get('name', 'unknown'),
+                    description=processor_config.get('description', 'Unknown processor'),
+                    output_dir=processor_config['output_dir'],
+                    processor=processor_config.get('processor', 'UnknownProcessor'),
+                    enabled=processor_config.get('enabled', True),
+                    components=processor_config.get('components', {}),
+                    handlers=processor_config.get('handlers', [])
+                )
+                logger.debug(f"Created processor config: {processor_config}")
+            except Exception as e:
+                logger.error(f"Failed to create processor config: {e}")
+                logger.debug(f"Config data: {processor_config}")
+                raise
+        
         self.processor_config = processor_config
         self.pipeline_config = pipeline_config
         self.output_dir = Path(processor_config.output_dir)
         
         # Set up components
         self.components: Dict[str, Any] = {}
-        if hasattr(processor_config, 'components'):
-            if not isinstance(processor_config.components, dict):
-                processor_config.components = {}
+        if processor_config.components is not None:
             self.components = processor_config.components
         
     async def setup(self) -> None:

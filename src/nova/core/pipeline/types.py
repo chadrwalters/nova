@@ -22,7 +22,9 @@ class PhaseType(str, Enum):
 class PhaseDefinition(BaseModel):
     """Pipeline phase definition."""
     
+    name: str
     description: str
+    type: PhaseType
     output_dir: Path
     processor: str
     components: Dict[str, Any]

@@ -8,6 +8,14 @@ pipeline:
         document_conversion: true
         image_processing: true
         metadata_preservation: true
+      handlers:
+        MarkitdownHandler:
+          document_conversion: true
+          image_processing: true
+          metadata_preservation: true
+        ConsolidationHandler:
+          sort_by_date: true
+          preserve_headers: true
     image_processor:
       formats:
         - png
@@ -129,18 +137,15 @@ pipeline:
                 attachments: "attachments.md"
               section_markers:
                 summary: "--==SUMMARY==--"
-                raw_notes: "--==RAW_NOTES==--"
+                raw_notes: "--==RAW NOTES==--"
                 attachments: "--==ATTACHMENTS==--"
-              content_type_rules:
-                summary:
-                  - Contains high-level overviews
-                  - Contains key insights and decisions
-                  - Contains structured content
-                raw_notes:
-                  - Contains detailed notes and logs
-                  - Contains chronological entries
-                  - Contains unstructured content
-                attachments:
-                  - Contains file references
-                  - Contains embedded content
-                  - Contains metadata 
+              attachment_markers:
+                start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                end: "--==ATTACHMENT_BLOCK_END==--"
+              content_preservation:
+                validate_input_size: true
+                validate_output_size: true
+                track_content_markers: true
+                verify_section_integrity: true
+              cross_linking: true
+              preserve_headers: true 

@@ -1,11 +1,6 @@
-"""Error classes for Nova document processor."""
+"""Error classes for Nova."""
 
-from typing import Any, Dict, Optional, Union, Type, TypeVar, Callable
-import asyncio
-import functools
-import logging
-
-F = TypeVar('F', bound=Callable[..., Any])
+from typing import Dict, Any, Optional
 
 class ErrorContext:
     """Context information for errors."""
@@ -24,7 +19,7 @@ class ErrorContext:
         return f"{self.component}.{self.operation}: {self.details}"
 
 class NovaError(Exception):
-    """Base class for Nova errors."""
+    """Base class for all Nova errors."""
     
     def __init__(
         self,
@@ -41,164 +36,137 @@ class NovaError(Exception):
         return super().__str__()
 
 class ConfigurationError(NovaError):
-    """Error raised for configuration issues."""
+    """Error raised when there is a configuration problem."""
     pass
 
 class ComponentError(NovaError):
-    """Error raised for component-related issues."""
+    """Error raised when a component fails."""
     pass
 
 class ProcessingError(NovaError):
-    """Error raised for processing issues."""
+    """Error raised when processing fails."""
     pass
 
-class ProcessorError(NovaError):
-    """Error raised for processor-specific issues."""
+class ProcessorError(ProcessingError):
+    """Error raised when a processor fails."""
     pass
 
-class PipelineError(NovaError):
-    """Error raised for pipeline-related issues."""
+class ParseError(ProcessingError):
+    """Error raised when parsing fails."""
     pass
 
-class FileError(NovaError):
-    """Error raised for file operation issues."""
+class MarkdownParseError(ParseError):
+    """Error raised when markdown parsing fails."""
     pass
 
-class FileOperationError(NovaError):
-    """Error raised for file operation failures."""
+class YAMLParseError(ParseError):
+    """Error raised when YAML parsing fails."""
     pass
 
-class ValidationError(NovaError):
-    """Error raised for validation failures."""
+class JSONParseError(ParseError):
+    """Error raised when JSON parsing fails."""
     pass
 
-class ParseError(NovaError):
-    """Error raised for parsing failures."""
-    pass
-
-class HandlerError(NovaError):
-    """Error raised for handler failures."""
-    pass
-
-class AttachmentError(NovaError):
-    """Error raised for attachment handling failures."""
+class AttachmentError(ProcessingError):
+    """Error raised when attachment processing fails."""
     pass
 
 class AttachmentNotFoundError(AttachmentError):
-    """Error raised when an attachment cannot be found."""
+    """Error raised when an attachment is not found."""
+    pass
+
+class InvalidAttachmentError(AttachmentError):
+    """Error raised when an attachment is invalid."""
     pass
 
 class AttachmentProcessingError(AttachmentError):
-    """Error raised when there is a problem processing an attachment."""
+    """Error raised when attachment processing fails."""
     pass
 
-def with_retry(
-    max_attempts: int = 3,
-    delay: float = 1.0,
-    exceptions: Union[Type[Exception], tuple[Type[Exception], ...]] = NovaError,
-    logger: Optional[logging.Logger] = None
-) -> Callable[[F], F]:
-    """Decorator to retry functions on failure.
-    
-    Args:
-        max_attempts: Maximum number of retry attempts
-        delay: Delay between retries in seconds
-        exceptions: Exception types to catch and retry
-        logger: Logger instance for retry attempts
-    
-    Returns:
-        Decorated function that implements retry logic
-    """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            nonlocal logger
-            
-            if logger is None:
-                logger = logging.getLogger(func.__module__)
-            
-            last_error = None
-            for attempt in range(max_attempts):
-                try:
-                    return await func(*args, **kwargs)
-                except exceptions as e:
-                    last_error = e
-                    if attempt < max_attempts - 1:
-                        logger.warning(
-                            f"Attempt {attempt + 1}/{max_attempts} failed: {str(e)}. "
-                            f"Retrying in {delay} seconds..."
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        logger.error(
-                            f"All {max_attempts} attempts failed. "
-                            f"Last error: {str(e)}"
-                        )
-            
-            if last_error:
-                raise last_error
-        
-        return wrapper  # type: ignore
-    
-    return decorator
+class ImageProcessingError(ProcessingError):
+    """Error raised when image processing fails."""
+    pass
 
-def handle_errors(logger=None, reraise=True):
-    """Decorator for error handling.
-    
-    Args:
-        logger: Optional logger instance
-        reraise: Whether to reraise caught errors (defaults to True)
-    """
-    def decorator(func):
-        # Get function name for logging
-        func_name = func.__name__
-        
-        # Handle async functions
-        if asyncio.iscoroutinefunction(func):
-            @functools.wraps(func)
-            async def wrapper(*args, **kwargs):
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as e:
-                    log = logger or logging.getLogger(__name__)
-                    log.error(f"Error in {func_name}: {str(e)}")
-                    if reraise:
-                        raise
-                    return None
-            return wrapper
-            
-        # Handle sync functions
-        else:
-            @functools.wraps(func)
-            def wrapper(*args, **kwargs):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    log = logger or logging.getLogger(__name__)
-                    log.error(f"Error in {func_name}: {str(e)}")
-                    if reraise:
-                        raise
-                    return None
-            return wrapper
-            
-    return decorator
+class ImageNotFoundError(ImageProcessingError):
+    """Error raised when an image file is not found."""
+    pass
 
-__all__ = [
-    'NovaError',
-    'ConfigurationError',
-    'ComponentError',
-    'ProcessingError',
-    'ProcessorError',
-    'PipelineError',
-    'FileError',
-    'FileOperationError',
-    'ValidationError',
-    'ParseError',
-    'HandlerError',
-    'AttachmentError',
-    'AttachmentNotFoundError',
-    'AttachmentProcessingError',
-    'ErrorContext',
-    'with_retry',
-    'handle_errors'
-] 
+class InvalidImageFormatError(ImageProcessingError):
+    """Error raised when an image format is invalid."""
+    pass
+
+class ImageConversionError(ImageProcessingError):
+    """Error raised when image conversion fails."""
+    pass
+
+class ImageMetadataError(ImageProcessingError):
+    """Error raised when image metadata processing fails."""
+    pass
+
+class DocumentProcessingError(ProcessingError):
+    """Error raised when document processing fails."""
+    pass
+
+class OfficeProcessingError(ProcessingError):
+    """Error raised when office document processing fails."""
+    pass
+
+class PipelineError(NovaError):
+    """Error raised when pipeline processing fails."""
+    pass
+
+class HandlerError(NovaError):
+    """Error raised when a handler fails."""
+    pass
+
+class ValidationError(NovaError):
+    """Error raised when validation fails."""
+    pass
+
+class FileError(NovaError):
+    """Error raised when file operations fail."""
+    pass
+
+class FileOperationError(FileError):
+    """Error raised when specific file operations fail."""
+    pass
+
+class FileNotFoundError(FileError):
+    """Error raised when a file is not found."""
+    pass
+
+class FilePermissionError(FileError):
+    """Error raised when file permissions are insufficient."""
+    pass
+
+class StateError(NovaError):
+    """Error raised when state management fails."""
+    pass
+
+class CacheError(NovaError):
+    """Error raised when cache operations fail."""
+    pass
+
+class APIError(NovaError):
+    """Error raised when API calls fail."""
+    pass
+
+class OpenAIError(APIError):
+    """Error raised when OpenAI API calls fail."""
+    pass
+
+class DataURIError(NovaError):
+    """Error raised when data URI processing fails."""
+    pass
+
+class InvalidDataURIError(DataURIError):
+    """Error raised when a data URI is invalid."""
+    pass
+
+class DataURIEncodingError(DataURIError):
+    """Error raised when data URI encoding fails."""
+    pass
+
+class DataURIDecodingError(DataURIError):
+    """Error raised when data URI decoding fails."""
+    pass 
