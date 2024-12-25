@@ -8,6 +8,13 @@ from .config import (
 from .logging import get_logger
 from .errors import ProcessorError, PipelineError
 from .file_ops import FileOperationsManager
+from .pipeline import (
+    BaseProcessor,
+    Pipeline,
+    PipelineManager,
+    PipelinePhase,
+    PhaseType
+)
 
 __all__ = [
     'PipelineConfig',
@@ -15,5 +22,10 @@ __all__ = [
     'get_logger',
     'ProcessorError',
     'PipelineError',
-    'FileOperationsManager'
+    'FileOperationsManager',
+    'BaseProcessor',
+    'PipelinePhase',
+    'PhaseType',
+    'PipelineManager',
+    'Pipeline'
 ]

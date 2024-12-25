@@ -32,12 +32,12 @@ class PipelinePhase:
         self.type = definition.type
         
         # Set up phase directories
-        phase_dir = pipeline_config.paths.get_phase_dir(definition.type)
-        input_dir = processor_config.input_dir or pipeline_config.paths.input_dir
+        phase_dir = Path(pipeline_config.processing_dir) / "phases" / self.type.value.lower()
+        input_dir = processor_config.input_dir or Path(pipeline_config.input_dir)
         output_dir = Path(processor_config.output_dir) if processor_config.output_dir else phase_dir
         
         # Update processor configuration
-        processor_config.input_dir = input_dir
+        processor_config.input_dir = str(input_dir)
         processor_config.output_dir = str(output_dir)
         
         # Set up phase state
@@ -47,6 +47,30 @@ class PipelinePhase:
             'output_dir': str(output_dir),
             'phase_dir': str(phase_dir)
         }
+        
+        # Create processor instance
+        processor_class = self.get_processor_class()
+        self.processor = processor_class(processor_config, pipeline_config)
+    
+    def get_processor_class(self):
+        """Get processor class based on phase type."""
+        from ...phases.parse.processor import MarkdownProcessor
+        from ...phases.consolidate.processor import MarkdownConsolidateProcessor
+        from ...phases.aggregate.processor import MarkdownAggregateProcessor
+        from ...phases.split.processor import ThreeFileSplitProcessor
+        
+        processor_map = {
+            'MARKDOWN_PARSE': MarkdownProcessor,
+            'MARKDOWN_CONSOLIDATE': MarkdownConsolidateProcessor,
+            'MARKDOWN_AGGREGATE': MarkdownAggregateProcessor,
+            'MARKDOWN_SPLIT_THREEFILES': ThreeFileSplitProcessor
+        }
+        
+        processor_class = processor_map.get(self.type.value)
+        if not processor_class:
+            raise ValueError(f"Unknown processor type: {self.type.value}")
+        
+        return processor_class
     
     def get_state(self) -> Dict[str, Any]:
         """Get phase state.
@@ -75,12 +99,8 @@ class PipelinePhase:
         self.state['status'] = 'processing'
         
         try:
-            # Create processor instance
-            processor_class = self.definition.get_processor_class()
-            processor = processor_class(self.processor_config, self.pipeline_config)
-            
             # Process phase
-            result = processor.process(input_path, output_path)
+            result = self.processor.process(input_path, output_path)
             
             # Update state
             self.state['status'] = 'completed'
