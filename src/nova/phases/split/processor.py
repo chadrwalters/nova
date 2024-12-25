@@ -30,7 +30,7 @@ class ThreeFileSplitProcessor(BaseProcessor):
         logger.debug(f"Handler config from options: {handler_config}")
         
         if not handler_config:
-            # Use default config from pipeline.yaml with absolute paths
+            # Use default config from pipeline_config.yaml with absolute paths
             output_dir = str(self.output_dir)
             logger.debug(f"Using default config with output_dir: {output_dir}")
             
