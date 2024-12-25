@@ -5,8 +5,9 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 import aiofiles
+from datetime import datetime
 
-from nova.phases.core.base_handler import BaseHandler
+from nova.phases.core.base_handler import BaseHandler, HandlerResult
 from nova.models.parsed_result import ParsedResult
 
 class ClassificationHandler(BaseHandler):
@@ -19,14 +20,13 @@ class ClassificationHandler(BaseHandler):
             config: Optional configuration overrides
         """
         super().__init__(config)
-        self.config = config or {}
         
         # Set up logging
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         
         # Configure output paths
-        self.output_dir = Path(self.config.get('output_dir', '.'))
+        self.output_dir = Path(self.get_option('output_dir', '.'))
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def can_handle(self, file_path: Path, attachments: Optional[List[Path]] = None) -> bool:
@@ -49,7 +49,7 @@ class ClassificationHandler(BaseHandler):
         file_path: Path, 
         context: Dict[str, Any],
         attachments: Optional[List[Path]] = None
-    ) -> Dict[str, Any]:
+    ) -> HandlerResult:
         """Process and classify markdown content.
         
         Args:
@@ -58,24 +58,16 @@ class ClassificationHandler(BaseHandler):
             attachments: Optional list of attachments (not used)
             
         Returns:
-            Dict containing:
-                - content: Classified markdown content
-                - metadata: Classification metadata
-                - processed_attachments: List of processed attachments
-                - errors: List of processing errors
+            HandlerResult containing classified content and metadata
         """
-        result = {
-            'content': '',
-            'metadata': {},
-            'processed_attachments': [],
-            'errors': []
-        }
+        result = HandlerResult()
+        result.start_time = datetime.now()
         
         try:
             # Load classification data
             parsed_result = await self._load_classification(file_path)
             if not parsed_result:
-                result['errors'].append(f"No classification data found for {file_path}")
+                result.add_error(f"No classification data found for {file_path}")
                 return result
             
             # Update attachment paths if needed
@@ -90,15 +82,22 @@ class ClassificationHandler(BaseHandler):
             await self._save_classification(output_path, parsed_result)
             
             # Update result
-            result['content'] = parsed_result.combined_markdown
-            result['metadata'] = parsed_result.metadata
-            result['processed_attachments'] = [
-                {'path': str(path)} for path in parsed_result.attachments
+            result.content = parsed_result.combined_markdown
+            result.metadata = parsed_result.metadata
+            result.processed_files.append(file_path)
+            result.processed_attachments = [
+                Path(attachment['path']) for attachment in parsed_result.attachments
+                if isinstance(attachment, dict) and 'path' in attachment
             ]
             
         except Exception as e:
-            result['errors'].append(f"Classification failed: {str(e)}")
-        
+            result.add_error(f"Classification failed: {str(e)}")
+            
+        finally:
+            result.end_time = datetime.now()
+            if result.start_time:
+                result.processing_time = (result.end_time - result.start_time).total_seconds()
+            
         return result
     
     def validate_output(self, result: Dict[str, Any]) -> bool:
@@ -110,11 +109,12 @@ class ClassificationHandler(BaseHandler):
         Returns:
             bool: True if results are valid
         """
-        required_keys = {'content', 'metadata', 'processed_attachments', 'errors'}
+        required_keys = {'content', 'metadata', 'processed_files', 'processed_attachments', 'errors'}
         return (
             all(key in result for key in required_keys) and
             isinstance(result['content'], str) and
             isinstance(result['metadata'], dict) and
+            isinstance(result['processed_files'], list) and
             isinstance(result['processed_attachments'], list) and
             isinstance(result['errors'], list)
         )

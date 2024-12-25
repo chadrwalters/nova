@@ -1,99 +1,75 @@
 """Main entry point for Nova document processor."""
 
 import asyncio
-import os
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
-from .core.config import load_config, ProcessorConfig, ComponentConfig, PathConfig, PipelineConfig
+from .core.errors import ProcessorError
 from .core.logging import get_logger
-from .core.errors import PipelineError
-from .core import PipelineManager
-from .phases.parse.processor import MarkdownProcessor
-from .phases.consolidate.processor import MarkdownConsolidateProcessor
-from .phases.aggregate.processor import MarkdownAggregateProcessor
-from .phases.split.processor import ThreeFileSplitProcessor
+from .core.config.base import HandlerConfig
+from .phases.parse import MarkdownProcessor
 
 logger = get_logger(__name__)
 
-async def process_documents(
-    input_dir: str,
-    output_dir: str,
-    start_phase: Optional[str] = None,
-    end_phase: Optional[str] = None,
-    options: Optional[Dict[str, Any]] = None
-) -> bool:
+async def process_documents(config: Optional[Dict[str, Any]] = None) -> bool:
     """Process documents through the pipeline.
     
     Args:
-        input_dir: Input directory path
-        output_dir: Output directory path
-        start_phase: Optional phase to start from
-        end_phase: Optional phase to end at
-        options: Optional processing options
+        config: Optional configuration overrides
         
     Returns:
-        True if processing completed successfully, False otherwise
+        bool: True if processing completed successfully
     """
     try:
-        # Create pipeline configuration
-        paths = PathConfig(base_dir=str(Path(os.getenv('NOVA_BASE_DIR'))))
+        # Initialize processor with configuration
+        processor_config = {
+            'handlers': {
+                'MarkdownHandler': HandlerConfig(
+                    type='MarkdownHandler',
+                    base_handler='nova.phases.core.base_handler.BaseHandler',
+                    document_conversion=True,
+                    image_processing=True,
+                    metadata_preservation=True
+                ),
+                'ConsolidationHandler': HandlerConfig(
+                    type='ConsolidationHandler',
+                    base_handler='nova.phases.core.base_handler.BaseHandler',
+                    sort_by_date=True,
+                    preserve_headers=True
+                )
+            }
+        }
         
-        # Create processor configurations
-        parse_config = ProcessorConfig(
-            name="MARKDOWN_PARSE",
-            description="Parse and process markdown files with embedded content",
-            processor="MarkdownProcessor",
-            output_dir=str(Path(os.getenv('NOVA_PHASE_MARKDOWN_PARSE'))),
-            enabled=True
-        )
+        processor = MarkdownProcessor(processor_config)
         
-        consolidate_config = ProcessorConfig(
-            name="MARKDOWN_CONSOLIDATE",
-            description="Consolidate markdown files with their attachments",
-            processor="MarkdownConsolidateProcessor",
-            output_dir=str(Path(os.getenv('NOVA_PHASE_MARKDOWN_CONSOLIDATE'))),
-            enabled=True
-        )
-        
-        aggregate_config = ProcessorConfig(
-            name="MARKDOWN_AGGREGATE",
-            description="Aggregate all consolidated markdown files into a single file",
-            processor="MarkdownAggregateProcessor",
-            output_dir=str(Path(os.getenv('NOVA_PHASE_MARKDOWN_AGGREGATE'))),
-            enabled=True
-        )
-        
-        split_config = ProcessorConfig(
-            name="MARKDOWN_SPLIT_THREEFILES",
-            description="Split aggregated markdown into summary, raw notes, and attachments",
-            processor="ThreeFileSplitProcessor",
-            output_dir=str(Path(os.getenv('NOVA_PHASE_MARKDOWN_SPLIT'))),
-            enabled=True
-        )
-        
-        # Create pipeline configuration
-        config = PipelineConfig(
-            paths=paths,
-            phases=[parse_config, consolidate_config, aggregate_config, split_config],
-            input_dir=input_dir,
-            output_dir=output_dir
-        )
-        
-        # Set up pipeline manager
-        pipeline = PipelineManager(config)
-        
-        # Register processors
-        pipeline.register_processor('MARKDOWN_PARSE', MarkdownProcessor(parse_config, config))
-        pipeline.register_processor('MARKDOWN_CONSOLIDATE', MarkdownConsolidateProcessor(consolidate_config, config))
-        pipeline.register_processor('MARKDOWN_AGGREGATE', MarkdownAggregateProcessor(aggregate_config, config))
-        pipeline.register_processor('MARKDOWN_SPLIT_THREEFILES', ThreeFileSplitProcessor(split_config, config))
-        
-        # Run pipeline
-        success = await pipeline.run()
-        if not success:
-            logger.error("Pipeline failed")
-            return False
+        # Process each file
+        for file_path in Path(config['input_dir']).glob('**/*.md'):
+            # Set up context with embed configuration
+            context = {
+                'file_stem': file_path.stem,
+                'output_dir': config['output_dir'],
+                'attachments_dir': file_path.parent / file_path.stem if (file_path.parent / file_path.stem).exists() else None,
+                'embed_config': {'embed': 'true'},  # Default to embedding content
+                'phase': 'parse',
+                'file_path': file_path,
+                'base_dir': file_path.parent,
+                'output_base': Path(config['output_dir'])
+            }
+            
+            # Process the file
+            logger.info(f"Processing {file_path}")
+            result = await processor.process(file_path, context)
+            
+            # Log processing results
+            if result:
+                if result.errors:
+                    for error in result.errors:
+                        logger.error(f"Error processing {file_path}: {error}")
+                else:
+                    logger.info(f"Successfully processed {file_path}")
+                    if result.processed_attachments:
+                        logger.info(f"Processed {len(result.processed_attachments)} attachments")
             
         return True
         
