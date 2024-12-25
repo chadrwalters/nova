@@ -1,6 +1,6 @@
-"""Markdown handlers package."""
+"""Markdown handlers for the parse phase."""
 
-from .markdown_handler import MarkitdownHandler
+from .markdown_handler import MarkdownHandler
 from .consolidation_handler import ConsolidationHandler
 
-__all__ = ['MarkitdownHandler', 'ConsolidationHandler'] 
+__all__ = ['MarkdownHandler', 'ConsolidationHandler'] 

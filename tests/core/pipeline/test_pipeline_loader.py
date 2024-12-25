@@ -8,14 +8,29 @@ from typing import Dict, Any
 from nova.core.pipeline.manager import PipelineManager
 from nova.core.utils.error_tracker import ErrorTracker
 from nova.core.errors import ConfigurationError, ValidationError, ErrorContext
+from nova.core.config.base import PipelineConfig, ProcessorConfig
 
 @pytest.fixture
 def pipeline_manager():
     """Create pipeline manager instance."""
-    return PipelineManager(
-        logger=logging.getLogger(__name__),
-        error_tracker=ErrorTracker(logging.getLogger(__name__))
+    config = PipelineConfig(
+        paths={"base_dir": "${NOVA_BASE_DIR}"},
+        phases=[
+            ProcessorConfig(
+                name="MARKDOWN_PARSE",
+                description="Parse markdown files",
+                output_dir="${NOVA_PHASE_MARKDOWN_PARSE}",
+                processor="MarkdownProcessor",
+                components={
+                    'markdown_processor': {
+                        'parser': 'markitdown==0.0.1a3',
+                        'config': {}
+                    }
+                }
+            )
+        ]
     )
+    return PipelineManager(config)
 
 async def test_load_valid_config(pipeline_manager):
     """Test loading a valid pipeline configuration."""
