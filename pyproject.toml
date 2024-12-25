@@ -15,7 +15,6 @@ pydantic = "^2.5.3"
 markitdown = { git = "https://github.com/microsoft/markitdown.git" }
 markdown = "^3.5.2"
 pillow = "^10.0.0"
-# pillow-heif = "0.14.0"  # Temporarily disabled due to Python 3.13 compatibility issues
 aiofiles = "^23.2.1"
 requests = "^2.31.0"
 pyyaml = "^6.0.1"
