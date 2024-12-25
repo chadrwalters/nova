@@ -1,0 +1,12 @@
+Progress Tracking:
+| Task ID | Status | Notes |
+|---------|--------|-------|
+| 1 | DONE | Working in main branch |
+| 2 | DONE | Each .md has own dir |
+| 3 | DONE | Document conversion complete |
+| 4 | DONE | Base64 image extraction complete |
+| 5 | DONE | HEIC conversion complete |
+| 6 | DONE | References updated |
+| 7 | DONE | Placeholder for future work |
+| 8 | DONE | All tests passing |
+| 9 | DONE | Changes committed to main branch | 

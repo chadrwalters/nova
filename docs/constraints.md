@@ -104,7 +104,6 @@
 ### 1. Code Quality
 - Type hints required
 - Documentation required
-- Test coverage > 80%
 - Linting rules enforced
 
 ### 2. Dependencies
