@@ -1,0 +1,207 @@
+{
+    "type": "object",
+    "properties": {
+        "pipeline": {
+            "type": "object",
+            "properties": {
+                "phases": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "patternProperties": {
+                            "^[A-Z][A-Z0-9_]*$": {
+                                "type": "object",
+                                "required": ["description", "output_dir", "processor"],
+                                "properties": {
+                                    "description": {"type": "string"},
+                                    "output_dir": {"type": "string"},
+                                    "processor": {"type": "string"},
+                                    "enabled": {"type": "boolean"},
+                                    "components": {
+                                        "type": "object",
+                                        "properties": {
+                                            "markdown_processor": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "parser": {
+                                                        "type": "string",
+                                                        "pattern": "^markitdown==\\d+\\.\\d+\\.\\d+[a-z]\\d+$"
+                                                    },
+                                                    "config": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "document_conversion": {"type": "boolean"},
+                                                            "image_processing": {"type": "boolean"},
+                                                            "metadata_preservation": {"type": "boolean"}
+                                                        }
+                                                    }
+                                                },
+                                                "required": ["parser"]
+                                            },
+                                            "image_processor": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "formats": {
+                                                        "type": "array",
+                                                        "items": {"type": "string"}
+                                                    },
+                                                    "operations": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "oneOf": [
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "format_conversion": {
+                                                                            "type": "object",
+                                                                            "properties": {
+                                                                                "heic_to_jpg": {"type": "boolean"},
+                                                                                "optimize_quality": {
+                                                                                    "type": "integer",
+                                                                                    "minimum": 1,
+                                                                                    "maximum": 100
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    "required": ["format_conversion"],
+                                                                    "additionalProperties": false
+                                                                },
+                                                                {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "size_optimization": {
+                                                                            "type": "object",
+                                                                            "properties": {
+                                                                                "preserve_aspect_ratio": {"type": "boolean"},
+                                                                                "max_dimensions": {
+                                                                                    "type": "array",
+                                                                                    "items": {
+                                                                                        "type": "integer",
+                                                                                        "minimum": 1
+                                                                                    },
+                                                                                    "minItems": 2,
+                                                                                    "maxItems": 2
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    "required": ["size_optimization"],
+                                                                    "additionalProperties": false
+                                                                }
+                                                            ]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "handlers": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["type", "base_handler"],
+                                            "additionalProperties": false,
+                                            "properties": {
+                                                "type": {"type": "string"},
+                                                "base_handler": {"type": "string"},
+                                                "options": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "additionalProperties": false
+                    }
+                },
+                "components": {
+                    "type": "object",
+                    "properties": {
+                        "markdown_processor": {
+                            "type": "object",
+                            "properties": {
+                                "parser": {
+                                    "type": "string",
+                                    "pattern": "^markitdown==\\d+\\.\\d+\\.\\d+[a-z]\\d+$"
+                                },
+                                "config": {
+                                    "type": "object",
+                                    "properties": {
+                                        "document_conversion": {"type": "boolean"},
+                                        "image_processing": {"type": "boolean"},
+                                        "metadata_preservation": {"type": "boolean"}
+                                    }
+                                }
+                            },
+                            "required": ["parser"]
+                        },
+                        "image_processor": {
+                            "type": "object",
+                            "properties": {
+                                "formats": {
+                                    "type": "array",
+                                    "items": {"type": "string"}
+                                },
+                                "operations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "oneOf": [
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "format_conversion": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "heic_to_jpg": {"type": "boolean"},
+                                                            "optimize_quality": {
+                                                                "type": "integer",
+                                                                "minimum": 1,
+                                                                "maximum": 100
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                "required": ["format_conversion"],
+                                                "additionalProperties": false
+                                            },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "size_optimization": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "preserve_aspect_ratio": {"type": "boolean"},
+                                                            "max_dimensions": {
+                                                                "type": "array",
+                                                                "items": {
+                                                                    "type": "integer",
+                                                                    "minimum": 1
+                                                                },
+                                                                "minItems": 2,
+                                                                "maxItems": 2
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                "required": ["size_optimization"],
+                                                "additionalProperties": false
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "required": ["phases"]
+        }
+    },
+    "required": ["pipeline"]
+} 

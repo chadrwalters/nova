@@ -1,6 +1,6 @@
 """Utility functions for Nova document processor."""
 
-from .logging import setup_logging, LoggerMixin
+from ..logging import setup_logging, LoggerMixin
 from .paths import (
     ensure_dir,
     ensure_file,

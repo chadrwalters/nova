@@ -8,7 +8,7 @@ import openai
 from openai import OpenAI
 
 from ..errors import APIError
-from .logging import get_logger
+from ..logging import get_logger
 from .paths import ensure_dir
 
 logger = get_logger(__name__)
@@ -96,7 +96,7 @@ class OpenAIClient:
     async def generate_text(
         self,
         prompt: str,
-        model: str = "gpt-4",
+        model: str = "gpt-4-0125-preview",
         max_tokens: int = 1000,
         temperature: float = 0.7,
         cache_key: Optional[str] = None

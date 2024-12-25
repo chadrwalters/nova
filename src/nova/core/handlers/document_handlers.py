@@ -2,71 +2,61 @@
 
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-import re
-from datetime import datetime
+import aiofiles
 
-from . import DocumentComponent
-from ...core.config import NovaConfig, ProcessorConfig
-from ...core.errors import ProcessingError
-from ...core.logging import get_logger
+from .base import BaseHandler
+from ..errors import ProcessingError
 
-class OfficeDocumentHandler(DocumentComponent):
-    """Handler for office documents. Extracts raw content for MarkitdownHandler to process."""
+class DocumentHandler(BaseHandler):
+    """Handles document processing and conversion."""
     
-    def __init__(self, processor_config: ProcessorConfig, nova_config: NovaConfig):
-        """Initialize handler.
+    def __init__(self, config: Dict[str, Any]) -> None:
+        """Initialize document handler.
         
         Args:
-            processor_config: Processor-specific configuration
-            nova_config: Global Nova configuration
+            config: Handler configuration
         """
-        super().__init__(processor_config, nova_config)
-        self.logger = get_logger(self.__class__.__name__)
-        
-        # Add component-specific stats
-        self.stats.update({
-            'files_processed': 0,
-            'content_extracted': 0
-        })
+        super().__init__(config)
+        self.config = config or {}
     
-    def process_document(self, input_path: Path, output_path: Optional[Path] = None) -> Dict[str, Any]:
-        """Process a document.
+    def can_handle(self, file_path: Path) -> bool:
+        """Check if file can be handled.
         
         Args:
-            input_path: Path to the document
-            output_path: Optional path to save processed document
+            file_path: Path to check
             
         Returns:
-            Dictionary containing processed content and metadata
+            bool: True if file is a document type
         """
-        return self.extract_content(input_path)
+        return file_path.suffix.lower() in {'.md', '.txt', '.doc', '.docx'}
     
-    def extract_content(self, input_path: Path) -> Dict[str, Any]:
-        """Extract raw content from an office document for MarkitdownHandler to process.
+    async def process(self, input_path: Path, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Process document file.
         
         Args:
-            input_path: Path to the document
+            input_path: Path to input file
+            context: Processing context
             
         Returns:
-            Dictionary containing raw content and metadata
+            Dict containing:
+                - content: Processed content
+                - errors: List of processing errors
         """
+        result = {
+            'content': '',
+            'errors': []
+        }
+        
         try:
-            # Read raw file content
-            with open(input_path, 'rb') as f:
-                raw_content = f.read()
-            
-            # Return raw content and metadata for MarkitdownHandler
-            result = {
-                'content': raw_content,
-                'original_path': str(input_path),
-                'file_type': input_path.suffix.lower()[1:],  # Remove leading dot
-                'extraction_time': datetime.utcnow().isoformat() + "Z"
-            }
-            
-            self.stats['content_extracted'] += 1
-            self.logger.info(f"Extracted content from {input_path}")
-            return result
+            # Read document content
+            async with aiofiles.open(input_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                
+            # Store processed content
+            result['content'] = content
             
         except Exception as e:
-            self.logger.error(f"Failed to extract content from {input_path}: {str(e)}")
-            raise ProcessingError(f"Content extraction failed: {str(e)}")
+            error = f"Failed to process document {input_path}: {str(e)}"
+            result['errors'].append(error)
+        
+        return result

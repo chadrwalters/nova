@@ -1,13 +1,16 @@
 """Path utilities for Nova document processor."""
 
 import hashlib
-import shutil
 from pathlib import Path
 from typing import Union, Optional
 
 from ..errors import FileError
+from .file_ops import FileOperationsManager
 
-def ensure_dir(path: Union[str, Path]) -> Path:
+# Initialize file operations manager
+file_ops = FileOperationsManager()
+
+async def ensure_dir(path: Union[str, Path]) -> Path:
     """Ensure directory exists.
     
     Args:
@@ -21,12 +24,12 @@ def ensure_dir(path: Union[str, Path]) -> Path:
     """
     try:
         path = Path(path)
-        path.mkdir(parents=True, exist_ok=True)
+        await file_ops.create_directory(path)
         return path
     except Exception as e:
         raise FileError(f"Failed to create directory {path}: {str(e)}") from e
 
-def ensure_file(path: Union[str, Path]) -> Path:
+async def ensure_file(path: Union[str, Path]) -> Path:
     """Ensure file exists.
     
     Args:
@@ -40,13 +43,13 @@ def ensure_file(path: Union[str, Path]) -> Path:
     """
     try:
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch(exist_ok=True)
+        await file_ops.create_directory(path.parent)
+        await file_ops.touch_file(path)
         return path
     except Exception as e:
         raise FileError(f"Failed to create file {path}: {str(e)}") from e
 
-def clean_dir(path: Union[str, Path]) -> None:
+async def clean_dir(path: Union[str, Path]) -> None:
     """Clean directory by removing all contents.
     
     Args:
@@ -57,13 +60,13 @@ def clean_dir(path: Union[str, Path]) -> None:
     """
     try:
         path = Path(path)
-        if path.exists():
-            shutil.rmtree(path)
-        path.mkdir(parents=True)
+        if await file_ops.path_exists(path):
+            await file_ops.remove_directory(path, recursive=True)
+        await file_ops.create_directory(path)
     except Exception as e:
         raise FileError(f"Failed to clean directory {path}: {str(e)}") from e
 
-def copy_file(
+async def copy_file(
     source: Union[str, Path],
     dest: Union[str, Path],
     overwrite: bool = True
@@ -83,22 +86,22 @@ def copy_file(
         dest = Path(dest)
         
         # Check if source exists
-        if not source.exists():
+        if not await file_ops.path_exists(source):
             raise FileError(f"Source file does not exist: {source}")
         
         # Check if destination exists
-        if dest.exists() and not overwrite:
+        if await file_ops.path_exists(dest) and not overwrite:
             raise FileError(f"Destination file exists: {dest}")
         
         # Create destination directory
-        dest.parent.mkdir(parents=True, exist_ok=True)
+        await file_ops.create_directory(dest.parent)
         
         # Copy file
-        shutil.copy2(source, dest)
+        await file_ops.copy_file(source, dest)
     except Exception as e:
         raise FileError(f"Failed to copy file {source} to {dest}: {str(e)}") from e
 
-def move_file(
+async def move_file(
     source: Union[str, Path],
     dest: Union[str, Path],
     overwrite: bool = True
@@ -118,22 +121,22 @@ def move_file(
         dest = Path(dest)
         
         # Check if source exists
-        if not source.exists():
+        if not await file_ops.path_exists(source):
             raise FileError(f"Source file does not exist: {source}")
         
         # Check if destination exists
-        if dest.exists() and not overwrite:
+        if await file_ops.path_exists(dest) and not overwrite:
             raise FileError(f"Destination file exists: {dest}")
         
         # Create destination directory
-        dest.parent.mkdir(parents=True, exist_ok=True)
+        await file_ops.create_directory(dest.parent)
         
         # Move file
-        shutil.move(str(source), str(dest))
+        await file_ops.move_file(source, dest)
     except Exception as e:
         raise FileError(f"Failed to move file {source} to {dest}: {str(e)}") from e
 
-def get_file_size(path: Union[str, Path]) -> int:
+async def get_file_size(path: Union[str, Path]) -> int:
     """Get file size in bytes.
     
     Args:
@@ -147,11 +150,12 @@ def get_file_size(path: Union[str, Path]) -> int:
     """
     try:
         path = Path(path)
-        return path.stat().st_size
+        stats = await file_ops.get_file_stats(path)
+        return stats.st_size
     except Exception as e:
         raise FileError(f"Failed to get file size for {path}: {str(e)}") from e
 
-def get_file_mtime(path: Union[str, Path]) -> float:
+async def get_file_mtime(path: Union[str, Path]) -> float:
     """Get file modification time.
     
     Args:
@@ -165,11 +169,12 @@ def get_file_mtime(path: Union[str, Path]) -> float:
     """
     try:
         path = Path(path)
-        return path.stat().st_mtime
+        stats = await file_ops.get_file_stats(path)
+        return stats.st_mtime
     except Exception as e:
         raise FileError(f"Failed to get modification time for {path}: {str(e)}") from e
 
-def get_file_hash(
+async def get_file_hash(
     path: Union[str, Path],
     algorithm: str = 'sha256',
     chunk_size: int = 8192
@@ -191,9 +196,8 @@ def get_file_hash(
         path = Path(path)
         hasher = hashlib.new(algorithm)
         
-        with path.open('rb') as f:
-            while chunk := f.read(chunk_size):
-                hasher.update(chunk)
+        async for chunk in file_ops.read_file_chunks(path, chunk_size):
+            hasher.update(chunk)
         
         return hasher.hexdigest()
     except Exception as e:
@@ -216,7 +220,7 @@ def normalize_path(path: Union[str, Path]) -> Path:
     except Exception as e:
         raise FileError(f"Failed to normalize path {path}: {str(e)}") from e
 
-def is_subpath(
+async def is_subpath(
     path: Union[str, Path],
     parent: Union[str, Path]
 ) -> bool:

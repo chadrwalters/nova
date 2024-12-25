@@ -1,11 +1,12 @@
-"""Processor implementations for Nova document processor."""
+"""Pipeline processor classes for Nova document processor."""
 
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+import os
 
-from ..config import ProcessorConfig, PipelineConfig
-from ..errors import ProcessingError
-from ..utils.logging import get_logger
+from ..config import ProcessorConfig
+from ..logging import get_logger
+from ..errors import ProcessorError
 from .base import BaseProcessor
 
 logger = get_logger(__name__)

@@ -1,0 +1,86 @@
+**Plan for Addressing Test Failures**  
+Below is a multi-step plan, presented in a “cursor plan” style with hierarchical task numbering, descriptions, and statuses. The goal is to resolve the errors shown in the console log so that all tests pass.
+
+---
+
+## Task List
+
+### 1.0 Resolve Missing Method in `ErrorTracker`
+- **ID:** 1.1  
+  **Description:** Create or update a method named `get_report()` in the `ErrorTracker` class (or remove references to it if it should not exist). The tests and code in `manager.py` rely on this method to gather error reports.  
+  **Status:** TODO  
+  **Dependencies:** None  
+
+- **ID:** 1.2  
+  **Description:** Ensure that `get_report()` collects and returns enough information to match what the tests expect. Often, you need a structure that includes current errors, warnings, and possibly the timestamps or contexts.  
+  **Status:** TODO  
+  **Dependencies:** 1.1  
+
+### 2.0 Correct Schema Validation Errors for `markitdown`
+- **ID:** 2.1  
+  **Description:** Update any pipeline configuration using an invalid string for the `markdown_processor.parser` property. The schema requires a pattern like `markitdown==0.0.1a3`, so replace `'invalid'` with a properly formatted version string, e.g. `markitdown==0.0.1a3`.  
+  **Status:** TODO  
+  **Dependencies:** None  
+
+- **ID:** 2.2  
+  **Description:** If the tests themselves are providing `'invalid'` to test behavior, ensure the code properly fails or passes the test according to the test’s intended outcome. If the test expects an error, confirm it’s handled gracefully; otherwise, use a valid matching string.  
+  **Status:** TODO  
+  **Dependencies:** 2.1  
+
+### 3.0 Fix Missing Required Property `output_dir`
+- **ID:** 3.1  
+  **Description:** Add an `output_dir` key to each pipeline phase in the test config (or in code that generates the config). The JSON schema requires `"output_dir"` to be present under each phase like `"MARKDOWN_PARSE"`.  
+  **Status:** TODO  
+  **Dependencies:** None  
+
+- **ID:** 3.2  
+  **Description:** Make sure the default or test values for `output_dir` reference a valid environment variable or path (e.g., `"${NOVA_PHASE_MARKDOWN_PARSE}"`).  
+  **Status:** TODO  
+  **Dependencies:** 3.1  
+
+### 4.0 Remove or Handle Unknown Schema Properties  
+- **ID:** 4.1  
+  **Description:** Remove any extra config fields such as `'unknown_option'` that the schema does not allow, or update the schema to permit them if they are intentional. Currently, `'unknown_option'` causes an error because `additionalProperties` is `false`.  
+  **Status:** TODO  
+  **Dependencies:** None  
+
+### 5.0 Confirm That All Required Fields Match the Schema  
+- **ID:** 5.1  
+  **Description:** Double-check that all pipeline components, phases, and config pieces match the official schema (especially regarding property names, patterns, and additional properties).  
+  **Status:** TODO  
+  **Dependencies:** 1.0, 2.0, 3.0, 4.0  
+
+### 6.0 Rerun Tests and Verify  
+- **ID:** 6.1  
+  **Description:** After implementing fixes in the above tasks, rerun the entire test suite (e.g., `pytest` or `./run_tests.sh`) with all relevant flags to confirm that the tests now pass.  
+  **Status:** TODO  
+  **Dependencies:** 5.1  
+
+---
+
+## Step-by-Step Progress Example
+
+1. **Start with Task 1.1:** Implement `get_report()` in `ErrorTracker`.  
+   - Status: IN_PROGRESS  
+
+2. **Proceed to Task 1.2:** Ensure the returned data matches test expectations.  
+   - Status: BLOCKED (waiting on Task 1.1 to complete)  
+
+3. **Move on to Task 2.1 & 2.2:** Correct the `parser` version pattern.  
+   - Status: TODO  
+
+4. **Implement Task 3.1 & 3.2:** Add `output_dir` to your pipeline phases and confirm the references.  
+   - Status: TODO  
+
+5. **Handle additional properties (Task 4.1):** Remove or accommodate `'unknown_option'`.  
+   - Status: TODO  
+
+6. **Validate entire config (Task 5.1):** Confirm schema conformance.  
+   - Status: TODO  
+
+7. **Rerun tests (Task 6.1):** Resolve any newly surfaced errors.  
+   - Status: TODO  
+
+8. **Done:** Once tests pass, close all tasks as DONE.  
+
+Following this plan will ensure the missing method errors, schema pattern mismatches, and missing/extra property issues are addressed systematically. Once all are resolved, you should see the test suite pass.  
