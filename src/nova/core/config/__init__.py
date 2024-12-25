@@ -3,7 +3,7 @@
 This module handles loading and managing configuration for the Nova pipeline.
 The configuration is split between two files:
 1. default_config.yaml: Global system configuration
-2. pipeline.yaml: Pipeline-specific configuration
+2. pipeline_config.yaml: Pipeline-specific configuration
 
 For more details, see docs/configuration.md
 """
@@ -114,7 +114,7 @@ def load_config(config_path: Optional[str] = None) -> PipelineConfig:
         # Get the path to the nova package directory
         nova_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         # Config file is in the config directory at the root of the project
-        config_path = os.path.join(os.path.dirname(nova_dir), 'config', 'pipeline.yaml')
+        config_path = os.path.join(os.path.dirname(nova_dir), 'config', 'pipeline_config.yaml')
         
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")

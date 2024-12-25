@@ -30,7 +30,7 @@ This will:
 
 Nova uses a split configuration system:
 1. `config/default_config.yaml`: Global system configuration
-2. `config/pipeline.yaml`: Pipeline-specific configuration
+2. `config/pipeline_config.yaml`: Pipeline-specific configuration
 
 See the [Configuration Documentation](docs/configuration.md) for details.
 

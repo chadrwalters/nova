@@ -5,7 +5,7 @@
 Nova uses a split configuration system with two main configuration files:
 
 1. `config/default_config.yaml`: Global system configuration
-2. `config/pipeline.yaml`: Pipeline-specific configuration
+2. `config/pipeline_config.yaml`: Pipeline-specific configuration
 
 This split allows for better separation of concerns and makes it easier to manage different aspects of the system.
 
@@ -35,7 +35,7 @@ openai:
   max_tokens: 500
 ```
 
-### Pipeline Configuration (`pipeline.yaml`)
+### Pipeline Configuration (`pipeline_config.yaml`)
 
 The pipeline configuration file contains all settings specific to the document processing pipeline. This includes:
 
@@ -90,7 +90,7 @@ Both configuration files can reference environment variables using the `${VAR_NA
    - Use this for third-party service configurations
 
 2. **Pipeline Configuration**
-   - Keep all pipeline-specific settings in `pipeline.yaml`
+   - Keep all pipeline-specific settings in `pipeline_config.yaml`
    - Use clear, descriptive names for phases and components
    - Document any non-obvious settings
 
