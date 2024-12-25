@@ -205,7 +205,7 @@ class CacheManager:
             if self._memory_ttls.get(memory_key, float('inf')) > time.time():
                 self.stats['memory_hits'] += 1
                 self._update_hit_stats(provider)
-                return data
+                return data if isinstance(data, dict) else {'description': data}
             else:
                 # Expired
                 del self._memory_cache[memory_key]
@@ -231,6 +231,10 @@ class CacheManager:
             # Load cache data
             with open(cache_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            
+            # Handle string values for backward compatibility
+            if isinstance(data, str):
+                data = {'description': data}
             
             # Validate metadata
             metadata = data.get('_cache_metadata', {})

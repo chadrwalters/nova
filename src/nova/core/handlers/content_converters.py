@@ -11,10 +11,9 @@ import os
 import aiofiles
 import docx
 import openpyxl
-import PyPDF2
+import markitdown
 from pptx import Presentation
 import yaml
-import markitdown
 
 class BaseContentConverter(ABC):
     """Base class for content converters."""
@@ -187,26 +186,10 @@ class PdfConverter(BaseContentConverter):
         Returns:
             Markdown representation of document
         """
-        reader = PyPDF2.PdfReader(file_path)
-        
-        # Convert pages to markdown
-        markdown = []
-        for i, page in enumerate(reader.pages, 1):
-            # Add page header
-            markdown.append(f"# Page {i}")
-            markdown.append('')
-            
-            # Extract and clean text
-            text = page.extract_text()
-            if text:
-                markdown.append(text)
-                markdown.append('')
-            
-            # Add page separator
-            markdown.append('---')
-            markdown.append('')
-        
-        return '\n'.join(markdown)
+        # Convert PDF to markdown using markitdown
+        converter = markitdown.MarkItDown()
+        result = converter.convert_local(str(file_path), output_format="markdown")
+        return result.text_content
 
 class CsvConverter(BaseContentConverter):
     """Converter for CSV files."""

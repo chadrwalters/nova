@@ -20,42 +20,61 @@ class ThreeFileSplitProcessor(BaseProcessor):
         self.handler = None
         logger.debug("ThreeFileSplitProcessor initialized")
         
-    async def setup(self):
-        """Set up the processor."""
-        await super().setup()
-        logger.debug("Starting ThreeFileSplitProcessor setup")
+        # Set up directories
+        self.input_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE'))
+        self.output_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT'))
         
-        # Get handler config from processor options
-        handler_config = self.processor_config.options.get('handler', {})
-        logger.debug(f"Handler config from options: {handler_config}")
+    async def setup(self) -> bool:
+        """Set up the processor.
         
-        if not handler_config:
-            # Use default config from pipeline_config.yaml with absolute paths
-            output_dir = str(self.output_dir)
-            logger.debug(f"Using default config with output_dir: {output_dir}")
-            
-            handler_config = {
-                'output_files': {
-                    'summary': str(Path(output_dir) / 'summary.md'),
-                    'raw_notes': str(Path(output_dir) / 'raw_notes.md'),
-                    'attachments': str(Path(output_dir) / 'attachments.md')
-                },
-                'section_markers': {
-                    'summary': '--==SUMMARY==--',
-                    'raw_notes': '--==RAW_NOTES==--',
-                    'attachments': '--==ATTACHMENTS==--'
-                }
-            }
-            logger.debug(f"Created default handler config: {handler_config}")
-            
+        Returns:
+            True if setup was successful, False otherwise
+        """
         try:
-            self.handler = SplitHandler(handler_config)
-            logger.debug("Created SplitHandler instance")
-            await self.handler.setup()
-            logger.debug("SplitHandler setup completed")
+            # Check input directory
+            if not self.input_dir.exists():
+                logger.error(f"Input directory not found: {self.input_dir}")
+                return False
+            
+            # Create output directory if it doesn't exist
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get handler config from processor options
+            handler_config = self.processor_config.options.get('handler', {})
+            logger.debug(f"Handler config from options: {handler_config}")
+            
+            if not handler_config:
+                # Use default config from pipeline_config.yaml with absolute paths
+                output_dir = str(self.output_dir)
+                logger.debug(f"Using default config with output_dir: {output_dir}")
+                
+                handler_config = {
+                    'output_files': {
+                        'summary': str(Path(output_dir) / 'summary.md'),
+                        'raw_notes': str(Path(output_dir) / 'raw_notes.md'),
+                        'attachments': str(Path(output_dir) / 'attachments.md')
+                    },
+                    'section_markers': {
+                        'summary': '--==SUMMARY==--',
+                        'raw_notes': '--==RAW_NOTES==--',
+                        'attachments': '--==ATTACHMENTS==--'
+                    }
+                }
+                logger.debug(f"Created default handler config: {handler_config}")
+                
+            try:
+                self.handler = SplitHandler(handler_config)
+                logger.debug("Created SplitHandler instance")
+                await self.handler.setup()
+                logger.debug("SplitHandler setup completed")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to initialize SplitHandler: {str(e)}")
+                return False
+                
         except Exception as e:
-            logger.error(f"Failed to initialize SplitHandler: {str(e)}")
-            raise
+            logger.error(f"Failed to set up processor: {str(e)}")
+            return False
         
     async def process(self) -> bool:
         """Process the aggregated markdown file."""

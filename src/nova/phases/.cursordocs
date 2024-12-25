@@ -40,3 +40,22 @@ The phases component is responsible for implementing the core document processin
 - API rate limits
 - Resource exhaustion
 - State corruption 
+
+# Known Limitations
+
+## Image Processing
+- Image processing in the markdown handler is currently not functional
+- A TODO comment is added to the markdown output for each image
+- This will be addressed in a future update when the OpenAI Vision API integration is complete
+
+# Phase Components
+
+## Parse Phase
+The parse phase handles initial processing of input files:
+
+### MarkdownHandler
+- Processes markdown files and their attachments
+- Converts attachments to markdown format
+- Currently has limited image processing capabilities (see Known Limitations)
+- Maintains directory structure while processing
+- Generates markdown-only output 

@@ -1,441 +1,357 @@
-"""Handler for processing markdown files."""
+"""Markdown handler for processing markdown files and their attachments."""
 
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-import aiofiles
-import yaml
-import re
-from datetime import date, datetime
-from urllib.parse import unquote, quote
+import os
+import time
 import json
 import shutil
+import magic
 import logging
-import mimetypes
-import base64
-import os
-import uuid
+import aiofiles
+import yaml
+from pathlib import Path
+from datetime import datetime, date
+from typing import Dict, Any, List, Optional, Tuple, Union
 import tempfile
-import markitdown
 
-from nova.phases.core.base_handler import BaseHandler, HandlerResult
+from rich.console import Console
+from rich.table import Table
+
 from nova.core.logging import get_logger
-from .document_converter import DocumentConverter, ConversionResult
-from .image_converter import ImageConverter, ImageConversionResult
+from nova.models.parsed_result import ProcessingResult
+from .image_converter import ImageConverter
+from ..base_handler import BaseHandler
+from nova.core.file_info_provider import FileInfoProvider
+from nova.models.parsed_result import ParsedResult
+from nova.phases.parse.handlers.markdown.document_converter import DocumentConverter
+from nova.phases.parse.handlers.markdown.image_converter import ImageConverter
+from nova.phases.parse.handlers.markdown.consolidation_handler import ConsolidationHandler
 
 logger = get_logger(__name__)
+console = Console()
+
+def serialize_date(obj: Any) -> Union[str, Any]:
+    """JSON serializer for objects not serializable by default json code."""
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    return obj
+
+def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
+    """Parse frontmatter from markdown content.
+    
+    Args:
+        content: Markdown content with optional frontmatter
+        
+    Returns:
+        Tuple of (frontmatter dict, remaining content)
+    """
+    if not content.startswith('---\n'):
+        return {}, content
+        
+    try:
+        # Find the end of frontmatter
+        end_index = content.find('\n---\n', 4)
+        if end_index == -1:
+            return {}, content
+            
+        # Extract and parse frontmatter
+        frontmatter = content[4:end_index]
+        remaining_content = content[end_index + 5:]
+        
+        # Parse YAML frontmatter
+        metadata = yaml.safe_load(frontmatter)
+        if not isinstance(metadata, dict):
+            metadata = {}
+            
+        return metadata, remaining_content
+        
+    except Exception as e:
+        logger.error(f"Error parsing frontmatter: {str(e)}")
+        return {}, content
 
 class MarkdownHandler(BaseHandler):
     """Handles markdown file processing."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the markdown handler."""
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize markdown handler.
+        
+        Args:
+            config: Configuration dictionary containing:
+                analyze_images: Whether to analyze images with OpenAI Vision API
+        """
         super().__init__(config)
-        self.logger = logging.getLogger(__name__)
+        self.base_dir = os.environ.get('NOVA_BASE_DIR')
+        self.input_dir = os.environ.get('NOVA_INPUT_DIR')
+        self.output_dir = os.environ.get('NOVA_PHASE_MARKDOWN_PARSE')
+        
+        if not all([self.base_dir, self.input_dir, self.output_dir]):
+            raise ValueError("Required environment variables not set: NOVA_BASE_DIR, NOVA_INPUT_DIR, NOVA_PHASE_MARKDOWN_PARSE")
+            
+        self.base_dir = Path(self.base_dir)
+        self.input_dir = Path(self.input_dir)
+        self.output_dir = Path(self.output_dir)
+        
+        self.image_converter = ImageConverter(analyze_images=config.get('analyze_images', False))
+        self.logger = get_logger(__name__)
         self.logger.setLevel(logging.DEBUG)
         
-        # Configure processing options
-        self.document_conversion = self.get_option('document_conversion', True)
-        self.image_processing = self.get_option('image_processing', True)
-        self.metadata_preservation = self.get_option('metadata_preservation', True)
-        
-        # Initialize converters
-        self.document_converter = DocumentConverter()
-        self.image_converter = ImageConverter()
-        
-        # Initialize input directory
-        self.input_dir = None
+        # Initialize file info provider
+        self.file_info_provider = FileInfoProvider()
     
-    def can_handle(self, file_path: Path, attachments: Optional[List[Path]] = None) -> bool:
-        """Check if file can be processed."""
-        return file_path.suffix.lower() in {'.md', '.markdown'}
-    
-    async def _process_initial_links(self, content: str, output_dir: Path, file_stem: str) -> str:
-        """Process initial links in the content."""
-        try:
-            # Find all links with embed metadata and image links
-            patterns = [
-                (r'\* ([^:]+)(?::\s*)?\[([^\]]+)\]\(([^)]+)\)(?:<!-- \{"embed":"true"\} -->)?', False),  # Links with label
-                (r'\* ([^:]+)(?::\s*)?!\[([^\]]*)\]\(([^)]+)\)', True),  # Image links with label
-                (r'\[([^\]]+)\]\(([^)]+)\)(?:<!-- \{"embed":"true"\} -->)?', False),  # Links with optional embed metadata
-                (r'!\[\]\(([^)]+)\)', True),  # Image links without alt text
-                (r'!\[([^\]]*)\]\(([^)]+)\)', True)  # Image links with alt text
-            ]
+    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None, attachments: Optional[List[Path]] = None) -> ProcessingResult:
+        """Process a markdown file.
+        
+        Args:
+            file_path: Path to the markdown file
+            context: Processing context
+            attachments: List of attachment paths
             
-            for pattern, is_image_pattern in patterns:
-                matches = re.finditer(pattern, content)
-                for match in matches:
-                    try:
-                        if len(match.groups()) == 3:  # Pattern with label
-                            label = match.group(1)
-                            link_text = match.group(2)
-                            path = unquote(match.group(3))
-                        elif '<!-- {"embed":"true"} -->' in pattern:
-                            label = None
-                            link_text = match.group(1)
-                            path = unquote(match.group(2))
-                        elif '!\[\]' in pattern:
-                            label = None
-                            link_text = ''
-                            path = unquote(match.group(1))
-                        else:
-                            label = None
-                            link_text = match.group(1)
-                            path = unquote(match.group(2))
+        Returns:
+            ProcessingResult containing the processed content
+        """
+        try:
+            self.logger.debug(f"Processing file: {file_path}")
+            self.logger.debug(f"Context: {context}")
+            self.logger.debug(f"Attachments: {attachments}")
+            
+            # Read markdown content
+            content = file_path.read_text()
+            
+            # Parse frontmatter
+            frontmatter, content = parse_frontmatter(content)
+            
+            # Process attachments
+            processed_content = await self.handle(file_path, context or {})
+            
+            # Add metadata
+            metadata = {
+                'file': str(file_path),
+                'processor': 'MarkdownHandler',
+                'version': '1.0',
+                'timestamp': datetime.now().isoformat()
+            }
+            metadata.update(frontmatter)  # Add frontmatter to metadata
+            processed_content = f"<!-- {json.dumps(metadata, default=serialize_date)} -->\n\n{processed_content}"
+            
+            result = ProcessingResult(
+                success=True,
+                content=processed_content,
+                attachments=attachments or [],
+                timings={},
+                errors=[],
+                metadata=frontmatter  # Include frontmatter in result metadata
+            )
+            self.logger.debug(f"Processing result: {result}")
+            return result
 
-                        file_name = os.path.basename(path)
-                        
-                        # Get the full path
-                        full_path = os.path.join(self.input_dir, path)
-                        if not os.path.exists(full_path):
-                            continue
-                        
-                        # Create markdown's directory for attachments
-                        markdown_dir = output_dir / file_stem
-                        markdown_dir.mkdir(parents=True, exist_ok=True)
-                        
-                        # Determine file type
-                        mime_type, _ = mimetypes.guess_type(str(full_path))
-                        is_image = mime_type and mime_type.startswith('image/')
-                        ext = Path(file_name).suffix.lower()
-                        
-                        if is_image:
-                            if ext in {'.heic', '.heif'} and self.image_processing:
-                                # Convert HEIC/HEIF to JPG
-                                result: ImageConversionResult = await self.image_converter.convert_image(Path(full_path))
-                                if result.success:
-                                    # Save converted image
-                                    new_name = f"{Path(file_name).stem}.{result.format}"
-                                    target_file = markdown_dir / new_name
-                                    async with aiofiles.open(target_file, 'wb') as f:
-                                        await f.write(result.content)
-                                    self.logger.info(f"Converted {file_name} to {new_name}")
-                                    file_name = new_name
-                                    
-                                    # Add dimensions to link text if not provided
-                                    if not link_text:
-                                        link_text = f"{Path(file_name).stem} ({result.dimensions[0]}x{result.dimensions[1]})"
-                                else:
-                                    # Fallback to copying original if conversion fails
-                                    target_file = markdown_dir / file_name
-                                    if not target_file.exists():
-                                        shutil.copy2(full_path, target_file)
-                                    self.logger.warning(f"Failed to convert {file_name}: {result.error}")
-                            else:
-                                # Copy non-HEIC image as is
-                                target_file = markdown_dir / file_name
-                                if not target_file.exists():
-                                    shutil.copy2(full_path, target_file)
-                                    self.logger.info(f"Copied {file_name} to {target_file}")
-                            
-                            # Remove any existing files with same stem but different extensions
-                            for existing in markdown_dir.glob(f"{Path(file_name).stem}.*"):
-                                if existing != target_file:
-                                    try:
-                                        existing.unlink()
-                                        self.logger.info(f"Removed duplicate file: {existing}")
-                                    except Exception as e:
-                                        self.logger.warning(f"Failed to remove duplicate file {existing}: {str(e)}")
-                        else:
-                            # Copy non-image file to markdown's directory
-                            target_file = markdown_dir / file_name
-                            if not target_file.exists():
-                                shutil.copy2(full_path, target_file)
-                                self.logger.info(f"Copied {file_name} to {target_file}")
-                        
-                        # Update link in content to point to attachment in markdown's directory
-                        rel_path = f"{file_stem}/{file_name}"
-                        
-                        # Update link in content based on pattern type
-                        if is_image_pattern:
-                            # For image patterns
-                            if not link_text:
-                                # For image links without alt text, use the filename as alt text
-                                link_text = os.path.splitext(file_name)[0]
-                            new_link = f'![{link_text}]({rel_path})'
-                            if label:
-                                new_link = f'* {label}: {new_link}'
-                            content = content.replace(match.group(0), new_link)
-                        else:
-                            # For regular links
-                            if not link_text:
-                                # For links without text, use the filename as link text
-                                link_text = os.path.splitext(file_name)[0]
-                            new_link = f'[{link_text}]({rel_path})<!-- {{"embed":"true"}} -->'
-                            if label:
-                                new_link = f'* {label}: {new_link}'
-                            content = content.replace(match.group(0), new_link)
-                            
-                    except Exception as e:
-                        self.logger.error(f"Failed to process initial link {match.group(0)}: {str(e)}")
-                        continue
-            
-            return content
-            
         except Exception as e:
-            self.logger.error(f"Failed to process initial links: {str(e)}")
-            return content
-    
-    async def process(
-        self,
-        file_path: Path,
-        context: Dict[str, Any],
-        attachments: Optional[List[Path]] = None
-    ) -> HandlerResult:
-        """Process markdown file and its attachments."""
-        result = HandlerResult()
-        result.start_time = datetime.now()
-        
-        try:
-            # Set input directory
-            self.input_dir = file_path.parent
+            self.logger.error(f"Error processing markdown file {file_path}: {str(e)}")
+            return ProcessingResult(
+                success=False,
+                content="",
+                attachments=[],
+                timings={},
+                errors=[str(e)],
+                metadata={}
+            )
             
-            # Read markdown file
+    async def handle(self, file_path: Path, context: Dict[str, Any] = None) -> str:
+        """Handle a markdown file and its attachments."""
+        try:
+            self.logger.debug(f"Starting to handle file: {file_path}")
+            self.logger.debug(f"Context: {context}")
+            
+            # Read markdown content
             async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
                 content = await f.read()
-            
-            if content is None:
-                content = ""
-            
-            # Create output directory
-            output_dir = Path(context['output_dir'])
+
+            # Get output directory from context or use default
+            context = context or {}
+            output_dir = Path(context.get('output_dir', self.output_dir))
+            self.logger.debug(f"Using output directory: {output_dir}")
             output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Process initial links
-            content = await self._process_initial_links(content, output_dir, context['file_stem'])
-            if content is None:
-                content = ""
-            
-            # Process base64 encoded images if enabled
-            if self.image_processing:
-                content = await self._process_base64_images(content, output_dir, context['file_stem'])
-                if content is None:
-                    content = ""
-            
-            # Process attachments if present
-            if attachments:
-                self.logger.info(f"Processing {len(attachments)} attachments")
-                for attachment in attachments:
-                    content = await self._process_attachment(content, attachment, output_dir, context['file_stem'])
-                    if content is None:
-                        content = ""
-            
-            # Write processed content
-            output_file = output_dir / file_path.name
+
+            # Create directory for attachments
+            file_stem = context.get('file_stem', file_path.stem)
+            output_attachment_dir = output_dir / file_stem
+            self.logger.debug(f"Creating attachment directory: {output_attachment_dir}")
+            output_attachment_dir.mkdir(parents=True, exist_ok=True)
+
+            # Process attachments if they exist
+            attachment_content = []
+            attachment_dir = file_path.parent / file_stem
+            self.logger.debug(f"Looking for attachments in: {attachment_dir}")
+            if attachment_dir.exists() and attachment_dir.is_dir():
+                self.logger.debug(f"Found attachment directory: {attachment_dir}")
+                # Create temporary directory for processing
+                with tempfile.TemporaryDirectory() as temp_dir_str:
+                    temp_dir = Path(temp_dir_str)
+                    temp_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    for attachment_path in attachment_dir.glob('*'):
+                        if attachment_path.is_file():
+                            try:
+                                self.logger.debug(f"Processing attachment: {attachment_path}")
+                                # Copy attachment to temp directory for processing
+                                temp_path = temp_dir / attachment_path.name
+                                shutil.copy2(attachment_path, temp_path)
+                                
+                                # Create markdown for attachment
+                                markdown = await self._process_attachment(attachment_path, output_attachment_dir)
+                                if markdown:
+                                    # Create markdown file for attachment
+                                    attachment_md_path = output_attachment_dir / f"{attachment_path.stem}.md"
+                                    self.logger.debug(f"Writing attachment markdown to: {attachment_md_path}")
+                                    attachment_md_path.write_text(markdown)
+                                    
+                                    # Add link to attachment markdown in main content
+                                    rel_md_path = attachment_md_path.relative_to(output_dir)
+                                    attachment_content.append(f"- [{attachment_path.name}]({rel_md_path})")
+                                    
+                            except Exception as e:
+                                self.logger.error(f"Error processing attachment {attachment_path}: {str(e)}")
+                                attachment_content.append(f"- Error processing {attachment_path.name}: {str(e)}")
+
+            # Add attachment links to content if any were processed
+            if attachment_content:
+                content += "\n\n## Attachments\n\n" + "\n".join(attachment_content)
+
+            # Write processed content to output file
+            output_file = output_dir / f"{file_stem}.md"
+            self.logger.debug(f"Writing main content to: {output_file}")
             async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
                 await f.write(content)
-            
-            # Update result
-            result.content = content
-            result.processed_files.append(file_path)
-            if attachments:
-                result.processed_attachments.extend(attachments)
-            
-        except Exception as e:
-            result.add_error(f"Failed to process {file_path}: {str(e)}")
-            self.logger.error(f"Error processing {file_path}: {str(e)}", exc_info=True)
-        
-        finally:
-            result.end_time = datetime.now()
-            if result.start_time:
-                result.processing_time = (result.end_time - result.start_time).total_seconds()
-        
-        return result
-    
-    async def _process_base64_images(self, content: str, output_dir: Path, file_stem: str) -> str:
-        """Extract base64 encoded images and save them as files."""
-        try:
-            # Create markdown's directory for attachments
-            markdown_dir = output_dir / file_stem
-            markdown_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Find base64 encoded images
-            pattern = r'!\[([^\]]*)\]\(data:image/([^;]+);base64,([^\)]+)\)'
-            matches = re.finditer(pattern, content)
-            
-            for match in matches:
-                try:
-                    alt_text = match.group(1)
-                    image_type = match.group(2)
-                    base64_data = match.group(3)
-                    
-                    # Generate filename
-                    filename = f"image_{uuid.uuid4().hex[:8]}.{image_type}"
-                    
-                    # Save image file in markdown's directory
-                    image_path = markdown_dir / filename
-                    image_data = base64.b64decode(base64_data)
-                    async with aiofiles.open(image_path, 'wb') as f:
-                        await f.write(image_data)
-                    
-                    # Update content with new image reference
-                    rel_path = f"{file_stem}/{filename}"
-                    new_link = f'![{alt_text}]({rel_path})'
-                    content = content.replace(match.group(0), new_link)
-                    
-                except Exception as e:
-                    self.logger.error(f"Failed to process base64 image: {str(e)}")
-                    continue
-            
+
             return content
             
         except Exception as e:
-            self.logger.error(f"Failed to process base64 images: {str(e)}")
-            return content
+            self.logger.error(f"Error handling markdown file {file_path}: {str(e)}")
+            return None
     
-    async def _process_attachment(self, content: str, attachment: Path, output_dir: Path, file_stem: str) -> str:
-        """Process an attachment and create markdown content for it."""
-        if content is None:
-            content = ""
-            
+    async def _process_attachment(self, file_path: Path, output_dir: Path) -> str:
+        """Process an attachment file and return markdown content."""
+        start_time = time.time()
+        markdown = ""
+        
         try:
-            # Create markdown's directory for attachments
-            markdown_dir = output_dir / file_stem
-            markdown_dir.mkdir(parents=True, exist_ok=True)
+            # Get file info
+            file_info = await self.file_info_provider.get_file_info(file_path)
             
-            # Determine file type
-            mime_type, _ = mimetypes.guess_type(str(attachment))
-            is_image = mime_type and mime_type.startswith('image/')
-            ext = attachment.suffix.lower()
+            # Create relative path for the attachment
+            rel_path = file_path.relative_to(self.input_dir)
+            output_path = output_dir / rel_path
             
-            # Initialize target_file and markdown content
-            target_file = markdown_dir / attachment.name
-            markdown = ""
+            # Create output directory if needed
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            if is_image:
-                # Handle image attachment
-                if ext in {'.heic', '.heif'} and self.image_processing:
-                    # Convert HEIC/HEIF to JPG
-                    result: ImageConversionResult = await self.image_converter.convert_image(attachment)
-                    if result.success:
-                        # Save converted image
-                        new_name = f"{attachment.stem}.{result.format}"
-                        target_file = markdown_dir / new_name
-                        async with aiofiles.open(target_file, 'wb') as f:
-                            await f.write(result.content)
-                        self.logger.info(f"Converted {attachment.name} to {new_name}")
+            # Copy the file to output directory
+            shutil.copy2(file_path, output_path)
+            self.logger.info(f"Copied {file_path} to {output_path}")
+            
+            # Process based on content type
+            if file_info.content_type.startswith('image/'):
+                # Get image info and analysis
+                image_info = await self.image_converter.get_image_info(file_path, output_path)
+                
+                # Add TODO comment about image processing
+                markdown += "\n//TODO: IMAGE PROCESSING NOT WORKING\n"
+                
+                if image_info.success:
+                    # Add image reference
+                    markdown += f"\n![{file_path.name}]({rel_path})\n\n"
+                    
+                    # Add structured analysis
+                    if image_info.description:
+                        markdown += f"### Analysis\n\n{image_info.description}\n\n"
+                    
+                    if image_info.content_type == "screenshot" and image_info.visible_text:
+                        markdown += f"### Extracted Text\n\n```\n{image_info.visible_text}\n```\n\n"
                         
-                        # Create markdown with metadata
-                        rel_path = f"{file_stem}/{new_name}"
-                        markdown = f'\n![{attachment.stem} ({result.dimensions[0]}x{result.dimensions[1]})]({rel_path})\n'
-                        if self.metadata_preservation:
-                            markdown += f'<!-- {json.dumps(result.metadata)} -->\n'
-                    else:
-                        # Fallback to copying original if conversion fails
-                        target_file = markdown_dir / attachment.name
-                        if not target_file.exists():
-                            shutil.copy2(attachment, target_file)
-                        rel_path = f"{file_stem}/{attachment.name}"
-                        markdown = f'\n![{attachment.stem}]({rel_path})\n'
-                        if self.metadata_preservation:
-                            stats = attachment.stat()
-                            metadata = {
-                                'type': mime_type or 'application/octet-stream',
-                                'size': stats.st_size,
-                                'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
-                            }
-                            markdown += f'<!-- {json.dumps(metadata)} -->\n'
+                    if image_info.context:
+                        for section, content in image_info.context.items():
+                            title = section.replace('_', ' ').title()
+                            markdown += f"### {title}\n\n{content}\n\n"
+                    
+                    # Add timing information
+                    if image_info.timings:
+                        markdown += "### Processing Details\n\n```\n"
+                        for operation, timing in image_info.timings.items():
+                            if isinstance(timing, (int, float)):
+                                markdown += f"{operation}: {timing:.2f}s\n"
+                            else:
+                                markdown += f"{operation}: {timing}\n"
+                        markdown += "```\n\n"
                 else:
-                    # Copy non-HEIC image as is
-                    target_file = markdown_dir / attachment.name
-                    if not target_file.exists():
-                        shutil.copy2(attachment, target_file)
-                    rel_path = f"{file_stem}/{attachment.name}"
-                    markdown = f'\n![{attachment.stem}]({rel_path})\n'
-                    if self.metadata_preservation:
-                        stats = attachment.stat()
-                        metadata = {
-                            'type': mime_type or 'application/octet-stream',
-                            'size': stats.st_size,
-                            'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
-                        }
-                        markdown += f'<!-- {json.dumps(metadata)} -->\n'
-
-                # Remove any existing files with same stem but different extensions
-                for existing in markdown_dir.glob(f"{attachment.stem}.*"):
-                    if existing != target_file:
-                        try:
-                            existing.unlink()
-                            self.logger.info(f"Removed duplicate file: {existing}")
-                        except Exception as e:
-                            self.logger.warning(f"Failed to remove duplicate file {existing}: {str(e)}")
-
+                    markdown += f"\nError processing image {file_path.name}: {image_info.error}\n\n"
+                    
+            elif file_info.content_type.startswith('text/'):
+                # Handle text files
+                try:
+                    content = file_path.read_text()
+                    markdown += f"\n### {file_path.name}\n\n```\n{content}\n```\n\n"
+                except Exception as e:
+                    markdown += f"\nError reading text file {file_path.name}: {str(e)}\n\n"
+                    
+            elif file_info.content_type in ['application/json', 'application/x-json']:
+                # Handle JSON files
+                try:
+                    content = file_path.read_text()
+                    markdown += f"\n### {file_path.name}\n\n```json\n{content}\n```\n\n"
+                except Exception as e:
+                    markdown += f"\nError reading JSON file {file_path.name}: {str(e)}\n\n"
+                    
+            elif file_info.content_type in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']:
+                # Handle document files (PDF, Word, Excel)
+                markdown += f"\n### {file_path.name}\n\n"
+                markdown += f"[Download {file_path.name}]({rel_path})\n\n"
+                
+                # Add file metadata
+                markdown += "#### File Details\n\n"
+                markdown += f"- Type: {file_info.content_type}\n"
+                markdown += f"- Size: {file_info.size} bytes\n"
+                if file_info.metadata:
+                    markdown += "- Metadata:\n"
+                    for key, value in file_info.metadata.items():
+                        markdown += f"  - {key}: {value}\n"
+                markdown += "\n"
+                
             else:
-                # Handle document attachment
-                # Copy file to markdown directory first
-                target_file = markdown_dir / attachment.name
-                if not target_file.exists():
-                    shutil.copy2(attachment, target_file)
+                # Handle other file types
+                markdown += f"\n### {file_path.name}\n\n"
+                markdown += f"[Download {file_path.name}]({rel_path})\n\n"
+                markdown += f"File type: {file_info.content_type}\n\n"
                 
-                if self.document_conversion:
-                    # Convert document to markdown
-                    result = await self.document_converter.convert_to_markdown(attachment)
-                    if result.success:
-                        # Create markdown with converted content and metadata
-                        markdown = f'\n## {attachment.stem}\n\n{result.content}\n'
-                        if self.metadata_preservation:
-                            metadata = {
-                                'type': mime_type or 'application/octet-stream',
-                                'original_file': attachment.name,
-                                'converter': result.converter_name
-                            }
-                            markdown += f'<!-- {json.dumps(metadata)} -->\n'
-                            
-                        # Also save as separate markdown file
-                        md_filename = f"{attachment.stem}.md"
-                        md_file = markdown_dir / md_filename
-                        async with aiofiles.open(md_file, 'w', encoding='utf-8') as f:
-                            await f.write(f"# {attachment.stem}\n\n{result.content}\n")
-                            if self.metadata_preservation:
-                                await f.write(f'<!-- {json.dumps(metadata)} -->\n')
-                        self.logger.info(f"Created markdown file: {md_file}")
-                    else:
-                        # If conversion fails, add link to original file
-                        rel_path = f"{file_stem}/{attachment.name}"
-                        markdown = f'\n[{attachment.stem}]({rel_path})<!-- {{"embed":"true"}} -->\n'
-                        if self.metadata_preservation:
-                            stats = attachment.stat()
-                            metadata = {
-                                'type': mime_type or 'application/octet-stream',
-                                'size': stats.st_size,
-                                'modified': datetime.fromtimestamp(stats.st_mtime).isoformat(),
-                                'conversion_error': result.error
-                            }
-                            markdown += f'<!-- {json.dumps(metadata)} -->\n'
-                else:
-                    # If document conversion is disabled, just add link to original file
-                    rel_path = f"{file_stem}/{attachment.name}"
-                    markdown = f'\n[{attachment.stem}]({rel_path})<!-- {{"embed":"true"}} -->\n'
-                    if self.metadata_preservation:
-                        stats = attachment.stat()
-                        metadata = {
-                            'type': mime_type or 'application/octet-stream',
-                            'size': stats.st_size,
-                            'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
-                        }
-                        markdown += f'<!-- {json.dumps(metadata)} -->\n'
-
-            # Add markdown to content and return
-            return content + markdown
-
+            return markdown
+            
         except Exception as e:
-            self.logger.error(f"Failed to process attachment {attachment}: {str(e)}")
-            return content
+            self.logger.error(f"Error processing attachment {file_path}: {str(e)}")
+            return f"\nError processing attachment {file_path.name}: {str(e)}\n\n" 
     
-    def validate_output(self, result: HandlerResult) -> bool:
-        """Validate the processing results."""
-        if not isinstance(result, HandlerResult):
-            return False
+    def can_handle(self, file_path: Path, attachments: List[Path] = None) -> bool:
+        """Check if this handler can process the given file.
+        
+        Args:
+            file_path: Path to the file to check
+            attachments: Optional list of attachment paths
             
-        # Check required attributes
-        if not hasattr(result, 'content') or not result.content:
-            return False
+        Returns:
+            True if this handler can process the file, False otherwise
+        """
+        return file_path.suffix.lower() == '.md'
+        
+    def validate_output(self, result: Dict[str, Any]) -> bool:
+        """Validate the processing results.
+        
+        Args:
+            result: The processing results to validate
             
-        if not hasattr(result, 'processed_files') or not result.processed_files:
-            return False
+        Returns:
+            bool: True if results are valid
+        """
+        if not result.get('success', False):
+            return 'error' in result
             
-        # Attachments are optional
-        if hasattr(result, 'processed_attachments') and result.processed_attachments:
-            if not all(isinstance(p, Path) for p in result.processed_attachments):
-                return False
-                
-        return True 
+        return (
+            isinstance(result.get('content', ''), str) and
+            isinstance(result.get('file_path', None), Path) and
+            isinstance(result.get('attachments', []), list)
+        ) 
