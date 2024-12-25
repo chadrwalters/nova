@@ -11,12 +11,12 @@ logging:
       formatter: "default"
   use_rich: true
 
-# OpenAI Configuration
-openai:
+# xAI Configuration
+xai:
   enabled: true
-  model: "gpt-4-0125-preview"
+  model: "grok-beta"
   max_tokens: 500
-  temperature: 0.7
+  temperature: 0.2
   retry:
     max_retries: 3
     delay_between_retries: 1.0

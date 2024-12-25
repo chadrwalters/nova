@@ -141,4 +141,62 @@ class ParsedResult(BaseModel):
                 
             return cls(**data)
         except Exception as e:
-            raise ValidationError(f"Failed to create ParsedResult from dict: {str(e)}") from e 
+            raise ValidationError(f"Failed to create ParsedResult from dict: {str(e)}") from e
+
+class ProcessingResult(BaseModel):
+    """Result of processing a file."""
+    success: bool = Field(False, description="Whether processing was successful")
+    content: Optional[str] = Field(None, description="Processed content")
+    attachments: List[Path] = Field(default_factory=list, description="Processed attachment paths")
+    timings: Dict[str, float] = Field(default_factory=dict, description="Processing timings")
+    errors: List[str] = Field(default_factory=list, description="Error messages if processing failed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Processing metadata")
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        validate_assignment=True,
+        extra='forbid'
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary.
+        
+        Returns:
+            Dictionary representation
+            
+        Raises:
+            ValidationError: If conversion fails
+        """
+        try:
+            return {
+                'success': self.success,
+                'content': self.content,
+                'attachments': [str(p) for p in self.attachments],
+                'timings': self.timings,
+                'errors': self.errors,
+                'metadata': self.metadata
+            }
+        except Exception as e:
+            raise ValidationError(f"Failed to convert ProcessingResult to dict: {str(e)}") from e
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ProcessingResult':
+        """Create from dictionary.
+        
+        Args:
+            data: Dictionary data
+            
+        Returns:
+            ProcessingResult instance
+            
+        Raises:
+            ValidationError: If conversion fails
+        """
+        try:
+            # Convert path strings back to Path objects
+            if 'attachments' in data:
+                data['attachments'] = [Path(p) for p in data['attachments']]
+                
+            return cls(**data)
+        except Exception as e:
+            raise ValidationError(f"Failed to create ProcessingResult from dict: {str(e)}") from e 

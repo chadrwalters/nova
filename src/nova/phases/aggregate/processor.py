@@ -25,11 +25,31 @@ class MarkdownAggregateProcessor(BaseProcessor):
         super().__init__(processor_config, pipeline_config)
         self.file_ops = FileOperationsManager()
         
-    async def setup(self) -> None:
-        """Set up processor."""
-        # Create output directory if it doesn't exist
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Set up directories
+        self.input_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE'))
+        self.output_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE'))
         
+    async def setup(self) -> bool:
+        """Set up processor.
+        
+        Returns:
+            True if setup was successful, False otherwise
+        """
+        try:
+            # Check input directory
+            if not self.input_dir.exists():
+                logger.error(f"Input directory not found: {self.input_dir}")
+                return False
+            
+            # Create output directory if it doesn't exist
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to set up processor: {str(e)}")
+            return False
+            
     async def process(self) -> bool:
         """Process markdown files.
         

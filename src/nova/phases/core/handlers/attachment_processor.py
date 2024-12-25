@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List
 from bs4 import BeautifulSoup
 import html2text
 import pandas as pd
-from PyPDF2 import PdfReader
+import markitdown
 from docx import Document
 from PIL import Image, UnidentifiedImageError
 import tempfile
@@ -186,14 +186,10 @@ class AttachmentHandler(BaseHandler):
     async def _process_pdf(self, file_path: Path) -> Optional[str]:
         """Process PDF files."""
         try:
-            reader = PdfReader(file_path)
-            
-            # Extract text from all pages
-            text = []
-            for page in reader.pages:
-                text.append(page.extract_text())
-            
-            return "\n\n".join(text)
+            # Convert PDF to markdown using markitdown
+            converter = markitdown.MarkItDown()
+            result = converter.convert_local(str(file_path), output_format="markdown")
+            return result.text_content
             
         except Exception as e:
             self.logger.error(f"Error processing PDF file: {str(e)}")

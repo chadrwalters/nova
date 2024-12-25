@@ -1,5 +1,12 @@
 # Nova Document Processor Pipeline Rules
 
+# Image Processing Rules
+- Image processing is currently disabled in the markdown handler
+- All images should be copied to the output directory
+- A TODO comment must be added for each image in the markdown output
+- Image references should still be maintained in markdown format
+- Future image processing will be implemented using OpenAI Vision API
+
 # Core Pipeline Structure
 pipeline:
   phases:
