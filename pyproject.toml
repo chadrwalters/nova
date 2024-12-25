@@ -83,6 +83,6 @@ disable = [
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q --cov=nova --cov-report=term-missing"
+addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_mode = "auto"

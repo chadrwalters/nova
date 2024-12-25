@@ -13,9 +13,12 @@ import logging
 import mimetypes
 import base64
 import os
+import uuid
 
 from nova.phases.core.base_handler import BaseHandler, HandlerResult
 from nova.core.logging import get_logger
+from .document_converter import DocumentConverter, ConversionResult
+from .image_converter import ImageConverter, ImageConversionResult
 
 logger = get_logger(__name__)
 
@@ -32,6 +35,10 @@ class MarkdownHandler(BaseHandler):
         self.document_conversion = self.get_option('document_conversion', True)
         self.image_processing = self.get_option('image_processing', True)
         self.metadata_preservation = self.get_option('metadata_preservation', True)
+        
+        # Initialize converters
+        self.document_converter = DocumentConverter()
+        self.image_converter = ImageConverter()
         
         # Initialize input directory
         self.input_dir = None
@@ -72,7 +79,7 @@ class MarkdownHandler(BaseHandler):
                             label = None
                             link_text = match.group(1)
                             path = unquote(match.group(2))
-                        
+
                         file_name = os.path.basename(path)
                         
                         # Get the full path
@@ -80,48 +87,55 @@ class MarkdownHandler(BaseHandler):
                         if not os.path.exists(full_path):
                             continue
                         
-                        # Determine file type and target directory
+                        # Create markdown's directory for attachments
+                        markdown_dir = output_dir / file_stem
+                        markdown_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # Determine file type
                         mime_type, _ = mimetypes.guess_type(str(full_path))
+                        is_image = mime_type and mime_type.startswith('image/')
                         ext = Path(file_name).suffix.lower()
                         
-                        # Determine if the file is an image based on MIME type and extension
-                        is_image = (mime_type and mime_type.startswith('image/')) or ext in {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'}
-                        
-                        # Set target directory based on file type
-                        if is_image:
-                            target_dir = 'images'
-                        elif ext in {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'} or (mime_type and (mime_type.startswith('application/vnd.') or mime_type == 'application/pdf')):
-                            target_dir = 'office'
+                        if is_image and ext in {'.heic', '.heif'} and self.image_processing:
+                            # Convert HEIC/HEIF to JPG
+                            result: ImageConversionResult = await self.image_converter.convert_image(Path(full_path))
+                            if result.success:
+                                # Save converted image
+                                new_name = f"{Path(file_name).stem}.{result.format}"
+                                target_file = markdown_dir / new_name
+                                async with aiofiles.open(target_file, 'wb') as f:
+                                    await f.write(result.content)
+                                self.logger.info(f"Converted {file_name} to {new_name}")
+                                
+                                # Update path for link
+                                file_name = new_name
+                                
+                                # Add dimensions to link text if not provided
+                                if not link_text:
+                                    link_text = f"{Path(file_name).stem} ({result.dimensions[0]}x{result.dimensions[1]})"
+                            else:
+                                # Fallback to copying original if conversion fails
+                                target_file = markdown_dir / file_name
+                                if not target_file.exists():
+                                    shutil.copy2(full_path, target_file)
+                                self.logger.warning(f"Failed to convert {file_name}: {result.error}")
                         else:
-                            target_dir = 'documents'
+                            # Copy file to markdown's directory
+                            target_file = markdown_dir / file_name
+                            if not target_file.exists():
+                                shutil.copy2(full_path, target_file)
+                                self.logger.info(f"Copied {file_name} to {target_file}")
                         
-                        # Create target path
-                        rel_path = f'{target_dir}/{file_stem}/{file_name}'
-                        target_dir_path = output_dir / target_dir / file_stem
-                        target_dir_path.mkdir(parents=True, exist_ok=True)
+                        # Update link in content to point to attachment in markdown's directory
+                        rel_path = f"{file_stem}/{file_name}"
                         
-                        # Copy file
-                        target_file = target_dir_path / file_name
-                        if not target_file.exists():
-                            shutil.copy2(full_path, target_file)
-                            self.logger.info(f"Copied {file_name} to {target_file}")
-                        
-                        # Update link in content based on file type and pattern type
-                        if is_image_pattern and is_image:
-                            # For image patterns pointing to image files
+                        # Update link in content based on pattern type
+                        if is_image_pattern:
+                            # For image patterns
                             if not link_text:
                                 # For image links without alt text, use the filename as alt text
                                 link_text = os.path.splitext(file_name)[0]
                             new_link = f'![{link_text}]({rel_path})'
-                            if label:
-                                new_link = f'* {label}: {new_link}'
-                            content = content.replace(match.group(0), new_link)
-                        elif is_image_pattern and not is_image:
-                            # For image patterns pointing to non-image files, convert to regular links
-                            if not link_text:
-                                # For links without text, use the filename as link text
-                                link_text = os.path.splitext(file_name)[0]
-                            new_link = f'[{link_text}]({rel_path})<!-- {{"embed":"true"}} -->'
                             if label:
                                 new_link = f'* {label}: {new_link}'
                             content = content.replace(match.group(0), new_link)
@@ -134,7 +148,7 @@ class MarkdownHandler(BaseHandler):
                             if label:
                                 new_link = f'* {label}: {new_link}'
                             content = content.replace(match.group(0), new_link)
-                        
+                            
                     except Exception as e:
                         self.logger.error(f"Failed to process initial link {match.group(0)}: {str(e)}")
                         continue
@@ -205,33 +219,33 @@ class MarkdownHandler(BaseHandler):
     async def _process_base64_images(self, content: str, output_dir: Path, file_stem: str) -> str:
         """Extract base64 encoded images and save them as files."""
         try:
-            # Find all base64 encoded images
+            # Create markdown's directory for attachments
+            markdown_dir = output_dir / file_stem
+            markdown_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Find base64 encoded images
             pattern = r'!\[([^\]]*)\]\(data:image/([^;]+);base64,([^\)]+)\)'
             matches = re.finditer(pattern, content)
             
-            for i, match in enumerate(matches):
+            for match in matches:
                 try:
                     alt_text = match.group(1)
                     image_type = match.group(2)
                     base64_data = match.group(3)
                     
-                    # Create images directory
-                    images_dir = output_dir / 'images' / file_stem
-                    images_dir.mkdir(parents=True, exist_ok=True)
+                    # Generate filename
+                    filename = f"image_{uuid.uuid4().hex[:8]}.{image_type}"
                     
-                    # Save image
-                    image_name = f'embedded_image_{i}.{image_type}'
-                    image_path = images_dir / image_name
-                    
+                    # Save image file in markdown's directory
+                    image_path = markdown_dir / filename
                     image_data = base64.b64decode(base64_data)
-                    with open(image_path, 'wb') as f:
-                        f.write(image_data)
+                    async with aiofiles.open(image_path, 'wb') as f:
+                        await f.write(image_data)
                     
-                    # Update markdown to reference the saved image
-                    new_path = f'images/{file_stem}/{image_name}'
-                    content = content.replace(match.group(0), f'![{alt_text}]({new_path})')
-                    
-                    self.logger.info(f"Extracted base64 image to {image_path}")
+                    # Update content with new image reference
+                    rel_path = f"{file_stem}/{filename}"
+                    new_link = f'![{alt_text}]({rel_path})'
+                    content = content.replace(match.group(0), new_link)
                     
                 except Exception as e:
                     self.logger.error(f"Failed to process base64 image: {str(e)}")
@@ -246,117 +260,106 @@ class MarkdownHandler(BaseHandler):
     async def _process_attachment(self, content: str, attachment: Path, output_dir: Path, file_stem: str) -> str:
         """Process an attachment and create markdown content for it."""
         try:
-            # Initialize mimetypes with additional types
-            mimetypes.init()
-            mimetypes.add_type('application/pdf', '.pdf')
-            mimetypes.add_type('application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx')
-            mimetypes.add_type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx')
-            mimetypes.add_type('application/vnd.openxmlformats-officedocument.presentationml.presentation', '.pptx')
+            # Create markdown's directory for attachments
+            markdown_dir = output_dir / file_stem
+            markdown_dir.mkdir(parents=True, exist_ok=True)
             
+            # Determine file type
             mime_type, _ = mimetypes.guess_type(str(attachment))
+            is_image = mime_type and mime_type.startswith('image/')
             ext = attachment.suffix.lower()
             
-            # Determine file type and target directory
-            if mime_type and mime_type.startswith('image/'):
-                file_type = 'image'
-            elif ext in {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx'} or (mime_type and (mime_type.startswith('application/vnd.') or mime_type == 'application/pdf')):
-                file_type = 'office'
-            elif ext in {'.txt', '.csv', '.json', '.html', '.htm', '.xml', '.yaml', '.yml'} or (mime_type and mime_type.startswith('text/')):
-                file_type = 'document'
-            else:
-                self.logger.warning(f"Could not determine type for {attachment}")
-                return content
-            
-            # Set target directory and relative path based on file type
-            if file_type == 'image':
-                target_dir = output_dir / 'images' / file_stem
-                rel_path = f'images/{file_stem}/{attachment.name}'
-            elif file_type == 'office':
-                target_dir = output_dir / 'office' / file_stem
-                rel_path = f'office/{file_stem}/{attachment.name}'
-            else:  # document
-                target_dir = output_dir / 'documents' / file_stem
-                rel_path = f'documents/{file_stem}/{attachment.name}'
-            
-            # Create target directory and ensure parent directories exist
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target_file = target_dir / attachment.name
-            
-            # Remove any existing copies in other directories
-            for dir_type in ['images', 'documents', 'office']:
-                if dir_type != file_type.replace('document', 'documents'):
-                    other_dir = output_dir / dir_type / file_stem
-                    other_file = other_dir / attachment.name
-                    if other_file.exists():
-                        other_file.unlink()
-                        self.logger.info(f"Removed duplicate file {other_file}")
-            
-            # Copy file if it doesn't exist
-            if not target_file.exists():
-                shutil.copy2(attachment, target_file)
-                self.logger.info(f"Copied {attachment.name} to {target_file}")
-            
-            # Create markdown content for the attachment
-            if file_type == 'image':
-                markdown = f'\n![{attachment.stem}]({rel_path})\n'
-            else:
-                markdown = f'\n[{attachment.stem}]({rel_path})\n'
-            
-            # Add metadata if enabled
-            if self.metadata_preservation:
-                stats = attachment.stat()
-                metadata = {
-                    'type': mime_type or f'application/{file_type}',
-                    'size': stats.st_size,
-                    'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
-                }
-                markdown += f'<!-- {json.dumps(metadata)} -->\n'
-            
-            # Find any existing references to this attachment in the content
-            # Match both relative and full paths
-            attachment_name = re.escape(attachment.name)
-            attachment_dir = re.escape(str(attachment.parent.name))
-            attachment_patterns = [
-                # Links with embed metadata
-                rf'\[([^\]]*)\]\({attachment_name}\)<!-- \{{\"embed\":\"true\"\}} -->',  # Just filename
-                rf'\[([^\]]*)\]\({attachment_dir}/{attachment_name}\)<!-- \{{\"embed\":\"true\"\}} -->',  # Dir/filename
-                rf'\[([^\]]*)\]\({attachment_dir}%2F{attachment_name}\)<!-- \{{\"embed\":\"true\"\}} -->',  # URL encoded
-                # Regular links
-                rf'[^!]?\[([^\]]*)\]\({attachment_name}\)',  # Just filename
-                rf'[^!]?\[([^\]]*)\]\({attachment_dir}/{attachment_name}\)',  # Dir/filename
-                rf'[^!]?\[([^\]]*)\]\({attachment_dir}%2F{attachment_name}\)'  # URL encoded
-            ]
-            image_patterns = [
-                # Image links with embed metadata
-                rf'!\[([^\]]*)\]\({attachment_name}\)<!-- \{{\"embed\":\"true\"\}} -->',  # Just filename
-                rf'!\[([^\]]*)\]\({attachment_dir}/{attachment_name}\)<!-- \{{\"embed\":\"true\"\}} -->',  # Dir/filename
-                rf'!\[([^\]]*)\]\({attachment_dir}%2F{attachment_name}\)<!-- \{{\"embed\":\"true\"\}} -->',  # URL encoded
-                # Regular image links
-                rf'!\[([^\]]*)\]\({attachment_name}\)',  # Just filename
-                rf'!\[([^\]]*)\]\({attachment_dir}/{attachment_name}\)',  # Dir/filename
-                rf'!\[([^\]]*)\]\({attachment_dir}%2F{attachment_name}\)'  # URL encoded
-            ]
-            
-            # Replace existing references with updated paths
-            if file_type == 'image':
-                for pattern in image_patterns:
-                    if 'embed' in pattern:
-                        content = re.sub(pattern, f'![\\1]({rel_path})<!-- {{"embed":"true"}} -->', content)
+            if is_image:
+                # Handle image attachment
+                if ext in {'.heic', '.heif'} and self.image_processing:
+                    # Convert HEIC/HEIF to JPG
+                    result: ImageConversionResult = await self.image_converter.convert_image(attachment)
+                    if result.success:
+                        # Save converted image
+                        new_name = f"{attachment.stem}.{result.format}"
+                        target_file = markdown_dir / new_name
+                        async with aiofiles.open(target_file, 'wb') as f:
+                            await f.write(result.content)
+                        self.logger.info(f"Converted {attachment.name} to {new_name}")
+                        
+                        # Create markdown with metadata
+                        rel_path = f"{file_stem}/{new_name}"
+                        markdown = f'\n![{attachment.stem} ({result.dimensions[0]}x{result.dimensions[1]})]({rel_path})\n'
+                        if self.metadata_preservation:
+                            markdown += f'<!-- {json.dumps(result.metadata)} -->\n'
                     else:
-                        content = re.sub(pattern, f'![\\1]({rel_path})', content)
+                        # Fallback to copying original if conversion fails
+                        target_file = markdown_dir / attachment.name
+                        if not target_file.exists():
+                            shutil.copy2(attachment, target_file)
+                        rel_path = f"{file_stem}/{attachment.name}"
+                        markdown = f'\n![{attachment.stem}]({rel_path})\n'
+                        if self.metadata_preservation:
+                            stats = attachment.stat()
+                            metadata = {
+                                'type': mime_type or 'application/octet-stream',
+                                'size': stats.st_size,
+                                'modified': datetime.fromtimestamp(stats.st_mtime).isoformat(),
+                                'conversion_error': result.error
+                            }
+                            markdown += f'<!-- {json.dumps(metadata)} -->\n'
+                else:
+                    # Copy non-HEIC image as is
+                    target_file = markdown_dir / attachment.name
+                    if not target_file.exists():
+                        shutil.copy2(attachment, target_file)
+                    rel_path = f"{file_stem}/{attachment.name}"
+                    markdown = f'\n![{attachment.stem}]({rel_path})\n'
+                    if self.metadata_preservation:
+                        stats = attachment.stat()
+                        metadata = {
+                            'type': mime_type or 'application/octet-stream',
+                            'size': stats.st_size,
+                            'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
+                        }
+                        markdown += f'<!-- {json.dumps(metadata)} -->\n'
             else:
-                for pattern in attachment_patterns:
-                    if 'embed' in pattern:
-                        content = re.sub(pattern, f'[\\1]({rel_path})<!-- {{"embed":"true"}} -->', content)
+                # Try to convert document to markdown if enabled
+                if self.document_conversion:
+                    result: ConversionResult = await self.document_converter.convert_to_markdown(attachment)
+                    if result.success:
+                        # Add converted content with metadata
+                        markdown = f'\n## {attachment.stem}\n\n{result.content}\n'
+                        if self.metadata_preservation:
+                            markdown += f'<!-- {json.dumps(result.metadata)} -->\n'
                     else:
-                        content = re.sub(pattern, f'[\\1]({rel_path})', content)
+                        # Fallback to simple link if conversion fails
+                        target_file = markdown_dir / attachment.name
+                        if not target_file.exists():
+                            shutil.copy2(attachment, target_file)
+                        rel_path = f"{file_stem}/{attachment.name}"
+                        markdown = f'\n[{attachment.stem}]({rel_path})\n'
+                        if self.metadata_preservation:
+                            stats = attachment.stat()
+                            metadata = {
+                                'type': mime_type or 'application/octet-stream',
+                                'size': stats.st_size,
+                                'modified': datetime.fromtimestamp(stats.st_mtime).isoformat(),
+                                'conversion_error': result.error
+                            }
+                            markdown += f'<!-- {json.dumps(metadata)} -->\n'
+                else:
+                    # Simple link if conversion is disabled
+                    target_file = markdown_dir / attachment.name
+                    if not target_file.exists():
+                        shutil.copy2(attachment, target_file)
+                    rel_path = f"{file_stem}/{attachment.name}"
+                    markdown = f'\n[{attachment.stem}]({rel_path})\n'
+                    if self.metadata_preservation:
+                        stats = attachment.stat()
+                        metadata = {
+                            'type': mime_type or 'application/octet-stream',
+                            'size': stats.st_size,
+                            'modified': datetime.fromtimestamp(stats.st_mtime).isoformat()
+                        }
+                        markdown += f'<!-- {json.dumps(metadata)} -->\n'
             
-            # Only append new markdown if no existing reference was found
-            has_reference = any(re.search(p, content) for p in attachment_patterns + image_patterns)
-            if not has_reference:
-                content += f"\n## Attachment: {attachment.name}\n{markdown}\n"
-            
-            return content
+            return content + markdown
             
         except Exception as e:
             self.logger.error(f"Failed to process attachment {attachment}: {str(e)}")

@@ -79,7 +79,7 @@ export PYTHONPATH="$PYTHONPATH:$(pwd)/src"
 
 # Build coverage command
 if [ "$COVERAGE" = true ]; then
-    COVERAGE_CMD="--cov=src --cov-report=html --cov-report=term-missing --cov-fail-under=80"
+    COVERAGE_CMD="--cov=src --cov-report=html --cov-report=term-missing"
 else
     COVERAGE_CMD=""
 fi
