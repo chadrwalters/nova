@@ -23,13 +23,13 @@ async def run_pipeline() -> bool:
     """Run the consolidation pipeline.
     
     Returns:
-        bool: True if pipeline completed successfully, False otherwise
+        True if pipeline completed successfully, False otherwise
     """
     try:
-        # Load configuration
+        # Load pipeline configuration
         pipeline_config = load_config()
         
-        # Create processors
+        # Initialize processors
         parse_processor = MarkdownProcessor(
             ProcessorConfig(
                 name='MARKDOWN_PARSE',
@@ -68,6 +68,33 @@ async def run_pipeline() -> bool:
                 processor='ThreeFileSplitProcessor'
             ),
             pipeline_config
+        )
+        
+        # Count input files
+        input_dir = Path(os.environ.get('NOVA_INPUT_DIR'))
+        markdown_files = list(input_dir.rglob('*.md'))
+        total_files = len(markdown_files)
+        
+        # Initialize progress trackers
+        parse_processor.progress_tracker.start_task(
+            'MARKDOWN_PARSE',
+            'Parse markdown files',
+            total_files
+        )
+        consolidate_processor.progress_tracker.start_task(
+            'MARKDOWN_CONSOLIDATE',
+            'Consolidate markdown files',
+            total_files
+        )
+        aggregate_processor.progress_tracker.start_task(
+            'MARKDOWN_AGGREGATE',
+            'Aggregate markdown files',
+            total_files
+        )
+        split_processor.progress_tracker.start_task(
+            'MARKDOWN_SPLIT',
+            'Split markdown files',
+            total_files
         )
         
         # Run pipeline phases

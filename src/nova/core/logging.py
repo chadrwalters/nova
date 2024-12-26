@@ -236,7 +236,17 @@ def setup_logging(
     
     # Console handler (rich or colored)
     if use_rich:
-        console_handler = RichHandler(console=console.console, show_time=True)
+        console_handler = RichHandler(
+            console=console.console,
+            show_time=True,
+            show_path=False,
+            enable_link_path=False,
+            markup=True,
+            rich_tracebacks=True,
+            tracebacks_show_locals=True
+        )
+        # Configure console width
+        console.console.width = min(120, console.console.width)
     else:
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(ColoredFormatter(log_format))

@@ -140,66 +140,48 @@ class MarkdownHandler(BaseHandler):
         """Process an attachment file.
         
         Args:
-            file_path: Path to the attachment file
+            file_path: Path to the attachment
             output_dir: Directory to save processed files
             
         Returns:
-            Optional[str]: Markdown content for the attachment, if successful
+            Optional[str]: Markdown content for the attachment
         """
         try:
             # Get file type
             category, specific_type = self.get_file_type(file_path)
             
-            # Get file info
-            file_info = await self.file_info_provider.get_file_info(file_path)
-            
-            # Create output directory if it doesn't exist
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Process based on category
+            # Handle by category
             if category == 'image':
-                # Process image
-                image_info = await self.image_converter.process(file_path, output_dir)
-                if image_info.success:
-                    # For HEIC files, use the converted JPG name
-                    if file_path.suffix.lower() in ['.heic', '.heif']:
-                        output_name = f"{file_path.stem}.jpg"
-                    else:
-                        output_name = file_path.name
-                        
-                    # Create markdown reference with alt text and description
-                    alt_text = file_path.stem.replace('_', ' ').replace('-', ' ').title()
-                    markdown = f"![{alt_text}]({output_name})"
-                    
-                    # Add description if available
-                    if image_info.description and image_info.description != "Image processed successfully":
-                        markdown += f"\n\n{image_info.description}"
-                        
-                    return markdown
-                else:
-                    return f"Error processing image {file_path.name}: {image_info.error}"
-                    
+                # For now, just add a TODO comment and maintain the reference
+                return f"<!-- TODO: Image '{file_path.name}' needs to be processed -->\n![{file_path.stem}]({file_path.name})"
+                
             elif category == 'office':
                 # Convert office document to markdown
                 result = await self.document_converter.convert_to_markdown(file_path, output_dir)
                 if result.success:
-                    return result.content
+                    # Save the markdown content to a file
+                    output_file = output_dir / f"{file_path.stem}.md"
+                    async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+                        await f.write(result.content)
+                    # Return a reference to the markdown file
+                    return f"[{file_path.stem}]({file_path.stem}.md)"
                 else:
                     return f"Error converting document {file_path.name}: {result.error}"
                     
             elif category == 'text':
-                # Copy text file and create reference
-                output_path = output_dir / file_path.name
-                with open(file_path, 'rb') as src, open(output_path, 'wb') as dst:
-                    shutil.copyfileobj(src, dst)
-                return f"[{file_path.name}]({file_path.name})"
+                # For text files, convert directly to markdown
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                # Save as markdown
+                output_file = output_dir / f"{file_path.stem}.md"
+                async with aiofiles.open(output_file, 'w', encoding='utf-8') as f:
+                    await f.write(f"```{specific_type}\n{content}\n```")
+                # Return a reference to the markdown file
+                return f"[{file_path.stem}]({file_path.stem}.md)"
                 
             else:
-                # For unknown types, just copy and link
-                output_path = output_dir / file_path.name
-                with open(file_path, 'rb') as src, open(output_path, 'wb') as dst:
-                    shutil.copyfileobj(src, dst)
-                return f"[{file_path.name}]({file_path.name})"
+                # For unknown types, add a comment and reference
+                return f"<!-- TODO: Unsupported file type '{file_path.suffix}' -->\n[{file_path.name}]({file_path.name})"
                 
         except Exception as e:
             self.logger.error(f"Error processing attachment {file_path}: {str(e)}")

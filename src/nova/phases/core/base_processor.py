@@ -1,13 +1,14 @@
 """Base processor implementation."""
 
-import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Dict, Any, Optional, List
 
 from nova.core.config import ProcessorConfig, PipelineConfig
+from nova.core.logging import get_logger
 from nova.core.utils.progress import ProgressTracker, ProcessingStatus
+from nova.models.parsed_result import ProcessingResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class ProcessorResult:
     """Result of a processor operation."""
@@ -34,27 +35,19 @@ class ProcessorResult:
 class BaseProcessor:
     """Base class for all processors."""
     
-    def __init__(self, processor_config: ProcessorConfig, pipeline_config: PipelineConfig):
-        """Initialize the processor.
+    def __init__(self, config: ProcessorConfig, pipeline_config: PipelineConfig):
+        """Initialize processor.
         
         Args:
-            processor_config: Processor configuration
+            config: Processor configuration
             pipeline_config: Pipeline configuration
         """
-        self.processor_config = processor_config
+        self.config = config
         self.pipeline_config = pipeline_config
+        self.phase_id = config.name
+        self.logger = get_logger(self.__class__.__name__)
         self.progress_tracker = ProgressTracker()
         
-        # Find phase ID from config
-        self.phase_id = None
-        for phase in pipeline_config.phases:
-            if phase.processor == processor_config.processor:
-                self.phase_id = phase.name
-                break
-        
-        if self.phase_id is None:
-            raise ValueError(f"Could not find phase ID for processor {processor_config.processor}")
-    
     def _start_phase(self, total_files: int, description: Optional[str] = None) -> None:
         """Start tracking a new phase.
         
@@ -62,7 +55,7 @@ class BaseProcessor:
             total_files: Total number of files to process
             description: Optional phase description
         """
-        desc = description or self.processor_config.description or f"Processing phase {self.phase_id}"
+        desc = description or self.config.description or f"Processing phase {self.phase_id}"
         self.progress_tracker.start_task(
             task_id=self.phase_id,
             description=desc,
@@ -92,6 +85,7 @@ class BaseProcessor:
             error_message: Optional error message
             **metadata: Additional metadata
         """
+        # Update progress tracker
         self.progress_tracker.update_task(
             task_id=self.phase_id,
             status=status,
@@ -101,6 +95,21 @@ class BaseProcessor:
             skipped_files=skipped_files,
             failed_files=failed_files,
             error_message=error_message
+        )
+        
+        # Calculate progress percentage
+        task = self.progress_tracker.get_task(self.phase_id)
+        if task and task.total_files > 0:
+            progress = int((task.processed_files + task.cached_files) * 100 / task.total_files)
+        else:
+            progress = 0
+        
+        # Get total files being processed
+        total_files = task.total_files if task else 0
+        
+        # Emit progress message
+        logger.info(
+            f"Phase {self.phase_id}: {progress}% - {status.value if status else 'UNKNOWN'} - {total_files} files"
         )
     
     def _complete_phase(
@@ -159,26 +168,19 @@ class BaseProcessor:
                 'status': 'error',
                 'error': str(e)
             }
-    
-    async def process(
-        self,
-        input_dir: Optional[Path] = None,
-        output_dir: Optional[Path] = None,
-        context: Optional[Dict[str, Any]] = None
-    ) -> ProcessorResult:
+        
+    async def setup(self) -> None:
+        """Set up processor."""
+        pass
+        
+    async def process(self) -> ProcessingResult:
         """Process files.
         
-        This method should be implemented by subclasses.
-        
-        Args:
-            input_dir: Input directory
-            output_dir: Output directory
-            context: Processing context
-            
         Returns:
-            ProcessorResult containing success/failure and any errors
-            
-        Raises:
-            NotImplementedError: If not implemented by subclass
+            ProcessingResult containing processing results
         """
-        raise NotImplementedError("Subclasses must implement process method") 
+        raise NotImplementedError
+        
+    async def cleanup(self) -> None:
+        """Clean up processor."""
+        pass 
