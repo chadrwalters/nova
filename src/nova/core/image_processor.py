@@ -17,6 +17,18 @@ from nova.core.providers.grok_provider import GrokProvider
 
 logger = get_logger(__name__)
 
+class ImageProcessingError(Exception):
+    """Base class for image processing errors."""
+    pass
+
+class ImageNotFoundError(ImageProcessingError):
+    """Raised when an image file is not found."""
+    pass
+
+class InvalidImageFormatError(ImageProcessingError):
+    """Raised when an image format is not supported."""
+    pass
+
 @dataclass
 class ImageConversionResult:
     """Result of image conversion."""

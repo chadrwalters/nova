@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from collections import OrderedDict
@@ -52,11 +53,13 @@ class CacheManager:
             'memory_misses': 0,
             'provider_stats': {},
             'cache_size': 0,
-            'hit_ratio': 0.0
+            'hit_ratio': 0.0,
+            'content_hits': 0,
+            'content_misses': 0
         }
         
         # Initialize provider stats
-        for prov in ['grok', 'openai']:
+        for prov in ['grok', 'openai', 'content']:
             self.stats['provider_stats'][prov] = {
                 'hits': 0,
                 'misses': 0,
@@ -68,7 +71,7 @@ class CacheManager:
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             # Create provider directories
-            for prov in ['grok', 'openai']:
+            for prov in ['grok', 'openai', 'content']:
                 (self.cache_dir / prov).mkdir(exist_ok=True)
             logger.debug("Initialized cache in %s", self.cache_dir)
     
@@ -415,3 +418,121 @@ class CacheManager:
             self.stats['hit_ratio'] = self.stats['hits'] / total
         
         return self.stats
+    
+    def _generate_content_key(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """Generate cache key from content and metadata.
+        
+        Args:
+            content: Content to generate key for
+            metadata: Optional metadata to include in key generation
+            
+        Returns:
+            Cache key string
+        """
+        key_parts = [content]
+        if metadata:
+            key_parts.append(json.dumps(metadata, sort_keys=True))
+        
+        combined = '|'.join(key_parts)
+        return hashlib.sha256(combined.encode()).hexdigest()
+    
+    def cache_content(self, content: str, metadata: Optional[Dict[str, Any]] = None, ttl: Optional[int] = None) -> str:
+        """Cache processed content with metadata.
+        
+        Args:
+            content: Content to cache
+            metadata: Optional metadata to store with content
+            ttl: Optional time-to-live in seconds
+            
+        Returns:
+            Cache key for the stored content
+        """
+        key = self._generate_content_key(content, metadata)
+        cache_data = {
+            'content': content,
+            'metadata': metadata or {},
+            'timestamp': time.time()
+        }
+        
+        # Store in memory cache
+        memory_key = f"content:{key}"
+        self._memory_cache[memory_key] = cache_data
+        self._memory_ttls[memory_key] = time.time() + (ttl or self.default_ttl)
+        
+        # Enforce memory cache size
+        while len(self._memory_cache) > self.memory_entries:
+            oldest_key = next(iter(self._memory_cache))
+            del self._memory_cache[oldest_key]
+            del self._memory_ttls[oldest_key]
+            self.stats['evictions'] += 1
+        
+        # Store in file cache
+        if self.cache_dir:
+            cache_path = self._get_cache_path(key, 'content')
+            try:
+                with open(cache_path, 'w', encoding='utf-8') as f:
+                    json.dump(cache_data, f)
+            except Exception as e:
+                logger.error("Error writing content cache: %s", str(e))
+                self._update_error_stats('content')
+        
+        return key
+    
+    def get_cached_content(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get cached content by key.
+        
+        Args:
+            key: Cache key to retrieve
+            
+        Returns:
+            Dictionary containing content and metadata if found, None otherwise
+        """
+        # Try memory cache first
+        memory_key = f"content:{key}"
+        if memory_key in self._memory_cache:
+            data = self._memory_cache[memory_key]
+            if self._memory_ttls.get(memory_key, float('inf')) > time.time():
+                self.stats['memory_hits'] += 1
+                self.stats['content_hits'] += 1
+                self._update_hit_stats('content')
+                return data
+            else:
+                # Expired
+                del self._memory_cache[memory_key]
+                del self._memory_ttls[memory_key]
+                self.stats['expirations'] += 1
+        else:
+            self.stats['memory_misses'] += 1
+        
+        # Try file cache
+        try:
+            cache_path = self._get_cache_path(key, 'content')
+            if not cache_path.exists():
+                self.stats['content_misses'] += 1
+                self._update_miss_stats('content')
+                return None
+            
+            # Check if file is too old
+            if self.default_ttl and (time.time() - cache_path.stat().st_mtime) > self.default_ttl:
+                cache_path.unlink()
+                self.stats['expirations'] += 1
+                self.stats['content_misses'] += 1
+                self._update_miss_stats('content')
+                return None
+            
+            # Load cache data
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Update memory cache
+            self._memory_cache[memory_key] = data
+            self._memory_ttls[memory_key] = time.time() + self.default_ttl
+            
+            self.stats['content_hits'] += 1
+            self._update_hit_stats('content')
+            return data
+            
+        except Exception as e:
+            logger.error("Error reading content cache: %s", str(e))
+            self._update_error_stats('content')
+            return None

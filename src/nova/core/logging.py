@@ -191,6 +191,16 @@ class Base64Filter(logging.Filter):
             )
         return True
 
+def configure_package_logging() -> None:
+    """Configure logging levels for third-party packages."""
+    # Set higher log level for noisy third-party packages
+    logging.getLogger('pdfminer').setLevel(logging.WARNING)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('requests').setLevel(logging.WARNING)
+    logging.getLogger('openai').setLevel(logging.WARNING)
+    logging.getLogger('markitdown').setLevel(logging.WARNING)
+
 def setup_logging(
     level: Union[str, int] = None,
     log_file: Optional[Union[str, Path]] = None,
@@ -220,6 +230,9 @@ def setup_logging(
     
     # Add base64 filter to root logger
     logging.getLogger().addFilter(Base64Filter())
+    
+    # Configure third-party package logging
+    configure_package_logging()
     
     # Console handler (rich or colored)
     if use_rich:
@@ -254,6 +267,9 @@ def setup_logging(
         format=log_format,
         force=True
     )
+    
+    # Set nova package to use the specified level
+    logging.getLogger('nova').setLevel(level)
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance.

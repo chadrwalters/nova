@@ -1,5 +1,6 @@
 """Document conversion handler for markdown processing."""
 
+import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional
 import mimetypes
@@ -52,11 +53,12 @@ class DocumentConverter:
         mimetypes.add_type('application/vnd.openxmlformats-officedocument.presentationml.presentation', '.pptx')
         mimetypes.add_type('text/html', '.html')
     
-    async def convert_to_markdown(self, file_path: Path) -> ConversionResult:
+    async def convert_to_markdown(self, file_path: Path, output_dir: Path) -> ConversionResult:
         """Convert a document to markdown format.
         
         Args:
             file_path: Path to the document to convert
+            output_dir: Directory to save any extracted resources
             
         Returns:
             ConversionResult containing the markdown content and metadata
@@ -76,6 +78,13 @@ class DocumentConverter:
                     converter_name='',
                     error=f"No converter available for {ext} files"
                 )
+            
+            # Create output directory
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy original file to output directory
+            output_file = output_dir / file_path.name
+            shutil.copy2(file_path, output_file)
             
             # Convert document
             logger.info(f"Converting {file_path} to markdown")

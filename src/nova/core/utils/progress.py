@@ -2,154 +2,132 @@
 Progress tracking utilities.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
-
-logger = logging.getLogger(__name__)
+from typing import Dict, Optional
 
 class ProcessingStatus(Enum):
-    """Status of a processing task."""
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    RETRYING = "retrying"
+    NOT_STARTED = "NOT_STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
 
 @dataclass
 class ProcessingProgress:
-    """Progress information for a processing task."""
-    status: ProcessingStatus
-    start_time: datetime
+    """Class to track progress of a processing task"""
+    task_id: str
+    description: str
+    total_files: int = 0
+    processed_files: int = 0
+    cached_files: int = 0
+    skipped_files: int = 0
+    failed_files: int = 0
+    start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    current_step: Optional[str] = None
-    total_steps: Optional[int] = None
-    current_step_number: Optional[int] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
-    
+    status: ProcessingStatus = ProcessingStatus.NOT_STARTED
+    current_file: Optional[str] = None
+    error_message: Optional[str] = None
+
     @property
-    def duration(self) -> Optional[float]:
-        """Get the duration of the task in seconds."""
-        if self.end_time and self.start_time:
-            return (self.end_time - self.start_time).total_seconds()
-        return None
-    
+    def elapsed_time(self) -> Optional[float]:
+        """Get elapsed time in seconds."""
+        if not self.start_time:
+            return None
+        end = self.end_time or datetime.now()
+        return (end - self.start_time).total_seconds()
+
     @property
-    def progress_percentage(self) -> Optional[float]:
-        """Get the progress percentage."""
-        if self.total_steps and self.current_step_number:
-            return (self.current_step_number / self.total_steps) * 100
-        return None
-    
-    def update(
-        self,
-        status: Optional[ProcessingStatus] = None,
-        step: Optional[str] = None,
-        step_number: Optional[int] = None,
-        error: Optional[str] = None,
-        **metadata
-    ) -> None:
-        """Update the progress information."""
-        if status:
-            self.status = status
-            if status == ProcessingStatus.COMPLETED:
-                self.end_time = datetime.now()
-            elif status == ProcessingStatus.FAILED:
-                self.end_time = datetime.now()
-        
-        if step:
-            self.current_step = step
-        
-        if step_number is not None:
-            self.current_step_number = step_number
-        
-        if error:
-            self.error = error
-        
-        self.metadata.update(metadata)
-        
-        # Log the update
-        message = f"Processing {self.status.value}"
-        if self.current_step:
-            message += f": {self.current_step}"
-        if self.progress_percentage is not None:
-            message += f" ({self.progress_percentage:.1f}%)"
-        if error:
-            message += f" - Error: {error}"
-        
-        log_level = logging.ERROR if status == ProcessingStatus.FAILED else logging.INFO
-        logger.log(log_level, message)
+    def status_value(self) -> Optional[str]:
+        """Get status value safely."""
+        return self.status.value if self.status else None
 
 class ProgressTracker:
     """Track progress of multiple processing tasks."""
-    
     def __init__(self):
-        self.tasks: Dict[str, ProcessingProgress] = {}
-    
-    def start_task(
-        self,
-        task_id: str,
-        total_steps: Optional[int] = None,
-        **metadata
-    ) -> ProcessingProgress:
+        self._tasks: Dict[str, ProcessingProgress] = {}
+
+    def start_task(self, task_id: str, description: str, total_files: int = 0) -> ProcessingProgress:
         """Start tracking a new task."""
-        progress = ProcessingProgress(
-            status=ProcessingStatus.IN_PROGRESS,
+        task = ProcessingProgress(
+            task_id=task_id,
+            description=description,
+            total_files=total_files,
             start_time=datetime.now(),
-            total_steps=total_steps,
-            current_step_number=0,
-            metadata=metadata
+            status=ProcessingStatus.IN_PROGRESS
         )
-        self.tasks[task_id] = progress
-        return progress
-    
+        self._tasks[task_id] = task
+        return task
+
     def update_task(
         self,
         task_id: str,
-        status: Optional[ProcessingStatus] = None,
-        step: Optional[str] = None,
-        step_number: Optional[int] = None,
-        error: Optional[str] = None,
-        **metadata
-    ) -> None:
-        """Update a task's progress."""
-        if task_id not in self.tasks:
-            raise KeyError(f"Task {task_id} not found")
-        
-        self.tasks[task_id].update(
-            status=status,
-            step=step,
-            step_number=step_number,
-            error=error,
-            **metadata
-        )
-    
-    def complete_task(
-        self,
-        task_id: str,
-        error: Optional[str] = None,
-        **metadata
-    ) -> None:
-        """Mark a task as completed or failed."""
-        if task_id not in self.tasks:
-            raise KeyError(f"Task {task_id} not found")
-        
-        status = ProcessingStatus.FAILED if error else ProcessingStatus.COMPLETED
-        self.tasks[task_id].update(status=status, error=error, **metadata)
-    
-    def get_task(self, task_id: str) -> ProcessingProgress:
-        """Get a task's progress."""
-        if task_id not in self.tasks:
-            raise KeyError(f"Task {task_id} not found")
-        return self.tasks[task_id]
-    
+        processed_files: Optional[int] = None,
+        cached_files: Optional[int] = None,
+        skipped_files: Optional[int] = None,
+        failed_files: Optional[int] = None,
+        current_file: Optional[str] = None,
+        error_message: Optional[str] = None,
+        status: Optional[ProcessingStatus] = None
+    ) -> ProcessingProgress:
+        """Update task progress."""
+        task = self._tasks.get(task_id)
+        if not task:
+            # Create task if it doesn't exist
+            task = ProcessingProgress(
+                task_id=task_id,
+                description=f"Task {task_id}",
+                total_files=0,
+                start_time=datetime.now(),
+                status=ProcessingStatus.IN_PROGRESS
+            )
+            self._tasks[task_id] = task
+
+        if processed_files is not None:
+            task.processed_files = processed_files
+        if cached_files is not None:
+            task.cached_files = cached_files
+        if skipped_files is not None:
+            task.skipped_files = skipped_files
+        if failed_files is not None:
+            task.failed_files = failed_files
+        if current_file is not None:
+            task.current_file = current_file
+        if error_message is not None:
+            task.error_message = error_message
+        if status is not None:
+            task.status = status
+
+        return task
+
+    def complete_task(self, task_id: str, status: ProcessingStatus = ProcessingStatus.COMPLETED) -> ProcessingProgress:
+        """Mark a task as complete."""
+        task = self._tasks.get(task_id)
+        if not task:
+            # Create task if it doesn't exist
+            task = ProcessingProgress(
+                task_id=task_id,
+                description=f"Task {task_id}",
+                total_files=0,
+                start_time=datetime.now(),
+                status=status,
+                end_time=datetime.now()
+            )
+            self._tasks[task_id] = task
+        else:
+            task.status = status
+            task.end_time = datetime.now()
+        return task
+
+    def get_task(self, task_id: str) -> Optional[ProcessingProgress]:
+        """Get task progress."""
+        return self._tasks.get(task_id)
+
     def get_all_tasks(self) -> Dict[str, ProcessingProgress]:
-        """Get all tasks' progress."""
-        return self.tasks.copy() 
+        """Get all tasks."""
+        return self._tasks.copy()
+
+    def clear_tasks(self) -> None:
+        """Clear all tasks."""
+        self._tasks.clear() 

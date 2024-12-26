@@ -1,13 +1,11 @@
-"""Test error integration."""
+"""Integration tests for error handling."""
 
 import pytest
-import logging
+from pathlib import Path
 from typing import Dict, Any
 
-from nova.core.pipeline.manager import PipelineManager
-from nova.core.utils.error_tracker import ErrorTracker
-from nova.core.utils.schema_validator import SchemaValidator
-from nova.core.config.base import PipelineConfig, ProcessorConfig
+from nova.core.error_tracker import ErrorTracker
+from nova.core.schema_validator import SchemaValidator
 
 @pytest.fixture
 def error_tracker():

@@ -1,12 +1,11 @@
-"""Test pipeline configuration loading and validation."""
+"""Tests for pipeline loader."""
 
 import pytest
-import logging
 from pathlib import Path
 from typing import Dict, Any
 
-from nova.core.pipeline.manager import PipelineManager
-from nova.core.utils.error_tracker import ErrorTracker
+from nova.core.pipeline.loader import PipelineLoader
+from nova.core.error_tracker import ErrorTracker
 from nova.core.errors import ConfigurationError, ValidationError, ErrorContext
 from nova.core.config.base import PipelineConfig, ProcessorConfig
 
