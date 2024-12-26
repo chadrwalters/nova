@@ -38,16 +38,15 @@ done
 echo "Running consolidation pipeline..."
 python -m nova.pipeline.consolidate 2>&1 | while IFS= read -r line; do
     # Check for phase progress updates
-    if [[ $line == *"Phase"* && $line == *"progress:"* ]]; then
-        # Extract phase information
-        phase_id=$(echo "$line" | grep -o 'Phase [^:]*' | cut -d' ' -f2)
-        progress=$(echo "$line" | grep -o '[0-9]*\.[0-9]*%')
-        status=$(echo "$line" | grep -o '[a-z_]*$')
+    if [[ $line =~ Phase\ ([A-Z_]+):\ ([0-9]+)%\ -\ ([a-zA-Z_]+)\ -\ ([0-9]+)\ files ]]; then
+        phase_id="${BASH_REMATCH[1]}"
+        progress="${BASH_REMATCH[2]}"
+        status="${BASH_REMATCH[3]}"
+        files="${BASH_REMATCH[4]}"
         
         # Create progress bar
-        progress_val=${progress%.*}
-        bar_size=50
-        completed=$((progress_val * bar_size / 100))
+        bar_size=40
+        completed=$((progress * bar_size / 100))
         remaining=$((bar_size - completed))
         
         # Build the progress bar string
@@ -58,13 +57,22 @@ python -m nova.pipeline.consolidate 2>&1 | while IFS= read -r line; do
         progress_bar+="]"
         
         # Print progress with colors
-        printf "\033[K\033[1;34mPhase %s\033[0m %s \033[1;32m%s\033[0m \033[1;33m%s\033[0m\r" \
-            "$phase_id" "$progress_bar" "$progress" "$status"
-    elif [[ $line == *"Summary"* ]]; then
-        # Print pipeline summary
-        echo -e "\n\n$line"
+        printf "\033[K\033[1;34m%-20s\033[0m %s \033[1;32m%3d%%\033[0m \033[1;33m%-12s\033[0m \033[1;36m%d files\033[0m\r" \
+            "$phase_id" "$progress_bar" "$progress" "$status" "$files"
+    elif [[ $line =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2} ]]; then
+        # Timestamp line - print on new line
+        echo -e "\n$line"
+    elif [[ $line == *"Successfully"* ]]; then
+        # Success message - print on new line with color
+        echo -e "\n\033[1;32m$line\033[0m"
+    elif [[ $line == *"ERROR"* || $line == *"Error"* || $line == *"error"* ]]; then
+        # Error message - print on new line with color
+        echo -e "\n\033[1;31m$line\033[0m"
+    elif [[ $line == *"WARNING"* || $line == *"Warning"* || $line == *"warning"* ]]; then
+        # Warning message - print on new line with color
+        echo -e "\n\033[1;33m$line\033[0m"
     else
-        # Print other lines normally
+        # Other lines - print normally
         echo "$line"
     fi
 done

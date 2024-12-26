@@ -52,7 +52,7 @@ class DocumentConverter:
         mimetypes.add_type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.xlsx')
         mimetypes.add_type('application/vnd.openxmlformats-officedocument.presentationml.presentation', '.pptx')
         mimetypes.add_type('text/html', '.html')
-    
+        
     async def convert_to_markdown(self, file_path: Path, output_dir: Path) -> ConversionResult:
         """Convert a document to markdown format.
         
@@ -78,13 +78,6 @@ class DocumentConverter:
                     converter_name='',
                     error=f"No converter available for {ext} files"
                 )
-            
-            # Create output directory
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Copy original file to output directory
-            output_file = output_dir / file_path.name
-            shutil.copy2(file_path, output_file)
             
             # Convert document
             logger.info(f"Converting {file_path} to markdown")

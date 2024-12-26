@@ -1,18 +1,18 @@
 """Processor for aggregating markdown files."""
 
 import os
-import json
 import re
+import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
 from nova.core.logging import get_logger
-from nova.core.pipeline.base import BaseProcessor
+from nova.phases.core.base_processor import BaseProcessor
+from nova.core.config import ProcessorConfig, PipelineConfig
 from nova.models.processor_result import ProcessorResult
 from nova.core.file_info_provider import FileInfoProvider
 from nova.core.metadata_manager import MetadataManager
-from nova.core.config.base import ProcessorConfig, PipelineConfig
 
 logger = get_logger(__name__)
 

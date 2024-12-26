@@ -8,7 +8,8 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from nova.core.logging import get_logger
-from nova.core.pipeline.base import BaseProcessor
+from nova.phases.core.base_processor import BaseProcessor
+from nova.core.config import ProcessorConfig, PipelineConfig
 from nova.models.processor_result import ProcessorResult
 from nova.core.file_info_provider import FileInfoProvider
 
@@ -16,6 +17,16 @@ logger = get_logger(__name__)
 
 class MarkdownConsolidateProcessor(BaseProcessor):
     """Processor for consolidating markdown files."""
+    
+    def __init__(self, config: ProcessorConfig, pipeline_config: PipelineConfig):
+        """Initialize processor.
+        
+        Args:
+            config: Processor configuration
+            pipeline_config: Pipeline configuration
+        """
+        super().__init__(config, pipeline_config)
+        self.logger = get_logger(self.__class__.__name__)
     
     def _add_section_markers(self, content: str) -> str:
         """Add section markers to content if they don't exist."""
