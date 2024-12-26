@@ -1,13 +1,16 @@
-"""Base processor implementation."""
+"""Base processor class."""
 
 import os
+import asyncio
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
 
-from nova.core.config import ProcessorConfig, PipelineConfig
-from nova.core.utils.logging import get_logger
-from nova.core.errors import ConfigurationError, StateError
+from ..logging import get_logger
+from ..config import ProcessorConfig, PipelineConfig
+from ..errors import ProcessorError
+
+logger = get_logger(__name__)
 
 class BaseProcessor(ABC):
     """Base class for all processors."""
@@ -121,6 +124,11 @@ class BaseProcessor(ABC):
         """Clean up processor resources.
         
         This method should be called when processing is complete.
+        It will:
+        1. Clean all processing directories
+        2. Remove temporary files
+        3. Clear caches
+        4. Release resources
         """
         if not self._initialized:
             return
@@ -128,6 +136,9 @@ class BaseProcessor(ABC):
         self.logger.info("Cleaning up processor...")
         
         try:
+            # Clean processing directories
+            await self._clean_directories()
+            
             # Perform processor-specific cleanup
             await self._cleanup()
             
@@ -136,6 +147,54 @@ class BaseProcessor(ABC):
             
         except Exception as e:
             self.logger.error(f"Failed to clean up processor: {e}")
+            raise
+    
+    async def _clean_directories(self) -> None:
+        """Clean all processing directories."""
+        try:
+            # Get directories to clean
+            dirs_to_clean = [
+                self.output_dir,
+                self.temp_dir
+            ]
+            
+            # Add phase-specific directories from environment
+            phase_dirs = [
+                os.environ.get('NOVA_PHASE_MARKDOWN_PARSE'),
+                os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE'),
+                os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE'),
+                os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT'),
+                os.environ.get('NOVA_ORIGINAL_IMAGES_DIR'),
+                os.environ.get('NOVA_PROCESSED_IMAGES_DIR'),
+                os.environ.get('NOVA_IMAGE_METADATA_DIR'),
+                os.environ.get('NOVA_IMAGE_CACHE_DIR'),
+                os.environ.get('NOVA_OFFICE_ASSETS_DIR'),
+                os.environ.get('NOVA_OFFICE_TEMP_DIR')
+            ]
+            
+            # Add valid phase directories
+            dirs_to_clean.extend([Path(d) for d in phase_dirs if d])
+            
+            # Clean each directory
+            for dir_path in dirs_to_clean:
+                if dir_path.exists():
+                    self.logger.info(f"Cleaning directory: {dir_path}")
+                    try:
+                        # Remove all files
+                        for file_path in dir_path.glob('**/*'):
+                            if file_path.is_file():
+                                file_path.unlink()
+                        
+                        # Remove empty directories
+                        for dir_path in sorted(dir_path.glob('**/*'), reverse=True):
+                            if dir_path.is_dir() and not any(dir_path.iterdir()):
+                                dir_path.rmdir()
+                                
+                    except Exception as e:
+                        self.logger.error(f"Error cleaning {dir_path}: {str(e)}")
+            
+        except Exception as e:
+            self.logger.error(f"Error during directory cleanup: {str(e)}")
             raise
     
     @abstractmethod

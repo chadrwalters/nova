@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class MetricsTracker(BaseModel):
     """Tracks metrics for processing operations."""
+    name: str = Field(description="Name of the component being tracked")
     start_time: Optional[datetime] = Field(default=None, description="Operation start time")
     end_time: Optional[datetime] = Field(default=None, description="Operation end time")
     total_files: int = Field(default=0, description="Total files processed")

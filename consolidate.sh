@@ -1,84 +1,77 @@
 #!/bin/bash
 
 # Source environment variables
-set -a  # Automatically export all variables
-source .env
-set +a  # Stop automatically exporting
+source .env 2>/dev/null || true
 
 # Validate environment variables
 echo "Validating environment variables..."
-if [ -z "$NOVA_BASE_DIR" ]; then
-    echo "Error: NOVA_BASE_DIR is not set"
-    exit 1
-fi
 
-if [ -z "$NOVA_INPUT_DIR" ]; then
-    echo "Error: NOVA_INPUT_DIR is not set"
-    exit 1
-fi
+# Required directories
+NOVA_BASE_DIR="${NOVA_BASE_DIR:-$HOME/Library/Mobile Documents/com~apple~CloudDocs}"
+NOVA_INPUT_DIR="${NOVA_INPUT_DIR:-$NOVA_BASE_DIR/_NovaInput}"
+NOVA_PROCESSING_DIR="${NOVA_PROCESSING_DIR:-$NOVA_BASE_DIR/_NovaProcessing}"
+NOVA_PHASE_MARKDOWN_PARSE="${NOVA_PHASE_MARKDOWN_PARSE:-$NOVA_PROCESSING_DIR/phases/markdown_parse}"
 
-if [ -z "$NOVA_PROCESSING_DIR" ]; then
-    echo "Error: NOVA_PROCESSING_DIR is not set"
-    exit 1
-fi
-
+# Display directory configuration
 echo "Using directories:"
 echo "Base dir: $NOVA_BASE_DIR"
 echo "Input dir: $NOVA_INPUT_DIR"
 echo "Processing dir: $NOVA_PROCESSING_DIR"
 echo "Parse dir: $NOVA_PHASE_MARKDOWN_PARSE"
 
-# Check if input directory exists
-if [ ! -d "$NOVA_INPUT_DIR" ]; then
-    echo "Error: Input directory $NOVA_INPUT_DIR does not exist"
-    exit 1
-fi
-
 # Create required directories
 echo "Creating required directories..."
-mkdir -p "$NOVA_OUTPUT_DIR"
+mkdir -p "$NOVA_INPUT_DIR"
 mkdir -p "$NOVA_PROCESSING_DIR"
-mkdir -p "$NOVA_PROCESSING_DIR/phases"
 mkdir -p "$NOVA_PHASE_MARKDOWN_PARSE"
-mkdir -p "$NOVA_PHASE_MARKDOWN_CONSOLIDATE"
-mkdir -p "$NOVA_PHASE_MARKDOWN_AGGREGATE"
-mkdir -p "$NOVA_PHASE_MARKDOWN_SPLIT"
-mkdir -p "$NOVA_TEMP_DIR"
-mkdir -p "$NOVA_ORIGINAL_IMAGES_DIR"
-mkdir -p "$NOVA_PROCESSED_IMAGES_DIR"
-mkdir -p "$NOVA_IMAGE_METADATA_DIR"
-mkdir -p "$NOVA_IMAGE_CACHE_DIR"
-mkdir -p "$NOVA_IMAGE_TEMP_DIR"
-mkdir -p "$NOVA_OFFICE_ASSETS_DIR"
-mkdir -p "$NOVA_OFFICE_TEMP_DIR"
 
-# Verify directories were created
+# Verify directories exist
 echo "Verifying directories..."
-for dir in "$NOVA_PHASE_MARKDOWN_PARSE" "$NOVA_PHASE_MARKDOWN_CONSOLIDATE" "$NOVA_PHASE_MARKDOWN_AGGREGATE" "$NOVA_PHASE_MARKDOWN_SPLIT"; do
+for dir in "$NOVA_INPUT_DIR" "$NOVA_PROCESSING_DIR" "$NOVA_PHASE_MARKDOWN_PARSE"; do
     if [ ! -d "$dir" ]; then
-        echo "Error: Failed to create directory: $dir"
+        echo "Error: Directory $dir does not exist"
         exit 1
     fi
 done
 
-# Check input files
-echo "Checking input files..."
-markdown_files=$(find "$NOVA_INPUT_DIR" -name "*.md" | wc -l)
-image_files=$(find "$NOVA_INPUT_DIR" -type f -name "*.jpg" -o -name "*.jpeg" -o -name "*.png" -o -name "*.gif" -o -name "*.heic" -o -name "*.heif" | wc -l)
-document_files=$(find "$NOVA_INPUT_DIR" -type f -name "*.pdf" -o -name "*.docx" -o -name "*.xlsx" -o -name "*.txt" -o -name "*.csv" | wc -l)
+# Run the consolidation pipeline
+echo "Running consolidation pipeline..."
+python -m nova.pipeline.consolidate 2>&1 | while IFS= read -r line; do
+    # Check for phase progress updates
+    if [[ $line == *"Phase"* && $line == *"progress:"* ]]; then
+        # Extract phase information
+        phase_id=$(echo "$line" | grep -o 'Phase [^:]*' | cut -d' ' -f2)
+        progress=$(echo "$line" | grep -o '[0-9]*\.[0-9]*%')
+        status=$(echo "$line" | grep -o '[a-z_]*$')
+        
+        # Create progress bar
+        progress_val=${progress%.*}
+        bar_size=50
+        completed=$((progress_val * bar_size / 100))
+        remaining=$((bar_size - completed))
+        
+        # Build the progress bar string
+        progress_bar="["
+        for ((i=0; i<completed; i++)); do progress_bar+="="; done
+        if [ $completed -lt $bar_size ]; then progress_bar+=">"; fi
+        for ((i=0; i<remaining-1; i++)); do progress_bar+=" "; done
+        progress_bar+="]"
+        
+        # Print progress with colors
+        printf "\033[K\033[1;34mPhase %s\033[0m %s \033[1;32m%s\033[0m \033[1;33m%s\033[0m\r" \
+            "$phase_id" "$progress_bar" "$progress" "$status"
+    elif [[ $line == *"Summary"* ]]; then
+        # Print pipeline summary
+        echo -e "\n\n$line"
+    else
+        # Print other lines normally
+        echo "$line"
+    fi
+done
 
-echo "Found:"
-echo "-        $markdown_files markdown files"
-echo "-        $image_files image files"
-echo "-        $document_files document files"
-
-# Add src directory to Python path
-export PYTHONPATH="$PYTHONPATH:$(pwd)/src"
-
-# Install dependencies if needed
-echo "Installing dependencies..."
-poetry install
-
-# Run pipeline
-echo "Starting pipeline..."
-poetry run python -m nova.main
+# Check exit status
+exit_status=$?
+if [ $exit_status -ne 0 ]; then
+    echo "Pipeline failed with exit status $exit_status"
+    exit $exit_status
+fi

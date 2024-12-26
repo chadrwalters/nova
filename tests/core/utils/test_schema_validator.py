@@ -1,13 +1,11 @@
-"""Test cases for schema validation."""
+"""Tests for schema validator."""
 
 import pytest
 from pathlib import Path
-import json
-import logging
+from typing import Dict, Any
 
-from nova.core.utils.schema_validator import SchemaValidator, DEFAULT_SCHEMA_PATH
-from nova.core.utils.error_tracker import ErrorTracker
-from nova.core.errors import ConfigurationError, ValidationError, ErrorContext
+from nova.core.schema_validator import SchemaValidator, DEFAULT_SCHEMA_PATH
+from nova.core.error_tracker import ErrorTracker
 
 @pytest.fixture
 def validator():

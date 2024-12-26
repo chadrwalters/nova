@@ -54,6 +54,11 @@ class ImageConversionResult:
 class ImageConverter:
     """Handles image conversion and analysis."""
     
+    SUPPORTED_FORMATS = {
+        'JPEG', 'JPG', 'PNG', 'GIF', 'WEBP', 'HEIC', 'HEIF',
+        'BMP', 'TIFF', 'TIF'
+    }
+    
     def __init__(self, analyze_images: bool = False):
         """Initialize image converter.
         
@@ -62,6 +67,17 @@ class ImageConverter:
         """
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
+        
+        # Initialize file info provider
+        self.file_info_provider = FileInfoProvider()
+        
+        # Check for ImageMagick installation
+        try:
+            subprocess.run(['magick', '--version'], capture_output=True, check=True)
+            self.has_imagemagick = True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            self.has_imagemagick = False
+            self.logger.warning("ImageMagick not found. HEIC conversion will be disabled.")
         
         # Initialize Grok provider if API key is available and analysis is enabled
         self.grok_provider = None
@@ -73,6 +89,28 @@ class ImageConverter:
             )
         elif analyze_images:
             self.logger.warning("XAI_API_KEY not found. Image analysis will be disabled.")
+    
+    def is_supported_image(self, file_path: Path) -> bool:
+        """Check if the file is a supported image format.
+        
+        Args:
+            file_path: Path to the file to check
+            
+        Returns:
+            bool: True if supported, False otherwise
+        """
+        # Check file extension first
+        ext = file_path.suffix.lstrip('.').upper()
+        if ext in ['HEIC', 'HEIF']:
+            return self.has_imagemagick
+            
+        try:
+            # Try to open with PIL
+            with Image.open(file_path) as img:
+                return img.format.upper() in self.SUPPORTED_FORMATS
+        except Exception:
+            # If PIL fails, check file extension
+            return ext in self.SUPPORTED_FORMATS
     
     def _parse_grok_response(self, response: str) -> Tuple[str, str, Optional[str], Optional[dict]]:
         """Parse the structured response from Grok into components.
@@ -144,35 +182,67 @@ class ImageConverter:
     async def convert_image(self, image_path: Path) -> ImageInfo:
         """Convert an image file and return its metadata."""
         try:
-            # Get image format and metadata
-            with Image.open(image_path) as img:
-                format = img.format or 'UNKNOWN'
-                dimensions = (img.width, img.height)
-                metadata = {
-                    'original_format': format,
-                    'target_format': 'JPEG',
-                    'width': img.width,
-                    'height': img.height,
-                    'mode': img.mode,
-                }
-
-                # Add EXIF data if available
-                if hasattr(img, '_getexif') and img._getexif() is not None:
-                    exif = {
-                        ExifTags.TAGS[k]: v
-                        for k, v in img._getexif().items()
-                        if k in ExifTags.TAGS
+            # Check if file is a supported image
+            if not self.is_supported_image(image_path):
+                raise ValueError(f"Unsupported image format: {image_path}")
+            
+            # Handle HEIC/HEIF files
+            if image_path.suffix.lower() in ['.heic', '.heif']:
+                if not self.has_imagemagick:
+                    raise ValueError("ImageMagick not available for HEIC conversion")
+                    
+                # Create temporary JPEG file
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp_file:
+                    temp_jpg = Path(tmp_file.name)
+                
+                try:
+                    # Convert HEIC to JPEG
+                    subprocess.run(['magick', str(image_path), str(temp_jpg)], check=True)
+                    
+                    # Now process the converted JPEG
+                    with Image.open(temp_jpg) as img:
+                        metadata = {
+                            'original_format': 'HEIC',
+                            'target_format': 'JPEG',
+                            'content_type': 'image/jpeg',
+                            'width': img.width,
+                            'height': img.height,
+                            'mode': img.mode,
+                            'size': os.path.getsize(image_path),
+                            'modified': datetime.fromtimestamp(os.path.getmtime(image_path))
+                        }
+                finally:
+                    # Clean up temporary file
+                    if temp_jpg.exists():
+                        temp_jpg.unlink()
+            else:
+                # Process non-HEIC images directly with PIL
+                with Image.open(image_path) as img:
+                    metadata = {
+                        'original_format': img.format or 'UNKNOWN',
+                        'target_format': 'JPEG',
+                        'content_type': f'image/{img.format.lower() if img.format else "jpeg"}',
+                        'width': img.width,
+                        'height': img.height,
+                        'mode': img.mode,
+                        'size': os.path.getsize(image_path),
+                        'modified': datetime.fromtimestamp(os.path.getmtime(image_path))
                     }
-                    metadata['exif'] = exif
 
-            # Add TODO comment for image processing
-            description = "//TODO: IMAGE PROCESSING NOT WORKING"
+                    # Add EXIF data if available
+                    if hasattr(img, '_getexif') and img._getexif() is not None:
+                        exif = {
+                            ExifTags.TAGS[k]: str(v)
+                            for k, v in img._getexif().items()
+                            if k in ExifTags.TAGS
+                        }
+                        metadata['exif'] = exif
 
             return ImageInfo(
                 success=True,
-                content_type='image',
+                content_type=metadata['content_type'],
                 metadata=metadata,
-                description=description,
+                description="Image processed successfully",
                 visible_text=None,
                 context=None,
                 timings={},
@@ -203,30 +273,72 @@ class ImageConverter:
             ImageInfo containing image metadata and processing results
         """
         try:
+            # Check if file is a supported image
+            if not self.is_supported_image(file_path):
+                raise ValueError(f"Unsupported image format: {file_path}")
+            
             # Get file info
             file_info = await self.file_info_provider.get_file_info(file_path)
             
-            # Get image format from PIL
-            with Image.open(file_path) as img:
-                original_format = img.format or file_path.suffix.lstrip('.').upper()
-                
-                # Initialize metadata
-                metadata = {
-                    'original_format': original_format,
-                    'target_format': 'JPEG',
-                    'content_type': file_info.content_type,
-                    'size': file_info.size,
-                    'created': file_info.created,
-                    'modified': file_info.modified,
-                    'dimensions': img.size
-                }
+            # Create output directory if it doesn't exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
-            # Copy file to output location
-            shutil.copy2(file_path, output_path)
+            # Handle HEIC/HEIF files
+            if file_path.suffix.lower() in ['.heic', '.heif']:
+                if not self.has_imagemagick:
+                    raise ValueError("ImageMagick not available for HEIC conversion")
+                    
+                # Convert HEIC to JPEG using ImageMagick
+                try:
+                    # Ensure output has .jpg extension
+                    output_path = output_path.with_suffix('.jpg')
+                    subprocess.run(['magick', str(file_path), str(output_path)], check=True)
+                    
+                    # Get metadata from converted file
+                    with Image.open(output_path) as img:
+                        metadata = {
+                            'original_format': 'HEIC',
+                            'target_format': 'JPEG',
+                            'content_type': 'image/jpeg',
+                            'size': os.path.getsize(file_path),
+                            'modified': datetime.fromtimestamp(os.path.getmtime(file_path)),
+                            'dimensions': img.size
+                        }
+                except subprocess.CalledProcessError as e:
+                    raise ValueError(f"Failed to convert HEIC to JPEG: {str(e)}")
+            else:
+                # For non-HEIC images, get metadata first
+                with Image.open(file_path) as img:
+                    metadata = {
+                        'original_format': img.format or file_path.suffix.lstrip('.').upper(),
+                        'target_format': img.format or 'JPEG',
+                        'content_type': getattr(file_info, 'content_type', f'image/{img.format.lower() if img.format else "jpeg"}'),
+                        'size': os.path.getsize(file_path),
+                        'modified': datetime.fromtimestamp(os.path.getmtime(file_path)),
+                        'dimensions': img.size
+                    }
+                    
+                    # Add EXIF data if available
+                    if hasattr(img, '_getexif') and img._getexif() is not None:
+                        exif = {
+                            ExifTags.TAGS[k]: str(v)
+                            for k, v in img._getexif().items()
+                            if k in ExifTags.TAGS
+                        }
+                        metadata['exif'] = exif
+                
+                # Copy file to output location using binary mode
+                with open(file_path, 'rb') as src, open(output_path, 'wb') as dst:
+                    dst.write(src.read())
+            
+            # Save metadata to JSON file
+            metadata_file = output_path.with_suffix('.json')
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
             
             return ImageInfo(
                 success=True,
-                content_type=file_info.content_type,
+                content_type=metadata['content_type'],
                 metadata=metadata,
                 description=None,
                 visible_text=None,
@@ -248,53 +360,71 @@ class ImageConverter:
             )
     
     async def process(self, image_path: Path, output_dir: Path) -> ImageInfo:
-        """Process an image file and return its metadata."""
+        """Process an image file.
+        
+        Args:
+            image_path: Path to the image file
+            output_dir: Directory to save processed files
+            
+        Returns:
+            ImageInfo containing processing results
+        """
         try:
-            # Create output directory if it doesn't exist
+            # Check if file is a supported image
+            if not self.is_supported_image(image_path):
+                raise ValueError(f"Unsupported image format: {image_path}")
+            
+            # Create output directory
             output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Get image format and metadata
-            with Image.open(image_path) as img:
-                format = img.format or 'UNKNOWN'
-                metadata = {
-                    'original_format': format,
-                    'width': img.width,
-                    'height': img.height,
-                    'mode': img.mode,
+            
+            # Define output paths
+            if image_path.suffix.lower() in ['.heic', '.heif']:
+                output_path = output_dir / f"{image_path.stem}.jpg"
+            else:
+                output_path = output_dir / image_path.name
+            
+            # Convert and get info
+            info = await self.convert_image(image_path)
+            if not info.success:
+                return info
+            
+            # Process the image and save to output location
+            result = await self.get_image_info(image_path, output_path)
+            if not result.success:
+                return result
+            
+            # Update metadata with processing info
+            metadata = result.metadata
+            metadata.update({
+                'processing': {
+                    'timestamp': datetime.now().isoformat(),
+                    'original_path': str(image_path),
+                    'output_path': str(output_path),
+                    'success': True
                 }
-
-                # Add EXIF data if available
-                if hasattr(img, '_getexif') and img._getexif() is not None:
-                    exif = {
-                        ExifTags.TAGS[k]: v
-                        for k, v in img._getexif().items()
-                        if k in ExifTags.TAGS
-                    }
-                    metadata['exif'] = exif
-
-            # Copy image to output directory
-            output_path = output_dir / image_path.name
-            shutil.copy2(image_path, output_path)
-
-            # Add TODO comment for image processing
-            description = "//TODO: IMAGE PROCESSING NOT WORKING"
-
+            })
+            
+            # Save metadata to JSON file
+            metadata_file = output_path.with_suffix('.json')
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
+            
             return ImageInfo(
                 success=True,
-                content_type='image',
+                content_type=metadata['content_type'],
                 metadata=metadata,
-                description=description,
+                description="Image processed successfully",
                 visible_text=None,
                 context=None,
                 timings={},
                 error=None
             )
-
+            
         except Exception as e:
-            self.logger.error(f"Error processing image {image_path}: {str(e)}")
+            self.logger.error(f"Failed to process image {image_path}: {str(e)}")
             return ImageInfo(
                 success=False,
-                content_type='image',
+                content_type=None,
                 metadata={},
                 description=None,
                 visible_text=None,

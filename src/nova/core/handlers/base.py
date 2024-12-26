@@ -84,7 +84,7 @@ class BaseHandler(ABC, LoggerMixin):
         
         # Initialize managers and utilities
         self.file_ops = FileOperationsManager()
-        self.metrics = MetricsTracker(self.__class__.__name__)
+        self.metrics = MetricsTracker(name=self.__class__.__name__)
         
         # Initialize state
         self.stats = {

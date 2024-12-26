@@ -74,6 +74,11 @@ def markdown_handler():
     """Create a markdown handler instance for testing."""
     return MarkdownHandler()
 
+@pytest.fixture
+def processor(markdown_processor):
+    """Create processor instance for testing."""
+    return markdown_processor
+
 @pytest.mark.asyncio
 async def test_simple_markdown_processing(markdown_processor):
     """Test processing of simple markdown with basic formatting."""
@@ -144,18 +149,48 @@ async def test_attachments_processing(markdown_processor):
     assert "xlsx_test.xlsx" in result.content
 
 @pytest.mark.asyncio
-async def test_complex_document_processing(markdown_processor):
-    """Test processing of complex markdown with multiple elements."""
-    input_file = get_test_file_path("05_complex_document.md")
+async def test_complex_document_processing(processor):
+    """Test processing of a complex markdown document."""
+    input_file = Path("tests/data/markdown/05_complex_document.md")
     assert input_file.exists(), f"Test file not found: {input_file}"
     
-    await markdown_processor.setup()
-    result = await markdown_processor.process(input_file, {})
-    assert result is not None
+    await processor.setup()
+    result = await processor.process(input_file, {})
     assert result.success
-    
-    # Verify frontmatter
+
+    # Check basic content is present
+    assert "Complex Document Example" in result.content
+    assert "Overview" in result.content
+    assert "Technical Details" in result.content
+
+    # Check code blocks are preserved
+    assert "```python" in result.content
+    assert "def process_markdown" in result.content
+    assert "```json" in result.content
+
+    # Check image references
+    assert "![Architecture Overview]" in result.content
+    assert "![Diagram]" in result.content
+    assert "![Final]" in result.content
+
+    # Check links
+    assert "[Implementation Guide]" in result.content
+    assert "[API Documentation]" in result.content
+
+    # Check table is preserved
+    assert "| Feature | Status | Notes |" in result.content
+    assert "| Parsing | ✅ | Basic functionality |" in result.content
+
+    # Check metadata
     assert result.metadata is not None
-    assert result.metadata.get("title") == "Complex Test Document"
-    assert result.metadata.get("author") == "Test User"
-    assert "test" in result.metadata.get("tags", []) 
+    assert "frontmatter" in result.metadata
+    assert result.metadata["frontmatter"]["title"] == "Complex Test Document"
+    assert result.metadata["frontmatter"]["author"] == "Test User"
+    assert result.metadata["frontmatter"]["tags"] == ["test", "markdown", "complex"]
+
+    # Check content markers
+    assert "content_markers" in result.metadata
+    assert "images" in result.metadata["content_markers"]
+    assert len(result.metadata["content_markers"]["images"]) == 3  # Three images in the document
+    assert "code_blocks" in result.metadata["content_markers"]
+    assert len(result.metadata["content_markers"]["code_blocks"]) == 2  # Two code blocks 

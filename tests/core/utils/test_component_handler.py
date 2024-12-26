@@ -1,9 +1,9 @@
-"""Test cases for component handling."""
+"""Tests for component handler."""
 
 import pytest
-from typing import Dict, Any
+from pathlib import Path
 
-from nova.core.utils.component_handler import ComponentHandler
+from nova.core.component_handler import ComponentHandler
 from nova.core.errors import ComponentError, ConfigurationError
 
 @pytest.fixture

@@ -7,6 +7,7 @@ class HandlerConfig(BaseModel):
     """Configuration for a handler component."""
     type: str
     base_handler: Optional[str] = "nova.phases.core.base_handler.BaseHandler"
+    options: Optional[Dict[str, Any]] = Field(default_factory=dict)
     document_conversion: Optional[bool] = False
     image_processing: Optional[bool] = False
     metadata_preservation: Optional[bool] = False

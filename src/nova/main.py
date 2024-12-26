@@ -20,6 +20,7 @@ from nova.phases.consolidate.processor import MarkdownConsolidateProcessor
 from nova.phases.aggregate.processor import MarkdownAggregateProcessor
 from nova.phases.split.processor import ThreeFileSplitProcessor
 from nova.core.config import ProcessorConfig, HandlerConfig, PathConfig, PipelineConfig
+from nova.core.file_info_provider import FileInfoProvider
 
 logger = get_logger(__name__)
 console = Console()
@@ -33,9 +34,17 @@ class Phase(Enum):
     SPLIT = "Split"
     CLEANUP = "Cleanup"
 
+class ProcessingError(Exception):
+    """Error raised when processing files fails."""
+    pass
+
 @dataclass
 class ProcessingStats:
     """Statistics for pipeline processing."""
+    total_files: int = 0
+    markdown_files: int = 0
+    image_files: int = 0
+    document_files: int = 0
     files_processed: int = 0
     files_failed: int = 0
     errors: List[str] = field(default_factory=list)
@@ -54,210 +63,115 @@ def format_time(seconds: float) -> str:
     minutes = minutes % 60
     return f"{hours}h {minutes}m {seconds:.1f}s"
 
-async def process_files(input_dir: Path, output_dir: Path, analyze_images: bool = False) -> ProcessingStats:
-    """Process files in the input directory."""
-    stats = ProcessingStats()
-    start_time = time.time()
+async def process_files(input_path: Path, output_path: Path, analyze_images: bool = False) -> ProcessingStats:
+    """Process markdown files.
     
+    Args:
+        input_path: Path to input directory
+        output_path: Path to output directory
+        analyze_images: Whether to analyze images
+        
+    Returns:
+        ProcessingStats containing processing results
+    """
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            # SETUP phase
-            setup_task = progress.add_task(f"[cyan]Phase: {Phase.SETUP.value}", total=2)
-            phase_start = time.time()
-            
-            # Initialize processors
-            progress.update(setup_task, advance=1, description=f"[cyan]Phase: {Phase.SETUP.value} (Initializing)")
-            
-            # Get phase directories
-            parse_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_PARSE'))
-            consolidate_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE'))
-            aggregate_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE'))
-            split_dir = Path(os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT'))
-            
-            # Create processor and pipeline configs
-            processor_config = ProcessorConfig(
-                name="markdown",
-                description="Process markdown files",
-                output_dir=str(parse_dir),
-                processor="MarkdownProcessor",
-                enabled=True,
-                handlers=[
-                    HandlerConfig(
-                        type="MarkdownHandler",
-                        base_handler="nova.phases.parse.handlers.markdown.MarkdownHandler",
-                        image_processing=analyze_images
-                    )
-                ]
-            )
-            
-            pipeline_config = PipelineConfig(
-                paths=PathConfig(base_dir=str(input_dir)),
-                phases=[processor_config],
-                input_dir=str(input_dir),
-                output_dir=str(output_dir),
-                temp_dir=str(Path(os.environ.get('NOVA_TEMP_DIR', ''))),
-                enabled=True
-            )
-            
-            # Initialize processors
-            markdown_processor = MarkdownProcessor(
-                processor_config=ProcessorConfig(
-                    name="markdown",
-                    description="Process markdown files",
-                    output_dir=str(parse_dir),
-                    processor="MarkdownProcessor",
-                    enabled=True,
-                    components={
-                        'handlers': {
-                            'MarkdownHandler': {
-                                'base_dir': str(input_dir),
-                                'output_dir': str(parse_dir),
-                                'input_dir': str(input_dir),
-                                'analyze_images': analyze_images
-                            }
-                        }
-                    },
-                    handlers=[
-                        HandlerConfig(
-                            type="MarkdownHandler",
-                            base_handler="nova.phases.parse.handlers.markdown.MarkdownHandler",
-                            image_processing=analyze_images
-                        )
-                    ]
-                ),
-                pipeline_config=pipeline_config
-            )
-            consolidate_processor = MarkdownConsolidateProcessor(processor_config, pipeline_config)
-            aggregate_processor = MarkdownAggregateProcessor(processor_config, pipeline_config)
-            split_processor = ThreeFileSplitProcessor(processor_config, pipeline_config)
-            
-            # Set up processors
-            if not await markdown_processor.setup():
-                raise Exception("Failed to set up markdown processor")
-            if not await consolidate_processor.setup():
-                raise Exception("Failed to set up consolidate processor")
-            if not await aggregate_processor.setup():
-                raise Exception("Failed to set up aggregate processor")
-            if not await split_processor.setup():
-                raise Exception("Failed to set up split processor")
-            
-            # Count input files
-            progress.update(setup_task, advance=1, description=f"[cyan]Phase: {Phase.SETUP.value} (Counting files)")
-            input_files = list(input_dir.rglob("*"))
-            markdown_files = [f for f in input_files if f.suffix.lower() == '.md']
-            image_files = [f for f in input_files if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.heif']]
-            document_files = [f for f in input_files if f.suffix.lower() in ['.pdf', '.docx', '.xlsx', '.txt', '.csv']]
-            
-            stats.phase_timings[Phase.SETUP] = time.time() - phase_start
-            progress.update(setup_task, completed=True)
-            
-            # PARSE phase
-            parse_task = progress.add_task(
-                f"[green]Phase: {Phase.PARSE.value}",
-                total=len(markdown_files)
-            )
-            phase_start = time.time()
-            
-            # Process each markdown file
-            for file in markdown_files:
-                try:
-                    context = {
-                        'output_dir': parse_dir,
-                        'attachments_dir': file.parent
+        start_time = time.time()
+        
+        # Initialize processors
+        pipeline_config = PipelineConfig(
+            paths={
+                'base_dir': str(Path(os.path.expandvars(os.environ.get('NOVA_BASE_DIR', '')))),
+                'input_dir': str(Path(os.path.expandvars(os.environ.get('NOVA_INPUT_DIR', '')))),
+                'output_dir': str(Path(os.path.expandvars(os.environ.get('NOVA_OUTPUT_DIR', ''))))
+            },
+            phases=[
+                ProcessorConfig(
+                    name='MARKDOWN_PARSE',
+                    description='Parse and process markdown files',
+                    output_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_PARSE', '')))),
+                    processor='MarkdownProcessor',
+                    options={
+                        'analyze_images': analyze_images
                     }
-                    result = await markdown_processor.process(file, context)
-                    stats.files_processed += 1
-                    if result:
-                        progress.update(parse_task, advance=1)
-                    else:
-                        stats.files_failed += 1
-                        stats.errors.append(f"Failed to process {file.name}")
-                except Exception as e:
-                    stats.files_failed += 1
-                    stats.errors.append(f"Error processing {file.name}: {str(e)}")
-                    logger.error(f"Failed to process {file.name}: {str(e)}")
-            
-            stats.phase_timings[Phase.PARSE] = time.time() - phase_start
-            progress.update(parse_task, completed=True)
-            
-            # CONSOLIDATE phase
-            consolidate_task = progress.add_task(
-                f"[yellow]Phase: {Phase.CONSOLIDATE.value}",
-                total=1
-            )
-            phase_start = time.time()
-            
+                ),
+                ProcessorConfig(
+                    name='MARKDOWN_CONSOLIDATE',
+                    description='Consolidate markdown files',
+                    output_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE', '')))),
+                    processor='MarkdownConsolidateProcessor'
+                ),
+                ProcessorConfig(
+                    name='MARKDOWN_AGGREGATE',
+                    description='Aggregate markdown files',
+                    output_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE', '')))),
+                    processor='MarkdownAggregateProcessor'
+                ),
+                ProcessorConfig(
+                    name='MARKDOWN_SPLIT',
+                    description='Split aggregated markdown into summary, raw notes, and attachments',
+                    output_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT', '')))),
+                    processor='ThreeFileSplitProcessor'
+                )
+            ]
+        )
+        
+        markdown_processor = MarkdownProcessor(
+            processor_config=pipeline_config.phases[0],
+            pipeline_config=pipeline_config
+        )
+        
+        consolidate_processor = MarkdownConsolidateProcessor(
+            processor_config=pipeline_config.phases[1],
+            pipeline_config=pipeline_config
+        )
+        
+        aggregate_processor = MarkdownAggregateProcessor(
+            processor_config=pipeline_config.phases[2],
+            pipeline_config=pipeline_config
+        )
+        
+        split_processor = ThreeFileSplitProcessor(
+            processor_config=pipeline_config.phases[3],
+            pipeline_config=pipeline_config
+        )
+        
+        # Process files
+        markdown_files = list(input_path.rglob('*.md'))
+        logger.info(f"Found {len(markdown_files)} markdown files in {input_path}")
+        
+        failed_files = 0
+        errors = []
+        for file in markdown_files:
             try:
-                await consolidate_processor.process()
-                progress.update(consolidate_task, advance=1)
+                await markdown_processor.process(file)
             except Exception as e:
-                stats.errors.append(f"Error in consolidation phase: {str(e)}")
-                logger.error(f"Failed to consolidate: {str(e)}")
-            
-            stats.phase_timings[Phase.CONSOLIDATE] = time.time() - phase_start
-            progress.update(consolidate_task, completed=True)
-            
-            # AGGREGATE phase
-            aggregate_task = progress.add_task(
-                f"[blue]Phase: {Phase.AGGREGATE.value}",
-                total=1
-            )
-            phase_start = time.time()
-            
-            try:
-                await aggregate_processor.process()
-                progress.update(aggregate_task, advance=1)
-            except Exception as e:
-                stats.errors.append(f"Error in aggregation phase: {str(e)}")
-                logger.error(f"Failed to aggregate: {str(e)}")
-            
-            stats.phase_timings[Phase.AGGREGATE] = time.time() - phase_start
-            progress.update(aggregate_task, completed=True)
-            
-            # SPLIT phase
-            split_task = progress.add_task(
-                f"[magenta]Phase: {Phase.SPLIT.value}",
-                total=1
-            )
-            phase_start = time.time()
-            
-            try:
-                await split_processor.process()
-                progress.update(split_task, advance=1)
-            except Exception as e:
-                stats.errors.append(f"Error in split phase: {str(e)}")
-                logger.error(f"Failed to split: {str(e)}")
-            
-            stats.phase_timings[Phase.SPLIT] = time.time() - phase_start
-            progress.update(split_task, completed=True)
-            
-            # CLEANUP phase
-            cleanup_task = progress.add_task(
-                f"[red]Phase: {Phase.CLEANUP.value}",
-                total=1
-            )
-            phase_start = time.time()
-            
-            # Perform cleanup operations here
-            progress.update(cleanup_task, advance=1)
-            
-            stats.phase_timings[Phase.CLEANUP] = time.time() - phase_start
-            progress.update(cleanup_task, completed=True)
-    
+                error_msg = f"Failed to process {file}: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+                failed_files += 1
+                
+        await consolidate_processor.process()
+        await aggregate_processor.process()
+        await split_processor.process()
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        
+        return ProcessingStats(
+            total_files=len(list(input_path.rglob('*'))),
+            markdown_files=len(markdown_files),
+            image_files=len(list(input_path.rglob('*.jpg')) + list(input_path.rglob('*.jpeg')) + list(input_path.rglob('*.png')) + list(input_path.rglob('*.gif'))),
+            document_files=len(list(input_path.rglob('*.pdf')) + list(input_path.rglob('*.docx')) + list(input_path.rglob('*.xlsx'))),
+            files_processed=len(markdown_files),
+            files_failed=failed_files,
+            errors=errors,
+            timings={'total': total_time},
+            phase_timings={}
+        )
+        
     except Exception as e:
-        stats.errors.append(f"Pipeline error: {str(e)}")
-        logger.error(f"Pipeline failed: {str(e)}")
-    
-    stats.timings['total'] = time.time() - start_time
-    return stats
+        logger.error(f"Failed to process files: {e}")
+        raise ProcessingError(f"Failed to process files: {e}")
 
 def display_summary(stats: ProcessingStats, input_dir: Path) -> None:
     """Display processing summary."""
@@ -311,29 +225,149 @@ def display_summary(stats: ProcessingStats, input_dir: Path) -> None:
 async def main() -> int:
     """Main entry point."""
     try:
-        # Get environment variables
-        input_dir = Path(os.environ.get('NOVA_INPUT_DIR', ''))
-        output_dir = Path(os.environ.get('NOVA_OUTPUT_DIR', ''))
-        analyze_images = os.environ.get('NOVA_ANALYZE_IMAGES', '').lower() == 'true'
+        # Get directories from environment
+        parse_dir = Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_PARSE', '')))
+        consolidate_dir = Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE', '')))
+        aggregate_dir = Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE', '')))
+        split_dir = Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT', '')))
         
-        if not input_dir.exists():
-            console.print(f"[red]Error: Input directory {input_dir} does not exist[/red]")
-            return 1
+        # Create pipeline configuration
+        config = PipelineConfig(
+            phases=[
+                PhaseConfig(
+                    name='parse',
+                    description='Parse markdown files',
+                    processor='MarkdownParseProcessor',
+                    input_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_INPUT_DIR', '')))),
+                    output_dir=str(parse_dir),
+                    temp_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_TEMP_DIR', '')))),
+                    analyze_images=os.environ.get('NOVA_ANALYZE_IMAGES', '').lower() == 'true'
+                ),
+                PhaseConfig(
+                    name='consolidate',
+                    description='Consolidate markdown files',
+                    processor='MarkdownConsolidateProcessor',
+                    input_dir=str(parse_dir),
+                    output_dir=str(consolidate_dir)
+                ),
+                PhaseConfig(
+                    name='aggregate',
+                    description='Aggregate markdown files',
+                    processor='MarkdownAggregateProcessor',
+                    input_dir=str(consolidate_dir),
+                    output_dir=str(aggregate_dir)
+                ),
+                PhaseConfig(
+                    name='split',
+                    description='Split markdown files',
+                    processor='MarkdownSplitProcessor',
+                    input_dir=str(aggregate_dir),
+                    output_dir=str(split_dir)
+                )
+            ]
+        )
         
-        # Create output directory
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Process files
-        stats = await process_files(input_dir, output_dir, analyze_images)
-        
-        # Display summary
-        display_summary(stats, input_dir)
-        
-        return 0 if stats.files_failed == 0 and not stats.errors else 1
+        # Create and run pipeline
+        pipeline = Pipeline(config)
+        pipeline.run()
         
     except Exception as e:
-        console.print(f"[red]Error: {str(e)}[/red]")
-        return 1
+        logger.error(f"Pipeline failed: {str(e)}")
+        raise
+
+def get_env_path(key: str, default: str = '') -> Path:
+    """Get environment variable as Path with proper expansion."""
+    value = os.environ.get(key, default)
+    expanded = os.path.expandvars(value)
+    return Path(expanded)
+
+def get_pipeline_config() -> Dict[str, Any]:
+    """Get pipeline configuration."""
+    return {
+        'phases': {
+            'MARKDOWN_PARSE': {
+                'description': 'Parse and process markdown files with embedded content',
+                'output_dir': get_env_path('NOVA_PHASE_MARKDOWN_PARSE'),
+                'processor': 'MarkdownProcessor',
+                'components': {
+                    'markdown_processor': {
+                        'parser': 'markitdown==0.0.1a3',
+                        'config': {
+                            'document_conversion': True,
+                            'image_processing': True,
+                            'metadata_preservation': True
+                        }
+                    }
+                }
+            },
+            'MARKDOWN_CONSOLIDATE': {
+                'description': 'Consolidate markdown files with their attachments',
+                'output_dir': get_env_path('NOVA_PHASE_MARKDOWN_CONSOLIDATE'),
+                'processor': 'MarkdownConsolidateProcessor',
+                'components': {
+                    'consolidate_processor': {
+                        'config': {
+                            'group_by_root': True,
+                            'handle_attachments': True,
+                            'preserve_structure': True
+                        }
+                    }
+                }
+            },
+            'MARKDOWN_AGGREGATE': {
+                'description': 'Aggregate all consolidated markdown files into a single file',
+                'output_dir': get_env_path('NOVA_PHASE_MARKDOWN_AGGREGATE'),
+                'processor': 'MarkdownAggregateProcessor',
+                'components': {
+                    'aggregate_processor': {
+                        'config': {
+                            'output_filename': 'all_merged_markdown.md',
+                            'include_file_headers': True,
+                            'add_separators': True
+                        }
+                    }
+                }
+            },
+            'MARKDOWN_SPLIT_THREEFILES': {
+                'description': 'Split aggregated markdown into summary, raw notes, and attachments',
+                'output_dir': get_env_path('NOVA_PHASE_MARKDOWN_SPLIT'),
+                'processor': 'ThreeFileSplitProcessor',
+                'components': {
+                    'split_processor': {
+                        'config': {
+                            'output_files': {
+                                'summary': 'summary.md',
+                                'raw_notes': 'raw_notes.md',
+                                'attachments': 'attachments.md'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+def get_base_config() -> Dict[str, Any]:
+    """Get base configuration."""
+    return {
+        'base_dir': get_env_path('NOVA_BASE_DIR'),
+        'input_dir': get_env_path('NOVA_INPUT_DIR'),
+        'output_dir': get_env_path('NOVA_OUTPUT_DIR'),
+        'processing_dir': get_env_path('NOVA_PROCESSING_DIR'),
+        'temp_dir': get_env_path('NOVA_TEMP_DIR'),
+        'state_dir': get_env_path('NOVA_STATE_DIR'),
+        'image_dirs': {
+            'original': get_env_path('NOVA_ORIGINAL_IMAGES_DIR'),
+            'processed': get_env_path('NOVA_PROCESSED_IMAGES_DIR'),
+            'metadata': get_env_path('NOVA_IMAGE_METADATA_DIR'),
+            'cache': get_env_path('NOVA_IMAGE_CACHE_DIR'),
+            'temp': get_env_path('NOVA_IMAGE_TEMP_DIR')
+        },
+        'office_dirs': {
+            'assets': get_env_path('NOVA_OFFICE_ASSETS_DIR'),
+            'temp': get_env_path('NOVA_OFFICE_TEMP_DIR')
+        }
+    }
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main())) 
