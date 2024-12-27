@@ -1,200 +1,233 @@
-"""Handler for adding navigation elements to aggregated content."""
+"""Handler for adding navigation to markdown files."""
 
-import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
-import aiofiles
+from typing import Any, Dict, List, Optional
+import asyncio
+import os
+from rich.console import Console
 
-from ....core.base_handler import BaseHandler, HandlerResult
-from nova.core.logging import get_logger
+from nova.core.base_handler import BaseHandler
+from nova.core.models.result import ProcessingResult
 
-logger = get_logger(__name__)
 
 class NavigationHandler(BaseHandler):
-    """Handles adding navigation elements to aggregated content."""
+    """Handler for adding navigation to markdown files."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the navigation handler.
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        console: Optional[Console] = None
+    ):
+        """Initialize the handler.
         
         Args:
-            config: Optional configuration overrides
+            config: Configuration dictionary
+            console: Optional console instance
         """
-        super().__init__(config)
-        self.config = config or {}
+        super().__init__(config=config, console=console)
         
-        # Set up navigation templates
+        # Get required configuration
+        if not config:
+            raise ValueError("Configuration must be provided")
+            
+        # Get pipeline and processor configs
+        self.pipeline_config = config.get('pipeline_config', {})
+        self.processor_config = config.get('processor_config', {})
+        
+        # Get required paths
+        self.input_dir = str(Path(config.get('input_dir', '')))
+        self.output_dir = str(Path(config.get('output_dir', '')))
+        self.base_dir = str(Path(config.get('base_dir', '')))
+        
+        if not self.input_dir or not self.output_dir:
+            raise ValueError("input_dir and output_dir must be specified in configuration")
+        
+        # Get navigation configuration
+        self.nav_config = config.get('navigation', {})
+        self.link_style = self.nav_config.get('link_style', 'text')
+        self.add_top_link = self.nav_config.get('add_top_link', True)
+        
+        # Configure navigation templates
         self.templates = {
             'text': {
-                'prev': '← Previous: [{title}]({link})',
-                'next': 'Next: [{title}]({link}) →',
-                'top': '[↑ Back to Top](#table-of-contents)'
+                'prev': "← Previous: [{title}]({link})",
+                'next': "Next: [{title}]({link}) →",
+                'top': "[↑ Back to Top](#table-of-contents)"
             },
             'arrow': {
-                'prev': '←',
-                'next': '→',
-                'top': '↑'
+                'prev': "←",
+                'next': "→",
+                'top': "↑"
             }
         }
-        
-        # Configure navigation
-        self.link_style = self.config.get('link_style', 'text')
-        self.position = self.config.get('position', 'bottom')
-        self.add_top_link = self.config.get('add_top_link', True)
     
-    def can_handle(self, file_path: Path, attachments: Optional[List[Path]] = None) -> bool:
-        """Check if navigation can be added.
+    async def initialize(self) -> None:
+        """Initialize the handler."""
+        await super().initialize()
+        
+        # Create output directory
+        os.makedirs(self.output_dir, exist_ok=True)
+    
+    async def can_handle(self, file_path: Path) -> bool:
+        """Check if this handler can process the file.
         
         Args:
             file_path: Path to the file to check
-            attachments: Optional list of attachments (not used)
             
         Returns:
-            bool: True if file is markdown
+            True if this handler can process the file, False otherwise
         """
-        return file_path.suffix.lower() in {'.md', '.markdown'}
+        return file_path.suffix.lower() == '.md'
     
-    async def process(
-        self, 
-        file_path: Path, 
-        context: Dict[str, Any],
-        attachments: Optional[List[Path]] = None
-    ) -> Dict[str, Any]:
-        """Process and add navigation.
+    async def _process_impl(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+        """Process a markdown file.
         
         Args:
-            file_path: Path to the markdown file
-            context: Processing context
-            attachments: Optional list of attachments (not used)
+            file_path: Path to the file to process
+            context: Optional processing context
             
         Returns:
-            Dict containing:
-                - content: Content with added navigation
-                - metadata: Navigation metadata
-                - processed_attachments: Empty list
-                - errors: List of processing errors
+            ProcessingResult containing processed content and metadata
         """
-        result = {
-            'content': '',
-            'metadata': {
-                'navigation': {
-                    'sections': [],
-                    'added_elements': []
-                }
-            },
-            'processed_attachments': [],
-            'errors': []
-        }
-        
         try:
-            # Read content if not provided in context
-            content = context.get('content')
-            if not content:
-                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                    content = await f.read()
+            # Use configured output directory
+            output_dir = Path(self.output_dir)
             
-            # Extract sections
-            sections = self._extract_sections(content)
-            result['metadata']['navigation']['sections'] = [s['title'] for s in sections]
+            async with self.monitoring.async_monitor_operation("read_file"):
+                # Read input file
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                # Record file size metric
+                self.monitoring.set_gauge("file_size", file_path.stat().st_size)
             
-            # Add navigation elements
-            result['content'] = self._add_navigation(content, sections)
+            async with self.monitoring.async_monitor_operation("process_content"):
+                # Get navigation context
+                prev_link = context.get('prev_link', {}) if context else {}
+                next_link = context.get('next_link', {}) if context else {}
+                
+                # Add navigation
+                nav_content = []
+                
+                # Add previous link if available
+                if prev_link:
+                    template = self.templates[self.link_style]['prev']
+                    nav_content.append(template.format(
+                        title=prev_link.get('title', ''),
+                        link=prev_link.get('link', '')
+                    ))
+                
+                # Add next link if available
+                if next_link:
+                    template = self.templates[self.link_style]['next']
+                    nav_content.append(template.format(
+                        title=next_link.get('title', ''),
+                        link=next_link.get('link', '')
+                    ))
+                
+                # Add top link if enabled
+                if self.add_top_link:
+                    nav_content.append(self.templates[self.link_style]['top'])
+                
+                # Combine navigation with content
+                processed_content = content
+                if nav_content:
+                    nav_section = "\n\n---\n\n" + " | ".join(nav_content)
+                    processed_content += nav_section
+                
+                # Record content metrics
+                self.monitoring.set_gauge("content_lines", len(content.splitlines()))
+                if nav_content:
+                    self.monitoring.increment_counter("navigation_links_added")
+            
+            # Create result
+            result = ProcessingResult(
+                success=True,
+                content=processed_content,
+                metadata={
+                    'input_file': str(file_path),
+                    'output_dir': str(output_dir),
+                    'file_size': file_path.stat().st_size,
+                    'line_count': len(content.splitlines()),
+                    'has_navigation': bool(nav_content)
+                }
+            )
+            result.add_processed_file(file_path)
+            
+            # Record success metrics
+            self.monitoring.increment_counter("files_processed")
+            
+            return result
             
         except Exception as e:
-            result['errors'].append(f"Error adding navigation: {str(e)}")
-        
-        return result
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.monitoring.record_error(error_msg)
+            return ProcessingResult(success=False, errors=[error_msg])
     
-    def validate_output(self, result: Dict[str, Any]) -> bool:
-        """Validate processing results.
+    async def _post_process(self, result: ProcessingResult) -> None:
+        """Run post-processing hooks.
         
         Args:
-            result: Processing results to validate
+            result: Processing result
+        """
+        try:
+            async with self.monitoring.async_monitor_operation("post_process"):
+                for hook in self._post_process_hooks:
+                    await hook(result)
+        except Exception as e:
+            self.monitoring.record_error(f"Error in post-processing: {str(e)}")
+    
+    async def _on_error(self, error: Exception, result: ProcessingResult) -> None:
+        """Run error hooks.
+        
+        Args:
+            error: Exception that occurred
+            result: Processing result
+        """
+        try:
+            async with self.monitoring.async_monitor_operation("error_hooks"):
+                for hook in self._error_hooks:
+                    await hook(error, result)
+        except Exception as e:
+            self.monitoring.record_error(f"Error in error hooks: {str(e)}")
+    
+    def validate_output(self, result: ProcessingResult) -> bool:
+        """Validate the processing results.
+        
+        Args:
+            result: The ProcessingResult to validate
             
         Returns:
-            bool: True if results are valid
+            True if results are valid, False otherwise
         """
-        required_keys = {'content', 'metadata', 'processed_attachments', 'errors'}
-        return (
-            all(key in result for key in required_keys) and
-            isinstance(result['content'], str) and
-            isinstance(result['metadata'], dict) and
-            isinstance(result['processed_attachments'], list) and
-            isinstance(result['errors'], list) and
-            'navigation' in result['metadata']
-        )
+        return result.success and bool(result.content)
     
-    def _extract_sections(self, content: str) -> List[Dict[str, Any]]:
-        """Extract sections and their titles from content."""
-        sections = []
-        
-        # Find all section markers and titles
-        start_pattern = r'<!-- START_FILE: (.+?) -->\n(.*?)<!-- END_FILE:'
-        matches = re.finditer(start_pattern, content, re.DOTALL)
-        
-        for match in matches:
-            filename = match.group(1)
-            section_content = match.group(2)
-            
-            # Extract title from first heading or use filename
-            title = self._extract_title(section_content) or filename
-            
-            sections.append({
-                'filename': filename,
-                'title': title,
-                'start': match.start(),
-                'end': match.end()
-            })
-        
-        return sections
+    async def _cleanup_impl(self) -> None:
+        """Clean up resources."""
+        try:
+            async with self.monitoring.async_monitor_operation("cleanup"):
+                # Clean up any processed files that had errors
+                for file_path in self.processed_files:
+                    if file_path.exists() and not self.validate_output(file_path):
+                        file_path.unlink()
+        except Exception as e:
+            self.monitoring.record_error(f"Error during cleanup: {str(e)}")
     
-    def _extract_title(self, content: str) -> Optional[str]:
-        """Extract title from first heading in content."""
-        heading_pattern = r'^#\s+(.+)$'
-        match = re.search(heading_pattern, content, re.MULTILINE)
-        return match.group(1) if match else None
-    
-    def _add_navigation(self, content: str, sections: List[Dict[str, Any]]) -> str:
-        """Add navigation elements to content."""
-        templates = self.templates[self.link_style]
+    async def rollback(self, result: ProcessingResult) -> None:
+        """Roll back any changes made during processing.
         
-        # Process each section
-        for i, section in enumerate(sections):
-            nav_elements = []
-            
-            # Previous link
-            if i > 0:
-                prev_section = sections[i - 1]
-                nav_elements.append(templates['prev'].format(
-                    title=prev_section['title'],
-                    link=f"#{self._make_anchor(prev_section['title'])}"
-                ))
-            
-            # Top link
-            if self.add_top_link:
-                nav_elements.append(templates['top'])
-            
-            # Next link
-            if i < len(sections) - 1:
-                next_section = sections[i + 1]
-                nav_elements.append(templates['next'].format(
-                    title=next_section['title'],
-                    link=f"#{self._make_anchor(next_section['title'])}"
-                ))
-            
-            # Create navigation block
-            if nav_elements:
-                nav_block = '\n\n---\n' + ' | '.join(nav_elements) + '\n\n'
-                
-                # Add navigation based on position
-                if self.position in ('top', 'both'):
-                    content = content[:section['start']] + nav_block + content[section['start']:]
-                if self.position in ('bottom', 'both'):
-                    end_pos = content.find(f"<!-- END_FILE: {section['filename']} -->")
-                    if end_pos != -1:
-                        content = content[:end_pos] + nav_block + content[end_pos:]
-        
-        return content
-    
-    def _make_anchor(self, title: str) -> str:
-        """Convert title to HTML anchor."""
-        return re.sub(r'[^\w\s-]', '', title).lower().replace(' ', '-') 
+        Args:
+            result: The ProcessingResult to roll back
+        """
+        try:
+            async with self.monitoring.async_monitor_operation("rollback"):
+                # Clean up any created files
+                for file_path in result.processed_files:
+                    try:
+                        if file_path.exists():
+                            file_path.unlink()
+                    except Exception as e:
+                        error_msg = f"Error cleaning up file {file_path}: {str(e)}"
+                        self.monitoring.record_error(error_msg)
+        except Exception as e:
+            self.monitoring.record_error(f"Error during rollback: {str(e)}") 

@@ -1,100 +1,118 @@
-"""Processor for parsing markdown files."""
+"""Markdown parse processor."""
 
-import os
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Type
+from typing import Dict, Any, Optional
 
-from rich.console import Console
+import markitdown
 
-from ...core.pipeline.base import BaseProcessor
-from ...core.utils.metrics import MetricsTracker
-from ...core.utils.timing import TimingManager
-from ...core.config import ProcessorConfig, PipelineConfig
-
-from .handlers.markdown import MarkdownHandler
-from .handlers.consolidation import ConsolidationHandler
+from nova.core.pipeline.processor import PipelineProcessor
+from nova.core.errors import ValidationError, ProcessingError
 
 
-class MarkdownParseProcessor(BaseProcessor):
+class MarkdownParseProcessor(PipelineProcessor):
     """Processor for parsing markdown files."""
-    
-    def __init__(
-        self,
-        processor_config: ProcessorConfig,
-        pipeline_config: PipelineConfig,
-        timing: Optional[TimingManager] = None,
-        metrics: Optional[MetricsTracker] = None,
-        console: Optional[Console] = None
-    ):
-        """Initialize the processor.
+
+    def __init__(self, config: Dict[str, Any]):
+        """Initialize processor.
         
         Args:
-            processor_config: Processor configuration
-            pipeline_config: Pipeline configuration
-            timing: Optional timing utility
-            metrics: Optional metrics tracker
-            console: Optional console logger
+            config: Processor configuration
+            
+        Raises:
+            ValidationError: If configuration is invalid
         """
-        super().__init__(processor_config, pipeline_config, timing, metrics, console)
-        self.processed_files: Set[str] = set()
-        self.failed_files: Set[str] = set()
-        self.skipped_files: Set[str] = set()
-        self.errors: List[str] = []
+        super().__init__(config)
+        
+        # Initialize markdown parser
+        parser_config = self.config.get("markdown_processor", {})
+        self.parser = markitdown.Parser(**parser_config)
         
         # Initialize handlers
-        config = {
-            'input_dir': str(self.input_dir) if self.input_dir else '',
-            'output_dir': str(self.output_dir) if self.output_dir else '',
-            'temp_dir': str(self.temp_dir) if self.temp_dir else '',
-            'options': processor_config.options
-        }
-        self.handlers = [
-            MarkdownHandler(config),
-            ConsolidationHandler(config)
-        ]
+        self.handlers = []
+        self._initialize_handlers()
         
-    def _initialize(self) -> None:
-        """Initialize the processor."""
-        # Verify output directory exists
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+    def _initialize_handlers(self) -> None:
+        """Initialize markdown handlers."""
+        handlers_config = self.config.get("handlers", {})
+        if not isinstance(handlers_config, dict):
+            raise ValidationError("Invalid handlers configuration")
             
-    async def _process(self, file_path: str) -> None:
-        """Process a single file.
+        for name, config in handlers_config.items():
+            if not isinstance(config, dict):
+                raise ValidationError(f"Invalid handler configuration: {name}")
+                
+            # Import handler class
+            try:
+                handler_class = self._import_handler(config["base_handler"])
+                handler = handler_class(config)
+                self.handlers.append(handler)
+            except Exception as e:
+                raise ValidationError(f"Failed to initialize handler {name}: {str(e)}")
+                
+    def _import_handler(self, handler_path: str) -> type:
+        """Import handler class.
         
         Args:
-            file_path: Path to the file to process
+            handler_path: Full path to handler class
+            
+        Returns:
+            Handler class
+            
+        Raises:
+            ValidationError: If handler cannot be imported
         """
         try:
-            # Check if any handler can process the file
-            for handler in self.handlers:
-                if await handler.can_handle(file_path):
-                    result = await handler.process(file_path)
-                    if result.success:
-                        self.processed_files.add(file_path)
-                        self.metrics.increment('files_processed')
-                        self.console.print(f"[green]Handler {handler.__class__.__name__} successfully processed file: {file_path}[/green]")
-                        return
-                    else:
-                        self.failed_files.add(file_path)
-                        self.errors.extend(result.errors)
-                        error_msg = f"Handler {handler.__class__.__name__} failed to process file: {file_path}"
-                        self.console.print(f"[red]{error_msg}[/red]")
-                        return
-                else:
-                    self.console.print(f"[yellow]Handler {handler.__class__.__name__} cannot handle file: {file_path}[/yellow]")
-                    
-            # No handler could process the file
-            self.skipped_files.add(file_path)
-            warning_msg = f"No handlers could process file: {file_path}"
-            self.console.print(f"[yellow]{warning_msg}[/yellow]")
-            
+            module_path, class_name = handler_path.rsplit(".", 1)
+            module = __import__(module_path, fromlist=[class_name])
+            return getattr(module, class_name)
         except Exception as e:
-            self.failed_files.add(file_path)
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            self.errors.append(error_msg)
-            self.console.print(f"[red]{error_msg}[/red]")
+            raise ValidationError(f"Failed to import handler: {str(e)}")
             
-    def _cleanup(self) -> None:
-        """Clean up resources."""
-        pass 
+    def process(self, input_file: Path) -> None:
+        """Process markdown file.
+        
+        Args:
+            input_file: Input file path
+            
+        Raises:
+            ProcessingError: If processing fails
+        """
+        try:
+            # Validate input file
+            if not input_file.suffix.lower() in [".md", ".markdown"]:
+                raise ValidationError("Not a markdown file")
+                
+            # Parse markdown
+            with open(input_file, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            document = self.parser.parse(content)
+            
+            # Process with handlers
+            for handler in self.handlers:
+                if handler.can_handle(document):
+                    handler.process(document)
+                    
+            # Write output
+            output_file = self.output_dir / input_file.name
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(str(document))
+                
+            # Track metrics
+            self.metrics.increment_counter("files_processed")
+            self.monitoring.record_metric(
+                name="file_processed",
+                value=str(input_file),
+                tags={"phase": "markdown_parse"}
+            )
+                
+        except Exception as e:
+            raise ProcessingError(f"Failed to process {input_file}: {str(e)}")
+            
+    def cleanup(self) -> None:
+        """Clean up processor resources."""
+        super().cleanup()
+        
+        # Clean up handlers
+        for handler in self.handlers:
+            handler.cleanup() 

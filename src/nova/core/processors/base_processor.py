@@ -7,9 +7,9 @@ import logging
 
 from rich.console import Console
 
-from ..utils.metrics import MetricsTracker
-from ..utils.timing import TimingManager
-from ..models.result import ProcessingResult
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.timing import TimingManager
+from nova.core.models.result import ProcessingResult
 
 
 class BaseProcessor:

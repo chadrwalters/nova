@@ -6,10 +6,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from ...phases.parse.processor import MarkdownParseProcessor
-from ...phases.consolidate.processor import MarkdownConsolidateProcessor
-from ...phases.aggregate.processor import MarkdownAggregateProcessor
-from ...phases.split.processor import ThreeFileSplitProcessor
 
 class PhaseType(str, Enum):
     """Pipeline phase types."""
@@ -19,34 +15,17 @@ class PhaseType(str, Enum):
     MARKDOWN_AGGREGATE = "MARKDOWN_AGGREGATE"
     MARKDOWN_SPLIT_THREEFILES = "MARKDOWN_SPLIT_THREEFILES"
 
-class PhaseDefinition(BaseModel):
-    """Pipeline phase definition."""
-    
-    name: str
-    description: str
-    type: PhaseType
-    output_dir: Path
-    processor: str
-    components: Dict[str, Any]
-    
+
+class ProcessingResult(BaseModel):
+    """Result of processing operation."""
+
+    success: bool = True
+    processed_files: List[Path] = []
+    errors: List[str] = []
+    metadata: Dict[str, Any] = {}
+    content: Optional[Any] = None
+
     model_config = ConfigDict(
-        extra="allow",
-        arbitrary_types_allowed=True
-    )
-        
-class PipelinePhase(BaseModel):
-    """Pipeline phase."""
-    
-    name: str
-    definition: PhaseDefinition
-    processor: Union[
-        MarkdownParseProcessor,
-        MarkdownConsolidateProcessor,
-        MarkdownAggregateProcessor,
-        ThreeFileSplitProcessor
-    ]
-    
-    model_config = ConfigDict(
-        extra="allow",
-        arbitrary_types_allowed=True
+        arbitrary_types_allowed=True,
+        extra='allow'
     ) 

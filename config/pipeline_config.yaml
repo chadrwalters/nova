@@ -1,242 +1,91 @@
-pipeline:
-  paths:
-    base_dir: "${NOVA_BASE_DIR}"
-    input_dir: "${NOVA_INPUT_DIR}"
-    processing_dir: "${NOVA_PROCESSING_DIR}"
-    temp_dir: "${NOVA_TEMP_DIR}"
-  
-  timing:
-    thresholds:
-      warning: 5.0  # seconds
-      error: 30.0   # seconds
-  
-  components:
-    markdown_processor:
-      analyze_images: false
-      document_conversion: true
-      image_processing: true
-      metadata_preservation: true
-    
-    office_processor:
-      analyze_images: false
-      extract_text: true
-      preserve_formatting: true
-      handle_unicode: true
-    
-    image_processor:
-      analyze_images: false
-      optimize_quality: 85
-      max_dimensions: [1920, 1080]
-      preserve_metadata: true
-    
-    text_processor:
-      detect_encoding: true
-      handle_unicode: true
-      preserve_formatting: true
-  
-  phases:
-    markdown_parse:
-      name: "markdown_parse"
-      description: "Parse and process markdown files with embedded content"
-      processor: "nova.phases.parse.processor.MarkdownParseProcessor"
-      base_dir: "${NOVA_BASE_DIR}"
-      input_dir: "${NOVA_INPUT_DIR}"
-      output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
-      file_patterns:
-        - "*.md"
-        - "**/*.md"
-      components:
-        markdown_processor:
-          parser: "markitdown==0.0.1a3"
-          config:
-            document_conversion: true
-            image_processing: true
-            metadata_preservation: true
-          handlers:
-            - type: "MarkitdownHandler"
+# Pipeline Configuration Schema
+
+# TEMPORARY TESTING NOTE:
+# Currently, only the MARKDOWN_PARSE phase is enabled for testing purposes.
+# Other phases are temporarily disabled while we stabilize the parse phase functionality.
+# This is a deliberate testing strategy to ensure robust parsing before moving
+# to subsequent phases.
+
+# Global Cache Configuration
+cache:
+  enabled: true  # Enable/disable caching globally
+  max_age: 604800  # Maximum cache entry age in seconds (7 days)
+  cleanup_on_phase_transition: true  # Clean up cache between phases
+  cleanup_threshold: 0.8  # Clean up when cache size > 80% of max
+  max_size: 1073741824  # Maximum cache size in bytes (1GB)
+  report_stats: true  # Report cache statistics during execution
+
+# Pipeline Phases
+phases:
+  MARKDOWN_PARSE:
+    description: "Parse and process markdown files with embedded content"
+    output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
+    processor: "MarkdownParseProcessor"
+    cache:  # Phase-specific cache configuration (overrides global)
+      enabled: true
+      max_age: 2592000  # 30 days for markdown files
+      cleanup_threshold: 0.9  # Higher threshold for markdown cache
+    components:
+      markdown_processor:
+        parser: "markitdown==0.0.1a3"
+        config:
+          document_conversion: true
+          image_processing: true
+          metadata_preservation: true
+        handlers:
+          - MarkitdownHandler:
               base_handler: "nova.phases.core.base_handler.BaseHandler"
               document_conversion: true
               image_processing: true
               metadata_preservation: true
-            - type: "ConsolidationHandler"
+          - ConsolidationHandler:
               base_handler: "nova.phases.core.base_handler.BaseHandler"
               sort_by_date: true
               preserve_headers: true
-        image_processor:
-          formats:
-            - png
-            - jpg/jpeg
-            - gif
-            - webp
-            - heic/HEIC
-          operations:
-            - format_conversion:
-                heic_to_jpg: true
-                optimize_quality: 85
-            - size_optimization:
-                preserve_aspect_ratio: true
-                max_dimensions: [1920, 1080]
-            - metadata:
-                extract: true
-                preserve_original: true
-            - description_generation:
-                use_openai: true
-                model: "gpt-4-vision-preview"
-                cache_results: true
-          temp_files:
-            use_stable_names: true
-            cleanup_after_processing: true
-            preserve_originals: true
-        office_processor:
-          formats:
-            docx/doc:
-              extract_text: true
-              preserve_paragraphs: true
-            pptx/ppt:
-              extract_slides: true
-              include_notes: true
-            xlsx/xls:
-              table_format: true
-              preserve_headers: true
-            pdf:
-              extract_text: true
-              preserve_layout: true
-            csv:
-              detect_encoding: true
-              table_format: true
-          operations:
-            - text_extraction:
-                preserve_formatting: true
-                handle_unicode: true
-            - image_extraction:
-                process_embedded: true
-                maintain_links: true
-            - metadata:
-                preserve_all: true
-                track_changes: true
-          content_extraction:
-            try_attributes:
-              - text_content
-              - markdown
-              - text
-            fallback_to_dict: true
-            log_failures: true
-    
-    markdown_consolidate:
-      name: "markdown_consolidate"
-      description: "Consolidate markdown files with their attachments"
-      processor: "nova.phases.consolidate.processor.MarkdownConsolidateProcessor"
-      base_dir: "${NOVA_BASE_DIR}"
-      input_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
-      output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
-      file_patterns:
-        - "*.md"
-        - "**/*.md"
-      components:
-        consolidate_processor:
-          config:
-            group_by_root: true
-            handle_attachments: true
-            preserve_structure: true
-            attachment_markers:
-              start: "--==ATTACHMENT_BLOCK: {filename}==--"
-              end: "--==ATTACHMENT_BLOCK_END==--"
-          handlers:
-            - type: "AttachmentHandler"
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              copy_attachments: true
-              update_references: true
-            - type: "ContentHandler"
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              merge_content: true
-              preserve_headers: true
-    
-    markdown_aggregate:
-      name: "markdown_aggregate"
-      description: "Aggregate all consolidated markdown files into a single file"
-      processor: "nova.phases.aggregate.processor.MarkdownAggregateProcessor"
-      base_dir: "${NOVA_BASE_DIR}"
-      input_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
-      output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
-      file_patterns:
-        - "*.md"
-        - "**/*.md"
-      components:
-        aggregate_processor:
-          config:
-            output_filename: "all_merged_markdown.md"
-            include_file_headers: true
-            add_separators: true
-          handlers:
-            - type: "AggregateHandler"
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              section_markers:
-                start: "<!-- START_FILE: {filename} -->"
-                end: "<!-- END_FILE: {filename} -->"
-                separator: "\n---\n"
-            - type: "NavigationHandler"
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              link_style: "text"
-              position: "bottom"
-              add_top_link: true
-              templates:
-                text:
-                  prev: "← Previous: [{title}]({link})"
-                  next: "Next: [{title}]({link}) →"
-                  top: "[↑ Back to Top](#table-of-contents)"
-                arrow:
-                  prev: "←"
-                  next: "→"
-                  top: "↑"
-    
-    markdown_split:
-      name: "markdown_split"
-      description: "Split aggregated markdown into summary, raw notes, and attachments"
-      processor: "nova.phases.split.processor.ThreeFileSplitProcessor"
-      base_dir: "${NOVA_BASE_DIR}"
-      input_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
-      output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
-      file_patterns:
-        - "*.md"
-        - "**/*.md"
-      components:
-        split_processor:
-          config:
-            output_files:
-              summary: "summary.md"
-              raw_notes: "raw_notes.md"
-              attachments: "attachments.md"
-            section_markers:
-              summary: "--==SUMMARY==--"
-              raw_notes: "--==RAW NOTES==--"
-              attachments: "--==ATTACHMENTS==--"
-            attachment_markers:
-              start: "--==ATTACHMENT_BLOCK: {filename}==--"
-              end: "--==ATTACHMENT_BLOCK_END==--"
-            content_type_rules:
-              summary:
-                - Contains high-level overviews
-                - Contains key insights and decisions
-                - Contains structured content
-              raw_notes:
-                - Contains detailed notes and logs
-                - Contains chronological entries
-                - Contains unstructured content
-              attachments:
-                - Contains file references
-                - Contains embedded content
-                - Contains metadata
-            content_preservation:
-              validate_input_size: true
-              validate_output_size: true
-              track_content_markers: true
-              verify_section_integrity: true
-            cross_linking: true
-            preserve_headers: true
-          handlers:
-            - type: "ContentHandler"
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              split_content: true
-              add_navigation: true
-              maintain_links: true
-              validate_content: true 
+
+  # TEMPORARILY DISABLED PHASES
+  # Uncomment when parse phase is stable
+  
+  # MARKDOWN_CONSOLIDATE:
+  #   description: "Consolidate markdown files with their attachments"
+  #   output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+  #   processor: "MarkdownConsolidateProcessor"
+  #   ...
+
+  # MARKDOWN_AGGREGATE:
+  #   description: "Aggregate all consolidated markdown files into a single file"
+  #   output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+  #   processor: "MarkdownAggregateProcessor"
+  #   ...
+
+  # MARKDOWN_SPLIT:
+  #   description: "Split aggregated markdown into summary, raw notes, and attachments"
+  #   output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+  #   processor: "ThreeFileSplitProcessor"
+  #   ...
+
+# Global Settings
+input_dir: "${NOVA_INPUT_DIR}"
+output_dir: "${NOVA_OUTPUT_DIR}"
+temp_dir: "${NOVA_TEMP_DIR}"
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  log_level: "info"
+  metrics:
+    enabled: true
+    track_timing: true
+    track_memory: true
+  progress:
+    enabled: true
+    show_eta: true
+    update_interval: 1.0
+
+# Error Handling
+error_handling:
+  max_retries: 3
+  retry_delay: 1.0
+  continue_on_error: false
+  log_errors: true
+  cleanup_on_error: true 

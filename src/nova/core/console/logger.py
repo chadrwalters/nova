@@ -1,82 +1,85 @@
 """Console logging utilities."""
 
-import logging
-from typing import Any, Dict, Optional
-
+from typing import Optional
 from rich.console import Console
-
-from ..utils.metrics import MetricsTracker
+from rich.theme import Theme
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 
 
 class ConsoleLogger:
     """Console logger with rich formatting."""
     
-    def __init__(
-        self,
-        console: Optional[Console] = None,
-        metrics: Optional[MetricsTracker] = None
-    ):
-        """Initialize the logger.
+    def __init__(self, console: Optional[Console] = None):
+        """Initialize console logger.
         
         Args:
-            console: Optional rich console instance
-            metrics: Optional metrics tracker instance
+            console: Optional console instance
         """
         self.console = console or Console()
-        self.metrics = metrics or MetricsTracker()
-        self.logger = logging.getLogger(__name__)
+        self._progress = None
         
-    def debug(self, message: str, **kwargs: Any) -> None:
-        """Log a debug message.
+    @property
+    def progress(self) -> Progress:
+        """Get progress instance.
+        
+        Returns:
+            Progress instance
+        """
+        if self._progress is None:
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                console=self.console
+            )
+        return self._progress
+        
+    def info(self, message: str) -> None:
+        """Log info message.
         
         Args:
             message: Message to log
-            **kwargs: Additional logging arguments
         """
-        self.logger.debug(message, **kwargs)
-        self.console.print(f"[dim]{message}[/dim]")
-        self.metrics.increment('log_debug')
+        self.console.print(f"[info]{message}[/]")
         
-    def info(self, message: str, **kwargs: Any) -> None:
-        """Log an info message.
+    def warning(self, message: str) -> None:
+        """Log warning message.
         
         Args:
             message: Message to log
-            **kwargs: Additional logging arguments
         """
-        self.logger.info(message, **kwargs)
-        self.console.print(message)
-        self.metrics.increment('log_info')
+        self.console.print(f"[warning]WARNING: {message}[/]")
         
-    def warning(self, message: str, **kwargs: Any) -> None:
-        """Log a warning message.
+    def error(self, message: str) -> None:
+        """Log error message.
         
         Args:
             message: Message to log
-            **kwargs: Additional logging arguments
         """
-        self.logger.warning(message, **kwargs)
-        self.console.print(f"[yellow]WARNING:[/yellow] {message}")
-        self.metrics.increment('log_warning')
+        self.console.print(f"[error]ERROR: {message}[/]")
         
-    def error(self, message: str, **kwargs: Any) -> None:
-        """Log an error message.
+    def success(self, message: str) -> None:
+        """Log success message.
         
         Args:
             message: Message to log
-            **kwargs: Additional logging arguments
         """
-        self.logger.error(message, **kwargs)
-        self.console.print(f"[red]ERROR:[/red] {message}")
-        self.metrics.increment('log_error')
+        self.console.print(f"[success]{message}[/]")
         
-    def critical(self, message: str, **kwargs: Any) -> None:
-        """Log a critical message.
+    def highlight(self, message: str) -> None:
+        """Log highlighted message.
         
         Args:
             message: Message to log
-            **kwargs: Additional logging arguments
         """
-        self.logger.critical(message, **kwargs)
-        self.console.print(f"[bold red]CRITICAL:[/bold red] {message}")
-        self.metrics.increment('log_critical') 
+        self.console.print(f"[highlight]{message}[/]")
+        
+    def debug(self, message: str) -> None:
+        """Log debug message.
+        
+        Args:
+            message: Message to log
+        """
+        self.console.print(f"[dim]{message}[/]") 

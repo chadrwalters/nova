@@ -9,9 +9,9 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from .timing import TimingManager
-from .metrics import MetricsTracker
-from ..errors import PipelineError
+from nova.core.utils.timing import TimingManager
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.errors import PipelineError
 
 @dataclass
 class TimingMetrics:
@@ -110,7 +110,7 @@ class TimingEnhancer:
                 pass
             
             # Record in metrics tracker
-            self.metrics.record_timing(name, metrics.duration)
+            self.metrics.add_timing(name, metrics.duration, labels=metrics.labels)
             
             # Export metrics if directory configured
             if self.metrics_dir:
@@ -216,7 +216,7 @@ class TimingEnhancer:
             Dictionary with all timing information
         """
         return {
-            'metrics': self.metrics.get_all_metrics(),
+            'metrics': self.metrics.get_metrics(),
             'phases': {
                 phase: self.get_phase_metrics(phase)
                 for phase in self._phase_metrics
@@ -248,12 +248,16 @@ class TimingEnhancer:
             if not self.metrics_dir:
                 return
                 
-            # Create metrics file path
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            metrics_file = self.metrics_dir / f"{metrics.operation}_{timestamp}.json"
+            # Create metrics filename
+            filename = (
+                f"{metrics.operation}"
+                f"{'_' + metrics.phase if metrics.phase else ''}"
+                f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            )
+            filepath = self.metrics_dir / filename
             
-            # Export metrics
-            with open(metrics_file, 'w') as f:
+            # Export metrics data
+            with open(filepath, 'w') as f:
                 json.dump({
                     'operation': metrics.operation,
                     'phase': metrics.phase,
@@ -265,12 +269,11 @@ class TimingEnhancer:
                 }, f, indent=2)
                 
         except Exception as e:
-            raise PipelineError(f"Failed to export metrics: {e}")
-    
+            raise PipelineError(f"Error exporting metrics: {str(e)}")
+            
     def clear(self):
-        """Clear all timing information."""
-        self.timing.clear()
-        self.metrics.clear()
+        """Clear all stored metrics."""
         self._phase_metrics.clear()
         self._operation_metrics.clear()
-        self._benchmarks.clear() 
+        self._benchmarks.clear()
+        self.metrics.reset() 

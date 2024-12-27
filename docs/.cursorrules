@@ -1,0 +1,570 @@
+# Nova Document Processor Pipeline Rules
+
+# Image Processing Rules
+- Image processing is currently disabled in the markdown handler
+- All images should be copied to the output directory
+- A TODO comment must be added for each image in the markdown output
+- Image references should still be maintained in markdown format
+- Future image processing will be implemented using OpenAI Vision API
+
+# Core Pipeline Structure
+
+# TEMPORARY TESTING NOTE:
+# Currently, only the MARKDOWN_PARSE phase is enabled for testing purposes.
+# Other phases (MARKDOWN_CONSOLIDATE, MARKDOWN_AGGREGATE, MARKDOWN_SPLIT_THREEFILES)
+# are temporarily disabled while we stabilize the parse phase functionality.
+# This is a deliberate testing strategy to ensure robust parsing before moving
+# to subsequent phases.
+
+pipeline:
+  phases:
+    - MARKDOWN_PARSE:
+        description: "Parse and process markdown files with embedded content"
+        output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
+        processor: "MarkdownParseProcessor"
+        components:
+          - markdown_processor:
+              parser: "markitdown==0.0.1a3"
+              config:
+                document_conversion: true
+                image_processing: true
+                metadata_preservation: true
+              handlers:
+                - MarkitdownHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    document_conversion: true
+                    image_processing: true
+                    metadata_preservation: true
+                - ConsolidationHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    sort_by_date: true
+                    preserve_headers: true
+          - image_processor:
+              formats:
+                - png
+                - jpg/jpeg
+                - gif
+                - webp
+                - heic/HEIC
+              operations:
+                - format_conversion:
+                    heic_to_jpg: true
+                    optimize_quality: 85
+                - size_optimization:
+                    preserve_aspect_ratio: true
+                    max_dimensions: [1920, 1080]
+                - metadata:
+                    extract: true
+                    preserve_original: true
+                - description_generation:
+                    use_openai: true
+                    model: "gpt-4-vision-preview"
+                    cache_results: true
+              temp_files:
+                use_stable_names: true
+                cleanup_after_processing: true
+                preserve_originals: true
+          - office_processor:
+              formats:
+                - docx/doc:
+                    extract_text: true
+                    preserve_paragraphs: true
+                - pptx/ppt:
+                    extract_slides: true
+                    include_notes: true
+                - xlsx/xls:
+                    table_format: true
+                    preserve_headers: true
+                - pdf:
+                    extract_text: true
+                    preserve_layout: true
+                - csv:
+                    detect_encoding: true
+                    table_format: true
+              operations:
+                - text_extraction:
+                    preserve_formatting: true
+                    handle_unicode: true
+                - image_extraction:
+                    process_embedded: true
+                    maintain_links: true
+                - metadata:
+                    preserve_all: true
+                    track_changes: true
+              content_extraction:
+                try_attributes:
+                  - text_content
+                  - markdown
+                  - text
+                fallback_to_dict: true
+                log_failures: true
+
+    - MARKDOWN_CONSOLIDATE:
+        description: "Consolidate markdown files with their attachments"
+        output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+        processor: "MarkdownConsolidateProcessor"
+        components:
+          - consolidate_processor:
+              config:
+                group_by_root: true
+                handle_attachments: true
+                preserve_structure: true
+                attachment_markers:
+                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                  end: "--==ATTACHMENT_BLOCK_END==--"
+              handlers:
+                - AttachmentHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    copy_attachments: true
+                    update_references: true
+                - ContentHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    merge_content: true
+                    preserve_headers: true
+
+    - MARKDOWN_AGGREGATE:
+        description: "Aggregate all consolidated markdown files into a single file"
+        output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+        processor: "MarkdownAggregateProcessor"
+        components:
+          - aggregate_processor:
+              config:
+                output_filename: "all_merged_markdown.md"
+                include_file_headers: true
+                add_separators: true
+              handlers:
+                - AggregateHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    section_markers:
+                      start: "<!-- START_FILE: {filename} -->"
+                      end: "<!-- END_FILE: {filename} -->"
+                      separator: "\n---\n"
+                - NavigationHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    link_style: "text"
+                    position: "bottom"
+                    add_top_link: true
+                    templates:
+                      text:
+                        prev: "← Previous: [{title}]({link})"
+                        next: "Next: [{title}]({link}) →"
+                        top: "[↑ Back to Top](#table-of-contents)"
+                      arrow:
+                        prev: "←"
+                        next: "→"
+                        top: "↑"
+
+    - MARKDOWN_SPLIT_THREEFILES:
+        description: "Split aggregated markdown into summary, raw notes, and attachments"
+        output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+        processor: "ThreeFileSplitProcessor"
+        components:
+          - split_processor:
+              config:
+                output_files:
+                  summary: "summary.md"
+                  raw_notes: "raw_notes.md"
+                  attachments: "attachments.md"
+                section_markers:
+                  summary: "--==SUMMARY==--"
+                  raw_notes: "--==RAW NOTES==--"
+                  attachments: "--==ATTACHMENTS==--"
+                attachment_markers:
+                  start: "--==ATTACHMENT_BLOCK: {filename}==--"
+                  end: "--==ATTACHMENT_BLOCK_END==--"
+                content_type_rules:
+                  summary:
+                    - Contains high-level overviews
+                    - Contains key insights and decisions
+                    - Contains structured content
+                  raw_notes:
+                    - Contains detailed notes and logs
+                    - Contains chronological entries
+                    - Contains unstructured content
+                  attachments:
+                    - Contains file references
+                    - Contains embedded content
+                    - Contains metadata
+                content_preservation:
+                  validate_input_size: true
+                  validate_output_size: true
+                  track_content_markers: true
+                  verify_section_integrity: true
+                cross_linking: true
+                preserve_headers: true
+              handlers:
+                - ContentHandler:
+                    base_handler: "nova.phases.core.base_handler.BaseHandler"
+                    split_content: true
+                    add_navigation: true
+                    maintain_links: true
+                    validate_content: true
+
+# Installation Requirements
+installation:
+  package_management:
+    tool: "poetry"
+    rules:
+      - Never use pip directly
+      - Always use poetry for dependencies
+      - Keep pyproject.toml updated
+      - Use poetry.lock for version control
+  
+  install_script:
+    file: "install.sh"
+    requirements:
+      - Check Python installation
+      - Install/verify poetry
+      - Create .env file if missing
+      - Set up directory structure
+      - Install dependencies
+
+# Execution Requirements
+execution:
+  entry_point: "consolidate.sh"
+  requirements:
+    - Load environment variables
+    - Validate OpenAI key
+    - Create required directories for all phases. All setup for all phases shoudl be here
+    - Support command line options:
+        --force, -f: Force processing
+        --dry-run, -n: Show what would be done
+        --show-state, -s: Display current state
+        --scan: Show directory structure
+        --help, -h: Show help message
+    - Handle exit codes appropriately
+
+# Directory Structure
+directory_structure:
+  base: "${NOVA_BASE_DIR}"
+  required_dirs:
+    input: "${NOVA_INPUT_DIR}"
+    output: "${NOVA_OUTPUT_DIR}"
+    processing: "${NOVA_PROCESSING_DIR}"
+    temp: "${NOVA_TEMP_DIR}"
+    phase_dirs:
+      - markdown_parse: "${NOVA_PHASE_MARKDOWN_PARSE}"
+      - markdown_consolidate: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
+      - markdown_aggregate: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
+      - markdown_split: "${NOVA_PHASE_MARKDOWN_SPLIT}"
+    image_dirs:
+      - original: "${NOVA_ORIGINAL_IMAGES_DIR}"
+      - processed: "${NOVA_PROCESSED_IMAGES_DIR}"
+      - metadata: "${NOVA_IMAGE_METADATA_DIR}"
+      - cache: "${NOVA_IMAGE_CACHE_DIR}"
+    office_dirs:
+      - assets: "${NOVA_OFFICE_ASSETS_DIR}"
+      - temp: "${NOVA_OFFICE_TEMP_DIR}"
+  rules:
+    - All paths from environment variables
+    - No hardcoded paths
+    - Shell script creates directories
+    - Maintain proper permissions
+
+# State Management
+state_tracking:
+  implementation: "StateManager"
+  storage: "${NOVA_PHASE_MARKDOWN_PARSE}/.state"
+  tracked_data:
+    - File hashes
+    - Processing status
+    - Modification times
+    - Error states
+    - Image cache status
+    - API usage metrics
+    - Conversion history
+  operations:
+    - Track processed files
+    - Detect changes
+    - Handle incremental updates
+    - Maintain processing state
+    - Monitor API limits
+    - Cache management
+
+# Temporary File Management
+temp_file_handling:
+  rules:
+    - Use stable, predictable names
+    - Track created temp files
+    - Clean up after processing
+    - Don't delete originals
+    - Log cleanup operations
+  locations:
+    - temp_dir: "${NOVA_TEMP_DIR}"
+    - office_temp: "${NOVA_OFFICE_TEMP_DIR}"
+  cleanup:
+    - timing: after_processing
+    - scope: only_temp_files
+    - logging: debug_level
+
+# Caching Strategy
+caching:
+  openai:
+    implementation: "ImageProcessor._load_from_cache"
+    storage: "${NOVA_IMAGE_CACHE_DIR}"
+    cache_key: "filename_mtime"
+    tracked_data:
+      - Image descriptions
+      - Processing metadata
+      - API response times
+      - Vision model responses
+      - Error states
+    invalidation:
+      - Time-based expiration
+      - Source file changes
+      - Manual force refresh
+      - Model version changes
+
+# Console Output Standards
+console_output:
+  color_scheme:
+    title: "bold blue"       # Section headers
+    path: "cyan"             # File paths
+    stats: "bold cyan"       # Statistics
+    success: "green"         # Success messages
+    warning: "yellow"        # Warnings
+    error: "red"            # Errors
+    info: "blue"            # Info messages
+    highlight: "magenta"    # Important numbers
+    detail: "dim white"     # Additional details
+    cache: "cyan"           # Cache-related info
+    progress: "green"       # Progress indicators
+    skip: "yellow"          # Skipped items
+  components:
+    - Progress bars (tqdm)
+    - Status updates
+    - Error messages
+    - Statistics display
+    - Summary information
+
+# Resource Management
+resource_management:
+  file_operations:
+    - Use pathlib.Path for all paths
+    - Handle file encodings (UTF-8)
+    - Proper file closing
+    - Error handling for I/O
+  memory:
+    - Image processing limits
+    - Cache size management
+    - Buffer management
+  disk:
+    - Clean temporary files
+    - Manage cache size
+    - Handle large files
+    - Track space usage
+
+# Error Handling
+error_handling:
+  retry_policy:
+    max_retries: 3
+    delay_between_retries: 1
+    backoff_factor: 2
+  error_types:
+    - ProcessingError:
+        recoverable: true
+        retry: true
+    - FileConversionException:
+        recoverable: true
+        fallback: true
+    - UnsupportedFormatException:
+        recoverable: false
+        log_only: true
+    - OpenAIError:
+        recoverable: true
+        retry: true
+        backoff: true
+    - ConfigurationError:
+        recoverable: false
+        halt: true
+  error_tolerance:
+    allow_partial_success: true
+    continue_on_non_critical: true
+    log_all_errors: true
+    track_error_counts: true
+  cleanup:
+    - Remove temporary files
+    - Free resources
+    - Log errors appropriately
+    - Update state tracking
+    - Preserve error context
+
+# Phase 1 Output Format
+phase_1_output:
+  directory_structure:
+    - processed_markdown/
+        - Original directory structure preserved
+        - Processed .md files with embedded content
+        - Attachment directories maintained
+        - Image descriptions and metadata
+    - images/
+        - original/: Original images (all formats)
+        - processed/: Optimized images (standard formats)
+        - metadata/: 
+            - Image technical metadata
+            - AI-generated descriptions
+            - Processing history
+        - cache/: 
+            - OpenAI API responses
+            - Vision model results
+            - Processing metrics
+    - office/
+        - assets/: 
+            - Extracted images and media
+            - Document resources
+        - temp/: 
+            - Conversion workspace
+            - Processing artifacts
+  file_formats:
+    markdown:
+      - UTF-8 encoded
+      - GFM compatible
+      - Image references updated
+      - Metadata preserved
+      - Embedded content converted
+      - Links maintained
+    images:
+      - Optimized size and quality
+      - Standard formats (jpg/png)
+      - Generated descriptions
+      - Preserved metadata
+      - Processing history
+    documents:
+      - Converted to markdown
+      - Formatting preserved
+      - Tables properly formatted
+      - Images extracted and linked
+      - Metadata maintained
+
+# Multi-Step Impl
+implementation_protocol:
+  task_tracking:
+    requirements:
+      - Maintain master task list between conversations
+      - Each task must have clear description and success criteria
+      - Track progress numerically
+      - Preserve context between messages
+    
+    task_list_format:
+      - ID: Hierarchical numbering (e.g., 1.1, 1.2, 2.1)
+      - Description: Clear, actionable description
+      - Status: [TODO/IN_PROGRESS/DONE]
+      - Dependencies: List of prerequisite tasks
+    
+    message_structure:
+      start:
+        - State current task ID and description
+        - Indicate progress (e.g., "Step 3 of 10")
+        - Explain implementation goals
+        - Reference relevant context/dependencies
+      
+      end:
+        - Confirm task completion
+        - Show progress update
+        - Preview next task with context
+        - Request confirmation to proceed
+    
+    progress_tracking:
+      - Track completion percentage
+      - Note dependencies
+      - Maintain task state between conversations
+      - Allow for task list updates/modifications
+
+  communication_rules:
+    - Always reference current task context
+    - Maintain numbered task list state
+    - Show clear progress indicators
+    - Preview upcoming work
+    - Request explicit confirmation before proceeding 
+
+# Test Execution Requirements
+test_execution:
+  entry_point: "run_tests.sh"
+  requirements:
+    - Load environment variables
+    - Verify Python and pytest installation
+    - Create test directories
+    - Support command line options:
+        --verbose, -v: Show detailed test output
+        --coverage, -c: Generate coverage report
+        --fail-fast, -f: Stop on first failure
+        --test, -t: Run specific test file
+        --help, -h: Show help message
+    - Set up proper PYTHONPATH
+    - Clean up test artifacts
+    - Handle exit codes appropriately
+  
+  test_environment:
+    directories:
+      - tests/data: Test data files
+      - tests/output: Test output files
+      - tests/temp: Temporary test files
+    
+    variables:
+      PYTHONPATH: Include src directory
+      PYTEST_ARGS: Command line arguments
+      TEST_EXIT_CODE: Test execution result
+    
+    cleanup:
+      - Remove temporary files
+      - Preserve test outputs
+      - Clean test directories
+      - Reset environment
+  
+  test_coverage:
+    requirements:
+      - Track code coverage
+      - Generate coverage reports
+      - Identify untested code
+      - Set coverage targets
+    
+    reporting:
+      - Terminal output
+      - HTML reports
+      - Missing lines
+      - Branch coverage
+    
+    thresholds:
+      total_coverage: 80%
+      file_coverage: 70%
+      branch_coverage: 60%
+
+# Dependency Management
+dependency_management:
+  policy: "strict"
+  documentation: "docs/dependencies.md"
+  rules:
+    - Never change core dependencies without explicit approval
+    - Always consult docs/dependencies.md before suggesting changes
+    - Version changes require owner approval
+    - Maintain backward compatibility
+  core_dependencies:
+    brew:
+      - imagemagick@6
+      - ghostscript
+      - tesseract
+      - python@3.9
+      - poetry
+      - git
+      - coreutils
+      - findutils
+      - gnu-sed
+    python:
+      markitdown: "0.0.1a3"
+      pillow: "9.5.0"
+      python-magic: "0.4.27"
+      pyyaml: "6.0.1"
+      click: "8.1.7"
+      openai: "1.3.5"
+      tiktoken: "0.5.1"
+  change_protocol:
+    requires:
+      - Documentation of need
+      - Compatibility analysis
+      - Performance testing
+      - Owner approval
+    testing:
+      - Full test suite
+      - Performance benchmarks
+      - Image processing quality
+      - Phase completion verification

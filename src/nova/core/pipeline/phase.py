@@ -1,79 +1,85 @@
-"""Pipeline phase base class."""
+"""Pipeline phase implementation."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import logging
-import importlib
+from typing import Dict, Any, Optional
+from dataclasses import dataclass
 
-from ..config import ProcessorConfig
-from ..models.result import ProcessingResult
+from nova.core.utils.monitoring import MonitoringManager
+from nova.core.models.result import ProcessingResult
+from nova.core.errors import ValidationError
 
 
-class Phase:
-    """Base class for pipeline phases."""
+@dataclass
+class PipelinePhase:
+    """Represents a pipeline processing phase."""
     
-    def __init__(self, name: str, config: ProcessorConfig):
-        """Initialize the phase.
+    name: str
+    config: Dict[str, Any]
+    input_dir: Path
+    output_dir: Path
+    temp_dir: Path
+    processor: Any
+    monitor: MonitoringManager
+    
+    def __post_init__(self):
+        """Validate phase configuration after initialization."""
+        self._validate_config()
         
-        Args:
-            name: Phase name
-            config: Phase configuration
+    def _validate_config(self) -> None:
+        """Validate phase configuration.
+        
+        Raises:
+            ValidationError: If configuration is invalid
         """
-        self.name = name
-        self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.processor = None
-        
-        # Initialize processor
-        self._initialize_processor()
-    
-    def _initialize_processor(self) -> None:
-        """Initialize the phase processor."""
-        try:
-            # Import processor class
-            module_path, class_name = self.config.processor.rsplit('.', 1)
-            module = importlib.import_module(module_path)
-            processor_class = getattr(module, class_name)
+        if not self.name:
+            raise ValidationError("Phase name is required")
             
-            # Create processor instance
-            self.processor = processor_class(config=self.config.dict())
+        if not self.input_dir:
+            raise ValidationError("Input directory is required")
             
-        except Exception as e:
-            self.logger.error(f"Error initializing processor for phase {self.name}: {str(e)}")
-            raise
-    
-    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
-        """Process a file through this phase.
+        if not self.output_dir:
+            raise ValidationError("Output directory is required")
+            
+        if not self.temp_dir:
+            raise ValidationError("Temporary directory is required")
+            
+        if not self.processor:
+            raise ValidationError("Processor is required")
+            
+    async def process(self, input_files: list[Path]) -> ProcessingResult:
+        """Process input files.
         
         Args:
-            file_path: Path to the file to process
-            context: Optional processing context
+            input_files: List of input files to process
             
         Returns:
-            ProcessingResult containing phase results
+            Processing result
         """
+        result = ProcessingResult()
+        
         try:
-            if not self.processor:
-                raise ValueError(f"No processor initialized for phase {self.name}")
-                
-            # Process the file
-            result = await self.processor.process(file_path, context)
+            # Start monitoring
+            self.monitor.start_phase(self.name)
             
-            # Validate result
-            if not result.success:
-                self.logger.error(f"Phase {self.name} failed for {file_path}")
-                
-            return result
+            # Process files
+            result = await self.processor.process(
+                input_files=input_files,
+                input_dir=self.input_dir,
+                output_dir=self.output_dir,
+                temp_dir=self.temp_dir,
+                config=self.config
+            )
             
         except Exception as e:
-            error_msg = f"Error in phase {self.name} for {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            return ProcessingResult(success=False, errors=[error_msg])
-    
+            result.add_error(str(e))
+            
+        finally:
+            # Stop monitoring
+            self.monitor.end_phase(self.name)
+            
+        return result
+        
     async def cleanup(self) -> None:
         """Clean up phase resources."""
-        try:
-            if self.processor and hasattr(self.processor, 'cleanup'):
-                await self.processor.cleanup()
-        except Exception as e:
-            self.logger.error(f"Error cleaning up phase {self.name}: {str(e)}") 
+        if hasattr(self.processor, "cleanup"):
+            await self.processor.cleanup() 
