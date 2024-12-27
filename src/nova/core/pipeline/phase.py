@@ -1,114 +1,79 @@
-"""Pipeline phase implementation."""
+"""Pipeline phase base class."""
 
-from typing import Dict, Any, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+import logging
+import importlib
 
-from ..config import ProcessorConfig, PipelineConfig
-from .types import PhaseDefinition
+from ..config import ProcessorConfig
+from ..models.result import ProcessingResult
 
-class PipelinePhase:
-    """Pipeline phase implementation."""
+
+class Phase:
+    """Base class for pipeline phases."""
     
-    def __init__(
-        self,
-        definition: PhaseDefinition,
-        processor_config: ProcessorConfig,
-        pipeline_config: PipelineConfig
-    ):
-        """Initialize pipeline phase.
+    def __init__(self, name: str, config: ProcessorConfig):
+        """Initialize the phase.
         
         Args:
-            definition: Phase definition
-            processor_config: Processor configuration
-            pipeline_config: Pipeline configuration
+            name: Phase name
+            config: Phase configuration
         """
-        self.definition = definition
-        self.processor_config = processor_config
-        self.pipeline_config = pipeline_config
+        self.name = name
+        self.config = config
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.processor = None
         
-        # Set up phase attributes
-        self.name = definition.name
-        self.description = definition.description
-        self.type = definition.type
-        
-        # Set up phase directories
-        phase_dir = Path(pipeline_config.processing_dir) / "phases" / self.type.value.lower()
-        input_dir = processor_config.input_dir or Path(pipeline_config.input_dir)
-        output_dir = Path(processor_config.output_dir) if processor_config.output_dir else phase_dir
-        
-        # Update processor configuration
-        processor_config.input_dir = str(input_dir)
-        processor_config.output_dir = str(output_dir)
-        
-        # Set up phase state
-        self.state = {
-            'status': 'not started',
-            'input_dir': str(input_dir),
-            'output_dir': str(output_dir),
-            'phase_dir': str(phase_dir)
-        }
-        
-        # Create processor instance
-        processor_class = self.get_processor_class()
-        self.processor = processor_class(processor_config, pipeline_config)
+        # Initialize processor
+        self._initialize_processor()
     
-    def get_processor_class(self):
-        """Get processor class based on phase type."""
-        from ...phases.parse.processor import MarkdownProcessor
-        from ...phases.consolidate.processor import MarkdownConsolidateProcessor
-        from ...phases.aggregate.processor import MarkdownAggregateProcessor
-        from ...phases.split.processor import ThreeFileSplitProcessor
-        
-        processor_map = {
-            'MARKDOWN_PARSE': MarkdownProcessor,
-            'MARKDOWN_CONSOLIDATE': MarkdownConsolidateProcessor,
-            'MARKDOWN_AGGREGATE': MarkdownAggregateProcessor,
-            'MARKDOWN_SPLIT_THREEFILES': ThreeFileSplitProcessor
-        }
-        
-        processor_class = processor_map.get(self.type.value)
-        if not processor_class:
-            raise ValueError(f"Unknown processor type: {self.type.value}")
-        
-        return processor_class
-    
-    def get_state(self) -> Dict[str, Any]:
-        """Get phase state.
-        
-        Returns:
-            Phase state dictionary
-        """
-        return {
-            'name': self.name,
-            'description': self.description,
-            'type': self.type.name,
-            'state': self.state
-        }
-    
-    def process(self, input_path: str, output_path: str) -> Dict[str, Any]:
-        """Process phase.
-        
-        Args:
-            input_path: Path to input file or directory
-            output_path: Path to output file or directory
-            
-        Returns:
-            Dictionary containing processing results
-        """
-        # Update state
-        self.state['status'] = 'processing'
-        
+    def _initialize_processor(self) -> None:
+        """Initialize the phase processor."""
         try:
-            # Process phase
-            result = self.processor.process(input_path, output_path)
+            # Import processor class
+            module_path, class_name = self.config.processor.rsplit('.', 1)
+            module = importlib.import_module(module_path)
+            processor_class = getattr(module, class_name)
             
-            # Update state
-            self.state['status'] = 'completed'
-            self.state.update(result)
+            # Create processor instance
+            self.processor = processor_class(config=self.config.dict())
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing processor for phase {self.name}: {str(e)}")
+            raise
+    
+    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+        """Process a file through this phase.
+        
+        Args:
+            file_path: Path to the file to process
+            context: Optional processing context
+            
+        Returns:
+            ProcessingResult containing phase results
+        """
+        try:
+            if not self.processor:
+                raise ValueError(f"No processor initialized for phase {self.name}")
+                
+            # Process the file
+            result = await self.processor.process(file_path, context)
+            
+            # Validate result
+            if not result.success:
+                self.logger.error(f"Phase {self.name} failed for {file_path}")
+                
             return result
             
         except Exception as e:
-            # Update state
-            self.state['status'] = 'failed'
-            self.state['error'] = str(e)
-            raise 
+            error_msg = f"Error in phase {self.name} for {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            return ProcessingResult(success=False, errors=[error_msg])
+    
+    async def cleanup(self) -> None:
+        """Clean up phase resources."""
+        try:
+            if self.processor and hasattr(self.processor, 'cleanup'):
+                await self.processor.cleanup()
+        except Exception as e:
+            self.logger.error(f"Error cleaning up phase {self.name}: {str(e)}") 

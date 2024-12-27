@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from ...phases.parse.processor import MarkdownProcessor
+from ...phases.parse.processor import MarkdownParseProcessor
 from ...phases.consolidate.processor import MarkdownConsolidateProcessor
 from ...phases.aggregate.processor import MarkdownAggregateProcessor
 from ...phases.split.processor import ThreeFileSplitProcessor
@@ -40,7 +40,7 @@ class PipelinePhase(BaseModel):
     name: str
     definition: PhaseDefinition
     processor: Union[
-        MarkdownProcessor,
+        MarkdownParseProcessor,
         MarkdownConsolidateProcessor,
         MarkdownAggregateProcessor,
         ThreeFileSplitProcessor

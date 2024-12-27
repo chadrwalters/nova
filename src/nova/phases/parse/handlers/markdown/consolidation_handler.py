@@ -1,112 +1,123 @@
-"""Handler for consolidating markdown files and attachments."""
+"""Handler for consolidating markdown files."""
 
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-import re
+from typing import Any, Dict, Optional
+import asyncio
 import shutil
 import os
-import json
-from urllib.parse import unquote, quote
-import aiofiles
-import logging
-from datetime import datetime
 
-from nova.phases.core.base_handler import BaseHandler, HandlerResult
-from nova.core.logging import get_logger
+from .....core.base_handler import BaseHandler
+from .....core.utils.metrics import MetricsTracker
+from .....core.utils.monitoring import MonitoringManager
+from .....core.utils.error_tracker import ErrorTracker
+from .....core.console.logger import ConsoleLogger
+from .....core.models.result import ProcessingResult
 
-logger = get_logger(__name__)
 
 class ConsolidationHandler(BaseHandler):
-    """Handles consolidation of markdown files."""
+    """Handler for consolidating markdown files."""
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the consolidation handler.
+        """Initialize the handler.
         
         Args:
-            config: Optional configuration overrides
+            config: Optional configuration dictionary
         """
         super().__init__(config)
+        self.metrics = MetricsTracker()
+        self.monitor = MonitoringManager()
+        self.error_tracker = ErrorTracker()
+        self.logger = ConsoleLogger()
         
-        # Set up logging
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG)
+        # Get required configuration
+        if not config:
+            raise ValueError("Configuration must be provided")
+            
+        # Get pipeline and processor configs
+        self.pipeline_config = config.get('pipeline_config', {})
+        self.processor_config = config.get('processor_config', {})
         
-        # Configure processing options
-        self.sort_by_date = self.get_option('sort_by_date', True)
-        self.preserve_headers = self.get_option('preserve_headers', True)
+        # Get handler config
+        handler_config = config.get('config', {})
+        
+        # Get required paths
+        self.input_dir = str(Path(config.get('input_dir', '')))
+        self.output_dir = str(Path(config.get('output_dir', '')))
+        self.base_dir = str(Path(config.get('base_dir', '')))
+        
+        if not self.input_dir or not self.output_dir:
+            raise ValueError("input_dir and output_dir must be specified in configuration")
+        
+        # Initialize state
+        self.state = {
+            'processed_files': 0,
+            'failed_files': 0,
+            'skipped_files': 0,
+            'errors': []
+        }
     
-    def can_handle(self, file_path: Path, attachments: Optional[List[Path]] = None) -> bool:
-        """Check if file can be consolidated.
+    async def can_handle(self, file_path: Path) -> bool:
+        """Check if this handler can process the file.
         
         Args:
             file_path: Path to the file to check
-            attachments: Optional list of attachments
             
         Returns:
-            bool: True if file has markdown extension
+            True if this handler can process the file, False otherwise
         """
-        return file_path.suffix.lower() in {'.md', '.markdown'}
+        return file_path.suffix.lower() == '.md'
     
-    async def process(
-        self,
-        file_path: Path,
-        context: Dict[str, Any],
-        attachments: Optional[List[Path]] = None
-    ) -> HandlerResult:
-        """Process and consolidate markdown file.
+    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+        """Process a markdown file.
         
         Args:
-            file_path: Path to the markdown file
-            context: Processing context
-            attachments: Optional list of attachments
+            file_path: Path to the file to process
+            context: Optional processing context
             
         Returns:
-            HandlerResult containing processed content and metadata
+            ProcessingResult containing processed content and metadata
         """
-        result = HandlerResult()
-        result.start_time = datetime.now()
-        
         try:
-            # Read and parse markdown file
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
+            self.logger.info(f"Processing file: {file_path}")
+            
+            # Use configured output directory
+            output_dir = Path(self.output_dir)
+            
+            # Create output directory if it doesn't exist
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Read input file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Create attachment directory
+            attachment_dir = output_dir / file_path.stem
+            os.makedirs(attachment_dir, exist_ok=True)
+            
+            # Process attachments if they exist
+            attachments = []
+            input_attachment_dir = file_path.parent / file_path.stem
+            
+            if input_attachment_dir.exists():
+                self.logger.info(f"Found attachment directory: {input_attachment_dir}")
                 
-            # Process embedded content
-            if attachments:
-                for attachment in attachments:
-                    embed_config = context.get('embed_config', {})
-                    if embed_config.get('embed') == 'true':
-                        content = await self._process_attachment(content, attachment)
-                        
-            # Update result
-            result.content = content
-            result.processed_files.append(file_path)
-            if attachments:
-                result.processed_attachments.extend(attachments)
-                
+                # Process attachments
+                for attachment in input_attachment_dir.iterdir():
+                    if attachment.is_file():
+                        dest_path = attachment_dir / attachment.name
+                        shutil.copy2(attachment, dest_path)
+                        attachments.append(dest_path)
+            
+            self.logger.info(f"Handler {self.__class__.__name__} successfully processed file: {file_path}")
+            result = ProcessingResult(
+                success=True,
+                content=content,
+                attachments=attachments
+            )
+            result.add_processed_file(file_path)
+            return result
+            
         except Exception as e:
-            result.add_error(f"Failed to process {file_path}: {str(e)}")
-            
-        finally:
-            result.end_time = datetime.now()
-            if result.start_time:
-                result.processing_time = (result.end_time - result.start_time).total_seconds()
-            
-        return result
-    
-    async def _process_attachment(self, content: str, attachment: Path) -> str:
-        """Process an attachment and update content accordingly."""
-        # Add attachment processing logic here
-        return content
-    
-    def validate_output(self, result: Dict[str, Any]) -> bool:
-        """Validate the processing results.
-        
-        Args:
-            result: The processing results to validate
-            
-        Returns:
-            bool: True if results are valid
-        """
-        required_keys = {'content', 'processed_files', 'processed_attachments', 'errors'}
-        return all(key in result for key in required_keys) 
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            return ProcessingResult(success=False, errors=[error_msg]) 

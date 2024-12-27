@@ -13,7 +13,7 @@ pipeline:
     - MARKDOWN_PARSE:
         description: "Parse and process markdown files with embedded content"
         output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
-        processor: "MarkdownProcessor"
+        processor: "MarkdownParseProcessor"
         components:
           - markdown_processor:
               parser: "markitdown==0.0.1a3"

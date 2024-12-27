@@ -52,7 +52,7 @@ def valid_config():
                     "MARKDOWN_PARSE": {
                         "description": "Parse markdown files",
                         "output_dir": "${NOVA_PHASE_MARKDOWN_PARSE}",
-                        "processor": "MarkdownProcessor",
+                        "processor": "MarkdownParseProcessor",
                         "enabled": True,
                         "handlers": [
                             {
@@ -120,7 +120,7 @@ def test_validate_valid_config():
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor',
+                        'processor': 'MarkdownParseProcessor',
                         'components': {
                             'markdown_processor': {
                                 'parser': 'markitdown==0.0.1a3',
@@ -149,7 +149,7 @@ def test_validate_invalid_config():
                     'invalid_phase_name': {
                         'description': 'Invalid phase name',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -191,7 +191,7 @@ def test_validate_invalid_phase_name():
                     'invalid-phase-name': {
                         'description': 'Invalid phase name',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -216,7 +216,7 @@ def test_validate_invalid_handler_config():
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor',
+                        'processor': 'MarkdownParseProcessor',
                         'handlers': [
                             {
                                 'type': 'TestHandler',
@@ -248,7 +248,7 @@ def test_validate_invalid_image_dimensions():
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor',
+                        'processor': 'MarkdownParseProcessor',
                         'components': {
                             'image_processor': {
                                 'formats': ['png'],
@@ -286,7 +286,7 @@ def test_validate_invalid_log_level():
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -314,7 +314,7 @@ def test_validate_component_structure():
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor',
+                        'processor': 'MarkdownParseProcessor',
                         'components': [
                             {
                                 'markdown_processor': {
@@ -347,7 +347,7 @@ def test_clear_validation_state():
                     'invalid_phase_name': {
                         'description': 'Invalid phase name',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]

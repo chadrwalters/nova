@@ -1,0 +1,209 @@
+"""Text file handler."""
+
+import os
+from pathlib import Path
+from typing import Dict, Any, Optional, List, Union
+import asyncio
+from rich.console import Console
+
+from ....core.errors import HandlerError
+from ....core.logging import get_logger
+from ....core.handlers.base import BaseHandler
+from ....core.utils.timing import TimingManager
+from ....core.utils.metrics import MetricsTracker
+
+logger = get_logger(__name__)
+
+class TextHandler(BaseHandler):
+    """Handler for text files."""
+    
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[Console] = None
+    ):
+        """Initialize the handler.
+        
+        Args:
+            config: Handler configuration
+            timing: Optional timing manager instance
+            metrics: Optional metrics tracker instance
+            console: Optional rich console instance
+        """
+        super().__init__(config)
+        self.timing = timing or TimingManager()
+        self.metrics = metrics or MetricsTracker()
+        self.console = console or Console()
+        
+        # Initialize state
+        self.state = {
+            "status": "initialized",
+            "current_file": None,
+            "processed_files": [],
+            "failed_files": [],
+            "error": None
+        }
+        
+        # Create event loop for async operations
+        self._loop = None
+    
+    async def process(self, input_file: Path, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a text file.
+        
+        Args:
+            input_file: Path to the file to process
+            context: Processing context
+            
+        Returns:
+            Dictionary with processing results
+        """
+        try:
+            # Update state
+            self.state["status"] = "running"
+            self.state["current_file"] = input_file
+            
+            # Track timing
+            with self.timing.timer(f"process_file_{input_file.name}"):
+                # Process file
+                processed_content = await self._process_file(input_file)
+                
+                # Update state
+                self.state["processed_files"].append(input_file)
+                self.metrics.increment_counter("files_processed")
+                
+                return {
+                    "success": True,
+                    "content": processed_content
+                }
+                
+        except Exception as e:
+            # Update state
+            self.state["status"] = "failed"
+            self.state["error"] = str(e)
+            self.state["failed_files"].append(input_file)
+            
+            self.error(f"Failed to process file {input_file}: {e}")
+            return {
+                "success": False,
+                "errors": [str(e)]
+            }
+    
+    async def _process_file(self, input_file: Path) -> str:
+        """Process a text file.
+        
+        Args:
+            input_file: Path to the file to process
+            
+        Returns:
+            Processed content as markdown
+        """
+        # Read content
+        content = input_file.read_text(encoding='utf-8')
+        
+        # Convert to markdown
+        lines = []
+        for line in content.split('\n'):
+            # Skip empty lines
+            if not line.strip():
+                lines.append('')
+                continue
+                
+            # Convert to markdown paragraph
+            lines.append(line)
+            lines.append('')
+            
+        return '\n'.join(lines)
+    
+    async def can_handle(self, file_path: Path) -> bool:
+        """Check if this handler can process the given file.
+        
+        Args:
+            file_path: Path to the file to check
+            
+        Returns:
+            True if this handler can process the file, False otherwise
+        """
+        return file_path.suffix.lower() in ['.txt', '.log', '.csv']
+    
+    async def validate(self, file_path: Path) -> bool:
+        """Validate a text file before processing.
+        
+        Args:
+            file_path: Path to the file to validate
+            
+        Returns:
+            True if validation passes, False otherwise
+        """
+        try:
+            # Check if file exists
+            if not file_path.exists():
+                self.error(f"File does not exist: {file_path}")
+                return False
+                
+            # Check if file is readable
+            if not os.access(file_path, os.R_OK):
+                self.error(f"File is not readable: {file_path}")
+                return False
+                
+            # Check file extension
+            if not file_path.suffix.lower() in ['.txt', '.log', '.csv']:
+                self.error(f"Invalid file extension: {file_path}")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            self.error(f"Failed to validate file {file_path}: {e}")
+            return False
+    
+    def info(self, message: str):
+        """Log info message.
+        
+        Args:
+            message: Message to log
+        """
+        logger.info(message)
+        self.console.print(f"[blue]{message}[/blue]")
+    
+    def warning(self, message: str):
+        """Log warning message.
+        
+        Args:
+            message: Message to log
+        """
+        logger.warning(message)
+        self.console.print(f"[yellow]{message}[/yellow]")
+    
+    def error(self, message: str):
+        """Log error message.
+        
+        Args:
+            message: Message to log
+        """
+        logger.error(message)
+        self.console.print(f"[red]{message}[/red]")
+    
+    def debug(self, message: str):
+        """Log debug message.
+        
+        Args:
+            message: Message to log
+        """
+        logger.debug(message)
+        self.console.print(f"[dim]{message}[/dim]")
+    
+    async def __aenter__(self) -> 'TextHandler':
+        """Enter async context."""
+        # Create event loop if needed
+        if self._loop is None:
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context."""
+        if self._loop is not None:
+            self._loop.close()
+            self._loop = None 

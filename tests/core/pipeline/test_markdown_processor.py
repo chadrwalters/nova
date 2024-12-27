@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 from nova.phases.parse.handlers.markdown.markdown_handler import MarkdownHandler
-from nova.phases.parse.processor import MarkdownProcessor
+from nova.phases.parse.processor import MarkdownParseProcessor
 from nova.core.config.base import (
     PipelineConfig,
     ProcessorConfig,
@@ -28,7 +28,7 @@ def processor_config():
         name="MARKDOWN_PARSE",
         description="Parse markdown files",
         output_dir=str(TEST_DATA_DIR / "output"),
-        processor="MarkdownProcessor",
+        processor="MarkdownParseProcessor",
         components={
             "markdown_processor": ComponentConfig(
                 parser="markitdown==0.0.1a3",
@@ -67,7 +67,7 @@ def pipeline_config(processor_config):
 @pytest.fixture
 def markdown_processor(processor_config, pipeline_config):
     """Create a markdown processor instance for testing."""
-    return MarkdownProcessor(processor_config, pipeline_config)
+    return MarkdownParseProcessor(processor_config, pipeline_config)
 
 @pytest.fixture
 def markdown_handler():

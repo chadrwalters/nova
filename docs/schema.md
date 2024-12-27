@@ -167,7 +167,7 @@ pipeline:
     - MARKDOWN_PARSE:
         description: "Parse markdown files"
         output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
-        processor: "MarkdownProcessor"
+        processor: "MarkdownParseProcessor"
         enabled: true
         handlers:
           - type: "UnifiedHandler"

@@ -1,5 +1,5 @@
-"""Utility functions and classes."""
+"""Utility functions."""
 
-from .file_utils import ensure_dir
+from .file_utils import ensure_directory
 
-__all__ = ['ensure_dir']
+__all__ = ['ensure_directory']

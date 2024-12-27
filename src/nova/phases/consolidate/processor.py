@@ -1,168 +1,100 @@
 """Processor for consolidating markdown files."""
 
 import os
-import json
-import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Dict, List, Optional, Set
 
-from nova.core.logging import get_logger
-from nova.phases.core.base_processor import BaseProcessor
-from nova.core.config import ProcessorConfig, PipelineConfig
-from nova.models.processor_result import ProcessorResult
-from nova.core.file_info_provider import FileInfoProvider
+from rich.console import Console
 
-logger = get_logger(__name__)
+from ...core.pipeline.base import BaseProcessor
+from ...core.utils.metrics import MetricsTracker
+from ...core.utils.timing import TimingManager
+from ...core.config import ProcessorConfig, PipelineConfig
+
+from .handlers.attachment import AttachmentHandler
+from .handlers.content import ContentHandler
+
 
 class MarkdownConsolidateProcessor(BaseProcessor):
     """Processor for consolidating markdown files."""
     
-    def __init__(self, config: ProcessorConfig, pipeline_config: PipelineConfig):
-        """Initialize processor.
-        
-        Args:
-            config: Processor configuration
-            pipeline_config: Pipeline configuration
-        """
-        super().__init__(config, pipeline_config)
-        self.logger = get_logger(self.__class__.__name__)
-    
-    def _add_section_markers(self, content: str) -> str:
-        """Add section markers to content if they don't exist."""
-        lines = content.splitlines()
-        output_lines = []
-        current_section = None
-        
-        for line in lines:
-            # Check for section headers
-            if line.strip().startswith('# ') or line.strip().startswith('## '):
-                lower_line = line.lower()
-                if 'summary' in lower_line or 'overview' in lower_line:
-                    if current_section != 'summary':
-                        output_lines.append('--==SUMMARY==--')
-                        current_section = 'summary'
-                elif 'raw notes' in lower_line or 'notes' in lower_line or 'journal' in lower_line:
-                    if current_section != 'raw_notes':
-                        output_lines.append('--==RAW_NOTES==--')
-                        current_section = 'raw_notes'
-                elif 'attachments' in lower_line:
-                    if current_section != 'attachments':
-                        output_lines.append('--==ATTACHMENTS==--')
-                        current_section = 'attachments'
-            
-            output_lines.append(line)
-        
-        return '\n'.join(output_lines)
-    
-    async def process(
+    def __init__(
         self,
-        input_dir: Optional[Path] = None,
-        output_dir: Optional[Path] = None,
-        context: Optional[Dict[str, Any]] = None
-    ) -> ProcessorResult:
-        """Process markdown files in the input directory.
+        processor_config: ProcessorConfig,
+        pipeline_config: PipelineConfig,
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[Console] = None
+    ):
+        """Initialize the processor.
         
         Args:
-            input_dir: Directory containing markdown files
-            output_dir: Directory to write consolidated files to
-            context: Processing context
-            
-        Returns:
-            ProcessorResult containing success/failure and any errors
+            processor_config: Processor configuration
+            pipeline_config: Pipeline configuration
+            timing: Optional timing utility
+            metrics: Optional metrics tracker
+            console: Optional console logger
         """
-        result = ProcessorResult()
-        context = context or {}
+        super().__init__(processor_config, pipeline_config, timing, metrics, console)
+        self.processed_files: Set[str] = set()
+        self.failed_files: Set[str] = set()
+        self.skipped_files: Set[str] = set()
+        self.errors: List[str] = []
         
+        # Initialize handlers
+        config = {
+            'input_dir': self.input_dir,
+            'output_dir': self.output_dir,
+            'temp_dir': self.temp_dir,
+            'options': processor_config.options
+        }
+        self.handlers = [
+            AttachmentHandler(config, timing, metrics, console),
+            ContentHandler(config, timing, metrics, console)
+        ]
+        
+    def _initialize(self) -> None:
+        """Initialize the processor."""
+        # Verify output directory exists
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            
+    def _process(self, file_path: str) -> None:
+        """Process a single file.
+        
+        Args:
+            file_path: Path to the file to process
+        """
         try:
-            # Use provided directories or get from environment
-            input_dir = input_dir or Path(os.environ.get('NOVA_PHASE_MARKDOWN_PARSE'))
-            output_dir = output_dir or Path(os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE'))
-            
-            logger.debug(f"Using input directory: {input_dir}")
-            logger.debug(f"Using output directory: {output_dir}")
-            
-            # Ensure directories exist
-            input_dir.mkdir(parents=True, exist_ok=True)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Get file info provider from context or create new one
-            file_info_provider = context.get('file_info_provider') or FileInfoProvider()
-            
-            # Find all markdown files
-            markdown_files = list(input_dir.rglob('*.md'))
-            if not markdown_files:
-                logger.warning(f"No markdown files found in {input_dir}")
-                result.success = True
-                return result
-            
-            logger.debug(f"Found {len(markdown_files)} markdown files")
-            
-            # Process each file
-            for file_path in markdown_files:
-                try:
-                    # Get file info
-                    file_info = await file_info_provider.get_file_info(file_path)
-                    
-                    # Skip non-markdown files
-                    if not (file_info.content_type == 'text/markdown' or file_path.suffix.lower() == '.md'):
-                        continue
-                    
-                    # Read content
-                    content = file_path.read_text(encoding='utf-8')
-                    
-                    # Add section markers if needed
-                    content = self._add_section_markers(content)
-                    
-                    # Create output path preserving directory structure
-                    if str(file_path).startswith(str(os.environ.get('NOVA_INPUT_DIR'))):
-                        rel_path = file_path.relative_to(Path(os.environ.get('NOVA_INPUT_DIR')))
+            # Check if any handler can process the file
+            for handler in self.handlers:
+                if handler.can_handle(file_path):
+                    result = handler.process(file_path)
+                    if result.success:
+                        self.processed_files.add(file_path)
+                        self.metrics.increment('files_processed')
+                        self.console.info(f"Handler {handler.__class__.__name__} successfully processed file: {file_path}")
+                        return
                     else:
-                        rel_path = file_path.relative_to(input_dir)
+                        self.failed_files.add(file_path)
+                        self.errors.extend(result.errors)
+                        error_msg = f"Handler {handler.__class__.__name__} failed to process file: {file_path}"
+                        self.console.error(error_msg)
+                        return
+                else:
+                    self.console.info(f"Handler {handler.__class__.__name__} cannot handle file: {file_path}")
                     
-                    output_path = output_dir / rel_path
-                    
-                    # Create output directory
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    # Process attachments if they exist
-                    attachments_dir = file_path.parent / file_path.stem
-                    if attachments_dir.exists() and attachments_dir.is_dir():
-                        output_attachments_dir = output_path.parent / output_path.stem
-                        output_attachments_dir.mkdir(parents=True, exist_ok=True)
-                        
-                        # Copy all files from attachment directory
-                        for attachment in attachments_dir.iterdir():
-                            if attachment.is_file():
-                                # Copy attachment preserving metadata
-                                shutil.copy2(attachment, output_attachments_dir / attachment.name)
-                                
-                                # Add attachment block to content if not already present
-                                attachment_block = (
-                                    f"\n--==ATTACHMENT_BLOCK: {attachment.name}==--\n"
-                                    f"![{attachment.stem}]({output_path.stem}/{attachment.name})\n"
-                                    f"--==ATTACHMENT_BLOCK_END==--\n"
-                                )
-                                if attachment_block not in content:
-                                    content += attachment_block
-                    
-                    # Write consolidated content
-                    output_path.write_text(content, encoding='utf-8')
-                    result.processed_files.append(output_path)
-                    logger.debug(f"Processed {file_path} -> {output_path}")
-                    
-                except Exception as e:
-                    error_msg = f"Failed to process {file_path}: {str(e)}"
-                    result.errors.append(error_msg)
-                    logger.error(error_msg)
-            
-            result.success = True
-            logger.info(f"Successfully processed {len(result.processed_files)} files")
+            # No handler could process the file
+            self.skipped_files.add(file_path)
+            warning_msg = f"No handlers could process file: {file_path}"
+            self.console.warning(warning_msg)
             
         except Exception as e:
-            error_msg = f"Consolidation phase failed: {str(e)}"
-            result.errors.append(error_msg)
-            logger.error(error_msg)
-            result.success = False
-        
-        return result
+            self.failed_files.add(file_path)
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.errors.append(error_msg)
+            self.console.error(error_msg)
+            
+    def _cleanup(self) -> None:
+        """Clean up resources."""
+        pass

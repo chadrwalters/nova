@@ -8,19 +8,20 @@ import aiofiles
 
 from ....core.logging import get_logger
 from ....core.file_ops import FileOperationsManager
+from ....core.base_handler import BaseHandler, HandlerResult
 
 logger = get_logger(__name__)
 
-class SplitHandler:
+class SplitHandler(BaseHandler):
     """Handler for splitting markdown content into sections."""
     
     def __init__(self, config: dict):
         """Initialize split handler.
         
         Args:
-            config: Handler configuration
+            config: Configuration dictionary
         """
-        self.config = config
+        super().__init__(config)
         self.output_files = config.get('output_files', {})
         self.section_markers = config.get('section_markers', {})
         self.file_ops = FileOperationsManager()
