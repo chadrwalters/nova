@@ -1,139 +1,158 @@
-# Nova Core Dependencies
+# Nova Dependencies
 
-## ⚠️ DEPENDENCY CHANGE POLICY ⚠️
+## Core Dependencies
 
-All dependencies listed in this document are CORE to the system's functionality and have been carefully selected. 
-**DO NOT MODIFY OR UPGRADE these dependencies without explicit approval from the project owner.**
+### System Requirements
+- Python 3.9+
+- ImageMagick 6.x
+- Ghostscript
+- Tesseract
+- Git
 
-## System Dependencies (Homebrew)
+### Python Packages
+- **psutil**: System and process utilities
+  - Version: 5.9.0+
+  - Used for: Resource monitoring (CPU, memory, disk)
+  - Required by: MonitoringManager
 
-### Core Brew Packages
+- **aiofiles**: Asynchronous file operations
+  - Version: 23.1.0+
+  - Used for: Async file I/O
+  - Required by: BaseHandler, MonitoringManager
+
+- **rich**: Console output formatting
+  - Version: 13.3.0+
+  - Used for: Console logging and progress display
+  - Required by: BaseHandler, MonitoringManager
+
+- **pyyaml**: YAML parsing
+  - Version: 6.0.1+
+  - Used for: Configuration files
+  - Required by: Configuration system
+
+- **click**: Command line interface
+  - Version: 8.1.7+
+  - Used for: CLI tools
+  - Required by: Command line tools
+
+### Optional Dependencies
+- **pillow**: Image processing
+  - Version: 9.5.0+
+  - Used for: Image handling
+  - Required by: ImageHandler
+
+- **python-magic**: File type detection
+  - Version: 0.4.27+
+  - Used for: File type detection
+  - Required by: BaseHandler
+
+## Development Dependencies
+
+### Testing
+- **pytest**: Testing framework
+  - Version: 7.4.0+
+  - Used for: Unit and integration tests
+
+- **pytest-asyncio**: Async test support
+  - Version: 0.21.0+
+  - Used for: Testing async functions
+
+- **pytest-cov**: Coverage reporting
+  - Version: 4.1.0+
+  - Used for: Test coverage analysis
+
+### Code Quality
+- **black**: Code formatting
+  - Version: 23.7.0+
+  - Used for: Code style enforcement
+
+- **isort**: Import sorting
+  - Version: 5.12.0+
+  - Used for: Import organization
+
+- **flake8**: Linting
+  - Version: 6.1.0+
+  - Used for: Code quality checks
+
+### Documentation
+- **mkdocs**: Documentation generator
+  - Version: 1.5.0+
+  - Used for: Building documentation
+
+- **mkdocs-material**: Documentation theme
+  - Version: 9.1.0+
+  - Used for: Documentation styling
+
+## Installation
+
+### Using Poetry
 ```bash
-# Image Processing
-imagemagick@6      # Specific version for image conversion compatibility
-ghostscript        # PDF processing and image handling
-tesseract         # OCR capabilities
+# Install poetry
+curl -sSL https://install.python-poetry.org | python3 -
 
-# Development Tools
-python@3.9        # Core Python version - DO NOT UPGRADE without approval
-poetry            # Package management
-git              # Version control
+# Install dependencies
+poetry install
 
-# System Utilities
-coreutils         # Required for file operations
-findutils         # Enhanced file search capabilities
-gnu-sed          # Required for text processing
+# Install with development dependencies
+poetry install --with dev
 ```
 
-### Installation Command
+### Using pip
 ```bash
-brew install imagemagick@6 ghostscript tesseract python@3.9 poetry git coreutils findutils gnu-sed
+# Install required packages
+pip install -r requirements.txt
+
+# Install development packages
+pip install -r requirements-dev.txt
 ```
 
-## Python Dependencies
+## Version Management
+- All dependencies are managed through Poetry
+- Version constraints are specified in pyproject.toml
+- Lock file (poetry.lock) ensures reproducible builds
+- Dependencies are regularly updated and tested
 
-### Core Processing Libraries
-```toml
-[tool.poetry.dependencies]
-python = "^3.9"
-markitdown = "0.0.1a3"          # Custom markdown processing - DO NOT CHANGE
-pillow = "9.5.0"                # Image processing - Version locked for ImageMagick compatibility
-python-magic = "0.4.27"         # File type detection
-pyyaml = "6.0.1"                # Configuration handling
-click = "8.1.7"                 # CLI framework
+## Dependency Guidelines
+1. Keep dependencies minimal and focused
+2. Use stable, well-maintained packages
+3. Regularly update dependencies
+4. Test thoroughly after updates
+5. Document breaking changes
+
+## System Dependencies
+Required system packages for Ubuntu/Debian:
+```bash
+apt-get update && apt-get install -y \
+    python3.9 \
+    python3.9-dev \
+    imagemagick \
+    ghostscript \
+    tesseract-ocr \
+    git \
+    build-essential
 ```
 
-### AI and Machine Learning
-```toml
-openai = "1.3.5"                # OpenAI API integration - Version locked for stability
-tiktoken = "0.5.1"              # Token counting for OpenAI
+Required system packages for macOS:
+```bash
+brew install \
+    python@3.9 \
+    imagemagick@6 \
+    ghostscript \
+    tesseract \
+    git
 ```
 
-### Development Dependencies
-```toml
-[tool.poetry.dev-dependencies]
-pytest = "^7.4.3"
-mypy = "^1.7.1"
-black = "^23.11.0"
-isort = "^5.12.0"
-```
+## Environment Variables
+```bash
+# Required
+NOVA_BASE_DIR=/path/to/base
+NOVA_INPUT_DIR=/path/to/input
+NOVA_OUTPUT_DIR=/path/to/output
+NOVA_PROCESSING_DIR=/path/to/processing
+NOVA_TEMP_DIR=/path/to/temp
 
-## Dependency Change Protocol
-
-1. **Change Request**
-   - Document the need for change
-   - Provide compatibility analysis
-   - Test impact on existing functionality
-   - Get explicit approval from project owner
-
-2. **Testing Requirements**
-   - Full test suite must pass
-   - Performance benchmarks must be maintained
-   - No regression in image processing quality
-   - All phases must complete successfully
-
-3. **Version Control**
-   - Lock all dependency versions
-   - Document any version changes
-   - Keep change history
-   - Maintain compatibility matrix
-
-4. **Compatibility Requirements**
-   - ImageMagick version must remain at 6.x
-   - Python version must remain at 3.9.x
-   - Core libraries must maintain API compatibility
-   - System utilities must preserve current behavior
-
-## Critical Dependencies (DO NOT MODIFY)
-
-These dependencies have been extensively tested and are critical for system stability:
-
-1. **markitdown==0.0.1a3**
-   - Custom markdown processing
-   - Core to document handling
-   - Extensively tested version
-   - API stability required
-
-2. **imagemagick@6**
-   - Image processing backbone
-   - Version 6 required for compatibility
-   - Specific conversion features
-   - Performance optimized
-
-3. **python@3.9**
-   - System baseline version
-   - Compatibility verified
-   - Performance optimized
-   - Library compatibility assured
-
-4. **openai==1.3.5**
-   - API stability required
-   - Rate limiting tested
-   - Error handling verified
-   - Performance benchmarked
-
-## Dependency Update Process
-
-1. **Request Phase**
-   - Submit detailed change request
-   - Include compatibility analysis
-   - Provide performance impact
-   - Document security implications
-
-2. **Review Phase**
-   - Technical review required
-   - Performance testing required
-   - Security audit required
-   - Owner approval required
-
-3. **Testing Phase**
-   - Full regression testing
-   - Performance benchmarking
-   - Integration testing
-   - Error handling verification
-
-4. **Implementation Phase**
-   - Staged rollout
-   - Rollback plan required
-   - Documentation updates
-   - Monitoring plan 
+# Optional
+NOVA_LOG_LEVEL=INFO
+NOVA_METRICS_ENABLED=true
+NOVA_MONITORING_INTERVAL=60
+``` 

@@ -1,209 +1,165 @@
 """Text file handler."""
 
-import os
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
-import asyncio
-from rich.console import Console
+from typing import Optional, Dict, Any, List
+from nova.core.pipeline.base_handler import BaseHandler
+from nova.core.pipeline.errors import ValidationError
+from nova.core.pipeline.types import ProcessingResult
 
-from ....core.errors import HandlerError
-from ....core.logging import get_logger
-from ....core.handlers.base import BaseHandler
-from ....core.utils.timing import TimingManager
-from ....core.utils.metrics import MetricsTracker
-
-logger = get_logger(__name__)
 
 class TextHandler(BaseHandler):
     """Handler for text files."""
-    
-    def __init__(
-        self,
-        config: Dict[str, Any],
-        timing: Optional[TimingManager] = None,
-        metrics: Optional[MetricsTracker] = None,
-        console: Optional[Console] = None
-    ):
-        """Initialize the handler.
+
+    def __init__(self, 
+                 config: Optional[Dict[str, Any]] = None,
+                 timing: bool = False,
+                 **kwargs: Any):
+        """Initialize text handler.
         
         Args:
             config: Handler configuration
-            timing: Optional timing manager instance
-            metrics: Optional metrics tracker instance
-            console: Optional rich console instance
+            timing: Whether to track timing
+            **kwargs: Additional arguments
         """
-        super().__init__(config)
-        self.timing = timing or TimingManager()
-        self.metrics = metrics or MetricsTracker()
-        self.console = console or Console()
-        
-        # Initialize state
-        self.state = {
-            "status": "initialized",
-            "current_file": None,
-            "processed_files": [],
-            "failed_files": [],
-            "error": None
-        }
-        
-        # Create event loop for async operations
-        self._loop = None
-    
-    async def process(self, input_file: Path, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a text file.
+        super().__init__(config, **kwargs)
+        self.timing = timing
+        self.logger = logging.getLogger(__name__)
+
+    def can_handle(self, file_path: Path) -> bool:
+        """Check if handler can process file.
         
         Args:
-            input_file: Path to the file to process
-            context: Processing context
+            file_path: Path to file
             
         Returns:
-            Dictionary with processing results
+            Whether handler can process file
+        """
+        return file_path.suffix in ['.txt', '.md', '.py', '.js', '.css', '.html', '.json', '.yaml', '.yml']
+
+    async def process(self, file_path: Path) -> ProcessingResult:
+        """Process text file.
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            Processing result
         """
         try:
-            # Update state
-            self.state["status"] = "running"
-            self.state["current_file"] = input_file
-            
-            # Track timing
-            with self.timing.timer(f"process_file_{input_file.name}"):
-                # Process file
-                processed_content = await self._process_file(input_file)
-                
-                # Update state
-                self.state["processed_files"].append(input_file)
-                self.metrics.increment_counter("files_processed")
-                
-                return {
-                    "success": True,
-                    "content": processed_content
-                }
-                
-        except Exception as e:
-            # Update state
-            self.state["status"] = "failed"
-            self.state["error"] = str(e)
-            self.state["failed_files"].append(input_file)
-            
-            self.error(f"Failed to process file {input_file}: {e}")
-            return {
-                "success": False,
-                "errors": [str(e)]
-            }
-    
-    async def _process_file(self, input_file: Path) -> str:
-        """Process a text file.
-        
-        Args:
-            input_file: Path to the file to process
-            
-        Returns:
-            Processed content as markdown
-        """
-        # Read content
-        content = input_file.read_text(encoding='utf-8')
-        
-        # Convert to markdown
-        lines = []
-        for line in content.split('\n'):
-            # Skip empty lines
-            if not line.strip():
-                lines.append('')
-                continue
-                
-            # Convert to markdown paragraph
-            lines.append(line)
-            lines.append('')
-            
-        return '\n'.join(lines)
-    
-    async def can_handle(self, file_path: Path) -> bool:
-        """Check if this handler can process the given file.
-        
-        Args:
-            file_path: Path to the file to check
-            
-        Returns:
-            True if this handler can process the file, False otherwise
-        """
-        return file_path.suffix.lower() in ['.txt', '.log', '.csv']
-    
-    async def validate(self, file_path: Path) -> bool:
-        """Validate a text file before processing.
-        
-        Args:
-            file_path: Path to the file to validate
-            
-        Returns:
-            True if validation passes, False otherwise
-        """
-        try:
-            # Check if file exists
             if not file_path.exists():
-                self.error(f"File does not exist: {file_path}")
-                return False
-                
-            # Check if file is readable
-            if not os.access(file_path, os.R_OK):
-                self.error(f"File is not readable: {file_path}")
-                return False
-                
-            # Check file extension
-            if not file_path.suffix.lower() in ['.txt', '.log', '.csv']:
-                self.error(f"Invalid file extension: {file_path}")
-                return False
-                
-            return True
-            
+                return ProcessingResult(
+                    success=False,
+                    errors=[f"File not found: {file_path}"]
+                )
+
+            if not self.can_handle(file_path):
+                return ProcessingResult(
+                    success=False,
+                    errors=[f"Unsupported file type: {file_path.suffix}"]
+                )
+
+            # Read file content
+            content = file_path.read_text(encoding='utf-8')
+
+            # Extract metadata
+            metadata = self._extract_metadata(file_path)
+
+            # Copy to output directory
+            output_path = self._get_output_path(file_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(content, encoding='utf-8')
+
+            return ProcessingResult(
+                success=True,
+                processed_files=[output_path],
+                metadata=metadata,
+                content=content
+            )
+
         except Exception as e:
-            self.error(f"Failed to validate file {file_path}: {e}")
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            return ProcessingResult(
+                success=False,
+                errors=[error_msg]
+            )
+
+    def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
+        """Extract metadata from file.
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            File metadata
+        """
+        return {
+            'filename': file_path.name,
+            'extension': file_path.suffix,
+            'size': file_path.stat().st_size,
+            'mime_type': self._get_mime_type(file_path)
+        }
+
+    def _get_mime_type(self, file_path: Path) -> str:
+        """Get file MIME type.
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            MIME type
+        """
+        mime_types = {
+            '.txt': 'text/plain',
+            '.md': 'text/markdown',
+            '.py': 'text/x-python',
+            '.js': 'application/javascript',
+            '.css': 'text/css',
+            '.html': 'text/html',
+            '.json': 'application/json',
+            '.yaml': 'application/x-yaml',
+            '.yml': 'application/x-yaml'
+        }
+        return mime_types.get(file_path.suffix, 'text/plain')
+
+    def _get_output_path(self, input_path: Path) -> Path:
+        """Get output path for file.
+        
+        Args:
+            input_path: Input file path
+            
+        Returns:
+            Output file path
+        """
+        if not self.output_dir:
+            raise ValidationError("output_dir is required in config")
+        return Path(self.output_dir) / input_path.name
+
+    def validate(self, result: ProcessingResult) -> bool:
+        """Validate processing result.
+        
+        Args:
+            result: Processing result
+            
+        Returns:
+            Whether result is valid
+        """
+        if not result.success:
             return False
-    
-    def info(self, message: str):
-        """Log info message.
-        
-        Args:
-            message: Message to log
-        """
-        logger.info(message)
-        self.console.print(f"[blue]{message}[/blue]")
-    
-    def warning(self, message: str):
-        """Log warning message.
-        
-        Args:
-            message: Message to log
-        """
-        logger.warning(message)
-        self.console.print(f"[yellow]{message}[/yellow]")
-    
-    def error(self, message: str):
-        """Log error message.
-        
-        Args:
-            message: Message to log
-        """
-        logger.error(message)
-        self.console.print(f"[red]{message}[/red]")
-    
-    def debug(self, message: str):
-        """Log debug message.
-        
-        Args:
-            message: Message to log
-        """
-        logger.debug(message)
-        self.console.print(f"[dim]{message}[/dim]")
-    
-    async def __aenter__(self) -> 'TextHandler':
-        """Enter async context."""
-        # Create event loop if needed
-        if self._loop is None:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit async context."""
-        if self._loop is not None:
-            self._loop.close()
-            self._loop = None 
+
+        if not result.processed_files:
+            self.logger.error("No processed files in result")
+            return False
+
+        for file_path in result.processed_files:
+            if not file_path.exists():
+                self.logger.error(f"Output file not found: {file_path}")
+                return False
+
+        return True
+
+    async def cleanup(self) -> None:
+        """Clean up handler resources."""
+        # Nothing to clean up for text handler
+        pass 

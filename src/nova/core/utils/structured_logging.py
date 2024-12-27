@@ -9,7 +9,7 @@ import json
 import logging
 import time
 
-from .metrics import MetricsTracker
+from nova.core.utils.metrics import MetricsTracker
 
 
 @dataclass
@@ -91,16 +91,13 @@ class JsonFormatter(logging.Formatter):
 class LogAggregator:
     """Aggregates and analyzes log records."""
     
-    def __init__(self, metrics_dir: Optional[Union[str, Path]] = None):
+    def __init__(self, metrics: Optional[MetricsTracker] = None):
         """Initialize log aggregator.
         
         Args:
-            metrics_dir: Optional directory for metrics storage
+            metrics: Optional metrics tracker instance
         """
-        # Create metrics directory if specified
-        metrics_path = Path(metrics_dir) if metrics_dir else Path.cwd() / "metrics" / "log_aggregator"
-        self.metrics = MetricsTracker(metrics_dir=metrics_path)
-        
+        self.metrics = metrics or MetricsTracker()
         self.records: List[LogRecord] = []
         self.start_time = datetime.now()
         
@@ -113,10 +110,10 @@ class LogAggregator:
         self.records.append(record)
         
         # Update metrics
-        self.metrics.increment(f"log_level_{record.level.lower()}", 1)
+        self.metrics.increment(f"log_level_{record.level.lower()}")
         if record.metrics:
             for key, value in record.metrics.items():
-                self.metrics.gauge(f"log_metric_{key}", value)
+                self.metrics.set_gauge(f"log_metric_{key}", value)
                 
     def get_records(
         self,
@@ -202,23 +199,19 @@ class StructuredLogger:
         self,
         name: str,
         level: int = logging.INFO,
-        metrics_dir: Optional[Union[str, Path]] = None
+        metrics: Optional[MetricsTracker] = None
     ):
         """Initialize structured logger.
         
         Args:
             name: Logger name
             level: Log level
-            metrics_dir: Optional directory for metrics storage
+            metrics: Optional metrics tracker instance
         """
         self.name = name
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
-        
-        # Create metrics directory if specified
-        metrics_path = Path(metrics_dir) if metrics_dir else Path.cwd() / "metrics" / name.lower()
-        self.metrics = MetricsTracker(metrics_dir=metrics_path)
-        
+        self.metrics = metrics or MetricsTracker()
         self.context: Dict[str, Any] = {}
         self.tags: Dict[str, str] = {}
         
@@ -248,55 +241,51 @@ class StructuredLogger:
         tags: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> None:
-        """Log a message with context and metrics.
+        """Internal logging implementation.
         
         Args:
             level: Log level
             msg: Message format string
             *args: Message format arguments
-            context: Additional context
-            metrics: Metrics to record
-            tags: Additional tags
+            context: Optional additional context
+            metrics: Optional metrics to record
+            tags: Optional tags to add
             **kwargs: Additional logging arguments
         """
-        if not self.logger.isEnabledFor(level):
-            return
-            
-        # Merge context and tags
-        record_context = self.context.copy()
+        # Update context and tags
+        log_context = self.context.copy()
         if context:
-            record_context.update(context)
+            log_context.update(context)
             
-        record_tags = self.tags.copy()
+        log_tags = self.tags.copy()
         if tags:
-            record_tags.update(tags)
+            log_tags.update(tags)
             
-        # Create log record
-        record = logging.LogRecord(
-            name=self.name,
-            level=level,
-            pathname=kwargs.get("pathname", ""),
-            lineno=kwargs.get("lineno", 0),
-            msg=msg,
-            args=args,
-            exc_info=kwargs.get("exc_info"),
-            func=kwargs.get("func", ""),
-            sinfo=kwargs.get("sinfo")
+        # Create record
+        record = LogRecord(
+            timestamp=datetime.now(),
+            level=logging.getLevelName(level),
+            message=msg % args if args else msg,
+            logger=self.name,
+            source={
+                "file": kwargs.get("filename", ""),
+                "line": kwargs.get("lineno", 0),
+                "function": kwargs.get("funcName", "")
+            },
+            context=log_context,
+            metrics=metrics or {},
+            tags=log_tags
         )
-        
-        # Add extra attributes
-        record.context = record_context
-        record.metrics = metrics or {}
-        record.tags = record_tags
-        
-        # Log the record
-        self.logger.handle(record)
         
         # Update metrics
         if metrics:
             for key, value in metrics.items():
-                self.metrics.gauge(f"log_metric_{key}", value)
-                
+                if isinstance(value, (int, float)):
+                    self.metrics.set_gauge(f"log_metric_{key}", value)
+                    
+        # Log record
+        self.logger.log(level, record.message, **kwargs)
+        
     def debug(
         self,
         msg: str,
@@ -306,17 +295,25 @@ class StructuredLogger:
         tags: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> None:
-        """Log a debug message.
+        """Log debug message.
         
         Args:
             msg: Message format string
             *args: Message format arguments
-            context: Additional context
-            metrics: Metrics to record
-            tags: Additional tags
+            context: Optional additional context
+            metrics: Optional metrics to record
+            tags: Optional tags to add
             **kwargs: Additional logging arguments
         """
-        self._log(logging.DEBUG, msg, *args, context=context, metrics=metrics, tags=tags, **kwargs)
+        self._log(
+            logging.DEBUG,
+            msg,
+            *args,
+            context=context,
+            metrics=metrics,
+            tags=tags,
+            **kwargs
+        )
         
     def info(
         self,
@@ -327,17 +324,25 @@ class StructuredLogger:
         tags: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> None:
-        """Log an info message.
+        """Log info message.
         
         Args:
             msg: Message format string
             *args: Message format arguments
-            context: Additional context
-            metrics: Metrics to record
-            tags: Additional tags
+            context: Optional additional context
+            metrics: Optional metrics to record
+            tags: Optional tags to add
             **kwargs: Additional logging arguments
         """
-        self._log(logging.INFO, msg, *args, context=context, metrics=metrics, tags=tags, **kwargs)
+        self._log(
+            logging.INFO,
+            msg,
+            *args,
+            context=context,
+            metrics=metrics,
+            tags=tags,
+            **kwargs
+        )
         
     def warning(
         self,
@@ -348,17 +353,25 @@ class StructuredLogger:
         tags: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> None:
-        """Log a warning message.
+        """Log warning message.
         
         Args:
             msg: Message format string
             *args: Message format arguments
-            context: Additional context
-            metrics: Metrics to record
-            tags: Additional tags
+            context: Optional additional context
+            metrics: Optional metrics to record
+            tags: Optional tags to add
             **kwargs: Additional logging arguments
         """
-        self._log(logging.WARNING, msg, *args, context=context, metrics=metrics, tags=tags, **kwargs)
+        self._log(
+            logging.WARNING,
+            msg,
+            *args,
+            context=context,
+            metrics=metrics,
+            tags=tags,
+            **kwargs
+        )
         
     def error(
         self,
@@ -369,17 +382,25 @@ class StructuredLogger:
         tags: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> None:
-        """Log an error message.
+        """Log error message.
         
         Args:
             msg: Message format string
             *args: Message format arguments
-            context: Additional context
-            metrics: Metrics to record
-            tags: Additional tags
+            context: Optional additional context
+            metrics: Optional metrics to record
+            tags: Optional tags to add
             **kwargs: Additional logging arguments
         """
-        self._log(logging.ERROR, msg, *args, context=context, metrics=metrics, tags=tags, **kwargs)
+        self._log(
+            logging.ERROR,
+            msg,
+            *args,
+            context=context,
+            metrics=metrics,
+            tags=tags,
+            **kwargs
+        )
         
     def critical(
         self,
@@ -390,14 +411,22 @@ class StructuredLogger:
         tags: Optional[Dict[str, str]] = None,
         **kwargs: Any
     ) -> None:
-        """Log a critical message.
+        """Log critical message.
         
         Args:
             msg: Message format string
             *args: Message format arguments
-            context: Additional context
-            metrics: Metrics to record
-            tags: Additional tags
+            context: Optional additional context
+            metrics: Optional metrics to record
+            tags: Optional tags to add
             **kwargs: Additional logging arguments
         """
-        self._log(logging.CRITICAL, msg, *args, context=context, metrics=metrics, tags=tags, **kwargs) 
+        self._log(
+            logging.CRITICAL,
+            msg,
+            *args,
+            context=context,
+            metrics=metrics,
+            tags=tags,
+            **kwargs
+        ) 

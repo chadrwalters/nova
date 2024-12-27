@@ -1,98 +1,169 @@
-"""Processor for splitting markdown files."""
+"""Three-file split processor."""
 
-import os
+import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-
-from rich.console import Console
-
-from ...core.pipeline.base import BaseProcessor
-from ...core.utils.metrics import MetricsTracker
-from ...core.utils.timing import TimingManager
-from ...core.config import ProcessorConfig, PipelineConfig
-
-from .handlers.split import SplitHandler
+from typing import Dict, Any, List, Optional
+from nova.core.pipeline.errors import ValidationError
+from nova.core.pipeline.types import ProcessingResult
+from nova.core.pipeline.base_handler import BaseHandler
 
 
-class ThreeFileSplitProcessor(BaseProcessor):
-    """Processor for splitting markdown files into three files."""
-    
-    def __init__(
-        self,
-        processor_config: ProcessorConfig,
-        pipeline_config: PipelineConfig,
-        timing: Optional[TimingManager] = None,
-        metrics: Optional[MetricsTracker] = None,
-        console: Optional[Console] = None
-    ):
-        """Initialize the processor.
+class ThreeFileSplitProcessor:
+    """Processor for splitting content into three files."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize processor.
         
         Args:
-            processor_config: Processor configuration
-            pipeline_config: Pipeline configuration
-            timing: Optional timing utility
-            metrics: Optional metrics tracker
-            console: Optional console logger
+            config: Processor configuration
         """
-        super().__init__(processor_config, pipeline_config, timing, metrics, console)
-        self.processed_files: Set[str] = set()
-        self.failed_files: Set[str] = set()
-        self.skipped_files: Set[str] = set()
-        self.errors: List[str] = []
+        self.config = config or {}
+        self.output_dir = self.config.get('output_dir')
+        self.options = self.config.get('options', {})
+        self.logger = logging.getLogger(__name__)
+
+    def validate(self) -> None:
+        """Validate processor configuration.
         
-        # Initialize handlers
-        config = {
-            'input_dir': self.input_dir,
-            'output_dir': self.output_dir,
-            'temp_dir': self.temp_dir,
-            'options': processor_config.options
-        }
-        self.handlers = [
-            SplitHandler(config, timing, metrics, console)
-        ]
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not self.output_dir:
+            raise ValidationError("Output directory is required")
+
+    async def process(self, input_files: List[Path]) -> ProcessingResult:
+        """Process input files.
         
-    def _initialize(self) -> None:
-        """Initialize the processor."""
-        # Verify output directory exists
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+        Args:
+            input_files: List of input files
             
-    def _process(self, file_path: str) -> None:
+        Returns:
+            Processing result
+        """
+        try:
+            # Validate configuration
+            self.validate()
+
+            # Initialize result
+            result = ProcessingResult(
+                success=True,
+                processed_files=[],
+                metadata={},
+                content=None
+            )
+
+            # Process each file
+            for file_path in input_files:
+                file_result = await self._process_file(file_path)
+                if not file_result.success:
+                    result.success = False
+                    result.errors.extend(file_result.errors)
+                    continue
+
+                result.processed_files.extend(file_result.processed_files)
+                result.metadata.update(file_result.metadata)
+
+            return result
+
+        except Exception as e:
+            error_msg = f"Error in processor: {str(e)}"
+            self.logger.error(error_msg)
+            return ProcessingResult(
+                success=False,
+                errors=[error_msg]
+            )
+
+    async def _process_file(self, file_path: Path) -> ProcessingResult:
         """Process a single file.
         
         Args:
-            file_path: Path to the file to process
+            file_path: Path to file
+            
+        Returns:
+            Processing result
         """
         try:
-            # Check if any handler can process the file
-            for handler in self.handlers:
-                if handler.can_handle(file_path):
-                    result = handler.process(file_path)
-                    if result.success:
-                        self.processed_files.add(file_path)
-                        self.metrics.increment('files_processed')
-                        self.console.info(f"Handler {handler.__class__.__name__} successfully processed file: {file_path}")
-                        return
-                    else:
-                        self.failed_files.add(file_path)
-                        self.errors.extend(result.errors)
-                        error_msg = f"Handler {handler.__class__.__name__} failed to process file: {file_path}"
-                        self.console.error(error_msg)
-                        return
-                else:
-                    self.console.info(f"Handler {handler.__class__.__name__} cannot handle file: {file_path}")
-                    
-            # No handler could process the file
-            self.skipped_files.add(file_path)
-            warning_msg = f"No handlers could process file: {file_path}"
-            self.console.warning(warning_msg)
-            
+            # Read file content
+            content = file_path.read_text(encoding='utf-8')
+
+            # Split content into sections
+            summary, raw_notes, attachments = self._split_content(content)
+
+            # Create output files
+            output_files = []
+            output_dir = Path(self.output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write summary
+            summary_path = output_dir / 'summary.md'
+            summary_path.write_text(summary, encoding='utf-8')
+            output_files.append(summary_path)
+
+            # Write raw notes
+            raw_notes_path = output_dir / 'raw_notes.md'
+            raw_notes_path.write_text(raw_notes, encoding='utf-8')
+            output_files.append(raw_notes_path)
+
+            # Write attachments
+            attachments_path = output_dir / 'attachments.md'
+            attachments_path.write_text(attachments, encoding='utf-8')
+            output_files.append(attachments_path)
+
+            return ProcessingResult(
+                success=True,
+                processed_files=output_files,
+                metadata={
+                    'summary_size': len(summary),
+                    'raw_notes_size': len(raw_notes),
+                    'attachments_size': len(attachments)
+                },
+                content=content
+            )
+
         except Exception as e:
-            self.failed_files.add(file_path)
             error_msg = f"Error processing {file_path}: {str(e)}"
-            self.errors.append(error_msg)
-            self.console.error(error_msg)
+            self.logger.error(error_msg)
+            return ProcessingResult(
+                success=False,
+                errors=[error_msg]
+            )
+
+    def _split_content(self, content: str) -> tuple[str, str, str]:
+        """Split content into three sections.
+        
+        Args:
+            content: Content to split
             
-    def _cleanup(self) -> None:
-        """Clean up resources."""
-        pass
+        Returns:
+            Tuple of (summary, raw_notes, attachments)
+        """
+        # Initialize sections
+        summary = []
+        raw_notes = []
+        attachments = []
+        current_section = summary
+
+        # Process content line by line
+        for line in content.split('\n'):
+            # Check for section markers
+            if line.startswith('--==SUMMARY==--'):
+                current_section = summary
+                continue
+            elif line.startswith('--==RAW NOTES==--'):
+                current_section = raw_notes
+                continue
+            elif line.startswith('--==ATTACHMENTS==--'):
+                current_section = attachments
+                continue
+            elif line.startswith('--==ATTACHMENT_BLOCK:'):
+                current_section = attachments
+
+            # Add line to current section
+            current_section.append(line)
+
+        # Join sections
+        return (
+            '\n'.join(summary).strip(),
+            '\n'.join(raw_notes).strip(),
+            '\n'.join(attachments).strip()
+        ) 

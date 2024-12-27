@@ -1,166 +1,68 @@
-"""Error tracking module for pipeline operations."""
+"""Error tracking utilities."""
 
-import logging
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
-from datetime import datetime
+from typing import Dict, List, Set
 
-@dataclass
-class ErrorDetails:
-    """Standardized error details structure"""
-    component: str                # The component that generated the error
-    message: str                 # The error message
-    context: Dict[str, Any]      # Contextual info like function, path, etc.
-    timestamp: float             # When the error occurred
-    is_critical: bool = False    # Whether this is a critical error
-    parent_error: Optional['ErrorDetails'] = None  # For hierarchical errors
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'component': self.component,
-            'message': self.message,
-            'context': self.context,
-            'timestamp': self.timestamp,
-            'is_critical': self.is_critical,
-            'parent': self.parent_error.to_dict() if self.parent_error else None
-        }
-
-@dataclass
-class WarningDetails:
-    """Standardized warning details structure"""
-    component: str                # The component that generated the warning
-    message: str                 # The warning message
-    context: Dict[str, Any]      # Contextual info like function, path, etc.
-    timestamp: float             # When the warning occurred
-    parent_warning: Optional['WarningDetails'] = None  # For hierarchical warnings
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'component': self.component,
-            'message': self.message,
-            'context': self.context,
-            'timestamp': self.timestamp,
-            'parent': self.parent_warning.to_dict() if self.parent_warning else None
-        }
 
 class ErrorTracker:
-    """Tracks errors and warnings during pipeline operations."""
+    """Track errors during pipeline execution."""
     
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        """Initialize error tracker.
+    def __init__(self):
+        """Initialize error tracker."""
+        self.phase_errors: Dict[str, List[str]] = {}
+        self.registered_phases: Set[str] = set()
+        
+    def register_phase(self, phase_name: str) -> None:
+        """Register a phase for error tracking.
         
         Args:
-            logger: Optional logger instance to use
+            phase_name: Name of phase to register
         """
-        self.errors: List[ErrorDetails] = []
-        self.warnings: List[WarningDetails] = []
-        self.logger = logger or logging.getLogger(__name__)
+        self.registered_phases.add(phase_name)
+        self.phase_errors[phase_name] = []
         
-    def add_error(self, 
-                 component: str, 
-                 message: str, 
-                 context: Optional[Dict[str, Any]] = None,
-                 is_critical: bool = False,
-                 parent_error: Optional[ErrorDetails] = None) -> None:
-        """Add an error to the tracker.
+    def add_phase_errors(self, phase_name: str, errors: List[str]) -> None:
+        """Add errors for a phase.
         
         Args:
-            component: Component that generated the error
-            message: Error message
-            context: Additional error context
-            is_critical: Whether this is a critical error
-            parent_error: Parent error for hierarchical tracking
+            phase_name: Name of phase
+            errors: List of error messages
         """
-        error = ErrorDetails(
-            component=component,
-            message=message,
-            context=context or {},
-            timestamp=datetime.now().timestamp(),
-            is_critical=is_critical,
-            parent_error=parent_error
-        )
+        if phase_name not in self.phase_errors:
+            self.register_phase(phase_name)
+            
+        self.phase_errors[phase_name].extend(errors)
         
-        self.errors.append(error)
-        self.logger.error(f"Error in {component}: {message} ({component}.{context.get('function', 'unknown') if context else 'unknown'}: {context if context else {}})")
-
-    def add_warning(self, 
-                   component: str, 
-                   message: str, 
-                   context: Optional[Dict[str, Any]] = None,
-                   parent_warning: Optional[WarningDetails] = None) -> None:
-        """Add a warning to the tracker.
+    def get_phase_errors(self, phase_name: str) -> List[str]:
+        """Get errors for a phase.
         
         Args:
-            component: Component that generated the warning
-            message: Warning message
-            context: Additional warning context
-            parent_warning: Parent warning for hierarchical tracking
+            phase_name: Name of phase
+            
+        Returns:
+            List of error messages
         """
-        warning = WarningDetails(
-            component=component,
-            message=message,
-            context=context or {},
-            timestamp=datetime.now().timestamp(),
-            parent_warning=parent_warning
-        )
+        return self.phase_errors.get(phase_name, [])
         
-        self.warnings.append(warning)
-        self.logger.warning(f"Warning in {component}: {message} ({component}.{context.get('function', 'unknown') if context else 'unknown'}: {context if context else {}})")
-    
-    def get_errors(self) -> List[Dict[str, Any]]:
-        """Get all tracked errors.
+    def get_registered_phases(self) -> Set[str]:
+        """Get set of registered phases.
         
         Returns:
-            List of error dictionaries
+            Set of registered phase names
         """
-        return [error.to_dict() for error in self.errors]
-
-    def get_warnings(self) -> List[Dict[str, Any]]:
-        """Get all tracked warnings.
+        return self.registered_phases
         
+    def has_errors(self, phase_name: str) -> bool:
+        """Check if a phase has errors.
+        
+        Args:
+            phase_name: Name of phase
+            
         Returns:
-            List of warning dictionaries
+            True if phase has errors, False otherwise
         """
-        return [warning.to_dict() for warning in self.warnings]
-    
-    def get_error_report(self) -> Dict[str, Any]:
-        """Get a report of all errors and warnings.
+        return bool(self.get_phase_errors(phase_name))
         
-        Returns:
-            Dictionary containing error report details
-        """
-        errors = self.get_errors()
-        warnings = self.get_warnings()
-        
-        return {
-            'total_errors': len(errors),
-            'total_warnings': len(warnings),
-            'errors': errors,
-            'warnings': warnings,
-            'has_errors': bool(errors),
-            'has_warnings': bool(warnings),
-            'components': list(set(err['component'] for err in errors).union(
-                set(warn['component'] for warn in warnings)
-            ))
-        }
-
-    def has_errors(self) -> bool:
-        """Check if any errors are tracked.
-        
-        Returns:
-            True if there are any errors, False otherwise
-        """
-        return bool(self.errors)
-    
-    def has_critical_errors(self) -> bool:
-        """Check if any critical errors are tracked.
-        
-        Returns:
-            True if there are any critical errors, False otherwise
-        """
-        return any(error.is_critical for error in self.errors)
-
     def clear(self) -> None:
-        """Clear all tracked errors and warnings."""
-        self.errors.clear()
-        self.warnings.clear() 
+        """Clear all error tracking state."""
+        self.phase_errors.clear()
+        self.registered_phases.clear() 

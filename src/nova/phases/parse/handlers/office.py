@@ -6,11 +6,11 @@ from typing import Dict, Any, Optional, List, Union
 import asyncio
 from rich.console import Console
 
-from ....core.errors import HandlerError
-from ....core.logging import get_logger
-from ....core.handlers.base import BaseHandler
-from ....core.utils.timing import TimingManager
-from ....core.utils.metrics import MetricsTracker
+from nova.core.errors import HandlerError
+from nova.core.logging import get_logger
+from nova.core.handlers.base import BaseHandler
+from nova.core.utils.timing import TimingManager
+from nova.core.utils.metrics import MetricsTracker
 
 logger = get_logger(__name__)
 
@@ -32,10 +32,12 @@ class OfficeHandler(BaseHandler):
             metrics: Optional metrics tracker instance
             console: Optional rich console instance
         """
-        super().__init__(config)
-        self.timing = timing or TimingManager()
-        self.metrics = metrics or MetricsTracker()
-        self.console = console or Console()
+        super().__init__(
+            config=config,
+            timing=timing,
+            metrics=metrics,
+            console=console
+        )
         
         # Initialize state
         self.state = {
@@ -64,25 +66,33 @@ class OfficeHandler(BaseHandler):
             self.state["status"] = "running"
             self.state["current_file"] = input_file
             
-            # Track timing
-            with self.timing.timer(f"process_file_{input_file.name}"):
-                # Process file
-                processed_content = await self._process_file(input_file)
-                
-                # Update state
-                self.state["processed_files"].append(input_file)
-                self.metrics.increment_counter("files_processed")
-                
-                return {
-                    "success": True,
-                    "content": processed_content
-                }
+            # Start timing
+            self.metrics.start_timer(f"process_file_{input_file.name}")
+            
+            # Process file
+            processed_content = await self._process_file(input_file)
+            
+            # Stop timing and update metrics
+            self.metrics.stop_timer(f"process_file_{input_file.name}")
+            self.metrics.increment("files_processed")
+            self.metrics.set_gauge("content_length", len(processed_content), labels={"file": input_file.name})
+            
+            # Update state
+            self.state["processed_files"].append(input_file)
+            
+            return {
+                "success": True,
+                "content": processed_content
+            }
                 
         except Exception as e:
             # Update state
             self.state["status"] = "failed"
             self.state["error"] = str(e)
             self.state["failed_files"].append(input_file)
+            
+            # Update metrics
+            self.metrics.increment("files_failed")
             
             self.error(f"Failed to process file {input_file}: {e}")
             return {

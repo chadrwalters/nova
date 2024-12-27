@@ -1,9 +1,21 @@
-"""Configuration for ThreeFileSplitProcessor."""
+"""Configuration and implementation for ThreeFileSplitProcessor."""
 
-from typing import Dict, Any, List
+import os
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Set
 from pydantic import ConfigDict, Field
+from rich.console import Console
+import json
+from datetime import datetime
 
-from ...core.config import ProcessorConfig
+from ...core.config import ProcessorConfig, PipelineConfig
+from ...core.pipeline.base import BaseProcessor
+from ...core.utils.metrics import MetricsTracker
+from ...core.utils.timing import TimingManager
+from ...core.models.result import ProcessingResult
+
+from .handlers.split import SplitHandler
+
 
 class ThreeFileSplitConfig(ProcessorConfig):
     """Configuration for ThreeFileSplitProcessor."""
@@ -120,4 +132,168 @@ class ThreeFileSplitConfig(ProcessorConfig):
                 if marker_type not in config['attachment_markers']:
                     errors.append(f"Missing required attachment marker: {marker_type}")
                     
-        return errors 
+        return errors
+
+
+class ThreeFileSplitProcessor(BaseProcessor):
+    """Processor for splitting markdown files into three sections."""
+    
+    def __init__(
+        self,
+        processor_config: ProcessorConfig,
+        pipeline_config: PipelineConfig,
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[Console] = None
+    ):
+        """Initialize the processor.
+        
+        Args:
+            processor_config: Processor configuration
+            pipeline_config: Pipeline configuration
+            timing: Optional timing utility
+            metrics: Optional metrics tracker
+            console: Optional console logger
+        """
+        super().__init__(processor_config, pipeline_config, timing, metrics, console)
+        self.section_files = processor_config.options.get('section_files', [
+            'summary.md',
+            'raw_notes.md',
+            'attachments.md'
+        ])
+        self.preserve_metadata = processor_config.options.get('preserve_metadata', True)
+        self.track_relationships = processor_config.options.get('track_relationships', True)
+        
+    async def setup(self) -> None:
+        """Set up the processor."""
+        self._initialize()
+        
+    async def process(self) -> ProcessingResult:
+        """Process the input file.
+        
+        Returns:
+            ProcessingResult containing processing results
+        """
+        try:
+            input_file = Path(self.input_dir) / "all_merged_markdown.md"
+            if not input_file.exists():
+                return ProcessingResult(
+                    success=False,
+                    errors=[f"Input file not found: {input_file}"]
+                )
+            
+            # Process the file
+            await self._process(str(input_file))
+            
+            # Create result
+            result = ProcessingResult(
+                success=len(self.errors) == 0,
+                processed_files=[Path(p) for p in self.processed_files],
+                errors=self.errors
+            )
+            
+            # Add metadata
+            result.metadata.update({
+                'failed_files': list(self.failed_files),
+                'skipped_files': list(self.skipped_files),
+                'section_files': self.section_files
+            })
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error processing files: {str(e)}"
+            self.errors.append(error_msg)
+            self.console.print(f"[red]{error_msg}[/red]")
+            return ProcessingResult(
+                success=False,
+                errors=self.errors,
+                metadata={
+                    'processed_files': list(self.processed_files),
+                    'failed_files': list(self.failed_files),
+                    'skipped_files': list(self.skipped_files)
+                }
+            )
+            
+    async def _process(self, file_path: str) -> None:
+        """Process a single file.
+        
+        Args:
+            file_path: Path to the file to process
+        """
+        try:
+            # Read input file
+            content = Path(file_path).read_text()
+            
+            # Extract metadata if present
+            metadata = {}
+            if '<!--' in content and '-->' in content:
+                try:
+                    metadata_str = content[content.find('<!--')+4:content.find('-->')]
+                    metadata = json.loads(metadata_str)
+                except json.JSONDecodeError:
+                    self.errors.append(f"Failed to parse metadata in {file_path}")
+                    return
+            
+            # Split content by markers
+            sections = {
+                'summary': [],
+                'raw_notes': [],
+                'attachments': []
+            }
+            
+            current_section = None
+            for line in content.split('\n'):
+                if line.startswith('--=='):
+                    if 'SUMMARY' in line:
+                        current_section = 'summary'
+                    elif 'RAW NOTES' in line:
+                        current_section = 'raw_notes'
+                    elif 'ATTACHMENTS' in line:
+                        current_section = 'attachments'
+                elif current_section:
+                    sections[current_section].append(line)
+            
+            # Write output files
+            for section, lines in sections.items():
+                if not lines:
+                    continue
+                    
+                output_file = Path(self.output_dir) / f"{section}.md"
+                
+                # Add metadata
+                section_metadata = {
+                    'document': {
+                        'processor': 'ThreeFileSplitProcessor',
+                        'version': '1.0',
+                        'timestamp': datetime.now().isoformat(),
+                        'section': section
+                    }
+                }
+                
+                if self.preserve_metadata:
+                    section_metadata.update(metadata)
+                
+                # Write file
+                with output_file.open('w') as f:
+                    f.write(f"<!--{json.dumps(section_metadata)}-->\n\n")
+                    f.write('\n'.join(lines))
+                
+                self.processed_files.add(str(output_file))
+                self.metrics.increment('files_processed')
+                
+        except Exception as e:
+            self.failed_files.add(file_path)
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.errors.append(error_msg)
+            self.console.print(f"[red]{error_msg}[/red]")
+            
+    def _initialize(self) -> None:
+        """Initialize the processor."""
+        # Verify output directory exists
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+            
+    def _cleanup(self) -> None:
+        """Clean up resources."""
+        pass 

@@ -7,12 +7,12 @@ import importlib
 import os
 from datetime import datetime
 
-from ..config import PipelineConfig, ProcessorConfig
-from ..models.result import ProcessingResult
-from ..utils.metrics import MetricsTracker
-from ..utils.timing import TimingManager
-from ..console.logger import ConsoleLogger
-from ..console.color_scheme import ColorScheme
+from nova.core.config import PipelineConfig, ProcessorConfig
+from nova.core.models.result import ProcessingResult
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.timing import TimingManager
+from nova.core.console.logger import ConsoleLogger
+from nova.core.console.color_scheme import ColorScheme
 
 
 class PhaseRunner:

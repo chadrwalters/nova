@@ -60,3 +60,12 @@ htmlcov/
 
 # poetry
 poetry.toml
+
+# Test output
+tests/output/
+tests/**/output/
+tests/**/.state/
+tests/**/__pycache__/
+tests/**/.pytest_cache/
+.coverage
+htmlcov/

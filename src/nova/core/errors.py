@@ -1,158 +1,86 @@
-"""Core error classes and utilities."""
+"""Pipeline error classes."""
 
 from typing import Optional, Dict, Any
 
 
-class NovaError(Exception):
-    """Base class for all Nova exceptions."""
+class PipelineError(Exception):
+    """Base class for pipeline errors."""
     
-    def __init__(
-        self,
-        message: str,
-        details: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Initialize error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message)
-        self.message = message
-        self.details = details or {}
-
-
-class PipelineError(NovaError):
-    """Error raised during pipeline execution."""
-    
-    def __init__(
-        self,
-        message: str,
-        phase: Optional[str] = None,
-        step: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ) -> None:
+    def __init__(self, message: str, phase: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None):
         """Initialize pipeline error.
         
         Args:
             message: Error message
-            phase: Optional pipeline phase
-            step: Optional pipeline step
-            details: Optional error details
+            phase: Optional phase name where error occurred
+            metadata: Optional error metadata
         """
-        super().__init__(message, details)
+        super().__init__(message)
         self.phase = phase
-        self.step = step
+        self.metadata = metadata or {}
 
 
-class ProcessorError(PipelineError):
-    """Error raised by processors."""
+class ValidationError(PipelineError):
+    """Validation error."""
+    pass
+
+
+class ConfigurationError(PipelineError):
+    """Configuration error."""
+    pass
+
+
+class ProcessingError(PipelineError):
+    """Processing error."""
+    pass
+
+
+class DependencyError(PipelineError):
+    """Dependency error."""
+    pass
+
+
+class ResourceError(PipelineError):
+    """Resource error."""
+    pass
+
+
+class StateError(PipelineError):
+    """State error."""
     pass
 
 
 class HandlerError(PipelineError):
-    """Error raised by handlers."""
+    """Handler error."""
     pass
 
 
-class ConfigurationError(NovaError):
-    """Error raised for configuration issues."""
+class ErrorContext:
+    """Context for error handling."""
     
-    def __init__(
-        self,
-        message: str,
-        config_key: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Initialize configuration error.
+    def __init__(self, phase: Optional[str] = None, handler: Optional[str] = None):
+        """Initialize error context.
         
         Args:
-            message: Error message
-            config_key: Optional configuration key that caused the error
-            details: Optional error details
+            phase: Optional phase name
+            handler: Optional handler name
         """
-        super().__init__(message, details)
-        self.config_key = config_key
-
-
-class StateError(PipelineError):
-    """Error raised for invalid state transitions."""
-    
-    def __init__(
-        self,
-        message: str,
-        current_state: Optional[str] = None,
-        target_state: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Initialize state error.
+        self.phase = phase
+        self.handler = handler
+        self.metadata: Dict[str, Any] = {}
+        
+    def add_metadata(self, key: str, value: Any) -> None:
+        """Add metadata to error context.
         
         Args:
-            message: Error message
-            current_state: Optional current state
-            target_state: Optional target state
-            details: Optional error details
+            key: Metadata key
+            value: Metadata value
         """
-        super().__init__(message, details)
-        self.current_state = current_state
-        self.target_state = target_state
-
-
-class FileError(NovaError):
-    """Error raised for file operations."""
-    pass
-
-
-class ValidationError(NovaError):
-    """Error raised for validation failures."""
-    pass 
-
-
-class ProcessingError(NovaError):
-    """Error raised during file processing."""
-    
-    def __init__(
-        self,
-        message: str,
-        file_path: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Initialize processing error.
+        self.metadata[key] = value
         
-        Args:
-            message: Error message
-            file_path: Optional path to file being processed
-            details: Optional error details
+    def get_metadata(self) -> Dict[str, Any]:
+        """Get error context metadata.
+        
+        Returns:
+            Metadata dictionary
         """
-        super().__init__(message, details)
-        self.file_path = file_path
-
-
-class ParseError(ProcessingError):
-    """Error raised during parsing."""
-    pass
-
-
-class AttachmentError(ProcessingError):
-    """Error raised during attachment handling."""
-    pass
-
-
-class AttachmentNotFoundError(AttachmentError):
-    """Error raised when an attachment file is not found."""
-    pass
-
-
-class ImageProcessingError(ProcessingError):
-    """Error raised during image processing."""
-    pass
-
-
-class OfficeProcessingError(ProcessingError):
-    """Error raised during office document processing."""
-    pass
-
-
-class AttachmentProcessingError(ProcessingError):
-    """Error raised during attachment processing."""
-    pass 
+        return self.metadata.copy() 

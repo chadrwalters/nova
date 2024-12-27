@@ -5,29 +5,27 @@ from typing import Any, Dict, Optional
 import asyncio
 import shutil
 import os
+from rich.console import Console
 
-from .....core.base_handler import BaseHandler
-from .....core.utils.metrics import MetricsTracker
-from .....core.utils.monitoring import MonitoringManager
-from .....core.utils.error_tracker import ErrorTracker
-from .....core.console.logger import ConsoleLogger
-from .....core.models.result import ProcessingResult
+from nova.core.base_handler import BaseHandler
+from nova.core.models.result import ProcessingResult
 
 
 class ConsolidationHandler(BaseHandler):
     """Handler for consolidating markdown files."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        console: Optional[Console] = None
+    ):
         """Initialize the handler.
         
         Args:
-            config: Optional configuration dictionary
+            config: Handler configuration
+            console: Optional rich console instance
         """
-        super().__init__(config)
-        self.metrics = MetricsTracker()
-        self.monitor = MonitoringManager()
-        self.error_tracker = ErrorTracker()
-        self.logger = ConsoleLogger()
+        super().__init__(config=config, console=console)
         
         # Get required configuration
         if not config:
@@ -38,23 +36,7 @@ class ConsolidationHandler(BaseHandler):
         self.processor_config = config.get('processor_config', {})
         
         # Get handler config
-        handler_config = config.get('config', {})
-        
-        # Get required paths
-        self.input_dir = str(Path(config.get('input_dir', '')))
-        self.output_dir = str(Path(config.get('output_dir', '')))
-        self.base_dir = str(Path(config.get('base_dir', '')))
-        
-        if not self.input_dir or not self.output_dir:
-            raise ValueError("input_dir and output_dir must be specified in configuration")
-        
-        # Initialize state
-        self.state = {
-            'processed_files': 0,
-            'failed_files': 0,
-            'skipped_files': 0,
-            'errors': []
-        }
+        self.handler_config = config.get('config', {})
     
     async def can_handle(self, file_path: Path) -> bool:
         """Check if this handler can process the file.
@@ -67,57 +49,69 @@ class ConsolidationHandler(BaseHandler):
         """
         return file_path.suffix.lower() == '.md'
     
-    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+    async def _process_impl(self, file_path: Path, context: Dict[str, Any]) -> ProcessingResult:
         """Process a markdown file.
         
         Args:
-            file_path: Path to the file to process
-            context: Optional processing context
+            file_path: Path to the markdown file
+            context: Processing context
             
         Returns:
-            ProcessingResult containing processed content and metadata
+            ProcessingResult: Processing results
         """
         try:
-            self.logger.info(f"Processing file: {file_path}")
+            async with self.monitoring.async_monitor_operation("read_file"):
+                # Read input file
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
             
-            # Use configured output directory
-            output_dir = Path(self.output_dir)
-            
-            # Create output directory if it doesn't exist
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Read input file
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Create attachment directory
-            attachment_dir = output_dir / file_path.stem
-            os.makedirs(attachment_dir, exist_ok=True)
-            
-            # Process attachments if they exist
-            attachments = []
-            input_attachment_dir = file_path.parent / file_path.stem
-            
-            if input_attachment_dir.exists():
-                self.logger.info(f"Found attachment directory: {input_attachment_dir}")
+            async with self.monitoring.async_monitor_operation("consolidate_content"):
+                # Process the content (placeholder for actual consolidation)
+                processed_content = content
                 
-                # Process attachments
-                for attachment in input_attachment_dir.iterdir():
-                    if attachment.is_file():
-                        dest_path = attachment_dir / attachment.name
-                        shutil.copy2(attachment, dest_path)
-                        attachments.append(dest_path)
+                # Get output directory
+                output_dir = None
+                if context and 'output_dir' in context:
+                    output_dir = Path(context['output_dir'])
+                elif self.config and 'output_dir' in self.config:
+                    output_dir = Path(self.config['output_dir'])
+                
+                if not output_dir:
+                    error_msg = "No output directory specified"
+                    self.monitoring.record_error(error_msg)
+                    return ProcessingResult(success=False, errors=[error_msg])
             
-            self.logger.info(f"Handler {self.__class__.__name__} successfully processed file: {file_path}")
-            result = ProcessingResult(
-                success=True,
-                content=content,
-                attachments=attachments
-            )
-            result.add_processed_file(file_path)
-            return result
-            
+            async with self.monitoring.async_monitor_operation("write_output"):
+                # Create output directory if it doesn't exist
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Create output file
+                output_file = output_dir / file_path.name
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(processed_content)
+                
+                # Create result
+                result = ProcessingResult(
+                    success=True,
+                    content=processed_content,
+                    metadata={
+                        'input_file': str(file_path),
+                        'output_file': str(output_file)
+                    }
+                )
+                result.add_processed_file(file_path)
+                result.add_processed_file(output_file)
+                
+                # Record success metrics
+                self.monitoring.increment_counter("files_processed")
+                
+                return result
+                
         except Exception as e:
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            return ProcessingResult(success=False, errors=[error_msg]) 
+            error_msg = f"Error processing file {file_path}: {str(e)}"
+            self.monitoring.record_error(error_msg)
+            return ProcessingResult(success=False, errors=[error_msg])
+    
+    async def _cleanup_impl(self) -> None:
+        """Clean up resources."""
+        pass 

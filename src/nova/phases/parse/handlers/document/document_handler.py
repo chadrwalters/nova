@@ -21,18 +21,6 @@ class DocumentHandler(BaseHandler):
         """
         super().__init__(config)
         
-        # Get required configuration
-        if not config:
-            raise ValueError("Configuration must be provided")
-            
-        # Get required paths
-        self.output_dir = str(Path(config.get('output_dir', '')))
-        if not self.output_dir:
-            raise ValueError("output_dir must be specified in configuration")
-            
-        # Create output directory
-        os.makedirs(self.output_dir, exist_ok=True)
-        
         # Initialize supported formats
         self.supported_formats = {
             'application/pdf',
@@ -43,6 +31,9 @@ class DocumentHandler(BaseHandler):
             'application/vnd.ms-powerpoint',
             'application/vnd.openxmlformats-officedocument.presentationml.presentation'
         }
+        
+        # Initialize metrics
+        self.monitoring.set_threshold("memory_percent", 85.0)
     
     async def can_handle(self, file_path: Path) -> bool:
         """Check if this handler can process the file.
@@ -53,10 +44,15 @@ class DocumentHandler(BaseHandler):
         Returns:
             True if this handler can process the file, False otherwise
         """
-        mime_type = magic.from_file(str(file_path), mime=True)
-        return mime_type in self.supported_formats
+        try:
+            mime_type = magic.from_file(str(file_path), mime=True)
+            self.state.add_metric("mime_type", mime_type)
+            return mime_type in self.supported_formats
+        except Exception as e:
+            self.monitoring.record_error(f"Error checking file type: {str(e)}")
+            return False
     
-    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+    async def _process_impl(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
         """Process a document file.
         
         Args:
@@ -67,30 +63,55 @@ class DocumentHandler(BaseHandler):
             ProcessingResult containing processed content and metadata
         """
         try:
-            # Create output path
-            output_path = Path(self.output_dir) / file_path.name
+            async with self.monitoring.async_monitor_operation("copy_file"):
+                # Monitor resource usage
+                usage = self.monitoring.capture_resource_usage()
+                self.monitoring._check_thresholds(usage)
+                
+                # Create output path
+                output_path = Path(self.config["output_dir"]) / file_path.name
+                
+                # Copy file to output directory
+                shutil.copy2(file_path, output_path)
+                
+                # Record file size
+                file_size = file_path.stat().st_size
+                self.state.add_metric("file_size", file_size)
             
-            # Copy file to output directory
-            shutil.copy2(file_path, output_path)
-            
-            # Extract metadata
-            metadata = self._extract_metadata(file_path)
+            async with self.monitoring.async_monitor_operation("extract_metadata"):
+                # Extract metadata
+                metadata = await self._extract_metadata(file_path)
+                
+                # Record metadata in state
+                for key, value in metadata.items():
+                    self.state.add_metric(f"metadata_{key}", value)
             
             # Create result
             result = ProcessingResult(
                 success=True,
                 content=str(output_path),
-                metadata=metadata
+                metadata={
+                    **metadata,
+                    'metrics': self.state.metrics
+                }
             )
+            result.add_processed_file(file_path)
             result.add_processed_file(output_path)
+            
+            # Record success
+            self.monitoring.increment_counter("files_processed")
+            self.state.add_processed_file(output_path)
             
             return result
             
         except Exception as e:
             error_msg = f"Error processing {file_path}: {str(e)}"
+            self.monitoring.record_error(error_msg)
+            self.state.add_error(error_msg)
+            self.state.add_failed_file(file_path)
             return ProcessingResult(success=False, errors=[error_msg])
     
-    def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
+    async def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
         """Extract metadata from a document file.
         
         Args:
@@ -111,11 +132,13 @@ class DocumentHandler(BaseHandler):
                 'size': os.path.getsize(file_path)
             })
         except Exception as e:
-            self.logger.error(f"Error extracting metadata from {file_path}: {str(e)}")
+            error_msg = f"Error extracting metadata from {file_path}: {str(e)}"
+            self.monitoring.record_error(error_msg)
+            self.state.add_error(error_msg)
         
         return metadata
     
-    def validate_output(self, result: ProcessingResult) -> bool:
+    def validate(self, result: ProcessingResult) -> bool:
         """Validate the processing results.
         
         Args:
@@ -124,18 +147,24 @@ class DocumentHandler(BaseHandler):
         Returns:
             True if results are valid, False otherwise
         """
-        return result.success and bool(result.content)
+        if not result.success or not result.content:
+            error_msg = "Invalid processing result"
+            self.monitoring.record_error(error_msg)
+            self.state.add_error(error_msg)
+            return False
+        return True
     
-    async def rollback(self, result: ProcessingResult) -> None:
-        """Roll back any changes made during processing.
-        
-        Args:
-            result: The ProcessingResult to roll back
-        """
-        # Clean up any created files
-        for file_path in result.processed_files:
-            try:
-                if file_path.exists():
-                    file_path.unlink()
-            except Exception as e:
-                self.logger.error(f"Error cleaning up file {file_path}: {str(e)}") 
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        try:
+            # Clean up any created files
+            for file_path in self.state.processed_files:
+                try:
+                    if file_path.exists():
+                        file_path.unlink()
+                except Exception as e:
+                    error_msg = f"Error cleaning up file {file_path}: {str(e)}"
+                    self.monitoring.record_error(error_msg)
+                    self.state.add_error(error_msg)
+        finally:
+            await super().cleanup() 

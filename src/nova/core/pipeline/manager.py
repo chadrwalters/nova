@@ -1,303 +1,186 @@
-"""Pipeline manager for processing phases."""
+"""Pipeline manager."""
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 import logging
-import importlib
-import os
-import shutil
-import traceback
-import re
-import inspect
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Set
+from datetime import datetime
 
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-from rich.table import Table
-
-from ..utils.metrics import MetricsTracker
-from ..utils.monitoring import MonitoringManager
-from ..utils.error_tracker import ErrorTracker
-from ..console.logger import ConsoleLogger
-from ..console.color_scheme import ColorScheme
-from .phase_runner import PhaseRunner
-from .pipeline_reporter import PipelineReporter
-from ..config.base import ProcessorConfig, PipelineConfig, PathConfig
+from nova.core.pipeline.errors import PipelineError, ValidationError
+from nova.core.pipeline.pipeline_config import PipelineConfig
+from nova.core.pipeline.pipeline_phase import PipelinePhase
+from nova.core.pipeline.pipeline_state import PipelineState
+from nova.core.console.pipeline_reporter import PipelineReporter
+from nova.core.console.logger import ConsoleLogger
+from nova.core.console.color_scheme import ColorScheme
+from nova.core.utils.timing import TimingManager
+from nova.core.utils.metrics import MetricsTracker
 
 
 class PipelineManager:
-    """Manager for processing pipeline phases."""
+    """Manages pipeline execution."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the pipeline manager.
+    def __init__(self, config: PipelineConfig):
+        """Initialize pipeline manager.
         
         Args:
-            config: Optional configuration dictionary
+            config: Pipeline configuration
         """
-        self.config = config or {}
+        self.config = config
+        self.phases: Dict[str, PipelinePhase] = {}
+        self.cache_config = config.cache or {}
         
-        # Extract pipeline configuration
-        if isinstance(self.config, dict):
-            if 'pipeline' in self.config:
-                self.pipeline_config = self.config['pipeline']
-            else:
-                self.pipeline_config = self.config
-        else:
-            # Handle PipelineConfig object
-            self.pipeline_config = self.config.model_dump()
-        
-        # Initialize core components
+        # Initialize components
         self.logger = ConsoleLogger()
-        self.metrics = MetricsTracker()
-        self.monitor = MonitoringManager()
-        self.error_tracker = ErrorTracker()
         self.color_scheme = ColorScheme()
+        self.timing = TimingManager()
+        self.metrics = MetricsTracker()
         
-        # Initialize state
-        self.state = {
-            'processed_files': 0,
-            'failed_files': 0,
-            'skipped_files': 0,
-            'errors': []
-        }
-        
-        # Initialize pipeline components with logger
-        self.phase_runner = PhaseRunner(
-            config=self.pipeline_config,
-            timing=None,  # Will be created by PhaseRunner
-            metrics=self.metrics,
-            logger=self.logger,
-            color_scheme=self.color_scheme
-        )
-        
+        # Create reporter with all components
         self.reporter = PipelineReporter(
             logger=self.logger,
-            color_scheme=self.color_scheme
+            color_scheme=self.color_scheme,
+            timing=self.timing,
+            metrics=self.metrics
         )
         
-    async def cleanup(self) -> None:
-        """Clean up resources and temporary files."""
-        try:
-            # Get paths from config
-            if isinstance(self.pipeline_config, dict):
-                paths = self.pipeline_config.get('paths', {})
-            else:
-                paths = self.pipeline_config.paths
+        # Initialize phases
+        self._initialize_phases()
+        
+    def _initialize_phases(self) -> None:
+        """Initialize pipeline phases."""
+        # Store phases and set reporter
+        self.phases = self.config.phases
+        for phase in self.phases.values():
+            phase.reporter = self.reporter
             
-            # Clean up temporary files
-            temp_dir = self._expand_env_vars(paths.temp_dir if isinstance(paths, PathConfig) else paths.get('temp_dir', ''))
-            if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                
-            # Clean up processing directories
-            processing_dir = self._expand_env_vars(paths.processing_dir if isinstance(paths, PathConfig) else paths.get('processing_dir', ''))
-            if processing_dir and os.path.exists(processing_dir):
-                for item in os.listdir(processing_dir):
-                    item_path = os.path.join(processing_dir, item)
-                    if os.path.isdir(item_path):
-                        shutil.rmtree(item_path, ignore_errors=True)
-                    else:
-                        os.unlink(item_path)
-                        
-            self.logger.info("Cleanup completed")
-            
-        except Exception as e:
-            self.logger.error(f"Error during cleanup: {str(e)}")
-            
-    def _expand_env_vars(self, value: str) -> str:
-        """Expand environment variables in a string value.
+            # Set initial cache config
+            phase_config = phase.get_cache_config()
+            if phase_config:
+                # Merge global config with phase-specific config
+                phase.set_cache_config({**self.cache_config, **phase_config})
+        
+    async def _cleanup_phase_cache(self, phase_name: str) -> None:
+        """Clean up phase cache.
         
         Args:
-            value: String value to expand
-            
-        Returns:
-            String with environment variables expanded
+            phase_name: Name of the phase
         """
-        if not isinstance(value, str):
-            return value
+        if not self.cache_config.get('enabled', False):
+            return
             
-        # Find all environment variables
-        env_vars = re.findall(r'\${([^}]+)}', value)
-        
-        # Replace each variable
-        result = value
-        for var in env_vars:
-            env_value = os.environ.get(var)
-            if env_value is None:
-                self.logger.warning(f"Environment variable {var} not found")
-                continue
-            result = result.replace('${' + var + '}', env_value)
+        try:
+            phase = self.phases[phase_name]
+            cache_dir = phase.get_cache_dir()
             
-        return result
+            if cache_dir and cache_dir.exists():
+                self.reporter.logger.info(
+                    f"Cleaning up cache for phase {phase_name} in {cache_dir}"
+                )
+                
+                # Get cache stats before cleanup
+                cache_size = sum(f.stat().st_size for f in cache_dir.glob('**/*') if f.is_file())
+                cache_files = len(list(cache_dir.glob('**/*')))
+                
+                # Clean up cache
+                await phase.cleanup_cache()
+                
+                self.reporter.logger.info(
+                    f"Cleaned up {cache_files} files ({cache_size} bytes) from cache"
+                )
+                
+        except Exception as e:
+            self.reporter.logger.warning(
+                f"Error cleaning up cache for phase {phase_name}: {e}"
+            )
         
-    async def __aenter__(self) -> 'PipelineManager':
-        """Enter async context."""
-        return self
+    async def process(self, input_files: List[str]) -> Dict[str, Any]:
+        """Process input files through the pipeline.
         
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit async context."""
-        await self.cleanup()
-        
-    async def run(self) -> bool:
-        """Run the pipeline phases.
-        
+        Args:
+            input_files: List of input files to process
+            
         Returns:
-            bool: True if pipeline completed successfully
+            Processing results
+            
+        Raises:
+            PipelineError: If pipeline execution fails
         """
         try:
             # Start pipeline
-            self.logger.info("Starting pipeline execution")
+            self.reporter.start_pipeline(len(self.phases))
             
-            # Get phases from config
-            if isinstance(self.pipeline_config, dict):
-                phases = self.pipeline_config.get('phases', {})
-            else:
-                phases = self.pipeline_config.phases
-            
-            # Convert phases list to dictionary if needed
-            if isinstance(phases, list):
-                phases_dict = {}
-                for phase in phases:
-                    if isinstance(phase, dict):
-                        phases_dict.update(phase)
-                phases = phases_dict
-            
-            total_phases = len(phases)
-            self.reporter.start_pipeline(total_phases)
+            results = {}
             
             # Process each phase
-            for phase_name, phase_config in phases.items():
+            for phase_name, phase in self.phases.items():
                 try:
                     # Start phase
-                    self.logger.info(f"Starting phase: {phase_name}")
-                    
-                    # Convert phase config to ProcessorConfig if needed
-                    if not isinstance(phase_config, ProcessorConfig):
-                        phase_config = ProcessorConfig(**phase_config)
-                    
-                    # Get input files
-                    input_dir = self._expand_env_vars(phase_config.input_dir or '')
-                    input_dir = Path(input_dir)
-                    if not input_dir.exists():
-                        self.logger.warning(f"Input directory not found: {input_dir}")
-                        continue
-                        
-                    # Count files to process
-                    file_patterns = phase_config.components.get('file_patterns', ['*'])
-                    if not isinstance(file_patterns, list):
-                        file_patterns = [file_patterns]
-                        
-                    total_files = 0
-                    for pattern in file_patterns:
-                        total_files += sum(1 for _ in input_dir.rglob(pattern))
-                    
-                    # Start phase processing
-                    self.phase_runner.start_phase(phase_name, total_files)
+                    self.reporter.start_phase(phase_name, len(input_files))
                     
                     # Process files
-                    processed = 0
-                    for pattern in file_patterns:
-                        for file_path in input_dir.rglob(pattern):
-                            try:
-                                # Process file
-                                await self._process_file(file_path, phase_config)
-                                processed += 1
-                                
-                                # Update progress
-                                self.phase_runner.update_progress(
-                                    files_processed=processed,
-                                    total_files=total_files
-                                )
-                                
-                            except Exception as e:
-                                self.logger.error(f"Error processing {file_path}: {str(e)}")
-                                self.state['failed_files'] += 1
-                                self.state['errors'].append(str(e))
-                                
-                    # End phase
-                    self.phase_runner.end_phase(phase_name)
+                    phase_results = await phase.process(input_files)
+                    results[phase_name] = phase_results
+                    
+                    # Complete phase
+                    self.reporter.end_phase(phase_name)
+                    
+                    # Clean up phase cache if enabled
+                    await self._cleanup_phase_cache(phase_name)
                     
                 except Exception as e:
-                    self.logger.error(f"Phase {phase_name} failed: {str(e)}")
-                    self.state['errors'].append(str(e))
-                    continue
+                    self.reporter.logger.error(f"Error in phase {phase_name}: {e}")
+                    raise
                     
             # End pipeline
             self.reporter.end_pipeline()
             
-            # Check for errors
-            if self.state['errors']:
-                return False
-                
-            return True
+            return results
             
         except Exception as e:
-            self.logger.error(f"Pipeline failed: {str(e)}")
-            return False
+            raise PipelineError(f"Pipeline execution failed: {e}")
+        
+    async def cleanup(self) -> None:
+        """Clean up pipeline resources."""
+        # Clean up phases
+        for phase in self.phases.values():
+            await phase.cleanup()
             
-    async def _process_file(self, file_path: Path, phase_config: Dict[str, Any]) -> None:
-        """Process a single file.
+        # Final cache cleanup if enabled
+        if self.cache_config.get('enabled', False):
+            for phase_name in self.phases:
+                await self._cleanup_phase_cache(phase_name)
+                
+    def get_reporter(self) -> PipelineReporter:
+        """Get pipeline reporter.
+        
+        Returns:
+            Pipeline reporter instance
+        """
+        return self.reporter
+        
+    def get_cache_config(self) -> Dict[str, Any]:
+        """Get cache configuration.
+        
+        Returns:
+            Cache configuration dictionary
+        """
+        return self.cache_config.copy()
+        
+    def set_cache_config(self, config: Dict[str, Any]) -> None:
+        """Update cache configuration.
         
         Args:
-            file_path: Path to the file to process
-            phase_config: Phase configuration
+            config: New cache configuration
         """
-        try:
-            # Convert phase config to ProcessorConfig if needed
-            if not isinstance(phase_config, ProcessorConfig):
-                phase_config = ProcessorConfig(**phase_config)
-            
-            # Get processor class
-            processor_path = phase_config.processor
-            if not processor_path:
-                raise ValueError(f"No processor specified for file: {file_path}")
-                
-            # Import processor
-            module_path, class_name = processor_path.rsplit('.', 1)
-            module = importlib.import_module(module_path)
-            processor_class = getattr(module, class_name)
-            
-            # Create processor instance with correct arguments
-            processor = processor_class(
-                processor_config=phase_config,
-                pipeline_config=PipelineConfig(
-                    paths=PathConfig(base_dir=self._expand_env_vars(phase_config.output_dir)),
-                    phases=[phase_config],
-                    input_dir=self._expand_env_vars(phase_config.input_dir or ''),
-                    output_dir=self._expand_env_vars(phase_config.output_dir),
-                    processing_dir=self._expand_env_vars(phase_config.output_dir),
-                    temp_dir=self._expand_env_vars(phase_config.output_dir)
-                ),
-                timing=None,  # Will be created by processor
-                metrics=self.metrics,
-                console=Console()
-            )
-            
-            # Get output directory
-            output_dir = self._expand_env_vars(phase_config.output_dir)
-            if not output_dir:
-                raise ValueError(f"No output directory specified for phase")
-            
-            # Create context with output directory
-            context = {'output_dir': Path(output_dir)}
-            
-            # Process file
-            result = await processor.process(file_path, context)
-            if result.success:
-                self.state['processed_files'] += 1
-            else:
-                self.state['failed_files'] += 1
-                if result.errors:
-                    for error in result.errors:
-                        self.logger.error(f"Error processing {file_path}: {error}")
-                        self.state['errors'].append(error)
-                else:
-                    error_msg = f"Unknown error processing {file_path}"
-                    self.logger.error(error_msg)
-                    self.state['errors'].append(error_msg)
-                raise ValueError(result.errors[0] if result.errors else "Unknown error")
-            
-        except Exception as e:
-            self.logger.error(f"Error processing {file_path}: {str(e)}")
-            self.state['failed_files'] += 1
-            self.state['errors'].append(str(e))
-            raise 
+        self.cache_config.update(config)
+        
+        # Update phase-specific cache configs
+        for phase in self.phases.values():
+            phase_config = phase.get_cache_config()
+            if phase_config:
+                # Merge global config with phase-specific config
+                merged_config = {**self.cache_config, **phase_config}
+                # Force disabled state from global config
+                if not self.cache_config.get('enabled', True):
+                    merged_config['enabled'] = False
+                phase.set_cache_config(merged_config)

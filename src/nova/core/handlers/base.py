@@ -7,11 +7,12 @@ from typing import Any, Dict, List, Optional, Set, Union
 import asyncio
 import functools
 
-from ..utils.metrics import MetricsTracker
-from ..utils.monitoring import MonitoringManager
-from ..utils.error_tracker import ErrorTracker
-from ..console.logger import ConsoleLogger
-from ..models.result import ProcessingResult
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.monitoring import MonitoringManager
+from nova.core.utils.error_tracker import ErrorTracker
+from nova.core.console.logger import ConsoleLogger
+from nova.core.models.result import ProcessingResult
+from nova.core.utils.timing import TimingManager
 
 
 @dataclass
@@ -38,17 +39,27 @@ class HandlerConfig:
 class BaseHandler:
     """Base class for all handlers."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[ConsoleLogger] = None
+    ):
         """Initialize the handler.
         
         Args:
             config: Optional configuration dictionary
+            timing: Optional timing manager instance
+            metrics: Optional metrics tracker instance
+            console: Optional console logger instance
         """
         self.config = config or {}
-        self.metrics = MetricsTracker()
+        self.metrics = metrics or MetricsTracker()
+        self.timing = timing or TimingManager()
+        self.console = console or ConsoleLogger()
         self.monitor = MonitoringManager()
         self.error_tracker = ErrorTracker()
-        self.logger = ConsoleLogger()
         
         # Initialize state
         self.state = {
@@ -60,6 +71,23 @@ class BaseHandler:
         
         # Create event loop for async operations
         self._loop = None
+        
+        # Set up input/output directories
+        self.input_dir = Path(self.config.get('input_dir', ''))
+        self.output_dir = Path(self.config.get('output_dir', ''))
+        self.base_dir = Path(self.config.get('base_dir', ''))
+
+    def get_output_path(self, relative_path: Union[str, Path]) -> Path:
+        """Get the output path for a file.
+        
+        Args:
+            relative_path: Path relative to the input directory
+            
+        Returns:
+            Full output path
+        """
+        relative_path = Path(relative_path)
+        return self.output_dir / relative_path
     
     async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
         """Process a file.

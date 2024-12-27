@@ -1,156 +1,198 @@
-"""Pipeline reporting and progress tracking."""
+"""Pipeline execution reporting."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from datetime import datetime
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.console import Console
 from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn
 
-from nova.core.console.color_scheme import ColorScheme
-from nova.core.console.logger import ConsoleLogger
-from nova.core.error.error_tracker import ErrorTracker
-from nova.core.utils.metrics import MetricsTracker, MetricType
 from nova.core.utils.timing import TimingManager
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.error_tracker import ErrorTracker
+from nova.core.console.logger import ConsoleLogger
+from nova.core.console.color_scheme import ColorScheme
 
 
 @dataclass
 class PipelineStats:
-    """Statistics for the entire pipeline."""
+    """Pipeline execution statistics."""
+    
     total_phases: int = 0
     completed_phases: int = 0
     current_phase: Optional[str] = None
-    total_files: int = 0
-    processed_files: int = 0
-    successful_files: int = 0
-    failed_files: int = 0
-    skipped_files: int = 0
-    total_bytes: int = 0
-    processed_bytes: int = 0
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    phase_stats: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     error_counts: Dict[str, int] = field(default_factory=dict)
     custom_metrics: Dict[str, Any] = field(default_factory=dict)
-    phase_timings: Dict[str, float] = field(default_factory=dict)
-    operation_timings: Dict[str, float] = field(default_factory=dict)
+    
+    def __getitem__(self, key: str) -> Any:
+        """Get item by key.
+        
+        Args:
+            key: Key to get
+            
+        Returns:
+            Value for key
+            
+        Raises:
+            KeyError: If key not found
+        """
+        if hasattr(self, key):
+            return getattr(self, key)
+        raise KeyError(key)
+        
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Set item by key.
+        
+        Args:
+            key: Key to set
+            value: Value to set
+            
+        Raises:
+            AttributeError: If key cannot be set
+        """
+        if hasattr(self, key):
+            setattr(self, key, value)
+        else:
+            raise AttributeError(f"Cannot set {key}")
+            
+    def __contains__(self, key: str) -> bool:
+        """Check if key exists.
+        
+        Args:
+            key: Key to check
+            
+        Returns:
+            True if key exists
+        """
+        return hasattr(self, key)
 
 
 class PipelineReporter:
-    """Manages pipeline-level reporting and statistics."""
+    """Generates reports on pipeline execution."""
     
     def __init__(
         self,
-        logger: ConsoleLogger,
+        logger: Optional[ConsoleLogger] = None,
         color_scheme: Optional[ColorScheme] = None,
-        metrics_dir: Optional[Union[str, Path]] = None
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[Console] = None
     ):
         """Initialize pipeline reporter.
         
         Args:
-            logger: Console logger instance
-            color_scheme: Optional color scheme to use
-            metrics_dir: Optional directory for metrics storage
+            logger: Optional console logger instance
+            color_scheme: Optional color scheme instance
+            timing: Optional timing manager instance
+            metrics: Optional metrics tracker instance
+            console: Optional rich console instance
         """
-        self.logger = logger
+        self.logger = logger or ConsoleLogger(console=console)
         self.color_scheme = color_scheme or ColorScheme()
-        self.stats = PipelineStats()
-        self.error_tracker = ErrorTracker()
-        self._progress = None
+        self.timing = timing or TimingManager()
+        self.metrics = metrics or MetricsTracker()
+        self.console = console or self.logger.console
         
-        # Initialize metrics and timing
-        self.metrics = MetricsTracker(metrics_dir=metrics_dir)
-        self.timing = TimingManager(metrics_tracker=self.metrics, console=self.logger.console)
+        # Initialize state
+        self.state = PipelineStats()
+        
+        # Initialize progress display
+        self._progress = None
+        self._pipeline_task = None
+        self._phase_task = None
         
     def start_pipeline(self, total_phases: int) -> None:
-        """Start pipeline execution.
+        """Start pipeline execution tracking.
         
         Args:
             total_phases: Total number of phases to execute
         """
-        self.stats = PipelineStats()
-        self.stats.start_time = datetime.now()
-        self.stats.total_phases = total_phases
+        self.state.start_time = datetime.now()
+        self.state.total_phases = total_phases
+        self.state.completed_phases = 0
+        self.state.phase_stats = {}
         
         # Start pipeline timer
-        self.timing.start_timer(
-            "pipeline_execution",
-            metadata={"total_phases": str(total_phases)}
-        )
+        self.timing.start_timer("pipeline_execution")
         
         # Initialize metrics
-        self.metrics.gauge("pipeline_total_phases", total_phases)
+        self.metrics.set_gauge("pipeline_total_phases", total_phases)
         
         # Create progress bar
         self._progress = Progress(
             SpinnerColumn(style=self.color_scheme.get_style("spinner")),
-            TextColumn(
-                "[progress.description]{task.description}",
-                style=self.color_scheme.get_style("progress_text")
-            ),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeElapsedColumn(),
-            console=self.logger.console
+            console=self.console,
+            auto_refresh=False,
+            expand=True
         )
         
         self._progress.start()
-        self.logger.info("Starting pipeline execution")
+        self._pipeline_task = self._progress.add_task(
+            description="Pipeline: Starting...",
+            total=total_phases
+        )
+        self._phase_task = None
+        self._progress.refresh()
         
-    def start_phase(self, phase_name: str, total_files: int = 0) -> None:
+        self.logger.info(f"Starting pipeline execution with {total_phases} phases")
+        
+    def start_phase(self, phase: Union[str, 'PipelinePhase'], total_files: int = 0) -> None:
         """Start a new pipeline phase.
         
         Args:
-            phase_name: Name of the phase
+            phase: Name of the phase or PipelinePhase object
             total_files: Expected total number of files
         """
-        self.stats.current_phase = phase_name
-        self.stats.total_files += total_files
+        phase_name = phase.name if hasattr(phase, 'name') else str(phase)
+        self.state.current_phase = phase_name
+        self.state.phase_stats[phase_name] = {
+            "start_time": datetime.now(),
+            "end_time": None,
+            "total_files": total_files,
+            "processed_files": 0,
+            "successful_files": 0,
+            "failed_files": 0,
+            "skipped_files": 0,
+            "total_bytes": 0,
+            "processed_bytes": 0,
+            "error_counts": {},
+            "custom_metrics": {},
+            "operation_timings": {}
+        }
         
         # Start phase timer
-        self.timing.start_timer(
-            f"phase_{phase_name}",
-            parent="pipeline_execution",
-            metadata={"total_files": str(total_files)}
-        )
+        self.timing.start_timer(f"phase_{phase_name}")
         
         # Initialize phase metrics
-        self.metrics.gauge(f"phase_{phase_name}_total_files", total_files)
+        self.metrics.set_gauge(f"phase_{phase_name}_total_files", total_files)
         
+        # Update progress display
+        if self._progress:
+            if self._phase_task is not None:
+                try:
+                    self._progress.remove_task(self._phase_task)
+                except KeyError:
+                    pass
+                
+            self._phase_task = self._progress.add_task(
+                description=f"Phase {phase_name}: Starting...",
+                total=total_files if total_files > 0 else 1
+            )
+            self._progress.refresh()
+            
         self.logger.info(f"\nStarting phase: {phase_name}")
-        self.logger.info(f"Files to process: {total_files}")
-        
-    def start_operation(
-        self,
-        operation: str,
-        metadata: Optional[Dict[str, str]] = None
-    ) -> None:
-        """Start timing an operation within the current phase.
-        
-        Args:
-            operation: Operation name
-            metadata: Optional metadata to associate with timing
-        """
-        if not self.stats.current_phase:
-            raise RuntimeError("No phase currently running")
+        if total_files > 0:
+            self.logger.info(f"Files to process: {total_files}")
             
-        self.timing.start_timer(
-            operation,
-            parent=f"phase_{self.stats.current_phase}",
-            metadata=metadata
-        )
-        
-    def stop_operation(self, operation: str) -> float:
-        """Stop timing an operation.
-        
-        Args:
-            operation: Operation name
-            
-        Returns:
-            Duration in seconds
-        """
-        duration = self.timing.stop_timer(operation)
-        self.stats.operation_timings[operation] = duration
-        return duration
-        
     def update_progress(
         self,
         files_processed: int = 0,
@@ -170,145 +212,215 @@ class PipelineReporter:
             custom_metrics: Optional custom metrics to track
             file_info: Optional information about the processed file
         """
+        if not self.state.current_phase:
+            raise RuntimeError("No phase currently running")
+            
+        phase_stats = self.state.phase_stats[self.state.current_phase]
+        
         # Update stats
-        self.stats.processed_files += files_processed
-        self.stats.processed_bytes += bytes_processed
+        phase_stats['processed_files'] += files_processed
+        phase_stats['processed_bytes'] += bytes_processed
         
         if successful:
-            self.stats.successful_files += files_processed
+            phase_stats['successful_files'] += files_processed
             self.metrics.increment("pipeline_successful_files", files_processed)
         else:
-            self.stats.failed_files += files_processed
+            phase_stats['failed_files'] += files_processed
             if error_type:
-                self.stats.error_counts[error_type] = self.stats.error_counts.get(error_type, 0) + 1
-                self.metrics.error(f"pipeline_error_{error_type}")
+                phase_stats['error_counts'][error_type] = phase_stats['error_counts'].get(error_type, 0) + 1
+                self.metrics.increment(f"pipeline_error_{error_type}")
                 
         # Update metrics
-        self.metrics.gauge("pipeline_processed_files", self.stats.processed_files)
-        self.metrics.gauge("pipeline_processed_bytes", self.stats.processed_bytes)
-        self.metrics.rate("pipeline_processing_rate", files_processed)
+        self.metrics.set_gauge("pipeline_processed_files", phase_stats['processed_files'])
+        self.metrics.set_gauge("pipeline_processed_bytes", phase_stats['processed_bytes'])
+        self.metrics.increment("pipeline_processing_rate", files_processed)
         
         if custom_metrics:
-            self.stats.custom_metrics.update(custom_metrics)
+            phase_stats['custom_metrics'].update(custom_metrics)
             for name, value in custom_metrics.items():
-                self.metrics.gauge(f"pipeline_custom_{name}", float(value))
+                self.metrics.set_gauge(f"pipeline_custom_{name}", float(value))
                 
         if file_info:
-            labels = {"phase": self.stats.current_phase or "unknown"}
-            labels.update(file_info)
-            self.metrics.increment("files_processed", 1, labels=labels)
+            self.metrics.add_label("files_processed", file_info)
+            self.metrics.increment("files_processed")
             
         # Update progress display
-        if self._progress:
-            progress_pct = (self.stats.processed_files / self.stats.total_files * 100
-                          if self.stats.total_files > 0 else 0)
-            phase_pct = (self.stats.completed_phases / self.stats.total_phases * 100
-                        if self.stats.total_phases > 0 else 0)
-            status = "SUCCESS" if successful else f"ERROR: {error_type}"
-            
-            self._progress.update(
-                0,
-                description=f"Pipeline: {phase_pct:.1f}% - Phase {self.stats.current_phase}: "
-                          f"{progress_pct:.1f}% - {status} - {self.stats.processed_files} files"
-            )
-            
+        if self._progress and self._phase_task is not None:
+            try:
+                self._progress.update(
+                    self._phase_task,
+                    advance=files_processed,
+                    description=f"Phase {self.state.current_phase}: "
+                              f"{phase_stats['processed_files']}/{phase_stats['total_files']} files"
+                )
+                self._progress.refresh()
+            except KeyError:
+                pass
+                
     def end_phase(self, phase_name: str) -> None:
         """End a pipeline phase.
         
         Args:
             phase_name: Name of the phase to end
         """
-        if phase_name != self.stats.current_phase:
-            raise ValueError(f"Cannot end phase {phase_name}, current phase is {self.stats.current_phase}")
+        if phase_name != self.state.current_phase:
+            raise RuntimeError(f"Cannot end phase {phase_name}, current phase is {self.state.current_phase}")
             
+        phase_stats = self.state.phase_stats[phase_name]
+        phase_stats["end_time"] = datetime.now()
+        
+        # Set progress to 100%
+        if phase_stats['total_files'] == 0:
+            phase_stats['total_files'] = 100
+            phase_stats['processed_files'] = 100
+        else:
+            remaining = phase_stats['total_files'] - phase_stats['processed_files']
+            if remaining > 0:
+                self.update_progress(files_processed=remaining)
+        
         # Stop phase timer
-        phase_duration = self.timing.stop_timer(f"phase_{phase_name}")
-        self.stats.phase_timings[phase_name] = phase_duration
+        duration = self.timing.stop_timer(f"phase_{phase_name}")
+        phase_stats["duration"] = duration
         
-        # Update phase completion
-        self.stats.completed_phases += 1
-        self.metrics.gauge("pipeline_completed_phases", self.stats.completed_phases)
+        # Update state
+        self.state.completed_phases += 1
+        self.state.current_phase = None
         
-        # Log phase summary
+        # Update progress
+        if self._progress:
+            if self._pipeline_task is not None:
+                try:
+                    self._progress.update(
+                        self._pipeline_task,
+                        advance=1,
+                        description=f"Pipeline: {self.state.completed_phases}/{self.state.total_phases} phases"
+                    )
+                except KeyError:
+                    pass
+                
+            if self._phase_task is not None:
+                try:
+                    self._progress.remove_task(self._phase_task)
+                except KeyError:
+                    pass
+                self._phase_task = None
+                
+            self._progress.refresh()
+            
+        # Log phase completion
         self.logger.info(f"\nPhase {phase_name} completed:")
-        self.logger.info(f"Duration: {phase_duration:.2f}s")
+        self.logger.info(f"Duration: {duration:.2f}s")
+        self.logger.info(f"Files processed: {phase_stats['processed_files']}/{phase_stats['total_files']}")
+        self.logger.info(f"Files successful: {phase_stats['successful_files']}")
+        self.logger.info(f"Files failed: {phase_stats['failed_files']}")
+        self.logger.info(f"Files skipped: {phase_stats['skipped_files']}")
         
-        self.stats.current_phase = None
-        
+        if phase_stats["error_counts"]:
+            self.logger.info("\nErrors by type:")
+            for error_type, count in phase_stats["error_counts"].items():
+                self.logger.info(f"  {error_type}: {count}")
+                
     def end_pipeline(self) -> None:
-        """End pipeline execution."""
-        self.stats.end_time = datetime.now()
+        """End pipeline execution tracking."""
+        self.state.end_time = datetime.now()
         
         # Stop pipeline timer
-        pipeline_duration = self.timing.stop_timer("pipeline_execution")
+        duration = self.timing.stop_timer("pipeline_execution")
         
-        # Calculate final metrics
-        if self.stats.start_time and self.stats.end_time:
-            processing_time = (self.stats.end_time - self.stats.start_time).total_seconds()
-            if processing_time > 0:
-                files_per_second = self.stats.processed_files / processing_time
-                bytes_per_second = self.stats.processed_bytes / processing_time
-                
-                self.metrics.gauge("pipeline_duration", pipeline_duration)
-                self.metrics.gauge("pipeline_files_per_second", files_per_second)
-                self.metrics.gauge("pipeline_bytes_per_second", bytes_per_second)
-                
-        # Create summary table
-        table = Table(
-            title="Pipeline Execution Summary",
-            title_style=self.color_scheme.get_style("title"),
-            header_style=self.color_scheme.get_style("header"),
-            border_style=self.color_scheme.get_style("border")
-        )
-        
-        table.add_column("Metric", style="bold")
-        table.add_column("Value")
-        
-        table.add_row("Total Phases", str(self.stats.total_phases))
-        table.add_row("Completed Phases", str(self.stats.completed_phases))
-        table.add_row("Total Files", str(self.stats.total_files))
-        table.add_row("Processed Files", str(self.stats.processed_files))
-        table.add_row("Successful Files", str(self.stats.successful_files))
-        table.add_row("Failed Files", str(self.stats.failed_files))
-        table.add_row("Total Bytes", f"{self.stats.total_bytes / 1024 / 1024:.1f} MB")
-        table.add_row("Processed Bytes", f"{self.stats.processed_bytes / 1024 / 1024:.1f} MB")
-        table.add_row("Duration", f"{pipeline_duration:.2f}s")
-        
-        if self.stats.error_counts:
-            table.add_section()
-            table.add_row("Error Type", "Count", style="bold red")
-            for error_type, count in self.stats.error_counts.items():
-                table.add_row(error_type, str(count), style="red")
-                
-        if self.stats.custom_metrics:
-            table.add_section()
-            table.add_row("Custom Metric", "Value", style="bold cyan")
-            for name, value in self.stats.custom_metrics.items():
-                table.add_row(name, str(value), style="cyan")
-                
-        self.logger.console.print("\n")
-        self.logger.console.print(table)
-        
-        # Display timing summary
-        self.timing.display_summary()
-        
-        # Save metrics
-        self.metrics.save_metrics("pipeline_metrics.json")
-        
-        # Clean up
+        # Stop progress display
         if self._progress:
             self._progress.stop()
-            self._progress = None
             
-    def get_statistics(
-        self,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        metric_types: Optional[List[MetricType]] = None
-    ) -> Dict[str, Dict[str, float]]:
-        """Get pipeline statistics with optional filtering."""
-        return self.metrics.get_statistics(
-            start_time=start_time,
-            end_time=end_time,
-            metric_types=metric_types
-        ) 
+        # Log pipeline completion
+        self.logger.info("\nPipeline execution completed:")
+        self.logger.info(f"Duration: {duration:.2f}s")
+        self.logger.info(f"Phases completed: {self.state.completed_phases}/{self.state.total_phases}")
+        
+        total_files = sum(stats["total_files"] for stats in self.state.phase_stats.values())
+        processed_files = sum(stats["processed_files"] for stats in self.state.phase_stats.values())
+        successful_files = sum(stats["successful_files"] for stats in self.state.phase_stats.values())
+        failed_files = sum(stats["failed_files"] for stats in self.state.phase_stats.values())
+        skipped_files = sum(stats["skipped_files"] for stats in self.state.phase_stats.values())
+        
+        self.logger.info(f"Total files: {total_files}")
+        self.logger.info(f"Files processed: {processed_files}")
+        self.logger.info(f"Files successful: {successful_files}")
+        self.logger.info(f"Files failed: {failed_files}")
+        self.logger.info(f"Files skipped: {skipped_files}")
+        
+        if self.state.error_counts:
+            self.logger.info("\nTotal errors by type:")
+            for error_type, count in self.state.error_counts.items():
+                self.logger.info(f"  {error_type}: {count}")
+                
+    def start_operation(self, operation_name: str) -> None:
+        """Start timing an operation.
+        
+        Args:
+            operation_name: Name of the operation
+        """
+        self.timing.start_timer(operation_name)
+        
+    def end_operation(self, operation_name: str) -> None:
+        """End timing an operation.
+        
+        Args:
+            operation_name: Name of the operation
+        """
+        duration = self.timing.stop_timer(operation_name)
+        if self.state.current_phase:
+            phase_stats = self.state.phase_stats[self.state.current_phase]
+            phase_stats["operation_timings"][operation_name] = duration 
+
+    def get_phase_progress(self, phase_name: str) -> int:
+        """Get the progress percentage of a phase.
+        
+        Args:
+            phase_name: Name of the phase
+            
+        Returns:
+            Progress percentage (0-100)
+        """
+        if phase_name not in self.state.phase_stats:
+            return 0
+            
+        phase_stats = self.state.phase_stats[phase_name]
+        total = phase_stats['total_files']
+        if total == 0:
+            return 100 if phase_stats.get('end_time') else 0
+            
+        processed = phase_stats['processed_files']
+        return min(100, int((processed / total) * 100))
+
+    def update_phase_progress(self, phase_name: str, progress: int) -> None:
+        """Update the progress of a phase.
+        
+        Args:
+            phase_name: Name of the phase
+            progress: Progress percentage (0-100)
+        """
+        if phase_name not in self.state.phase_stats:
+            raise RuntimeError(f"Phase {phase_name} not started")
+            
+        phase_stats = self.state.phase_stats[phase_name]
+        
+        # If no files to process, just update processed_files to track percentage
+        if phase_stats['total_files'] == 0:
+            phase_stats['total_files'] = 100
+            phase_stats['processed_files'] = progress
+        else:
+            # Calculate how many files to process to reach the target percentage
+            target_processed = int((progress / 100) * phase_stats['total_files'])
+            current_processed = phase_stats['processed_files']
+            files_to_process = target_processed - current_processed
+            
+            if files_to_process > 0:
+                self.update_progress(files_processed=files_to_process) 
+
+    def complete_phase(self, phase_name: str) -> None:
+        """Alias for end_phase for backward compatibility.
+        
+        Args:
+            phase_name: Name of the phase to complete
+        """
+        self.end_phase(phase_name) 

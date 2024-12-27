@@ -15,8 +15,8 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from .metrics import MetricsTracker
-from ..console.logger import ConsoleLogger
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.console.logger import ConsoleLogger
 
 
 class ProgressColumnType(Enum):
@@ -90,7 +90,7 @@ class EnhancedProgress:
         description: str,
         config: Optional[ProgressConfig] = None,
         logger: Optional[ConsoleLogger] = None,
-        metrics_dir: Optional[Path] = None
+        metrics: Optional[MetricsTracker] = None
     ):
         """Initialize progress tracker.
         
@@ -98,15 +98,12 @@ class EnhancedProgress:
             description: Progress description
             config: Progress configuration
             logger: Console logger instance
-            metrics_dir: Optional directory for metrics storage
+            metrics: Optional metrics tracker instance
         """
         self.description = description
         self.config = config or ProgressConfig()
         self.logger = logger or ConsoleLogger()
-        
-        # Create metrics directory if specified
-        metrics_path = Path(metrics_dir) if metrics_dir else Path.cwd() / "metrics" / description.lower().replace(" ", "_")
-        self.metrics = MetricsTracker(metrics_dir=metrics_path)
+        self.metrics = metrics or MetricsTracker()
         
         # Initialize progress tracking
         self.progress = self._create_progress()
@@ -189,9 +186,9 @@ class EnhancedProgress:
         )
         
         # Initialize metrics
-        self.metrics.gauge("total_files", total_files)
+        self.metrics.set_gauge("total_files", total_files)
         if total_size:
-            self.metrics.gauge("total_bytes", total_size)
+            self.metrics.set_gauge("total_bytes", total_size)
 
     def add_file(self, path: Path, size: int) -> None:
         """Add a file to track.
@@ -201,8 +198,8 @@ class EnhancedProgress:
             size: File size in bytes
         """
         self.files[path] = FileProgress(path=path, size=size)
-        self.metrics.increment("files_added", 1)
-        self.metrics.gauge("total_bytes", size, labels={"file": str(path)})
+        self.metrics.increment("files_added")
+        self.metrics.set_gauge("total_bytes", size, labels={"file": str(path)})
         
     def update_file(
         self,
@@ -226,24 +223,24 @@ class EnhancedProgress:
         # Update progress
         if processed_bytes is not None:
             file_progress.processed_bytes = processed_bytes
-            self.metrics.gauge("processed_bytes", processed_bytes, labels={"file": str(path)})
+            self.metrics.set_gauge("processed_bytes", processed_bytes, labels={"file": str(path)})
             
         # Update status
         if status:
             file_progress.status = status
             if status == "completed":
                 file_progress.end_time = datetime.now()
-                self.metrics.increment("files_completed", 1)
+                self.metrics.increment("files_completed")
                 if file_progress.duration:
-                    self.metrics.timing("file_duration", file_progress.duration, labels={"file": str(path)})
+                    self.metrics.add_timing("file_duration", file_progress.duration, labels={"file": str(path)})
             elif status == "failed":
                 file_progress.end_time = datetime.now()
-                self.metrics.increment("files_failed", 1)
+                self.metrics.increment("files_failed")
                 
         # Update error
         if error:
             file_progress.error = error
-            self.metrics.error("file_error", 1, labels={"file": str(path), "error": error})
+            self.metrics.increment("file_errors", labels={"file": str(path), "error": error})
             
         # Update overall progress
         if self.task_id is not None:
@@ -251,31 +248,25 @@ class EnhancedProgress:
             self.progress.update(self.task_id, completed=completed)
             
     def get_stats(self) -> Dict[str, Any]:
-        """Get progress statistics.
+        """Get current progress statistics.
         
         Returns:
-            Dictionary of statistics
+            Dictionary of progress statistics
         """
         stats = {
             "total_files": len(self.files),
             "completed_files": len([f for f in self.files.values() if f.status == "completed"]),
             "failed_files": len([f for f in self.files.values() if f.status == "failed"]),
-            "skipped_files": len([f for f in self.files.values() if f.status == "skipped"]),
-            "processed_bytes": sum(f.processed_bytes for f in self.files.values()),
+            "pending_files": len([f for f in self.files.values() if f.status == "pending"]),
             "total_bytes": sum(f.size for f in self.files.values()),
-            "errors": {
-                str(f.path): f.error
-                for f in self.files.values()
-                if f.error
-            }
+            "processed_bytes": sum(f.processed_bytes for f in self.files.values()),
+            "errors": [f.error for f in self.files.values() if f.error]
         }
         
-        # Calculate duration and speed
         if self.start_time:
-            end_time = self.end_time or datetime.now()
-            duration = (end_time - self.start_time).total_seconds()
+            duration = (datetime.now() - self.start_time).total_seconds()
             stats["duration"] = duration
-            if duration > 0:
+            if stats["processed_bytes"] > 0 and duration > 0:
                 stats["speed"] = stats["processed_bytes"] / duration
                 
         return stats
@@ -283,25 +274,13 @@ class EnhancedProgress:
     def stop(self) -> None:
         """Stop progress tracking."""
         self.end_time = datetime.now()
-        duration = self.metrics.stop_timer("processing")
+        self.progress.stop()
         
-        if self.progress:
-            self.progress.stop()
+        # Update final metrics
+        if self.start_time:
+            duration = (self.end_time - self.start_time).total_seconds()
+            self.metrics.add_timing("total_duration", duration)
             
-        # Log final statistics
-        stats = self.get_stats()
-        self.logger.info(f"\nProcessing complete in {stats['duration']:.1f}s")
-        self.logger.info(f"Files: {stats['completed_files']} completed, "
-                        f"{stats['failed_files']} failed, "
-                        f"{stats['skipped_files']} skipped")
-        self.logger.info(f"Total processed: "
-                        f"{stats['processed_bytes'] / 1024 / 1024:.1f} MB")
-        self.logger.info(f"Average speed: {stats['speed'] / 1024 / 1024:.1f} MB/s")
-        
-        if stats['errors']:
-            self.logger.error("\nErrors encountered:")
-            for path, error in stats['errors'].items():
-                self.logger.error(f"  {path}: {error}")
-                
-        # Save final metrics
-        self.metrics.save_metrics("progress_metrics.json") 
+            stats = self.get_stats()
+            if stats["processed_bytes"] > 0 and duration > 0:
+                self.metrics.set_gauge("processing_speed", stats["speed"]) 

@@ -9,8 +9,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from nova.core.console.color_scheme import ColorScheme
 from nova.core.console.logger import ConsoleLogger
-from nova.core.error.error_tracker import ErrorTracker
-from nova.core.utils.metrics import MetricsTracker, MetricType
+from nova.core.error_tracker import ErrorTracker
+from nova.core.utils.metrics import MetricsTracker
 from nova.core.utils.timing import TimingManager
 
 
@@ -55,7 +55,7 @@ class PhaseRunner:
         self._progress = None
         
         # Initialize metrics and timing
-        self.metrics = MetricsTracker(metrics_dir=metrics_dir)
+        self.metrics = MetricsTracker()
         self.timing = TimingManager(metrics_tracker=self.metrics, console=self.logger.console)
         
     def start_phase(self, phase_name: str, total_files: int = 0) -> None:
@@ -77,7 +77,7 @@ class PhaseRunner:
         )
         
         # Initialize metrics for this phase
-        self.metrics.gauge(f"phase_{phase_name}_total_files", total_files)
+        self.metrics.set_gauge(f"phase_{phase_name}_total_files", total_files)
         
         # Create progress bar
         self._progress = Progress(
@@ -159,22 +159,21 @@ class PhaseRunner:
             self.stats.failed_files += files_processed
             if error_type:
                 self.stats.error_counts[error_type] = self.stats.error_counts.get(error_type, 0) + 1
-                self.metrics.error(f"phase_{self.current_phase}_error_{error_type}")
+                self.metrics.increment(f"phase_{self.current_phase}_error_{error_type}")
                 
         # Update metrics
-        self.metrics.gauge(f"phase_{self.current_phase}_processed_files", self.stats.processed_files)
-        self.metrics.gauge(f"phase_{self.current_phase}_processed_bytes", self.stats.processed_bytes)
-        self.metrics.rate(f"phase_{self.current_phase}_processing_rate", files_processed)
+        self.metrics.set_gauge(f"phase_{self.current_phase}_processed_files", self.stats.processed_files)
+        self.metrics.set_gauge(f"phase_{self.current_phase}_processed_bytes", self.stats.processed_bytes)
+        self.metrics.increment(f"phase_{self.current_phase}_processing_rate", files_processed)
         
         if custom_metrics:
             self.stats.custom_metrics.update(custom_metrics)
             for name, value in custom_metrics.items():
-                self.metrics.gauge(f"phase_{self.current_phase}_custom_{name}", float(value))
+                self.metrics.set_gauge(f"phase_{self.current_phase}_custom_{name}", float(value))
                 
         if file_info:
-            labels = {"phase": self.current_phase}
-            labels.update(file_info)
-            self.metrics.increment("files_processed", 1, labels=labels)
+            self.metrics.add_label(f"phase_{self.current_phase}_files", file_info)
+            self.metrics.increment(f"phase_{self.current_phase}_files")
             
         # Update progress display
         if self._progress:
@@ -204,9 +203,9 @@ class PhaseRunner:
                 files_per_second = self.stats.processed_files / processing_time
                 bytes_per_second = self.stats.processed_bytes / processing_time
                 
-                self.metrics.gauge(f"phase_{self.current_phase}_duration", phase_duration)
-                self.metrics.gauge(f"phase_{self.current_phase}_files_per_second", files_per_second)
-                self.metrics.gauge(f"phase_{self.current_phase}_bytes_per_second", bytes_per_second)
+                self.metrics.set_gauge(f"phase_{self.current_phase}_duration", phase_duration)
+                self.metrics.set_gauge(f"phase_{self.current_phase}_files_per_second", files_per_second)
+                self.metrics.set_gauge(f"phase_{self.current_phase}_bytes_per_second", bytes_per_second)
                 
         # Log summary
         self.logger.info(f"\nPhase {self.current_phase} completed:")
@@ -226,12 +225,6 @@ class PhaseRunner:
             for name, value in self.stats.custom_metrics.items():
                 self.logger.info(f"  {name}: {value}")
                 
-        # Display timing summary
-        self.timing.display_summary()
-        
-        # Save metrics
-        self.metrics.save_metrics(f"phase_{self.current_phase}_metrics.json")
-        
         # Clean up
         if self._progress:
             self._progress.stop()
@@ -239,15 +232,15 @@ class PhaseRunner:
             
         self.current_phase = None
         
-    def get_statistics(
-        self,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        metric_types: Optional[List[MetricType]] = None
-    ) -> Dict[str, Dict[str, float]]:
-        """Get phase statistics with optional filtering."""
-        return self.metrics.get_statistics(
-            start_time=start_time,
-            end_time=end_time,
-            metric_types=metric_types
-        ) 
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get current phase statistics.
+        
+        Returns:
+            Dictionary of phase statistics
+        """
+        return {
+            "metrics": self.metrics.get_metrics(),
+            "timings": self.stats.operation_timings,
+            "errors": self.stats.error_counts,
+            "custom": self.stats.custom_metrics
+        } 
