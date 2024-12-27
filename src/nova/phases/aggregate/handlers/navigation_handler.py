@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import aiofiles
 
-from nova.phases.core.base_handler import BaseHandler
+from ....core.base_handler import BaseHandler, HandlerResult
+from nova.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class NavigationHandler(BaseHandler):
     """Handles adding navigation elements to aggregated content."""

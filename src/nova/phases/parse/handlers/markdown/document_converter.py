@@ -7,7 +7,7 @@ import mimetypes
 import logging
 from dataclasses import dataclass
 
-from nova.core.handlers.content_converters import (
+from .....core.handlers.content_converters import (
     DocxConverter,
     PptxConverter,
     XlsxConverter,
@@ -15,7 +15,7 @@ from nova.core.handlers.content_converters import (
     CsvConverter,
     HtmlConverter
 )
-from nova.core.logging import get_logger
+from .....core.logging import get_logger
 
 logger = get_logger(__name__)
 

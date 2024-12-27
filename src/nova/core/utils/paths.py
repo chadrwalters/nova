@@ -1,142 +1,256 @@
-"""Path utilities for Nova document processor."""
+"""Path utilities for file operations."""
 
-import hashlib
+import os
 from pathlib import Path
-from typing import Union, Optional
+from typing import Dict, Any, Optional, List, Union
 
-from ..errors import FileError
-from .file_ops import FileOperationsManager
+from ..errors import PipelineError
 
-# Initialize file operations manager
-file_ops = FileOperationsManager()
+def get_workspace_path(path: Union[str, Path]) -> Path:
+    """Get absolute path in workspace.
+    
+    Args:
+        path: Path relative to workspace root
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        workspace_root = Path(os.environ.get('NOVA_BASE_DIR', ''))
+        if not workspace_root:
+            raise PipelineError("NOVA_BASE_DIR environment variable not set")
+        
+        return workspace_root / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get workspace path: {e}")
 
-async def ensure_dir(path: Union[str, Path]) -> Path:
+def get_input_path(path: Union[str, Path]) -> Path:
+    """Get absolute path in input directory.
+    
+    Args:
+        path: Path relative to input directory
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        input_dir = Path(os.environ.get('NOVA_INPUT_DIR', ''))
+        if not input_dir:
+            raise PipelineError("NOVA_INPUT_DIR environment variable not set")
+        
+        return input_dir / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get input path: {e}")
+
+def get_output_path(path: Union[str, Path]) -> Path:
+    """Get absolute path in output directory.
+    
+    Args:
+        path: Path relative to output directory
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        output_dir = Path(os.environ.get('NOVA_OUTPUT_DIR', ''))
+        if not output_dir:
+            raise PipelineError("NOVA_OUTPUT_DIR environment variable not set")
+        
+        return output_dir / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get output path: {e}")
+
+def get_temp_path(path: Union[str, Path]) -> Path:
+    """Get absolute path in temp directory.
+    
+    Args:
+        path: Path relative to temp directory
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        temp_dir = Path(os.environ.get('NOVA_TEMP_DIR', ''))
+        if not temp_dir:
+            raise PipelineError("NOVA_TEMP_DIR environment variable not set")
+        
+        return temp_dir / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get temp path: {e}")
+
+def get_phase_path(phase: str, path: Union[str, Path]) -> Path:
+    """Get absolute path in phase directory.
+    
+    Args:
+        phase: Phase name
+        path: Path relative to phase directory
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        phase_dir = Path(os.environ.get(f'NOVA_PHASE_{phase.upper()}', ''))
+        if not phase_dir:
+            raise PipelineError(f"NOVA_PHASE_{phase.upper()} environment variable not set")
+        
+        return phase_dir / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get phase path: {e}")
+
+def get_image_path(path: Union[str, Path], subdir: str = 'original') -> Path:
+    """Get absolute path in image directory.
+    
+    Args:
+        path: Path relative to image directory
+        subdir: Subdirectory (original, processed, metadata, cache)
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        image_dir = Path(os.environ.get('NOVA_IMAGES_DIR', ''))
+        if not image_dir:
+            raise PipelineError("NOVA_IMAGES_DIR environment variable not set")
+        
+        return image_dir / subdir / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get image path: {e}")
+
+def get_office_path(path: Union[str, Path], subdir: str = 'assets') -> Path:
+    """Get absolute path in office directory.
+    
+    Args:
+        path: Path relative to office directory
+        subdir: Subdirectory (assets, temp)
+        
+    Returns:
+        Absolute path
+    """
+    try:
+        office_dir = Path(os.environ.get('NOVA_OFFICE_DIR', ''))
+        if not office_dir:
+            raise PipelineError("NOVA_OFFICE_DIR environment variable not set")
+        
+        return office_dir / subdir / path
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get office path: {e}")
+
+def ensure_directory(path: Union[str, Path]) -> Path:
     """Ensure directory exists.
     
     Args:
         path: Directory path
         
     Returns:
-        Path object for directory
-        
-    Raises:
-        FileError: If directory cannot be created
+        Directory path
     """
     try:
         path = Path(path)
-        await file_ops.create_directory(path)
+        path.mkdir(parents=True, exist_ok=True)
         return path
-    except Exception as e:
-        raise FileError(f"Failed to create directory {path}: {str(e)}") from e
-
-async def ensure_file(path: Union[str, Path]) -> Path:
-    """Ensure file exists.
-    
-    Args:
-        path: File path
         
-    Returns:
-        Path object for file
-        
-    Raises:
-        FileError: If file cannot be created
-    """
-    try:
-        path = Path(path)
-        await file_ops.create_directory(path.parent)
-        await file_ops.touch_file(path)
-        return path
     except Exception as e:
-        raise FileError(f"Failed to create file {path}: {str(e)}") from e
+        raise PipelineError(f"Failed to ensure directory exists: {e}")
 
-async def clean_dir(path: Union[str, Path]) -> None:
-    """Clean directory by removing all contents.
+def clean_directory(path: Union[str, Path]) -> None:
+    """Clean directory contents.
     
     Args:
         path: Directory path
-        
-    Raises:
-        FileError: If directory cannot be cleaned
     """
     try:
         path = Path(path)
-        if await file_ops.path_exists(path):
-            await file_ops.remove_directory(path, recursive=True)
-        await file_ops.create_directory(path)
+        if path.exists():
+            for item in path.iterdir():
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    clean_directory(item)
+                    item.rmdir()
+                    
     except Exception as e:
-        raise FileError(f"Failed to clean directory {path}: {str(e)}") from e
+        raise PipelineError(f"Failed to clean directory: {e}")
 
-async def copy_file(
-    source: Union[str, Path],
-    dest: Union[str, Path],
-    overwrite: bool = True
-) -> None:
-    """Copy file from source to destination.
+def copy_file(src: Union[str, Path], dst: Union[str, Path]) -> None:
+    """Copy file.
     
     Args:
-        source: Source file path
-        dest: Destination file path
-        overwrite: Whether to overwrite existing file
-        
-    Raises:
-        FileError: If file cannot be copied
+        src: Source path
+        dst: Destination path
     """
     try:
-        source = Path(source)
-        dest = Path(dest)
+        src = Path(src)
+        dst = Path(dst)
         
-        # Check if source exists
-        if not await file_ops.path_exists(source):
-            raise FileError(f"Source file does not exist: {source}")
+        if not src.exists():
+            raise PipelineError(f"Source file does not exist: {src}")
         
-        # Check if destination exists
-        if await file_ops.path_exists(dest) and not overwrite:
-            raise FileError(f"Destination file exists: {dest}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(src.read_bytes())
         
-        # Create destination directory
-        await file_ops.create_directory(dest.parent)
-        
-        # Copy file
-        await file_ops.copy_file(source, dest)
     except Exception as e:
-        raise FileError(f"Failed to copy file {source} to {dest}: {str(e)}") from e
+        raise PipelineError(f"Failed to copy file: {e}")
 
-async def move_file(
-    source: Union[str, Path],
-    dest: Union[str, Path],
-    overwrite: bool = True
-) -> None:
-    """Move file from source to destination.
+def move_file(src: Union[str, Path], dst: Union[str, Path]) -> None:
+    """Move file.
     
     Args:
-        source: Source file path
-        dest: Destination file path
-        overwrite: Whether to overwrite existing file
-        
-    Raises:
-        FileError: If file cannot be moved
+        src: Source path
+        dst: Destination path
     """
     try:
-        source = Path(source)
-        dest = Path(dest)
+        src = Path(src)
+        dst = Path(dst)
         
-        # Check if source exists
-        if not await file_ops.path_exists(source):
-            raise FileError(f"Source file does not exist: {source}")
+        if not src.exists():
+            raise PipelineError(f"Source file does not exist: {src}")
         
-        # Check if destination exists
-        if await file_ops.path_exists(dest) and not overwrite:
-            raise FileError(f"Destination file exists: {dest}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
         
-        # Create destination directory
-        await file_ops.create_directory(dest.parent)
-        
-        # Move file
-        await file_ops.move_file(source, dest)
     except Exception as e:
-        raise FileError(f"Failed to move file {source} to {dest}: {str(e)}") from e
+        raise PipelineError(f"Failed to move file: {e}")
 
-async def get_file_size(path: Union[str, Path]) -> int:
+def delete_file(path: Union[str, Path]) -> None:
+    """Delete file.
+    
+    Args:
+        path: File path
+    """
+    try:
+        path = Path(path)
+        if path.exists():
+            path.unlink()
+            
+    except Exception as e:
+        raise PipelineError(f"Failed to delete file: {e}")
+
+def get_relative_path(path: Union[str, Path], base: Union[str, Path]) -> Path:
+    """Get relative path.
+    
+    Args:
+        path: Path to make relative
+        base: Base path
+        
+    Returns:
+        Relative path
+    """
+    try:
+        path = Path(path)
+        base = Path(base)
+        return path.relative_to(base)
+        
+    except Exception as e:
+        raise PipelineError(f"Failed to get relative path: {e}")
+
+def get_file_size(path: Union[str, Path]) -> int:
     """Get file size in bytes.
     
     Args:
@@ -144,101 +258,58 @@ async def get_file_size(path: Union[str, Path]) -> int:
         
     Returns:
         File size in bytes
-        
-    Raises:
-        FileError: If file size cannot be determined
     """
     try:
         path = Path(path)
-        stats = await file_ops.get_file_stats(path)
-        return stats.st_size
+        if not path.exists():
+            raise PipelineError(f"File does not exist: {path}")
+        
+        return path.stat().st_size
+        
     except Exception as e:
-        raise FileError(f"Failed to get file size for {path}: {str(e)}") from e
+        raise PipelineError(f"Failed to get file size: {e}")
 
-async def get_file_mtime(path: Union[str, Path]) -> float:
+def get_file_mtime(path: Union[str, Path]) -> float:
     """Get file modification time.
     
     Args:
         path: File path
         
     Returns:
-        Modification time as timestamp
-        
-    Raises:
-        FileError: If modification time cannot be determined
+        Modification time as Unix timestamp
     """
     try:
         path = Path(path)
-        stats = await file_ops.get_file_stats(path)
-        return stats.st_mtime
+        if not path.exists():
+            raise PipelineError(f"File does not exist: {path}")
+        
+        return path.stat().st_mtime
+        
     except Exception as e:
-        raise FileError(f"Failed to get modification time for {path}: {str(e)}") from e
+        raise PipelineError(f"Failed to get file modification time: {e}")
 
-async def get_file_hash(
-    path: Union[str, Path],
-    algorithm: str = 'sha256',
-    chunk_size: int = 8192
-) -> str:
+def get_file_hash(path: Union[str, Path]) -> str:
     """Get file hash.
     
     Args:
         path: File path
-        algorithm: Hash algorithm
-        chunk_size: Size of chunks to read
         
     Returns:
-        File hash as hex string
-        
-    Raises:
-        FileError: If file hash cannot be computed
+        File hash
     """
     try:
-        path = Path(path)
-        hasher = hashlib.new(algorithm)
+        import hashlib
         
-        async for chunk in file_ops.read_file_chunks(path, chunk_size):
-            hasher.update(chunk)
+        path = Path(path)
+        if not path.exists():
+            raise PipelineError(f"File does not exist: {path}")
+        
+        hasher = hashlib.sha256()
+        with path.open('rb') as f:
+            for chunk in iter(lambda: f.read(4096), b''):
+                hasher.update(chunk)
         
         return hasher.hexdigest()
+        
     except Exception as e:
-        raise FileError(f"Failed to compute hash for {path}: {str(e)}") from e
-
-def normalize_path(path: Union[str, Path]) -> Path:
-    """Normalize path by resolving symlinks and relative components.
-    
-    Args:
-        path: Path to normalize
-        
-    Returns:
-        Normalized path
-        
-    Raises:
-        FileError: If path cannot be normalized
-    """
-    try:
-        return Path(path).resolve()
-    except Exception as e:
-        raise FileError(f"Failed to normalize path {path}: {str(e)}") from e
-
-async def is_subpath(
-    path: Union[str, Path],
-    parent: Union[str, Path]
-) -> bool:
-    """Check if path is a subpath of parent.
-    
-    Args:
-        path: Path to check
-        parent: Parent path
-        
-    Returns:
-        True if path is a subpath of parent
-        
-    Raises:
-        FileError: If paths cannot be compared
-    """
-    try:
-        path = normalize_path(path)
-        parent = normalize_path(parent)
-        return str(path).startswith(str(parent))
-    except Exception as e:
-        raise FileError(f"Failed to compare paths {path} and {parent}: {str(e)}") from e 
+        raise PipelineError(f"Failed to get file hash: {e}") 

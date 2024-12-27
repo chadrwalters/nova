@@ -1,95 +1,151 @@
-"""Base processor module."""
+"""Base processor for pipeline phases."""
 
+import os
 from pathlib import Path
-from typing import Dict, Any, Union
+from typing import Any, Dict, List, Optional, Set
 
-from ..config import PipelineConfig, ProcessorConfig
-from ..logging import get_logger
+from rich.console import Console
 
-logger = get_logger(__name__)
+from ..utils.metrics import MetricsTracker
+from ..utils.timing import TimingManager
+from ..config.base import ProcessorConfig, PipelineConfig
+from ..models.result import ProcessingResult
+
 
 class BaseProcessor:
-    """Base class for all processors."""
+    """Base processor for pipeline phases."""
     
-    def __init__(self, processor_config: ProcessorConfig, pipeline_config: PipelineConfig):
-        """Initialize base processor.
+    def __init__(
+        self,
+        processor_config: ProcessorConfig,
+        pipeline_config: PipelineConfig,
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[Console] = None
+    ):
+        """Initialize the processor.
         
         Args:
             processor_config: Processor configuration
             pipeline_config: Pipeline configuration
+            timing: Optional timing utility
+            metrics: Optional metrics tracker
+            console: Optional console logger
         """
         self.processor_config = processor_config
         self.pipeline_config = pipeline_config
+        self.timing = timing or TimingManager()
+        self.metrics = metrics or MetricsTracker()
+        self.console = console or Console()
         
-        # Standard directory setup that all processors must use
-        self.base_dir = Path(pipeline_config.paths.base_dir)
-        self.input_dir = Path(pipeline_config.input_dir)
-        self.output_dir = Path(processor_config.output_dir)
-        self.processing_dir = Path(pipeline_config.processing_dir)
-        self.temp_dir = Path(pipeline_config.temp_dir)
+        # Initialize paths
+        self.input_dir = Path(processor_config.input_dir or '') if processor_config.input_dir else None
+        self.output_dir = Path(processor_config.output_dir) if processor_config.output_dir else None
+        self.temp_dir = Path(pipeline_config.temp_dir) if pipeline_config.temp_dir else None
         
-        # Validate required directories
-        if not self.base_dir or not self.input_dir or not self.output_dir:
-            raise ValueError("Missing required directory configuration")
+        # Initialize state
+        self.processed_files: Set[str] = set()
+        self.failed_files: Set[str] = set()
+        self.skipped_files: Set[str] = set()
+        self.errors: List[str] = []
+        
+        # Initialize handlers
+        self.handlers = []
+        
+    def _initialize(self) -> None:
+        """Initialize the processor."""
+        # Verify output directory exists
+        if self.output_dir and not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
             
-    async def setup(self) -> bool:
-        """Set up processor.
+    async def _process(self, file_path: str) -> None:
+        """Process a single file.
         
-        Returns:
-            True if setup was successful, False otherwise
+        Args:
+            file_path: Path to the file to process
         """
         try:
-            # Create required directories
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            self.processing_dir.mkdir(parents=True, exist_ok=True)
-            self.temp_dir.mkdir(parents=True, exist_ok=True)
+            # Create context with output directory
+            context = {'output_dir': str(self.output_dir)} if self.output_dir else {}
             
-            # Validate input directory exists
-            if not self.input_dir.exists():
-                logger.error(f"Input directory not found: {self.input_dir}")
-                return False
-                
-            return True
+            # Check if any handler can process the file
+            for handler in self.handlers:
+                if await handler.can_handle(file_path):
+                    result = await handler.process(file_path, context)
+                    if result.success:
+                        self.processed_files.add(file_path)
+                        self.metrics.increment('files_processed')
+                        self.console.print(f"[green]Handler {handler.__class__.__name__} successfully processed file: {file_path}[/green]")
+                        return
+                    else:
+                        self.failed_files.add(file_path)
+                        self.errors.extend(result.errors)
+                        error_msg = f"Handler {handler.__class__.__name__} failed to process file: {file_path}"
+                        self.console.print(f"[red]{error_msg}[/red]")
+                        return
+                else:
+                    self.console.print(f"[yellow]Handler {handler.__class__.__name__} cannot handle file: {file_path}[/yellow]")
+                    
+            # No handler could process the file
+            self.skipped_files.add(file_path)
+            warning_msg = f"No handlers could process file: {file_path}"
+            self.console.print(f"[yellow]{warning_msg}[/yellow]")
+            
         except Exception as e:
-            logger.error(f"Failed to set up processor: {str(e)}")
-            return False
-    
-    async def process(self) -> bool:
-        """Process files.
-        
-        Returns:
-            True if processing completed successfully, False otherwise
+            self.failed_files.add(file_path)
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.errors.append(error_msg)
+            self.console.print(f"[red]{error_msg}[/red]")
             
-        Raises:
-            NotImplementedError: Must be implemented by subclasses
-        """
-        raise NotImplementedError("Processors must implement process()")
-        
-    async def cleanup(self) -> None:
-        """Clean up processor.
-        
-        This method should be overridden by processors that need cleanup.
-        """
+    def _cleanup(self) -> None:
+        """Clean up resources."""
         pass
         
-    def get_relative_path(self, path: Path) -> Path:
-        """Get path relative to base directory.
+    async def process(self, file_path: str, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+        """Process a file.
         
         Args:
-            path: Path to get relative path for
+            file_path: Path to the file to process
+            context: Optional context dictionary
             
         Returns:
-            Path relative to base directory
+            ProcessingResult containing processing results
         """
-        return path.relative_to(self.base_dir)
-        
-    def get_output_path(self, relative_path: Path) -> Path:
-        """Get output path for a file.
-        
-        Args:
-            relative_path: Path relative to base directory
+        try:
+            # Initialize processor
+            self._initialize()
             
-        Returns:
-            Full output path
-        """
-        return self.output_dir / relative_path
+            # Process file
+            await self._process(file_path)
+            
+            # Clean up
+            self._cleanup()
+            
+            # Create result
+            result = ProcessingResult(
+                success=len(self.errors) == 0,
+                processed_files=[Path(p) for p in self.processed_files],
+                errors=self.errors
+            )
+            
+            # Add failed and skipped files to metadata
+            result.metadata.update({
+                'failed_files': list(self.failed_files),
+                'skipped_files': list(self.skipped_files)
+            })
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.errors.append(error_msg)
+            self.console.print(f"[red]{error_msg}[/red]")
+            return ProcessingResult(
+                success=False,
+                errors=self.errors,
+                metadata={
+                    'processed_files': list(self.processed_files),
+                    'failed_files': list(self.failed_files),
+                    'skipped_files': list(self.skipped_files)
+                }
+            )

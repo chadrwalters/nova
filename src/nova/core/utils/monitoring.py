@@ -1,233 +1,161 @@
-"""Monitoring utilities for the Nova document processing pipeline."""
+"""Monitoring utilities."""
 
-import json
-import logging
-import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, Any, Optional, List, Union
+import json
+import time
 
-logger = logging.getLogger(__name__)
-
-@dataclass
-class MetricPoint:
-    """A single metric data point."""
-    timestamp: float
-    value: Union[float, int, str]
-    tags: Dict[str, str] = field(default_factory=dict)
-
-@dataclass
-class Metric:
-    """A time series metric."""
-    name: str
-    points: List[MetricPoint] = field(default_factory=list)
-    description: str = ""
+from ..errors import PipelineError
 
 class MonitoringManager:
-    """Manages monitoring and metrics collection."""
+    """Manager for monitoring pipeline operations."""
     
-    def __init__(self, metrics_dir: Union[str, Path]) -> None:
+    def __init__(self, metrics_dir: Optional[Union[str, Path]] = None):
         """Initialize monitoring manager.
         
         Args:
-            metrics_dir: Directory to store metrics data
+            metrics_dir: Optional directory for storing monitoring data
         """
-        self.metrics_dir = Path(metrics_dir)
-        self.metrics_dir.mkdir(parents=True, exist_ok=True)
-        self.metrics: Dict[str, Metric] = {}
+        self.metrics_dir = Path(metrics_dir) if metrics_dir else None
+        if self.metrics_dir:
+            self.metrics_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load existing metrics
-        self._load_metrics()
+        # Initialize state
+        self.state = {
+            "status": "initialized",
+            "start_time": None,
+            "end_time": None,
+            "duration": None,
+            "error": None
+        }
         
-        # Initialize standard metrics
-        self._init_standard_metrics()
-        
-        logger.debug("Initialized MonitoringManager with metrics directory: %s", self.metrics_dir)
+        # Initialize metrics
+        self.metrics = {
+            "files_processed": 0,
+            "files_failed": 0,
+            "warnings": 0,
+            "errors": 0,
+            "timings": {}
+        }
     
-    def _init_standard_metrics(self) -> None:
-        """Initialize standard metrics."""
-        self.add_metric("api_calls", "Number of API calls made")
-        self.add_metric("api_latency", "API call latency in seconds")
-        self.add_metric("image_processing_time", "Time taken to process images in seconds")
-        self.add_metric("cache_hits", "Number of cache hits")
-        self.add_metric("cache_misses", "Number of cache misses")
-        self.add_metric("errors", "Number of errors encountered")
-    
-    def _get_metric_file(self, name: str) -> Path:
-        """Get the path to a metric's data file."""
-        return self.metrics_dir / f"{name}.json"
-    
-    def _load_metrics(self) -> None:
-        """Load metrics from disk."""
+    def start(self) -> None:
+        """Start monitoring."""
         try:
-            for metric_file in self.metrics_dir.glob("*.json"):
-                try:
-                    with open(metric_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        name = data.get('name')
-                        if name:
-                            points = []
-                            for point_data in data.get('points', []):
-                                points.append(MetricPoint(
-                                    timestamp=point_data['timestamp'],
-                                    value=point_data['value'],
-                                    tags=point_data.get('tags', {})
-                                ))
-                            self.metrics[name] = Metric(
-                                name=name,
-                                points=points,
-                                description=data.get('description', '')
-                            )
-                            logger.debug("Loaded metric %s with %d points", name, len(points))
-                except Exception as e:
-                    logger.warning("Failed to load metric file %s: %s", metric_file, e)
+            self.state["status"] = "running"
+            self.state["start_time"] = time.time()
+            
         except Exception as e:
-            logger.warning("Failed to load metrics: %s", e)
+            raise PipelineError(f"Failed to start monitoring: {e}")
     
-    def _save_metric(self, name: str) -> None:
-        """Save a metric to disk."""
+    def stop(self) -> None:
+        """Stop monitoring."""
         try:
-            metric = self.metrics.get(name)
-            if metric:
-                metric_file = self._get_metric_file(name)
-                data = {
-                    'name': metric.name,
-                    'description': metric.description,
-                    'points': [
-                        {
-                            'timestamp': p.timestamp,
-                            'value': p.value,
-                            'tags': p.tags
-                        }
-                        for p in metric.points
-                    ]
-                }
-                with open(metric_file, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2)
-                logger.debug("Saved metric %s with %d points", name, len(metric.points))
+            self.state["status"] = "completed"
+            self.state["end_time"] = time.time()
+            self.state["duration"] = self.state["end_time"] - self.state["start_time"]
+            
         except Exception as e:
-            logger.warning("Failed to save metric %s: %s", name, e)
+            raise PipelineError(f"Failed to stop monitoring: {e}")
     
-    def add_metric(self, name: str, description: str = "") -> None:
-        """Add a new metric.
+    def record_timing(self, operation: str, duration: float) -> None:
+        """Record timing for an operation.
         
         Args:
-            name: Metric name
-            description: Metric description
+            operation: Operation name
+            duration: Duration in seconds
         """
-        if name not in self.metrics:
-            self.metrics[name] = Metric(name=name, description=description)
-            self._save_metric(name)
-            logger.debug("Added new metric: %s", name)
+        try:
+            if operation not in self.metrics["timings"]:
+                self.metrics["timings"][operation] = []
+            self.metrics["timings"][operation].append(duration)
+            
+        except Exception as e:
+            raise PipelineError(f"Failed to record timing: {e}")
     
-    def record_metric(self, name: str, value: Union[float, int, str], tags: Optional[Dict[str, str]] = None) -> None:
-        """Record a metric value.
+    def increment_counter(self, name: str, value: int = 1) -> None:
+        """Increment a counter.
         
         Args:
-            name: Metric name
-            value: Metric value
-            tags: Optional tags to associate with the metric
+            name: Counter name
+            value: Value to increment by
         """
-        if name not in self.metrics:
-            self.add_metric(name)
-        
-        point = MetricPoint(
-            timestamp=time.time(),
-            value=value,
-            tags=tags or {}
-        )
-        self.metrics[name].points.append(point)
-        self._save_metric(name)
-        logger.debug("Recorded metric %s: %s", name, value)
+        try:
+            if name not in self.metrics:
+                self.metrics[name] = 0
+            self.metrics[name] += value
+            
+        except Exception as e:
+            raise PipelineError(f"Failed to increment counter: {e}")
     
-    def get_metric(self, name: str, start_time: Optional[float] = None, end_time: Optional[float] = None) -> List[MetricPoint]:
-        """Get metric points within the specified time range.
+    def record_error(self, error: str) -> None:
+        """Record an error.
         
         Args:
-            name: Metric name
-            start_time: Start time (Unix timestamp)
-            end_time: End time (Unix timestamp)
+            error: Error message
+        """
+        try:
+            self.metrics["errors"] += 1
+            self.state["error"] = error
+            
+        except Exception as e:
+            raise PipelineError(f"Failed to record error: {e}")
+    
+    def record_warning(self, warning: str) -> None:
+        """Record a warning.
+        
+        Args:
+            warning: Warning message
+        """
+        try:
+            self.metrics["warnings"] += 1
+            
+        except Exception as e:
+            raise PipelineError(f"Failed to record warning: {e}")
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get metrics.
         
         Returns:
-            List of metric points
+            Dictionary with metrics
         """
-        if name not in self.metrics:
-            return []
-        
-        points = self.metrics[name].points
-        if start_time is not None:
-            points = [p for p in points if p.timestamp >= start_time]
-        if end_time is not None:
-            points = [p for p in points if p.timestamp <= end_time]
-        
-        return points
-    
-    def get_metric_summary(self, name: str, start_time: Optional[float] = None, end_time: Optional[float] = None) -> Dict[str, Any]:
-        """Get summary statistics for a metric.
-        
-        Args:
-            name: Metric name
-            start_time: Start time (Unix timestamp)
-            end_time: End time (Unix timestamp)
-        
-        Returns:
-            Dictionary containing summary statistics
-        """
-        points = self.get_metric(name, start_time, end_time)
-        if not points:
+        try:
             return {
-                'count': 0,
-                'first_timestamp': None,
-                'last_timestamp': None,
-                'min': None,
-                'max': None,
-                'avg': None
+                "state": self.state,
+                "metrics": self.metrics
             }
-        
-        values = [p.value for p in points if isinstance(p.value, (int, float))]
-        return {
-            'count': len(points),
-            'first_timestamp': datetime.fromtimestamp(points[0].timestamp).isoformat(),
-            'last_timestamp': datetime.fromtimestamp(points[-1].timestamp).isoformat(),
-            'min': min(values) if values else None,
-            'max': max(values) if values else None,
-            'avg': sum(values) / len(values) if values else None
-        }
+            
+        except Exception as e:
+            raise PipelineError(f"Failed to get metrics: {e}")
     
-    def get_all_metrics_summary(self, start_time: Optional[float] = None, end_time: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
-        """Get summary statistics for all metrics.
+    def save_metrics(self, filename: str = "metrics.json") -> None:
+        """Save metrics to a file.
         
         Args:
-            start_time: Start time (Unix timestamp)
-            end_time: End time (Unix timestamp)
+            filename: Output filename
+        """
+        if not self.metrics_dir:
+            return
+            
+        try:
+            metrics_file = self.metrics_dir / filename
+            metrics = self.get_metrics()
+            
+            with open(metrics_file, 'w') as f:
+                json.dump(metrics, f, indent=2)
+                
+        except Exception as e:
+            raise PipelineError(f"Failed to save metrics: {e}")
+    
+    def __str__(self) -> str:
+        """Get string representation.
         
         Returns:
-            Dictionary containing summary statistics for all metrics
+            String representation
         """
-        return {
-            name: self.get_metric_summary(name, start_time, end_time)
-            for name in self.metrics
-        }
-    
-    def clear_metrics(self, older_than: Optional[float] = None) -> None:
-        """Clear metrics data.
-        
-        Args:
-            older_than: Clear metrics older than this timestamp
-        """
-        if older_than is not None:
-            for name, metric in self.metrics.items():
-                metric.points = [p for p in metric.points if p.timestamp >= older_than]
-                self._save_metric(name)
-            logger.debug("Cleared metrics older than %s", datetime.fromtimestamp(older_than).isoformat())
-        else:
-            for name in list(self.metrics.keys()):
-                metric_file = self._get_metric_file(name)
-                try:
-                    if metric_file.exists():
-                        metric_file.unlink()
-                except Exception as e:
-                    logger.warning("Failed to delete metric file %s: %s", metric_file, e)
-            self.metrics.clear()
-            logger.debug("Cleared all metrics") 
+        try:
+            metrics = self.get_metrics()
+            return json.dumps(metrics, indent=2)
+            
+        except Exception as e:
+            return f"Failed to get string representation: {e}" 

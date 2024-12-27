@@ -15,7 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from nova.core.logging import get_logger
-from nova.phases.parse.processor import MarkdownProcessor
+from nova.phases.parse.processor import MarkdownParseProcessor
 from nova.phases.consolidate.processor import MarkdownConsolidateProcessor
 from nova.phases.aggregate.processor import MarkdownAggregateProcessor
 from nova.phases.split.processor import ThreeFileSplitProcessor
@@ -89,7 +89,7 @@ async def process_files(input_path: Path, output_path: Path, analyze_images: boo
                     name='MARKDOWN_PARSE',
                     description='Parse and process markdown files',
                     output_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_PARSE', '')))),
-                    processor='MarkdownProcessor',
+                    processor='MarkdownParseProcessor',
                     options={
                         'analyze_images': analyze_images
                     }
@@ -115,7 +115,7 @@ async def process_files(input_path: Path, output_path: Path, analyze_images: boo
             ]
         )
         
-        markdown_processor = MarkdownProcessor(
+        markdown_processor = MarkdownParseProcessor(
             processor_config=pipeline_config.phases[0],
             pipeline_config=pipeline_config
         )
@@ -288,7 +288,7 @@ def get_pipeline_config() -> Dict[str, Any]:
             'MARKDOWN_PARSE': {
                 'description': 'Parse and process markdown files with embedded content',
                 'output_dir': get_env_path('NOVA_PHASE_MARKDOWN_PARSE'),
-                'processor': 'MarkdownProcessor',
+                'processor': 'MarkdownParseProcessor',
                 'components': {
                     'markdown_processor': {
                         'parser': 'markitdown==0.0.1a3',

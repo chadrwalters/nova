@@ -1,106 +1,135 @@
-"""Image handler module."""
+"""Handler for processing image files."""
 
-import os
 from pathlib import Path
-from typing import Dict, Any, Optional, List
-from .....core.handlers.base import BaseHandler
-from .....core.errors import ProcessingError
+from typing import Any, Dict, List, Optional
+import shutil
+import os
+from PIL import Image
+
+from .....core.base_handler import BaseHandler
+from .....core.models.result import ProcessingResult
+
 
 class ImageHandler(BaseHandler):
-    """Handles image processing."""
+    """Handler for processing image files."""
     
-    def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize image handler.
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize the handler.
         
         Args:
-            config: Handler configuration
+            config: Optional configuration dictionary
         """
         super().__init__(config)
         
-        # Set up paths
-        self.processed_dir = Path(os.getenv('NOVA_PROCESSED_IMAGES_DIR', ''))
-        self.metadata_dir = Path(os.getenv('NOVA_IMAGE_METADATA_DIR', ''))
-        self.cache_dir = Path(os.getenv('NOVA_IMAGE_CACHE_DIR', ''))
-        
-        # Set up supported formats
-        self.supported_formats = {
-            '.jpg', '.jpeg',  # JPEG images
-            '.png',          # PNG images
-            '.gif',          # GIF images
-            '.webp',         # WebP images
-            '.heic', '.heif' # HEIC/HEIF images
-        }
-        
-    async def _setup(self) -> None:
-        """Setup handler requirements."""
-        await super()._setup()
-        
-        # Create required directories
-        for directory in [self.processed_dir, self.metadata_dir, self.cache_dir]:
-            directory.mkdir(parents=True, exist_ok=True)
+        # Get required configuration
+        if not config:
+            raise ValueError("Configuration must be provided")
             
-    async def _cleanup(self) -> None:
-        """Clean up handler resources."""
-        # Clean up temporary files
-        if self.cache_dir.exists():
-            await self.file_ops.remove_directory(self.cache_dir, recursive=True)
-            await self.file_ops.create_directory(self.cache_dir)
+        # Get required paths
+        self.output_dir = str(Path(config.get('output_dir', '')))
+        if not self.output_dir:
+            raise ValueError("output_dir must be specified in configuration")
             
-        await super()._cleanup()
+        # Create output directory
+        os.makedirs(self.output_dir, exist_ok=True)
         
+        # Initialize supported formats
+        self.supported_formats = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'}
+    
     async def can_handle(self, file_path: Path) -> bool:
-        """Check if file can be handled.
+        """Check if this handler can process the file.
         
         Args:
-            file_path: Path to check
+            file_path: Path to the file to check
             
         Returns:
-            bool: True if file is a supported image format
+            True if this handler can process the file, False otherwise
         """
         return file_path.suffix.lower() in self.supported_formats
-        
-    async def process(self, file_path: Path) -> Dict[str, Any]:
+    
+    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
         """Process an image file.
         
         Args:
             file_path: Path to the file to process
+            context: Optional processing context
             
         Returns:
-            Dict containing processing results
+            ProcessingResult containing processed content and metadata
         """
-        result = {
-            'content': '',
-            'metadata': {},
-            'assets': [],
-            'format': file_path.suffix.lower(),
-            'errors': []
+        try:
+            # Create output path
+            output_path = Path(self.output_dir) / file_path.name
+            
+            # Copy file to output directory
+            shutil.copy2(file_path, output_path)
+            
+            # Extract metadata
+            metadata = self._extract_metadata(file_path)
+            
+            # Create result
+            result = ProcessingResult(
+                success=True,
+                content=str(output_path),
+                metadata=metadata
+            )
+            result.add_processed_file(output_path)
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            return ProcessingResult(success=False, errors=[error_msg])
+    
+    def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
+        """Extract metadata from an image file.
+        
+        Args:
+            file_path: Path to the image file
+            
+        Returns:
+            Dictionary of image metadata
+        """
+        metadata = {
+            'format': None,
+            'mode': None,
+            'size': None,
+            'original_path': str(file_path)
         }
         
         try:
-            # Process based on file type
-            if file_path.suffix.lower() in {'.jpg', '.jpeg', '.png', '.gif'}:
-                await self._process_standard_image(file_path, result)
-            elif file_path.suffix.lower() in {'.webp'}:
-                await self._process_webp(file_path, result)
-            elif file_path.suffix.lower() in {'.heic', '.heif'}:
-                await self._process_heic(file_path, result)
-                
+            with Image.open(file_path) as img:
+                metadata.update({
+                    'format': img.format,
+                    'mode': img.mode,
+                    'size': img.size
+                })
         except Exception as e:
-            result['errors'].append(str(e))
+            self.logger.error(f"Error extracting metadata from {file_path}: {str(e)}")
+        
+        return metadata
+    
+    def validate_output(self, result: ProcessingResult) -> bool:
+        """Validate the processing results.
+        
+        Args:
+            result: The ProcessingResult to validate
             
-        return result
+        Returns:
+            True if results are valid, False otherwise
+        """
+        return result.success and bool(result.content)
+    
+    async def rollback(self, result: ProcessingResult) -> None:
+        """Roll back any changes made during processing.
         
-    async def _process_standard_image(self, file_path: Path, result: Dict[str, Any]) -> None:
-        """Process standard image formats (JPEG, PNG, GIF)."""
-        # TODO: Implement standard image processing
-        result['errors'].append("Standard image processing not yet implemented")
-        
-    async def _process_webp(self, file_path: Path, result: Dict[str, Any]) -> None:
-        """Process WebP image."""
-        # TODO: Implement WebP processing
-        result['errors'].append("WebP processing not yet implemented")
-        
-    async def _process_heic(self, file_path: Path, result: Dict[str, Any]) -> None:
-        """Process HEIC/HEIF image."""
-        # TODO: Implement HEIC/HEIF processing
-        result['errors'].append("HEIC/HEIF processing not yet implemented") 
+        Args:
+            result: The ProcessingResult to roll back
+        """
+        # Clean up any created files
+        for file_path in result.processed_files:
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+            except Exception as e:
+                self.logger.error(f"Error cleaning up file {file_path}: {str(e)}") 

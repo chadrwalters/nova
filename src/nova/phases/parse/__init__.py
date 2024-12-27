@@ -1,6 +1,7 @@
-"""Parse phase package."""
+"""Parse phase module."""
 
-from .processor import MarkdownProcessor
-from .handlers.markdown import MarkdownHandler, ConsolidationHandler
+from .processor import MarkdownParseProcessor
+from .handlers.markdown import MarkdownHandler
+from .handlers.consolidation import ConsolidationHandler
 
-__all__ = ['MarkdownProcessor', 'MarkdownHandler', 'ConsolidationHandler']
+__all__ = ['MarkdownParseProcessor', 'MarkdownHandler', 'ConsolidationHandler']

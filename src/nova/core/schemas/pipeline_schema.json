@@ -11,6 +11,15 @@
       "required": ["phases"],
       "additionalProperties": false,
       "properties": {
+        "paths": {
+          "type": "object",
+          "properties": {
+            "base_dir": { "type": "string" },
+            "input_dir": { "type": "string" },
+            "output_dir": { "type": "string" },
+            "temp_dir": { "type": "string" }
+          }
+        },
         "components": {
           "type": "object",
           "additionalProperties": false,
@@ -34,191 +43,37 @@
                   }
                 }
               }
-            },
-            "image_processor": {
-              "type": "object",
-              "required": ["formats", "operations"],
-              "additionalProperties": false,
-              "properties": {
-                "formats": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "enum": ["png", "jpg/jpeg", "gif", "webp", "heic/HEIC"]
-                  }
-                },
-                "operations": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "required": ["format_conversion"],
-                        "additionalProperties": false,
-                        "properties": {
-                          "format_conversion": {
-                            "type": "object",
-                            "required": ["heic_to_jpg", "optimize_quality"],
-                            "additionalProperties": false,
-                            "properties": {
-                              "heic_to_jpg": { "type": "boolean" },
-                              "optimize_quality": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 100
-                              }
-                            }
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": ["size_optimization"],
-                        "additionalProperties": false,
-                        "properties": {
-                          "size_optimization": {
-                            "type": "object",
-                            "required": ["preserve_aspect_ratio", "max_dimensions"],
-                            "additionalProperties": false,
-                            "properties": {
-                              "preserve_aspect_ratio": { "type": "boolean" },
-                              "max_dimensions": {
-                                "type": "array",
-                                "items": {
-                                  "type": "integer",
-                                  "minimum": 1
-                                },
-                                "minItems": 2,
-                                "maxItems": 2
-                              }
-                            }
-                          }
-                        }
-                      }
-                    ]
-                  }
-                }
-              }
             }
           }
         },
         "phases": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "patternProperties": {
-              "^[A-Z][A-Z0-9_]*$": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
                 "type": "object",
-                "required": ["description", "output_dir", "processor"],
-                "additionalProperties": false,
-                "properties": {
-                  "description": { "type": "string" },
-                  "output_dir": { "type": "string" },
-                  "processor": { "type": "string" },
-                  "enabled": { "type": "boolean" },
-                  "handlers": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": ["type", "base_handler"],
-                      "additionalProperties": false,
-                      "properties": {
-                        "type": { "type": "string" },
-                        "base_handler": { "type": "string" },
-                        "options": {
-                          "type": "object",
-                          "additionalProperties": true
-                        }
-                      }
-                    }
-                  },
-                  "components": {
+                "patternProperties": {
+                  "^[A-Z][A-Z0-9_]*$": {
                     "type": "object",
+                    "required": ["description", "output_dir", "processor"],
                     "additionalProperties": false,
                     "properties": {
-                      "markdown_processor": {
-                        "type": "object",
-                        "required": ["parser"],
-                        "additionalProperties": false,
-                        "properties": {
-                          "parser": {
-                            "type": "string",
-                            "pattern": "^markitdown==\\d+\\.\\d+\\.\\d+[a-z]\\d+$"
-                          },
-                          "config": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                              "document_conversion": { "type": "boolean" },
-                              "image_processing": { "type": "boolean" },
-                              "metadata_preservation": { "type": "boolean" }
-                            }
-                          }
-                        }
-                      },
-                      "image_processor": {
-                        "type": "object",
-                        "required": ["formats", "operations"],
-                        "additionalProperties": false,
-                        "properties": {
-                          "formats": {
-                            "type": "array",
-                            "items": {
-                              "type": "string",
-                              "enum": ["png", "jpg/jpeg", "gif", "webp", "heic/HEIC"]
-                            }
-                          },
-                          "operations": {
-                            "type": "array",
-                            "items": {
+                      "description": { "type": "string" },
+                      "output_dir": { "type": "string" },
+                      "processor": { "type": "string" },
+                      "enabled": { "type": "boolean" },
+                      "handlers": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["type", "base_handler"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "type": { "type": "string" },
+                            "base_handler": { "type": "string" },
+                            "options": {
                               "type": "object",
-                              "oneOf": [
-                                {
-                                  "type": "object",
-                                  "required": ["format_conversion"],
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "format_conversion": {
-                                      "type": "object",
-                                      "required": ["heic_to_jpg", "optimize_quality"],
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "heic_to_jpg": { "type": "boolean" },
-                                        "optimize_quality": {
-                                          "type": "integer",
-                                          "minimum": 1,
-                                          "maximum": 100
-                                        }
-                                      }
-                                    }
-                                  }
-                                },
-                                {
-                                  "type": "object",
-                                  "required": ["size_optimization"],
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "size_optimization": {
-                                      "type": "object",
-                                      "required": ["preserve_aspect_ratio", "max_dimensions"],
-                                      "additionalProperties": false,
-                                      "properties": {
-                                        "preserve_aspect_ratio": { "type": "boolean" },
-                                        "max_dimensions": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "integer",
-                                            "minimum": 1
-                                          },
-                                          "minItems": 2,
-                                          "maxItems": 2
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              ]
+                              "additionalProperties": true
                             }
                           }
                         }
@@ -228,39 +83,39 @@
                 }
               }
             },
-            "additionalProperties": false
-          }
-        }
-      }
-    },
-    "logging": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "level": {
-          "type": "string",
-          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-          "description": "Log level must be one of the standard Python logging levels"
-        },
-        "format": {
-          "type": "string",
-          "description": "Log format string using Python logging format syntax"
-        },
-        "use_rich": {
-          "type": "boolean",
-          "description": "Whether to use rich formatting for console output"
-        },
-        "handlers": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "required": ["class"],
-            "properties": {
-              "class": { "type": "string" },
-              "formatter": { "type": "string" },
-              "level": { "type": "string" }
+            {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z][a-z0-9_]*$": {
+                  "type": "object",
+                  "required": ["description", "output_dir", "processor"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "description": { "type": "string" },
+                    "output_dir": { "type": "string" },
+                    "processor": { "type": "string" },
+                    "enabled": { "type": "boolean" },
+                    "handlers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type", "base_handler"],
+                        "additionalProperties": false,
+                        "properties": {
+                          "type": { "type": "string" },
+                          "base_handler": { "type": "string" },
+                          "options": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
-          }
+          ]
         }
       }
     }

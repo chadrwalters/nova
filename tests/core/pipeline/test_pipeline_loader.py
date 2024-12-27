@@ -19,7 +19,7 @@ def pipeline_manager():
                 name="MARKDOWN_PARSE",
                 description="Parse markdown files",
                 output_dir="${NOVA_PHASE_MARKDOWN_PARSE}",
-                processor="MarkdownProcessor",
+                processor="MarkdownParseProcessor",
                 components={
                     'markdown_processor': {
                         'parser': 'markitdown==0.0.1a3',
@@ -40,7 +40,7 @@ async def test_load_valid_config(pipeline_manager):
                     'MARKDOWN_PARSE': {
                         'description': 'Parse markdown files',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor',
+                        'processor': 'MarkdownParseProcessor',
                         'components': {
                             'markdown_processor': {
                                 'parser': 'markitdown==0.0.1a3',
@@ -69,7 +69,7 @@ async def test_load_invalid_config(pipeline_manager):
                     'invalid-phase-name': {
                         'description': 'Invalid phase name',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -92,7 +92,7 @@ def test_validate_invalid_config(pipeline_manager):
                 {
                     'invalid-phase-name': {
                         'description': 'Invalid phase name',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -116,7 +116,7 @@ def test_validate_invalid_phase_name(pipeline_manager):
                     'invalid-phase-name': {
                         'description': 'Invalid phase name',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -140,7 +140,7 @@ def test_validate_invalid_log_level(pipeline_manager):
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor'
+                        'processor': 'MarkdownParseProcessor'
                     }
                 }
             ]
@@ -167,7 +167,7 @@ def test_validate_component_structure(pipeline_manager):
                     'TEST_PHASE': {
                         'description': 'Test phase',
                         'output_dir': '${NOVA_PHASE_MARKDOWN_PARSE}',
-                        'processor': 'MarkdownProcessor',
+                        'processor': 'MarkdownParseProcessor',
                         'components': {
                             'markdown_processor': {
                                 'parser': 'markitdown==0.0.1a3',

@@ -1,146 +1,246 @@
-"""Consolidation pipeline implementation."""
+"""Consolidate markdown files with their attachments."""
 
 import os
-import logging
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Optional
+
+import click
 from rich.console import Console
-from rich.table import Table
 
-from ..core.config import load_config, ProcessorConfig
-from ..core.utils.progress import ProgressTracker, ProcessingStatus
-from ..phases.parse import MarkdownProcessor
-from ..phases.consolidate import MarkdownConsolidateProcessor
-from ..phases.aggregate import MarkdownAggregateProcessor
-from ..phases.split import ThreeFileSplitProcessor
-from ..core.logging import setup_logging
+from ..core import (
+    PipelineManager,
+    get_logger,
+    setup_logging,
+    load_config
+)
 
-logger = logging.getLogger(__name__)
-setup_logging(level=os.getenv('NOVA_LOG_LEVEL', 'DEBUG'))
+
+# Initialize logging
+logger = get_logger(__name__)
 console = Console()
 
-async def run_pipeline() -> bool:
-    """Run the consolidation pipeline.
-    
-    Returns:
-        True if pipeline completed successfully, False otherwise
-    """
+
+@click.command()
+@click.option(
+    "--config",
+    "-c",
+    type=click.Path(exists=True),
+    help="Path to configuration file",
+    default="config/pipeline_config.yaml"
+)
+@click.option(
+    "--base-dir",
+    "-b",
+    type=click.Path(exists=True),
+    help="Base directory for operations"
+)
+@click.option(
+    "--input-dir",
+    "-i",
+    type=click.Path(exists=True),
+    help="Input directory containing markdown files"
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(),
+    help="Output directory for consolidated files"
+)
+@click.option(
+    "--temp-dir",
+    "-t",
+    type=click.Path(),
+    help="Temporary directory for processing"
+)
+@click.option(
+    "--log-level",
+    "-l",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
+    default="INFO",
+    help="Logging level"
+)
+def main(
+    config: Optional[str] = None,
+    base_dir: Optional[str] = None,
+    input_dir: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    temp_dir: Optional[str] = None,
+    log_level: str = "INFO"
+) -> None:
+    """Consolidate markdown files with their attachments."""
     try:
-        # Load pipeline configuration
-        pipeline_config = load_config()
+        # Set up logging
+        setup_logging(level=log_level)
         
-        # Initialize processors
-        parse_processor = MarkdownProcessor(
-            ProcessorConfig(
-                name='MARKDOWN_PARSE',
-                description='Parse and process markdown files with embedded content',
-                output_dir=os.environ.get('NOVA_PHASE_MARKDOWN_PARSE'),
-                processor='MarkdownProcessor'
-            ),
-            pipeline_config
-        )
+        # Print environment info
+        print("Validating environment variables...")
+        print("Using directories:")
+        print(f"Base dir: {base_dir or os.getenv('NOVA_BASE_DIR')}")
+        print(f"Input dir: {input_dir or os.getenv('NOVA_INPUT_DIR')}")
+        print(f"Processing dir: {os.getenv('NOVA_PROCESSING_DIR')}")
+        print(f"Parse dir: {os.getenv('NOVA_PHASE_MARKDOWN_PARSE')}")
         
-        consolidate_processor = MarkdownConsolidateProcessor(
-            ProcessorConfig(
-                name='MARKDOWN_CONSOLIDATE',
-                description='Consolidate markdown files with their attachments',
-                output_dir=os.environ.get('NOVA_PHASE_MARKDOWN_CONSOLIDATE'),
-                processor='MarkdownConsolidateProcessor'
-            ),
-            pipeline_config
-        )
+        # Create required directories
+        print("Creating required directories...")
+        for env_var in [
+            "NOVA_PHASE_MARKDOWN_PARSE",
+            "NOVA_PHASE_MARKDOWN_CONSOLIDATE",
+            "NOVA_PHASE_MARKDOWN_AGGREGATE",
+            "NOVA_PHASE_MARKDOWN_SPLIT"
+        ]:
+            dir_path = os.getenv(env_var)
+            if dir_path:
+                Path(dir_path).mkdir(parents=True, exist_ok=True)
+                
+        print("Verifying directories...")
         
-        aggregate_processor = MarkdownAggregateProcessor(
-            ProcessorConfig(
-                name='MARKDOWN_AGGREGATE',
-                description='Aggregate all consolidated markdown files into a single file',
-                output_dir=os.environ.get('NOVA_PHASE_MARKDOWN_AGGREGATE'),
-                processor='MarkdownAggregateProcessor'
-            ),
-            pipeline_config
-        )
-        
-        split_processor = ThreeFileSplitProcessor(
-            ProcessorConfig(
-                name='MARKDOWN_SPLIT',
-                description='Split aggregated markdown into separate files for summary, raw notes, and attachments',
-                output_dir=os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT'),
-                processor='ThreeFileSplitProcessor'
-            ),
-            pipeline_config
-        )
-        
-        # Count input files
-        input_dir = Path(os.environ.get('NOVA_INPUT_DIR'))
-        markdown_files = list(input_dir.rglob('*.md'))
-        total_files = len(markdown_files)
-        
-        # Initialize progress trackers
-        parse_processor.progress_tracker.start_task(
-            'MARKDOWN_PARSE',
-            'Parse markdown files',
-            total_files
-        )
-        consolidate_processor.progress_tracker.start_task(
-            'MARKDOWN_CONSOLIDATE',
-            'Consolidate markdown files',
-            total_files
-        )
-        aggregate_processor.progress_tracker.start_task(
-            'MARKDOWN_AGGREGATE',
-            'Aggregate markdown files',
-            total_files
-        )
-        split_processor.progress_tracker.start_task(
-            'MARKDOWN_SPLIT',
-            'Split markdown files',
-            total_files
-        )
-        
-        # Run pipeline phases
-        parse_result = await parse_processor.process()
-        if not parse_result.success:
-            logger.error(f"Parse phase failed: {parse_result.errors}")
-            return False
-        
-        logger.info(f"Successfully parsed {len(parse_result.processed_files)} files")
-        
-        consolidate_result = await consolidate_processor.process()
-        if not consolidate_result.success:
-            logger.error(f"Consolidate phase failed: {consolidate_result.errors}")
-            return False
+        # Load configuration
+        if config and Path(config).exists():
+            logger.info(f"Loading configuration from {config}")
+            pipeline_config = load_config(config)
+        else:
+            logger.warning(f"Configuration file not found: {config}")
+            logger.info("Using default configuration")
+            # Use environment variables or defaults
+            pipeline_config = {
+                "pipeline": {
+                    "paths": {
+                        "base_dir": base_dir or os.getenv("NOVA_BASE_DIR"),
+                        "input_dir": input_dir or os.getenv("NOVA_INPUT_DIR"),
+                        "output_dir": output_dir or os.getenv("NOVA_OUTPUT_DIR"),
+                        "temp_dir": temp_dir or os.getenv("NOVA_TEMP_DIR")
+                    },
+                    "phases": {
+                        "markdown_parse": {
+                            "description": "Parse and process markdown files with embedded content",
+                            "output_dir": os.getenv("NOVA_PHASE_MARKDOWN_PARSE"),
+                            "processor": "MarkdownProcessor",
+                            "enabled": True,
+                            "handlers": [
+                                {
+                                    "type": "UnifiedHandler",
+                                    "base_handler": "nova.phases.core.base_handler.BaseHandler",
+                                    "options": {
+                                        "document_conversion": True,
+                                        "image_processing": True,
+                                        "metadata_preservation": True,
+                                        "sort_by_date": True,
+                                        "preserve_headers": True,
+                                        "section_markers": {
+                                            "start": "<!-- START_FILE: {filename} -->",
+                                            "end": "<!-- END_FILE: {filename} -->",
+                                            "separator": "\n---\n"
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        "markdown_consolidate": {
+                            "description": "Consolidate markdown files with their attachments",
+                            "output_dir": os.getenv("NOVA_PHASE_MARKDOWN_CONSOLIDATE"),
+                            "processor": "MarkdownConsolidateProcessor",
+                            "enabled": True,
+                            "handlers": [
+                                {
+                                    "type": "UnifiedHandler",
+                                    "base_handler": "nova.phases.core.base_handler.BaseHandler",
+                                    "options": {
+                                        "copy_attachments": True,
+                                        "update_references": True,
+                                        "merge_content": True,
+                                        "preserve_headers": True,
+                                        "sort_by_date": True
+                                    }
+                                }
+                            ]
+                        },
+                        "markdown_aggregate": {
+                            "description": "Aggregate all consolidated markdown files into a single file",
+                            "output_dir": os.getenv("NOVA_PHASE_MARKDOWN_AGGREGATE"),
+                            "processor": "MarkdownAggregateProcessor",
+                            "enabled": True,
+                            "handlers": [
+                                {
+                                    "type": "UnifiedHandler",
+                                    "base_handler": "nova.phases.core.base_handler.BaseHandler",
+                                    "options": {
+                                        "section_markers": {
+                                            "start": "<!-- START_FILE: {filename} -->",
+                                            "end": "<!-- END_FILE: {filename} -->",
+                                            "separator": "\n---\n"
+                                        },
+                                        "sort_by_date": True,
+                                        "preserve_headers": True,
+                                        "add_navigation": True,
+                                        "link_style": "text",
+                                        "templates": {
+                                            "text": {
+                                                "prev": "← Previous: [{title}]({link})",
+                                                "next": "Next: [{title}]({link}) →",
+                                                "top": "[↑ Back to Top](#table-of-contents)"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        "markdown_split": {
+                            "description": "Split aggregated markdown into separate files",
+                            "output_dir": os.getenv("NOVA_PHASE_MARKDOWN_SPLIT"),
+                            "processor": "ThreeFileSplitProcessor",
+                            "enabled": True,
+                            "handlers": [
+                                {
+                                    "type": "UnifiedHandler",
+                                    "base_handler": "nova.phases.core.base_handler.BaseHandler",
+                                    "options": {
+                                        "output_files": {
+                                            "summary": "summary.md",
+                                            "raw_notes": "raw_notes.md",
+                                            "attachments": "attachments.md"
+                                        },
+                                        "section_markers": {
+                                            "summary": "--==SUMMARY==--",
+                                            "raw_notes": "--==RAW NOTES==--",
+                                            "attachments": "--==ATTACHMENTS==--"
+                                        },
+                                        "attachment_markers": {
+                                            "start": "--==ATTACHMENT_BLOCK: {filename}==--",
+                                            "end": "--==ATTACHMENT_BLOCK_END==--"
+                                        },
+                                        "content_preservation": {
+                                            "validate_input_size": True,
+                                            "validate_output_size": True,
+                                            "track_content_markers": True,
+                                            "verify_section_integrity": True
+                                        },
+                                        "cross_linking": True,
+                                        "preserve_headers": True
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
             
-        logger.info(f"Successfully consolidated {len(consolidate_result.processed_files)} files")
+        print("Running consolidation pipeline...")
         
-        aggregate_result = await aggregate_processor.process()
-        if not aggregate_result.success:
-            logger.error(f"Aggregate phase failed: {aggregate_result.errors}")
-            return False
-            
-        logger.info(f"Successfully aggregated {len(aggregate_result.processed_files)} files")
+        # Create pipeline manager
+        pipeline = PipelineManager(
+            config=pipeline_config,
+            console=console
+        )
         
-        split_result = await split_processor.process()
-        if not split_result.success:
-            logger.error(f"Split phase failed: {split_result.errors}")
-            return False
-            
-        logger.info(f"Successfully split {len(split_result.processed_files)} files")
-        
-        return True
+        # Run pipeline
+        if not pipeline.run():
+            sys.exit(1)
         
     except Exception as e:
-        logger.error(f"Pipeline failed: {str(e)}")
-        return False
+        logger.error(f"Pipeline failed: {e}")
+        sys.exit(1)
+        
 
-def main():
-    """Main entry point."""
-    try:
-        import asyncio
-        asyncio.run(run_pipeline())
-    except Exception as e:
-        logger.error(f"Pipeline failed: {str(e)}")
-        return 1
-    return 0
-
-if __name__ == '__main__':
-    exit(main()) 
+if __name__ == "__main__":
+    main() 

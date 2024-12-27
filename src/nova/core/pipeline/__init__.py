@@ -1,18 +1,9 @@
-"""Pipeline module for Nova document processor."""
+"""Pipeline package for document processing."""
 
-from pathlib import Path
-from typing import Optional, Dict, Any
-
-from .base import BaseProcessor
-from .phase import PipelinePhase
-from .types import PhaseType
-from .manager import PipelineManager
-from .processor import Pipeline
+from .phase_runner import PhaseRunner
+from .pipeline_reporter import PipelineReporter
 
 __all__ = [
-    'BaseProcessor',
-    'Pipeline',
-    'PipelineManager',
-    'PipelinePhase',
-    'PhaseType'
+    'PhaseRunner',
+    'PipelineReporter'
 ]

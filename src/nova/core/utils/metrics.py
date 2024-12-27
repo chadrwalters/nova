@@ -1,142 +1,97 @@
 """Metrics tracking utilities."""
 
-from typing import Dict, Any, Optional
-from datetime import datetime
-import logging
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, Dict, Optional
+import asyncio
+import time
+from contextlib import asynccontextmanager
 
-class MetricsTracker(BaseModel):
-    """Tracks metrics for processing operations."""
-    name: str = Field(description="Name of the component being tracked")
-    start_time: Optional[datetime] = Field(default=None, description="Operation start time")
-    end_time: Optional[datetime] = Field(default=None, description="Operation end time")
-    total_files: int = Field(default=0, description="Total files processed")
-    successful_files: int = Field(default=0, description="Successfully processed files")
-    failed_files: int = Field(default=0, description="Failed files")
-    skipped_files: int = Field(default=0, description="Skipped files")
-    total_bytes: int = Field(default=0, description="Total bytes processed")
-    error_counts: Dict[str, int] = Field(default_factory=dict, description="Error type counts")
-    custom_metrics: Dict[str, Any] = Field(default_factory=dict, description="Custom metrics")
 
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-        validate_assignment=True,
-        extra='forbid'
-    )
-
-    def start(self) -> None:
-        """Start tracking metrics."""
-        self.start_time = datetime.now()
-        self.reset_counters()
-
-    def stop(self) -> None:
-        """Stop tracking metrics."""
-        self.end_time = datetime.now()
-
-    def reset_counters(self) -> None:
-        """Reset all counters."""
-        self.total_files = 0
-        self.successful_files = 0
-        self.failed_files = 0
-        self.skipped_files = 0
-        self.total_bytes = 0
-        self.error_counts.clear()
-        self.custom_metrics.clear()
-
-    def add_success(self, file_size: int = 0) -> None:
-        """Record a successful operation.
+class MetricsTracker:
+    """Track metrics during processing."""
+    
+    def __init__(self):
+        """Initialize the metrics tracker."""
+        self.metrics = {}
+        self.timers = {}
+        
+    def increment(self, metric: str, value: int = 1) -> None:
+        """Increment a metric counter.
         
         Args:
-            file_size: Size of processed file in bytes
+            metric: Name of the metric to increment
+            value: Value to increment by (default: 1)
         """
-        self.total_files += 1
-        self.successful_files += 1
-        self.total_bytes += file_size
-
-    def add_failure(self, error_type: str) -> None:
-        """Record a failed operation.
+        if metric not in self.metrics:
+            self.metrics[metric] = 0
+        self.metrics[metric] += value
+        
+    def add_timing(self, metric: str, duration: float) -> None:
+        """Add a timing measurement.
         
         Args:
-            error_type: Type of error that occurred
+            metric: Name of the timing metric
+            duration: Duration in seconds
         """
-        self.total_files += 1
-        self.failed_files += 1
-        self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
-
-    def add_skip(self) -> None:
-        """Record a skipped operation."""
-        self.total_files += 1
-        self.skipped_files += 1
-
-    def add_custom_metric(self, name: str, value: Any) -> None:
-        """Add a custom metric.
+        if metric not in self.metrics:
+            self.metrics[metric] = []
+        self.metrics[metric].append(duration)
+        
+    def start_timer(self, name: str) -> None:
+        """Start a timer.
         
         Args:
-            name: Metric name
-            value: Metric value
+            name: Name of the timer
         """
-        self.custom_metrics[name] = value
-
-    def get_duration(self) -> Optional[float]:
-        """Get operation duration in seconds.
+        self.timers[name] = time.time()
+        
+    def stop_timer(self, name: str) -> float:
+        """Stop a timer and return the duration.
+        
+        Args:
+            name: Name of the timer
+            
+        Returns:
+            Duration in seconds
+            
+        Raises:
+            KeyError if timer was not started
+        """
+        if name not in self.timers:
+            raise KeyError(f"Timer {name} was not started")
+            
+        duration = time.time() - self.timers[name]
+        del self.timers[name]
+        return duration
+        
+    @asynccontextmanager
+    async def async_timer(self, name: str):
+        """Async context manager for timing operations.
+        
+        Args:
+            name: Name of the timer
+            
+        Yields:
+            None
+        """
+        try:
+            self.start_timer(name)
+            yield
+        finally:
+            duration = self.stop_timer(name)
+            self.add_timing(name, duration)
+            
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get all metrics.
         
         Returns:
-            Duration in seconds or None if not stopped
+            Dictionary of metrics
         """
-        if self.start_time and self.end_time:
-            return (self.end_time - self.start_time).total_seconds()
-        return None
-
-    def get_summary(self) -> Dict[str, Any]:
-        """Get metrics summary.
+        return self.metrics
+        
+    def has_data(self) -> bool:
+        """Check if any metrics have been recorded.
         
         Returns:
-            Dictionary containing metrics summary
+            True if metrics exist, False otherwise
         """
-        summary = {
-            'total_files': self.total_files,
-            'successful_files': self.successful_files,
-            'failed_files': self.failed_files,
-            'skipped_files': self.skipped_files,
-            'total_bytes': self.total_bytes,
-            'error_counts': self.error_counts,
-            'custom_metrics': self.custom_metrics
-        }
-
-        duration = self.get_duration()
-        if duration is not None:
-            summary['duration_seconds'] = duration
-
-        return summary
-
-    def log_summary(self, logger: Optional[logging.Logger] = None) -> None:
-        """Log metrics summary.
-        
-        Args:
-            logger: Optional logger instance to use
-        """
-        if logger is None:
-            logger = logging.getLogger(__name__)
-
-        summary = self.get_summary()
-        duration = summary.get('duration_seconds')
-        
-        logger.info("Processing Summary:")
-        logger.info(f"Total files: {summary['total_files']}")
-        logger.info(f"Successful: {summary['successful_files']}")
-        logger.info(f"Failed: {summary['failed_files']}")
-        logger.info(f"Skipped: {summary['skipped_files']}")
-        logger.info(f"Total bytes: {summary['total_bytes']}")
-        
-        if duration is not None:
-            logger.info(f"Duration: {duration:.2f}s")
-        
-        if summary['error_counts']:
-            logger.info("Error counts:")
-            for error_type, count in summary['error_counts'].items():
-                logger.info(f"  {error_type}: {count}")
-        
-        if summary['custom_metrics']:
-            logger.info("Custom metrics:")
-            for name, value in summary['custom_metrics'].items():
-                logger.info(f"  {name}: {value}") 
+        return bool(self.metrics) 

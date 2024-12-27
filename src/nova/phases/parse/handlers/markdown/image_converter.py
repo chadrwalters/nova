@@ -16,9 +16,9 @@ import tempfile
 import subprocess
 import io
 
-from nova.core.logging import get_logger
-from nova.core.providers.grok_provider import GrokProvider
-from nova.core.file_info_provider import FileInfoProvider
+from .....core.logging import get_logger
+from .....core.providers.grok_provider import GrokProvider
+from .....core.file_info_provider import FileInfoProvider
 
 logger = get_logger(__name__)
 

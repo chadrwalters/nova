@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Tuple, Union
 from datetime import datetime, timedelta
 
 from ...core.logging import get_logger
-from ...core.processors.base import BaseProcessor
+from ...core.pipeline.base import BaseProcessor
 from ...core.config import load_config
 from ...core.errors import ConfigurationError
 
