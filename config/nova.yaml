@@ -1,0 +1,23 @@
+# Nova Configuration
+
+base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
+input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
+
+cache:
+  dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
+  enabled: true
+  ttl: 3600  # 1 hour default TTL
+
+# API Configuration
+apis:
+  openai:
+    api_key: "${OPENAI_API_KEY}"  # Set this in your environment
+    model: "gpt-4-turbo-2024-04-09"  # Latest model with vision capabilities
+    max_tokens: 500
+    vision_prompt: "Please analyze this image and provide a detailed description. If it's a screenshot, extract any visible text. If it's a photograph, describe the scene and key elements. Focus on what makes this image relevant in a note-taking context." 
+
+ignore_patterns:
+  - ".DS_Store"
+  - ".*"  # Optionally ignore all hidden files 

@@ -20,7 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 .env
 .venv
 env/
@@ -34,38 +34,18 @@ ENV/
 *.swo
 .DS_Store
 
-# Project specific
-_NovaProcessing/
-_Nova/
-_NovaIndividualMarkdown/
-*.pdf
-*.html
-/media/
-/temp/
-
-# Logs
-*.log
-logs/
-
-# Test coverage
+# Testing
 .coverage
 coverage.xml
 htmlcov/
-
-# mypy
+.pytest_cache/
 .mypy_cache/
 
-# pytest
-.pytest_cache/
-
-# poetry
-poetry.toml
-
-# Test output
-tests/output/
-tests/**/output/
-tests/**/.state/
-tests/**/__pycache__/
-tests/**/.pytest_cache/
-.coverage
-htmlcov/
+# Nova specific
+logs/
+cache/
+output/
+*.log
+*.json
+!src/nova/config/default.yaml
+.env

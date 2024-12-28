@@ -1,244 +1,81 @@
-"""Error models for the pipeline."""
-
-from typing import Optional, List, Dict, Any
+"""Error handling for Nova document processing."""
+from typing import Dict, Optional
 
 
 class NovaError(Exception):
-    """Base class for all Nova errors."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+    """Base exception for Nova errors."""
+    
+    def __init__(
+        self,
+        message: str,
+        context: Optional[Dict] = None,
+        original_error: Optional[Exception] = None,
+    ) -> None:
         """Initialize error.
         
         Args:
-            message: Error message
-            details: Optional error details
+            message: Error message.
+            context: Optional context dictionary.
+            original_error: Optional original exception.
         """
         super().__init__(message)
         self.message = message
-        self.details = details or {}
-
-
-class ValidationError(NovaError):
-    """Error raised when validation fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize validation error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
-
-
-class ProcessingError(NovaError):
-    """Error raised when processing fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize processing error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+        self.context = context or {}
+        self.original_error = original_error
 
 
 class ConfigurationError(NovaError):
-    """Error raised when configuration is invalid."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize configuration error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
-
-
-class ResourceError(NovaError):
-    """Error raised when resource access fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize resource error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+    """Error in configuration."""
+    pass
 
 
 class HandlerError(NovaError):
-    """Error raised when handler fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize handler error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
-
-
-class ComponentError(NovaError):
-    """Error raised when component fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize component error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
-
-
-class FileOperationError(NovaError):
-    """Error raised when file operation fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize file operation error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
-
-
-class PipelineError(NovaError):
-    """Error raised when pipeline fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize pipeline error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+    """Error in document handler."""
+    pass
 
 
 class PhaseError(NovaError):
-    """Error raised when phase fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize phase error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+    """Error in processing phase."""
+    pass
 
 
-class CacheError(NovaError):
-    """Error raised when cache operation fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize cache error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+class ValidationError(NovaError):
+    """Error in data validation."""
+    pass
 
 
-class MonitoringError(NovaError):
-    """Error raised when monitoring fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize monitoring error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+class ResourceError(NovaError):
+    """Error accessing resources."""
+    pass
 
 
-class MetricsError(NovaError):
-    """Error raised when metrics collection fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize metrics error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
+class ProcessingError(NovaError):
+    """Error during document processing."""
+    pass
 
 
-class TimingError(NovaError):
-    """Error raised when timing fails."""
-
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
-        """Initialize timing error.
-        
-        Args:
-            message: Error message
-            details: Optional error details
-        """
-        super().__init__(message, details)
-
-
-class ErrorContext:
-    """Context information for errors."""
-
-    def __init__(self, source: str, details: Optional[Dict[str, Any]] = None, errors: Optional[List[NovaError]] = None):
-        """Initialize error context.
-        
-        Args:
-            source: Source of the error (e.g. component name, phase name)
-            details: Optional context details
-            errors: Optional list of related errors
-        """
-        self.source = source
-        self.details = details or {}
-        self.errors = errors or []
-
-    def add_error(self, error: NovaError) -> None:
-        """Add error to context.
-        
-        Args:
-            error: Error to add
-        """
-        self.errors.append(error)
-
-    def add_detail(self, key: str, value: Any) -> None:
-        """Add detail to context.
-        
-        Args:
-            key: Detail key
-            value: Detail value
-        """
-        self.details[key] = value
-
-    def get_errors(self) -> List[NovaError]:
-        """Get list of errors.
-        
-        Returns:
-            List of errors
-        """
-        return self.errors
-
-    def get_details(self) -> Dict[str, Any]:
-        """Get context details.
-        
-        Returns:
-            Context details
-        """
-        return self.details
-
-    def get_source(self) -> str:
-        """Get error source.
-        
-        Returns:
-            Error source
-        """
-        return self.source 
+def wrap_error(
+    error: Exception,
+    message: str,
+    context: Optional[Dict] = None,
+) -> NovaError:
+    """Wrap an exception in a Nova error.
+    
+    Args:
+        error: Original exception.
+        message: Error message.
+        context: Optional context dictionary.
+    
+    Returns:
+        Wrapped Nova error.
+    """
+    if isinstance(error, NovaError):
+        if context:
+            error.context.update(context)
+        return error
+    
+    return ProcessingError(
+        message=message,
+        context=context,
+        original_error=error,
+    ) 
