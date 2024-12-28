@@ -1,306 +1,301 @@
 #!/bin/bash
 
-# Exit on error and undefined variables
-set -eu
+# Nova Cleanup Script
+# Cleans up temporary files, cache, and optionally resets the processing directory
 
-# Trap errors and interrupts
-trap 'on_error $?' ERR
-trap 'on_interrupt' INT TERM
+set -e  # Exit on error
 
-# Source environment variables
-if [ -f .env ]; then
-    source .env
-else
-    echo "Error: .env file not found"
-    exit 1
-fi
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${SCRIPT_DIR}/.venv"
+CONFIG_FILE="${SCRIPT_DIR}/config/nova.yaml"
 
-# Logging utilities with timestamps
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging functions
 log_info() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $1"
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
 log_warning() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] $1" >&2
+    echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-log_debug() {
-    if [ "${NOVA_LOG_LEVEL:-INFO}" = "DEBUG" ]; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DEBUG] $1"
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if Python virtual environment exists
+check_venv() {
+    if [ ! -d "$VENV_DIR" ]; then
+        log_error "Python virtual environment not found. Please run install.sh first."
+        exit 1
     fi
 }
 
-# Error handling
-on_error() {
-    local exit_code=$1
-    log_error "Script failed with exit code: $exit_code"
-    # Cleanup any temporary resources
-    clean_temp_files force
-    exit "$exit_code"
+# Get processing directory from config
+get_processing_dir() {
+    # Create Python script to get directory
+    local temp_script=$(mktemp)
+    cat > "$temp_script" << 'EOF'
+import os
+import sys
+import yaml
+from pathlib import Path
+
+try:
+    with open(os.environ["CONFIG_FILE"]) as f:
+        config = yaml.safe_load(f)
+    
+    base_dir = os.path.expandvars(config["base_dir"])
+    cache_dir = os.path.expandvars(config["cache"]["dir"])
+    processing_dir = os.path.expandvars(os.path.expanduser("${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"))
+    print(f"{base_dir}\n{cache_dir}\n{processing_dir}")
+    
+except Exception as e:
+    print(f"Error: {str(e)}", file=sys.stderr)
+    sys.exit(1)
+EOF
+
+    # Run script
+    export CONFIG_FILE="$CONFIG_FILE"
+    source "${VENV_DIR}/bin/activate"
+    local dirs=$(python "$temp_script")
+    local status=$?
+    deactivate
+    rm "$temp_script"
+
+    if [ $status -ne 0 ]; then
+        log_error "Failed to get directories from config"
+        exit 1
+    fi
+
+    echo "$dirs"
 }
 
-on_interrupt() {
-    log_warning "Received interrupt signal"
-    clean_temp_files force
-    exit 130
-}
+# Clean cache
+clean_cache() {
+    log_info "Cleaning cache..."
 
-# Get directory size in MB
-get_dir_size() {
-    local dir="$1"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        du -sm "$dir" | cut -f1
+    local dirs=$(get_processing_dir)
+    local cache_dir=$(echo "$dirs" | sed -n '2p')
+
+    if [ -d "$cache_dir" ]; then
+        rm -rf "${cache_dir:?}"/*
+        log_success "Cache cleaned"
     else
-        # Linux
-        du -sm "$dir" --apparent-size | cut -f1
-    fi
-}
-
-# Get free space in MB
-get_free_space() {
-    local dir="$1"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        df -m "$dir" | tail -1 | awk '{print $4}'
-    else
-        # Linux
-        df -m --output=avail "$dir" | tail -1 | tr -d ' '
-    fi
-}
-
-# Directory verification/creation function
-verify_dir() {
-    local dir="$1"
-    local create="${2:-true}"  # Default to true
-    local perms="${3:-755}"    # Default to 755
-    local max_size="${4:-}"    # Optional max size in MB
-    local min_free="${5:-}"    # Optional min free space in MB
-    local cleanup_age="${6:-}" # Optional cleanup age in days
-    
-    log_debug "Verifying directory: '$dir'"
-    
-    if [ -z "$dir" ]; then
-        log_error "Empty directory path provided"
-        return 1
-    fi
-    
-    if [ ! -e "$dir" ]; then
-        if [ "$create" = "true" ]; then
-            log_info "Creating directory: $dir"
-            mkdir -p "$dir"
-        else
-            log_error "Directory does not exist: $dir"
-            return 1
-        fi
-    fi
-    
-    if [ ! -d "$dir" ]; then
-        log_error "Path exists but is not a directory: $dir"
-        return 1
-    fi
-    
-    # Set permissions
-    chmod "$perms" "$dir"
-    
-    # Verify writability
-    if [ ! -w "$dir" ]; then
-        log_error "Directory is not writable: $dir"
-        return 1
-    fi
-    
-    # Check size limit
-    if [ -n "$max_size" ]; then
-        current_size=$(get_dir_size "$dir")
-        if [ "$current_size" -gt "$max_size" ]; then
-            log_warning "Directory $dir exceeds size limit (${current_size}MB > ${max_size}MB)"
-        fi
-    fi
-    
-    # Check free space
-    if [ -n "$min_free" ]; then
-        free_space=$(get_free_space "$dir")
-        if [ "$free_space" -lt "$min_free" ]; then
-            log_warning "Low disk space on $dir (${free_space}MB < ${min_free}MB)"
-        fi
-    fi
-    
-    # Clean old files
-    if [ -n "$cleanup_age" ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS: Use find with -mtime
-            find "$dir" -type f -mtime +"$cleanup_age" -delete 2>/dev/null || true
-        else
-            # Linux: Use find with -atime
-            find "$dir" -type f -atime +"$cleanup_age" -delete 2>/dev/null || true
-        fi
-    fi
-}
-
-# Clean state files
-clean_state() {
-    log_info "Cleaning state files..."
-    
-    # Clean state directory
-    if [ -d "$NOVA_STATE_DIR" ]; then
-        log_info "Cleaning state directory: $NOVA_STATE_DIR"
-        # Remove all .state files but keep directory structure
-        find "$NOVA_STATE_DIR" -type f -name "*.state" -delete 2>/dev/null || true
-        # Remove empty directories
-        find "$NOVA_STATE_DIR" -type d -empty -delete 2>/dev/null || true
-    fi
-    
-    # Clean cache files older than 7 days
-    if [ -d "$NOVA_IMAGE_CACHE_DIR" ]; then
-        log_info "Cleaning old cache files..."
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            find "$NOVA_IMAGE_CACHE_DIR" -type f -mtime +7 -delete 2>/dev/null || true
-        else
-            find "$NOVA_IMAGE_CACHE_DIR" -type f -atime +7 -delete 2>/dev/null || true
-        fi
-    fi
-}
-
-# Clean monitoring files
-clean_monitoring() {
-    log_info "Cleaning monitoring files..."
-    
-    # Clean monitoring files from temp directory
-    if [ -d "$NOVA_TEMP_DIR" ]; then
-        find "$NOVA_TEMP_DIR" -type f -name "*.monitor" -delete 2>/dev/null || true
-        find "$NOVA_TEMP_DIR" -type f -name "*.metrics" -delete 2>/dev/null || true
+        log_warning "Cache directory not found"
     fi
 }
 
 # Clean temporary files
-clean_temp_files() {
-    local force="${1:-false}"
-    log_info "Cleaning temporary files and processing directories..."
-    
-    # Clean temp directories with size and age limits
-    verify_dir "$NOVA_TEMP_DIR" true 755 1024 1024 1
-    verify_dir "$NOVA_OFFICE_TEMP_DIR" true 755 1024 1024 1
-    verify_dir "$NOVA_IMAGE_CACHE_DIR" true 755 1024 512 7
-    
-    # Clean all processing directories
-    log_info "Cleaning processing directories..."
-    
-    # Phase directories
-    for dir in \
-        "$NOVA_PHASE_MARKDOWN_PARSE" \
-        "$NOVA_PHASE_MARKDOWN_CONSOLIDATE" \
-        "$NOVA_PHASE_MARKDOWN_AGGREGATE" \
-        "$NOVA_PHASE_MARKDOWN_SPLIT"
-    do
-        if [ -d "$dir" ]; then
-            log_info "Cleaning directory: $dir"
-            rm -rf "${dir:?}"/* 2>/dev/null || true
-        fi
-    done
-    
-    # Image processing directories
-    for dir in \
-        "$NOVA_PROCESSED_IMAGES_DIR" \
-        "$NOVA_IMAGE_METADATA_DIR" \
-        "$NOVA_IMAGE_CACHE_DIR"
-    do
-        if [ -d "$dir" ]; then
-            log_info "Cleaning directory: $dir"
-            if [ "$force" = "force" ]; then
-                rm -rf "${dir:?}"/* 2>/dev/null || true
-            else
-                # Only clean files older than 1 day
-                if [[ "$OSTYPE" == "darwin"* ]]; then
-                    find "$dir" -type f -mtime +1 -delete 2>/dev/null || true
-                else
-                    find "$dir" -type f -atime +1 -delete 2>/dev/null || true
-                fi
-            fi
-        fi
-    done
-    
-    # Office processing directories
-    for dir in \
-        "$NOVA_OFFICE_ASSETS_DIR" \
-        "$NOVA_OFFICE_TEMP_DIR"
-    do
-        if [ -d "$dir" ]; then
-            log_info "Cleaning directory: $dir"
-            rm -rf "${dir:?}"/* 2>/dev/null || true
-        fi
-    done
-    
-    log_info "All processing directories cleaned"
+clean_temp() {
+    log_info "Cleaning temporary files..."
+
+    local dirs=$(get_processing_dir)
+    local base_dir=$(echo "$dirs" | sed -n '1p')
+
+    # Clean temp files in all directories
+    find "$base_dir" -name "*.tmp" -type f -delete
+    find "$base_dir" -name "*.part" -type f -delete
+    find "$base_dir" -name "*.processing" -type f -delete
+
+    log_success "Temporary files cleaned"
 }
 
-# Verify all required directories exist
-verify_directories() {
-    log_info "Verifying directory structure..."
+# Clean interrupted runs
+clean_interrupted() {
+    log_info "Cleaning interrupted runs..."
+
+    local dirs=$(get_processing_dir)
+    local base_dir=$(echo "$dirs" | sed -n '1p')
+    local lock_file="${base_dir}/.lock"
+
+    if [ -f "$lock_file" ]; then
+        log_warning "Found interrupted run. Cleaning up..."
+        rm -f "$lock_file"
+        
+        # Clean partial files
+        find "$base_dir" -name "*.part" -type f -delete
+        find "$base_dir" -name "*.processing" -type f -delete
+        
+        log_success "Interrupted run cleaned"
+    else
+        log_info "No interrupted runs found"
+    fi
+}
+
+# Clean processing directory
+clean_processing() {
+    log_info "Cleaning processing directory..."
+
+    local dirs=$(get_processing_dir)
+    local processing_dir=$(echo "$dirs" | sed -n '3p')
+
+    if [ -d "$processing_dir" ]; then
+        rm -rf "${processing_dir:?}"/*
+        log_success "Processing directory cleaned"
+    else
+        log_warning "Processing directory not found"
+    fi
+}
+
+# Reset processing directory
+reset_processing() {
+    local keep_original=$1
+    local dirs=$(get_processing_dir)
+    local base_dir=$(echo "$dirs" | sed -n '1p')
+    local cache_dir=$(echo "$dirs" | sed -n '2p')
+
+    log_warning "This will delete processed files and metadata."
+    if [ "$keep_original" = "true" ]; then
+        log_info "Original files will be preserved"
+    else
+        log_warning "Original files will also be deleted"
+    fi
     
-    # Verify all directories
-    local dirs=(
-        "$NOVA_BASE_DIR"
-        "$NOVA_INPUT_DIR"
-        "$NOVA_OUTPUT_DIR"
-        "$NOVA_PROCESSING_DIR"
-        "$NOVA_TEMP_DIR"
-        "$NOVA_STATE_DIR"
-        "$NOVA_PHASE_MARKDOWN_PARSE"
-        "$NOVA_PHASE_MARKDOWN_CONSOLIDATE"
-        "$NOVA_PHASE_MARKDOWN_AGGREGATE"
-        "$NOVA_PHASE_MARKDOWN_SPLIT"
-        "$NOVA_ORIGINAL_IMAGES_DIR"
-        "$NOVA_PROCESSED_IMAGES_DIR"
-        "$NOVA_IMAGE_METADATA_DIR"
-        "$NOVA_IMAGE_CACHE_DIR"
-        "$NOVA_OFFICE_ASSETS_DIR"
-        "$NOVA_OFFICE_TEMP_DIR"
-    )
-    
-    for dir in "${dirs[@]}"; do
-        if ! verify_dir "$dir" true 755; then
-            log_error "Failed to verify directory: $dir"
-            return 1
+    log_warning "Are you sure? (y/N)"
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        log_info "Resetting processing directory..."
+
+        if [ "$keep_original" = "true" ]; then
+            # Keep original files, delete cache
+            if [ -d "$cache_dir" ]; then
+                rm -rf "${cache_dir:?}"/*
+            fi
+        else
+            # Delete everything in base dir except .gitkeep
+            find "$base_dir" -mindepth 1 -not -name ".gitkeep" -delete
+            # Also clean cache
+            if [ -d "$cache_dir" ]; then
+                rm -rf "${cache_dir:?}"/*
+            fi
         fi
-    done
-    
-    log_info "Directory structure verified"
+
+        log_success "Processing directory reset"
+    else
+        log_info "Reset cancelled"
+    fi
+}
+
+# Show usage
+show_usage() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Options:
+  -c, --cache           Clean cache files
+  -t, --temp           Clean temporary files
+  -i, --interrupted    Clean interrupted runs
+  -p, --processing    Clean processing directory
+  -r, --reset         Reset processing directory
+  -k, --keep-original  When resetting, keep original files
+  -a, --all           Clean everything (cache, temp, interrupted, processing)
+  -h, --help          Show this help message
+
+Examples:
+  $0 --cache          # Clean only cache
+  $0 --temp           # Clean only temporary files
+  $0 --all           # Clean everything except original files
+  $0 --reset         # Reset entire processing directory
+  $0 --reset --keep-original  # Reset but keep original files
+EOF
 }
 
 # Main execution
 main() {
-    local command="${1:-clean}"
-    
-    log_info "Starting cleanup with command: $command"
-    
-    case "$command" in
-        clean)
-            verify_directories
-            clean_temp_files
-            clean_state
-            clean_monitoring
-            ;;
-        force-clean)
-            verify_directories
-            clean_temp_files force
-            clean_state
-            clean_monitoring
-            ;;
-        verify)
-            verify_directories
-            ;;
-        *)
-            echo "Usage: $0 [clean|force-clean|verify]"
-            exit 1
-            ;;
-    esac
-    
-    log_info "Cleanup completed successfully"
+    # Parse command line arguments
+    local clean_cache_flag=0
+    local clean_temp_flag=0
+    local clean_interrupted_flag=0
+    local clean_processing_flag=0
+    local reset_flag=0
+    local keep_original=false
+
+    if [ $# -eq 0 ]; then
+        show_usage
+        exit 1
+    fi
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -c|--cache)
+                clean_cache_flag=1
+                shift
+                ;;
+            -t|--temp)
+                clean_temp_flag=1
+                shift
+                ;;
+            -i|--interrupted)
+                clean_interrupted_flag=1
+                shift
+                ;;
+            -p|--processing)
+                clean_processing_flag=1
+                shift
+                ;;
+            -r|--reset)
+                reset_flag=1
+                shift
+                ;;
+            -k|--keep-original)
+                keep_original=true
+                shift
+                ;;
+            -a|--all)
+                clean_cache_flag=1
+                clean_temp_flag=1
+                clean_interrupted_flag=1
+                clean_processing_flag=1
+                shift
+                ;;
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+
+    # Check virtual environment
+    check_venv
+
+    # Execute cleanup based on flags
+    if [ $clean_cache_flag -eq 1 ]; then
+        clean_cache
+    fi
+
+    if [ $clean_temp_flag -eq 1 ]; then
+        clean_temp
+    fi
+
+    if [ $clean_interrupted_flag -eq 1 ]; then
+        clean_interrupted
+    fi
+
+    if [ $clean_processing_flag -eq 1 ]; then
+        clean_processing
+    fi
+
+    if [ $reset_flag -eq 1 ]; then
+        reset_processing "$keep_original"
+    fi
 }
 
-# Execute main function
+# Run main function
 main "$@" 

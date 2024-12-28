@@ -1,0 +1,21 @@
+# Default configuration for Nova document processing system
+
+base_dir: "~/Library/Mobile Documents/com~apple~CloudDocs"
+input_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+output_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+
+cache:
+  dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
+  enabled: true
+  ttl: 3600  # 1 hour default TTL
+
+apis:
+  openai:
+    api_key: ${OPENAI_API_KEY}  # Will be replaced with environment variable
+    model: "gpt-4-vision"  # Vision-capable model
+    max_tokens: 500
+    vision_prompt: |
+      Please analyze this image and provide a detailed description.
+      If it's a screenshot, extract any visible text.
+      If it's a photograph, describe the scene and key elements.
+      Focus on what makes this image relevant in a note-taking context. 

@@ -1,123 +1,126 @@
-"""Logging configuration and utilities."""
-
+"""Nova logging configuration."""
 import logging
-import os
-import sys
+import time
+from typing import Dict, Optional
 from pathlib import Path
-from typing import Optional, Dict, Any, Union
 
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
+
+console = Console()
 
 
-def setup_logging(
-    level: Optional[str] = None,
-    log_file: Optional[Union[str, Path]] = None,
-    console: Optional[Console] = None
-) -> None:
-    """Set up logging configuration.
+class NovaFormatter(logging.Formatter):
+    """Custom formatter for Nova logs."""
     
-    Args:
-        level: Optional log level (defaults to environment variable or INFO)
-        log_file: Optional path to log file
-        console: Optional rich console instance
-    """
-    # Get log level from environment or default to INFO
-    if level is None:
-        level = os.getenv("NOVA_LOG_LEVEL", "INFO")
-        
-    # Create logger
-    logger = logging.getLogger()
-    logger.setLevel(level.upper())
-    
-    # Remove existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-        
-    # Create rich handler
-    rich_handler = RichHandler(
-        console=console or Console(),
-        show_path=False,
-        omit_repeated_times=False,
-        rich_tracebacks=True
-    )
-    rich_handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(rich_handler)
-    
-    # Add file handler if specified
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+    def __init__(self):
+        """Initialize formatter with default format."""
+        super().__init__(
+            fmt="%(asctime)s [%(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
-        logger.addHandler(file_handler)
-
-
-class LoggerMixin:
-    """Mixin class that provides logging methods."""
     
-    def __init__(self) -> None:
-        """Initialize logger for the class."""
-        self._logger = get_logger(self.__class__.__name__)
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with phase and timing info.
         
-    def debug(self, msg: str, *args, **kwargs) -> None:
-        """Log debug message."""
-        self._logger.debug(msg, *args, **kwargs)
+        Args:
+            record: Log record to format.
+            
+        Returns:
+            Formatted log message.
+        """
+        # Format timestamp
+        record.asctime = self.formatTime(record, self.datefmt)
         
-    def info(self, msg: str, *args, **kwargs) -> None:
-        """Log info message."""
-        self._logger.info(msg, *args, **kwargs)
+        # Extract message and clean it
+        message = record.getMessage()
+        message = message.encode("utf-8", errors="replace").decode("utf-8")
         
-    def warning(self, msg: str, *args, **kwargs) -> None:
-        """Log warning message."""
-        self._logger.warning(msg, *args, **kwargs)
+        # Get phase info if available
+        phase = getattr(record, "phase", "")
+        phase_info = f"[{phase}] " if phase else ""
         
-    def error(self, msg: str, *args, **kwargs) -> None:
-        """Log error message."""
-        self._logger.error(msg, *args, **kwargs)
+        # Get timing info if available
+        duration = getattr(record, "duration", None)
+        timing_info = f" ({duration:.2f}s)" if duration else ""
         
-    def critical(self, msg: str, *args, **kwargs) -> None:
-        """Log critical message."""
-        self._logger.critical(msg, *args, **kwargs)
+        # Get progress info if available
+        progress = getattr(record, "progress", "")
+        progress_info = f" [{progress}]" if progress else ""
+        
+        # Build message parts
+        parts = [
+            f"{record.asctime}",
+            f"{record.levelname:8}",
+            phase_info,
+            message,
+            timing_info,
+            progress_info,
+        ]
+        
+        # Filter out empty parts and join
+        return " ".join(p for p in parts if p)
 
 
-def get_logger(
-    name: str,
-    level: Optional[str] = None,
-    console: Optional[Console] = None
-) -> logging.Logger:
-    """Get configured logger instance.
+def create_progress_bar() -> Progress:
+    """Create a progress bar for tracking file processing.
+    
+    Returns:
+        Progress bar instance.
+    """
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+    )
+
+
+def print_summary(
+    total_files: int,
+    successful: int,
+    failed: int,
+    skipped: int,
+    unchanged: int,
+    reprocessed: int,
+    duration: float,
+    failures: list
+) -> None:
+    """Print processing summary.
     
     Args:
-        name: Logger name
-        level: Optional log level (defaults to environment variable or INFO)
-        console: Optional rich console instance
-        
-    Returns:
-        Configured logger instance
+        total_files: Total number of files processed
+        successful: Number of successfully processed files
+        failed: Number of failed files
+        skipped: Number of skipped files
+        unchanged: Number of unchanged files
+        reprocessed: Number of reprocessed files
+        duration: Processing duration in seconds
+        failures: List of (file_path, error_message) tuples
     """
-    # Get log level from environment or default to INFO
-    if level is None:
-        level = os.getenv("NOVA_LOG_LEVEL", "INFO")
-        
-    # Create logger
-    logger = logging.getLogger(name)
-    logger.setLevel(level.upper())
-    
-    # Remove existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-        
-    # Create rich handler
-    handler = RichHandler(
-        console=console or Console(),
-        show_path=False,
-        omit_repeated_times=False,
-        rich_tracebacks=True
-    )
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(handler)
-    
-    return logger 
+    # Print existing summary table
+    print("\n   Processing Summary")
+    print("┏━━━━━━━━━━━━━┳━━━━━━━━┓")
+    print("┃ Metric      ┃  Value ┃")
+    print("┡━━━━━━━━━━━━━╇━━━━━━━━┩")
+    print(f"│ Total Files │ {total_files:>6} │")
+    print(f"│ Successful  │ {successful:>6} │")
+    print(f"│ Failed      │ {failed:>6} │")
+    print(f"│ Skipped     │ {skipped:>6} │")
+    print(f"│ Unchanged   │ {unchanged:>6} │")
+    print(f"│ Reprocessed │ {reprocessed:>6} │")
+    print(f"│ Duration    │ {duration:.2f}s │")
+    print("└─────────────┴────────┘")
+
+    # Add failure details if there are any failures
+    if failures:
+        print("\nFailed Files:")
+        print("━" * 80)
+        for file_path, error_msg in failures:
+            # Get just the filename from the path
+            filename = Path(file_path).name
+            print(f"• {filename}")
+            print(f"  Error: {error_msg}")
+            print() 

@@ -1,274 +1,220 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+# Nova Installation Script
+# Sets up the Nova environment and dependencies
 
-# Logging utilities
+set -e  # Exit on error
+
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${SCRIPT_DIR}/.venv"
+MIN_PYTHON_VERSION="3.11.7"
+REQUIRED_SYSTEM_PACKAGES=(
+    "tesseract"
+    "libheif"
+    "imagemagick"
+    "ffmpeg"
+)
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging functions
 log_info() {
-    echo "[INFO] $1"
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-log_error() {
-    echo "[ERROR] $1" >&2
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
 log_warning() {
-    echo "[WARNING] $1" >&2
+    echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-# Check and setup pyenv
-setup_pyenv() {
-    log_info "Checking pyenv installation..."
-    
-    # Check if pyenv is installed
-    if ! command -v pyenv &> /dev/null; then
-        log_error "pyenv is not installed. Please install it first:"
-        log_error "brew install pyenv"
-        log_error "Then add the following to your ~/.zshrc:"
-        log_error 'export PYENV_ROOT="$HOME/.pyenv"'
-        log_error 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"'
-        log_error 'eval "$(pyenv init -)"'
-        return 1
-    fi
-    
-    # Initialize pyenv
-    eval "$(pyenv init -)"
-    
-    # Define target Python version
-    local target_version="3.11.7"
-    
-    # Check if target version is installed
-    if ! pyenv versions --bare | grep -q "^${target_version}$"; then
-        log_info "Python ${target_version} not found, installing..."
-        if ! pyenv install ${target_version}; then
-            log_error "Failed to install Python ${target_version}"
-            return 1
-        fi
-    else
-        log_info "Python ${target_version} is already installed"
-    fi
-    
-    # Set local Python version for project
-    log_info "Setting local Python version to ${target_version}..."
-    if ! pyenv local ${target_version}; then
-        log_error "Failed to set local Python version"
-        return 1
-    fi
-    
-    # Rehash pyenv
-    pyenv rehash
-    
-    # Verify Python version
-    local current_version
-    current_version=$(python -V 2>&1 | cut -d' ' -f2)
-    if [ "$current_version" != "$target_version" ]; then
-        log_error "Python version mismatch: expected ${target_version}, got ${current_version}"
-        return 1
-    fi
-    
-    log_info "pyenv setup complete"
-    log_info "Current Python versions:"
-    pyenv versions
-    log_info "Active Python version: $(python -V)"
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check Python installation
+# Version comparison function
+version_compare() {
+    echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
+}
+
+# Check Python version
 check_python() {
-    log_info "Checking Python installation..."
-    
     if ! command -v python3 &> /dev/null; then
-        log_error "Python 3 is not installed"
-        return 1
+        log_error "Python 3 not found. Please install Python ${MIN_PYTHON_VERSION} or higher."
+        exit 1
     fi
-    
-    local version
-    version=$(python3 -V 2>&1 | cut -d' ' -f2)
-    log_info "Found Python version: $version"
-    
-    # Verify minimum version (3.11)
-    local major
-    local minor
-    major=$(echo "$version" | cut -d. -f1)
-    minor=$(echo "$version" | cut -d. -f2)
-    if [ "$major" -lt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -lt 11 ]); then
-        log_error "Python 3.11 or higher is required"
-        return 1
+
+    local python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')
+    if [ $(version_compare "$python_version") -lt $(version_compare "$MIN_PYTHON_VERSION") ]; then
+        log_error "Python ${MIN_PYTHON_VERSION} or higher is required. Found version ${python_version}"
+        exit 1
     fi
-    
-    # Verify maximum version (< 3.14)
-    if [ "$major" -gt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -ge 14 ]); then
-        log_error "Python version must be less than 3.14"
-        return 1
-    fi
+
+    log_success "Found Python $python_version"
 }
 
-# Check and setup virtual environment
-setup_venv() {
-    log_info "Checking virtual environment..."
-    
-    # Check for existing virtual environments
-    local venv_count=0
-    for venv_dir in .venv venv env; do
-        if [ -d "$venv_dir" ]; then
-            ((venv_count++))
-            if [ "$venv_dir" != ".venv" ]; then
-                log_warning "Found existing virtual environment at: $venv_dir"
-                log_warning "Please remove it or use .venv instead"
-                return 1
+# Check Poetry installation
+check_poetry() {
+    if ! command -v poetry &> /dev/null; then
+        log_info "Poetry not found. Installing..."
+        curl -sSL https://install.python-poetry.org | python3 -
+    fi
+
+    log_success "Poetry is installed"
+}
+
+# Check system dependencies
+check_system_dependencies() {
+    local missing_packages=()
+
+    # Check for Homebrew on macOS
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if ! command -v brew &> /dev/null; then
+            log_error "Homebrew not found. Please install Homebrew first."
+            exit 1
+        fi
+    fi
+
+    # Check each required package
+    for package in "${REQUIRED_SYSTEM_PACKAGES[@]}"; do
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            if ! brew list "$package" &> /dev/null; then
+                missing_packages+=("$package")
+            fi
+        else
+            if ! command -v "$package" &> /dev/null; then
+                missing_packages+=("$package")
             fi
         fi
     done
-    
-    # Create .venv if it doesn't exist
-    if [ ! -d ".venv" ]; then
-        log_info "Creating virtual environment in .venv..."
-        python3 -m venv .venv
-        
-        # Activate virtual environment
-        source .venv/bin/activate
-        
-        # Upgrade pip
-        python3 -m pip install --upgrade pip
-    else
-        log_info "Using existing virtual environment in .venv"
-        source .venv/bin/activate
+
+    # Install missing packages
+    if [ ${#missing_packages[@]} -ne 0 ]; then
+        log_info "Installing missing system packages: ${missing_packages[*]}"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            brew install "${missing_packages[@]}"
+        else
+            sudo apt-get update
+            sudo apt-get install -y "${missing_packages[@]}"
+        fi
     fi
-    
-    # Verify activation
-    if [[ "$VIRTUAL_ENV" != *".venv" ]]; then
-        log_error "Failed to activate virtual environment"
-        return 1
-    fi
-    
-    log_info "Virtual environment is ready"
+
+    log_success "All system dependencies are installed"
 }
 
-# Check/install poetry
-check_poetry() {
-    log_info "Checking Poetry installation..."
-    
-    if ! command -v poetry &> /dev/null; then
-        log_info "Installing Poetry..."
-        curl -sSL https://install.python-poetry.org | python3 -
+# Create virtual environment and install dependencies
+setup_environment() {
+    # Remove existing virtual environment if it exists
+    if [ -d "$VENV_DIR" ]; then
+        log_info "Removing existing virtual environment..."
+        rm -rf "$VENV_DIR"
     fi
-    
-    log_info "Found Poetry version: $(poetry --version)"
-    
-    # Configure poetry to use the virtual environment
+
+    # Configure Poetry to create virtual environment in project directory
     poetry config virtualenvs.in-project true
-    poetry config virtualenvs.path ".venv"
+
+    # Install dependencies and package in development mode
+    log_info "Installing project dependencies..."
+    poetry install --no-root
+    poetry install -E all
+
+    log_success "Virtual environment created and dependencies installed"
 }
 
-# Create .env file if missing
-create_env_file() {
-    log_info "Checking .env file..."
-    
-    if [ -f .env ]; then
-        log_info ".env file already exists"
-        return 0
+# Create or update config file
+setup_config() {
+    local config_file="${SCRIPT_DIR}/config/nova.yaml"
+    local config_template="${SCRIPT_DIR}/config/nova.template.yaml"
+
+    # Check if config template exists
+    if [ ! -f "$config_template" ]; then
+        log_error "Configuration template not found at: $config_template"
+        exit 1
     fi
-    
-    log_info "Creating .env file..."
-    
-    # Get absolute path of workspace
-    local workspace_dir
-    workspace_dir=$(pwd)
-    
-    cat > .env << EOL
-# Nova Environment Configuration
 
-# Base Directories
-NOVA_BASE_DIR="$workspace_dir"
-NOVA_INPUT_DIR="\${NOVA_BASE_DIR}/_NovaInput"
-NOVA_OUTPUT_DIR="\${NOVA_BASE_DIR}/_NovaOutput"
-NOVA_PROCESSING_DIR="\${NOVA_BASE_DIR}/_NovaProcessing"
-NOVA_TEMP_DIR="\${NOVA_PROCESSING_DIR}/temp"
-NOVA_STATE_DIR="\${NOVA_PROCESSING_DIR}/.state"
+    # Create config directory if it doesn't exist
+    mkdir -p "$(dirname "$config_file")"
 
-# Phase Directories
-NOVA_PHASE_MARKDOWN_PARSE="\${NOVA_PROCESSING_DIR}/phases/markdown_parse"
-NOVA_PHASE_MARKDOWN_CONSOLIDATE="\${NOVA_PROCESSING_DIR}/phases/markdown_consolidate"
-NOVA_PHASE_MARKDOWN_AGGREGATE="\${NOVA_PROCESSING_DIR}/phases/markdown_aggregate"
-NOVA_PHASE_MARKDOWN_SPLIT="\${NOVA_PROCESSING_DIR}/phases/markdown_split"
-
-# Image Directories
-NOVA_ORIGINAL_IMAGES_DIR="\${NOVA_PROCESSING_DIR}/images/original"
-NOVA_PROCESSED_IMAGES_DIR="\${NOVA_PROCESSING_DIR}/images/processed"
-NOVA_IMAGE_METADATA_DIR="\${NOVA_PROCESSING_DIR}/images/metadata"
-NOVA_IMAGE_CACHE_DIR="\${NOVA_PROCESSING_DIR}/images/cache"
-
-# Office Directories
-NOVA_OFFICE_ASSETS_DIR="\${NOVA_PROCESSING_DIR}/office/assets"
-NOVA_OFFICE_TEMP_DIR="\${NOVA_PROCESSING_DIR}/office/temp"
-
-# OpenAI Configuration
-OPENAI_API_KEY=""
-EOL
-
-    chmod 600 .env
-    log_info ".env file created with default values"
-    log_info "Please update OPENAI_API_KEY in .env file"
-}
-
-# Set up directory structure
-setup_directories() {
-    log_info "Setting up directory structure..."
-    
-    # Source environment variables
-    if [ -f .env ]; then
-        source .env
+    # Create config file if it doesn't exist
+    if [ ! -f "$config_file" ]; then
+        cp "$config_template" "$config_file"
+        log_info "Created configuration file from template"
+        log_warning "Please edit config/nova.yaml and add your API keys"
     else
-        log_error ".env file not found"
-        return 1
+        # Validate configuration
+        if ! python3 -c "import yaml; yaml.safe_load(open('$config_file'))"; then
+            log_error "Invalid YAML configuration file"
+            exit 1
+        fi
+        log_success "Configuration file is valid"
     fi
-    
-    # Create directories using cleanup script
-    ./cleanup.sh create
 }
 
-# Install dependencies
-install_dependencies() {
-    log_info "Installing dependencies..."
-    
-    # Install Python dependencies
-    poetry install
-    
-    # Install development tools
-    log_info "Installing development tools..."
-    python3 -m pip install pytest pytest-cov pytest-mock pytest-asyncio
-    
-    # Verify pytest installation
-    if ! python3 -m pytest --version > /dev/null 2>&1; then
-        log_error "Failed to install pytest"
-        return 1
+# Create required directories
+setup_directories() {
+    local icloud_dir="${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
+    local input_dir="${icloud_dir}/_NovaInput"
+    local processing_dir="${icloud_dir}/_NovaProcessing"
+
+    # Create _NovaInput directory if it doesn't exist
+    if [ ! -d "$input_dir" ]; then
+        log_info "Creating _NovaInput directory..."
+        mkdir -p "$input_dir"
     fi
-    
-    log_info "Development tools installed successfully"
+
+    # Create _NovaProcessing directory if it doesn't exist
+    if [ ! -d "$processing_dir" ]; then
+        log_info "Creating _NovaProcessing directory..."
+        mkdir -p "$processing_dir"
+    fi
+
+    log_success "Required directories are set up"
 }
 
-# Main installation
+# Validate installation
+validate_installation() {
+    log_info "Validating installation..."
+
+    # Run a simple test
+    if poetry run python3 -c "import nova; print('Nova package found')" &> /dev/null; then
+        log_success "Nova package is installed correctly"
+    else
+        log_error "Nova package installation validation failed"
+        exit 1
+    fi
+
+    # Validate configuration
+    if ! poetry run python3 -c "from nova.config.manager import ConfigManager; ConfigManager()"; then
+        log_error "Configuration validation failed"
+        exit 1
+    fi
+    log_success "Configuration is valid"
+}
+
+# Main installation process
 main() {
     log_info "Starting Nova installation..."
-    
-    # Check requirements
-    setup_pyenv || exit 1
-    check_python || exit 1
-    setup_venv || exit 1
-    check_poetry || exit 1
-    
-    # Create configuration
-    create_env_file
-    
-    # Set up directories
+
+    # Perform checks and setup
+    check_python
+    check_poetry
+    check_system_dependencies
+    setup_environment
+    setup_config
     setup_directories
-    
-    # Install dependencies
-    install_dependencies
-    
-    log_info "Installation completed successfully!"
-    log_info "Please update OPENAI_API_KEY in .env file before running Nova"
-    log_info "Virtual environment is active at .venv"
+    validate_installation
+
+    log_success "Nova installation completed successfully"
+    log_info "You can now run './run_nova.sh' to process documents"
 }
 
-# Execute main function
+# Run main installation
 main

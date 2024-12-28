@@ -1,0 +1,107 @@
+# Nova Configuration Template
+# Copy this file to nova.yaml and update the values
+
+# API Configuration
+api:
+  openai:
+    api_key: "your-api-key-here"
+    model: "gpt-4-vision-preview"
+    max_tokens: 1000
+    temperature: 0.7
+  vision:
+    max_image_size: 4096
+    quality: 0.95
+
+# Processing Configuration
+processing:
+  max_concurrent_files: 4
+  max_retries: 3
+  retry_delay: 5
+  cache_ttl: 86400  # 24 hours in seconds
+  cache_size_limit: 1073741824  # 1GB in bytes
+
+# Handler Configuration
+handlers:
+  image:
+    formats:
+      - jpg
+      - jpeg
+      - png
+      - gif
+      - webp
+      - heic
+    cache_dir: "${NOVA_PROCESSING_DIR}/cache/images"
+    temp_dir: "${NOVA_PROCESSING_DIR}/temp/images"
+    vision_prompt: "Describe this image in detail, focusing on its content, context, and any visible text."
+  
+  document:
+    formats:
+      - pdf
+      - docx
+      - pptx
+      - xlsx
+    temp_dir: "${NOVA_PROCESSING_DIR}/temp/documents"
+    extract_images: true
+    max_image_size: 2048
+  
+  audio:
+    formats:
+      - mp3
+      - wav
+      - m4a
+      - ogg
+      - flac
+      - aac
+      - wma
+      - aiff
+      - alac
+    model: "base"  # Whisper model size: base, small, medium, large
+    language: "auto"
+    temp_dir: "${NOVA_PROCESSING_DIR}/temp/audio"
+  
+  archive:
+    formats:
+      - zip
+    temp_dir: "${NOVA_PROCESSING_DIR}/temp/archives"
+    max_size: 1073741824  # 1GB in bytes
+    max_files: 1000
+  
+  text:
+    formats:
+      - csv
+      - json
+      - xml
+      - html
+    max_size: 104857600  # 100MB in bytes
+
+# Output Configuration
+output:
+  format: "markdown"
+  create_index: true
+  organize_by_type: true
+  categories:
+    - documents
+    - images
+    - audio
+    - data
+    - notes
+  metadata:
+    save: true
+    format: "json"
+    include_processing_info: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "${NOVA_PROCESSING_DIR}/logs/nova.log"
+  max_size: 10485760  # 10MB in bytes
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Performance Monitoring
+monitoring:
+  enabled: true
+  save_metrics: true
+  metrics_file: "${NOVA_PROCESSING_DIR}/logs/metrics.json"
+  track_memory: true
+  track_timing: true 
