@@ -1,17 +1,19 @@
 """Content converters for different file formats."""
 
+# Standard library imports
 import csv
 import io
+import os
+import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Type, Optional
-import tempfile
-import os
 
+# Third-party imports
 import aiofiles
 import docx
-import openpyxl
 import markitdown
+import openpyxl
 from pptx import Presentation
 import yaml
 

@@ -1,100 +1,215 @@
 """Processor for consolidating markdown files."""
 
-import os
+import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, Any, Optional, List, Set
 
-from rich.console import Console
-
-from ...core.pipeline.base import BaseProcessor
-from ...core.utils.metrics import MetricsTracker
-from ...core.utils.timing import TimingManager
-from ...core.config import ProcessorConfig, PipelineConfig
-
-from .handlers.attachment import AttachmentHandler
-from .handlers.content import ContentHandler
+from nova.core.errors import ValidationError
+from nova.core.config.base import ProcessorConfig
+from nova.core.utils.metrics import TimingManager, MetricsTracker
+from nova.core.utils.monitoring import MonitoringManager
+from nova.core.console.logger import ConsoleLogger
+from nova.core.pipeline.pipeline_state import PipelineState
+from nova.phases.core.base_processor import BaseProcessor
+from nova.phases.consolidate.handlers.attachment import AttachmentHandler
+from nova.phases.consolidate.handlers.content import ContentHandler
 
 
 class MarkdownConsolidateProcessor(BaseProcessor):
     """Processor for consolidating markdown files."""
-    
+
     def __init__(
         self,
-        processor_config: ProcessorConfig,
-        pipeline_config: PipelineConfig,
+        config: ProcessorConfig,
         timing: Optional[TimingManager] = None,
         metrics: Optional[MetricsTracker] = None,
-        console: Optional[Console] = None
+        monitoring: Optional[MonitoringManager] = None,
+        console: Optional[ConsoleLogger] = None,
+        pipeline_state: Optional[PipelineState] = None
     ):
-        """Initialize the processor.
+        """Initialize markdown consolidate processor.
         
         Args:
-            processor_config: Processor configuration
-            pipeline_config: Pipeline configuration
-            timing: Optional timing utility
+            config: Processor configuration
+            timing: Optional timing manager
             metrics: Optional metrics tracker
+            monitoring: Optional monitoring manager
             console: Optional console logger
-        """
-        super().__init__(processor_config, pipeline_config, timing, metrics, console)
-        self.processed_files: Set[str] = set()
-        self.failed_files: Set[str] = set()
-        self.skipped_files: Set[str] = set()
-        self.errors: List[str] = []
-        
-        # Initialize handlers
-        config = {
-            'input_dir': self.input_dir,
-            'output_dir': self.output_dir,
-            'temp_dir': self.temp_dir,
-            'options': processor_config.options
-        }
-        self.handlers = [
-            AttachmentHandler(config, timing, metrics, console),
-            ContentHandler(config, timing, metrics, console)
-        ]
-        
-    def _initialize(self) -> None:
-        """Initialize the processor."""
-        # Verify output directory exists
-        if not os.path.exists(self.output_dir):
-            os.makedirs(self.output_dir)
+            pipeline_state: Optional pipeline state
             
-    def _process(self, file_path: str) -> None:
-        """Process a single file.
+        Raises:
+            ValidationError: If configuration is invalid
+        """
+        super().__init__(
+            config=config,
+            timing=timing,
+            metrics=metrics,
+            monitoring=monitoring,
+            console=console,
+            pipeline_state=pipeline_state
+        )
+        self.logger = logging.getLogger(__name__)
+
+        # Initialize processor state
+        self.processed_files: Set[Path] = set()
+        self.failed_files: Set[Path] = set()
+        self.skipped_files: Set[Path] = set()
+        self.errors: List[str] = []
+
+        # Initialize handlers
+        self.handlers = self._initialize_handlers()
+
+    def _initialize_handlers(self) -> List[Any]:
+        """Initialize consolidate handlers.
         
-        Args:
-            file_path: Path to the file to process
+        Returns:
+            List of initialized handlers
+            
+        Raises:
+            ValidationError: If handler initialization fails
+        """
+        handlers = []
+        try:
+            # Initialize attachment handler
+            attachment_handler = AttachmentHandler(
+                name="attachment_handler",
+                options={
+                    'copy_attachments': True,
+                    'update_references': True
+                },
+                timing=self.timing,
+                metrics=self.metrics,
+                monitoring=self.monitoring,
+                console=self.console
+            )
+            handlers.append(attachment_handler)
+
+            # Initialize content handler
+            content_handler = ContentHandler(
+                name="content_handler",
+                options={
+                    'merge_content': True,
+                    'preserve_headers': True
+                },
+                timing=self.timing,
+                metrics=self.metrics,
+                monitoring=self.monitoring,
+                console=self.console
+            )
+            handlers.append(content_handler)
+
+        except Exception as e:
+            raise ValidationError(f"Failed to initialize handlers: {str(e)}")
+
+        return handlers
+
+    async def process(self):
+        """Process markdown files.
+        
+        Raises:
+            ValidationError: If processing fails
         """
         try:
-            # Check if any handler can process the file
-            for handler in self.handlers:
-                if handler.can_handle(file_path):
-                    result = handler.process(file_path)
-                    if result.success:
-                        self.processed_files.add(file_path)
-                        self.metrics.increment('files_processed')
-                        self.console.info(f"Handler {handler.__class__.__name__} successfully processed file: {file_path}")
-                        return
-                    else:
-                        self.failed_files.add(file_path)
-                        self.errors.extend(result.errors)
-                        error_msg = f"Handler {handler.__class__.__name__} failed to process file: {file_path}"
-                        self.console.error(error_msg)
-                        return
-                else:
-                    self.console.info(f"Handler {handler.__class__.__name__} cannot handle file: {file_path}")
-                    
-            # No handler could process the file
-            self.skipped_files.add(file_path)
-            warning_msg = f"No handlers could process file: {file_path}"
-            self.console.warning(warning_msg)
-            
+            self.logger.info(f"Processing markdown files in {self.input_dir}")
+
+            # Get markdown files
+            markdown_files = list(self.input_dir.glob('**/*.md'))
+            if not markdown_files:
+                self.logger.warning(f"No markdown files found in {self.input_dir}")
+                return
+
+            # Process each file
+            for file in markdown_files:
+                try:
+                    self.logger.info(f"Processing file: {file}")
+
+                    # Read file content
+                    content = file.read_text()
+
+                    # Process content through handlers
+                    for handler in self.handlers:
+                        if handler.can_handle(file):
+                            result = await handler.process(
+                                file_path=file,
+                                context={
+                                    'output_dir': self.output_dir,
+                                    'config': self.config
+                                }
+                            )
+                            if not handler.validate_output(result):
+                                raise ValidationError(f"Invalid output from handler {handler.get_name()}")
+                            content = result.content
+
+                    # Write processed content
+                    output_file = self.output_dir / file.relative_to(self.input_dir)
+                    output_file.parent.mkdir(parents=True, exist_ok=True)
+                    output_file.write_text(content)
+
+                    # Update state
+                    self.processed_files.add(file)
+                    self.logger.info(f"File processed successfully: {file}")
+
+                except Exception as e:
+                    self.logger.error(f"Error processing file {file}: {str(e)}")
+                    self.failed_files.add(file)
+                    self.errors.append(str(e))
+                    raise ValidationError(f"Error processing file {file}: {str(e)}")
+
+            self.logger.info("All files processed successfully")
+
         except Exception as e:
-            self.failed_files.add(file_path)
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            self.errors.append(error_msg)
-            self.console.error(error_msg)
-            
-    def _cleanup(self) -> None:
-        """Clean up resources."""
-        pass
+            self.logger.error(f"Error processing markdown files: {str(e)}")
+            raise ValidationError(f"Error processing markdown files: {str(e)}")
+
+    async def cleanup(self):
+        """Clean up processor resources."""
+        try:
+            # Clean up handlers
+            for handler in self.handlers:
+                await handler.cleanup()
+
+            # Clean up base processor
+            await super().cleanup()
+
+        except Exception as e:
+            self.logger.error(f"Error cleaning up processor: {str(e)}")
+
+    def get_handlers(self) -> List[Any]:
+        """Get consolidate handlers.
+        
+        Returns:
+            List of handlers
+        """
+        return self.handlers
+
+    def get_processed_files(self) -> Set[Path]:
+        """Get processed files.
+        
+        Returns:
+            Set of processed file paths
+        """
+        return self.processed_files
+
+    def get_failed_files(self) -> Set[Path]:
+        """Get failed files.
+        
+        Returns:
+            Set of failed file paths
+        """
+        return self.failed_files
+
+    def get_skipped_files(self) -> Set[Path]:
+        """Get skipped files.
+        
+        Returns:
+            Set of skipped file paths
+        """
+        return self.skipped_files
+
+    def get_errors(self) -> List[str]:
+        """Get processing errors.
+        
+        Returns:
+            List of error messages
+        """
+        return self.errors

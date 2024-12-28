@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
-from nova.core.utils.monitoring import MonitoringManager
+from nova.core.utils.metrics import MonitoringManager
 from nova.core.models.result import ProcessingResult
 from nova.core.errors import ValidationError
 

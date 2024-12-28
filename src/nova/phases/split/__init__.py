@@ -1,5 +1,5 @@
 """Split phase module."""
 
-from .processor import ThreeFileSplitProcessor
+from nova.phases.split.processor import SplitProcessor
 
-__all__ = ['ThreeFileSplitProcessor']
+__all__ = ['SplitProcessor']

@@ -1,168 +1,134 @@
-"""Pipeline processor."""
+"""Base processor for pipeline phases."""
 
+# Standard library imports
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
+from typing import Any, Dict, List, Optional
 
-from ..errors import ValidationError
+# Third-party imports
+from rich.console import Console
+
+# Nova package imports
+from nova.core.config.base import PipelineConfig, ProcessorConfig
+from nova.core.pipeline.base import BaseProcessor
+from nova.core.utils.metrics import MetricsTracker, MonitoringManager, TimingManager
+
 from ..utils.metrics import MetricsTracker
-from ..utils.monitoring import MonitoringManager
+from ..utils.metrics import MonitoringManager
+from ..utils.metrics import TimingManager
+from ..config.base import ProcessorConfig
+
+from .base import BaseProcessor
 
 
-class PipelineProcessor:
+class PipelineProcessor(BaseProcessor):
     """Base class for pipeline processors."""
-
-    def __init__(self, config: Dict[str, Any]):
-        """Initialize processor.
+    
+    def __init__(
+        self,
+        processor_config: ProcessorConfig,
+        pipeline_config: PipelineConfig,
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        console: Optional[Console] = None,
+        monitoring: Optional[MonitoringManager] = None
+    ):
+        """Initialize the processor.
         
         Args:
-            config: Processor configuration
-            
-        Raises:
-            ValidationError: If configuration is invalid
+            processor_config: Processor configuration
+            pipeline_config: Pipeline configuration
+            timing: Optional timing utility
+            metrics: Optional metrics tracker
+            console: Optional console logger
+            monitoring: Optional monitoring manager
         """
-        self.config = config
-        self.metrics = MetricsTracker()
-        self.monitoring = MonitoringManager()
+        super().__init__(processor_config, pipeline_config, timing, metrics, console)
+        self.monitoring = monitoring or MonitoringManager()
         
-        # Initialize paths
-        self.input_dir = Path(config.get("input_dir", "")).resolve()
-        self.output_dir = Path(config.get("output_dir", "")).resolve()
-        self.temp_dir = Path(config.get("temp_dir", "")).resolve()
+    async def _process_impl(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> None:
+        """Process a single file.
         
-        # Initialize components
-        self.components: Dict[str, Any] = {}
-        self._initialize_components()
+        Args:
+            file_path: Path to the file to process
+            context: Optional processing context
+        """
+        try:
+            # Create context with output directory
+            context = context or {}
+            if self.output_dir:
+                context['output_dir'] = str(self.output_dir)
+            
+            # Check if any handler can process the file
+            for handler in self.handlers:
+                if await handler.can_handle(file_path):
+                    result = await handler.process(file_path, context)
+                    if result.success:
+                        self.processed_files.add(str(file_path))
+                        self.metrics.increment('files_processed')
+                        if self.monitoring:
+                            self.monitoring.increment_counter('files_processed')
+                        self.console.print(f"[green]Handler {handler.__class__.__name__} successfully processed file: {file_path}[/green]")
+                        return
+                    else:
+                        self.failed_files.add(str(file_path))
+                        self.errors.extend(result.errors)
+                        error_msg = f"Handler {handler.__class__.__name__} failed to process file: {file_path}"
+                        self.console.print(f"[red]{error_msg}[/red]")
+                        if self.monitoring:
+                            self.monitoring.record_error(error_msg)
+                        return
+                else:
+                    self.console.print(f"[yellow]Handler {handler.__class__.__name__} cannot handle file: {file_path}[/yellow]")
+                    
+            # No handler could process the file
+            self.skipped_files.add(str(file_path))
+            warning_msg = f"No handlers could process file: {file_path}"
+            self.console.print(f"[yellow]{warning_msg}[/yellow]")
+            if self.monitoring:
+                self.monitoring.increment_counter('files_skipped')
+            
+        except Exception as e:
+            self.failed_files.add(str(file_path))
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.errors.append(error_msg)
+            self.console.print(f"[red]{error_msg}[/red]")
+            if self.monitoring:
+                self.monitoring.record_error(error_msg)
+    
+    async def process_files(self, file_paths: List[Path]) -> None:
+        """Process multiple files.
         
-        # Initialize metrics
-        self._initialize_metrics()
-        
-    def _initialize_components(self) -> None:
-        """Initialize processor components."""
-        components = self.config.get("components", {})
-        if not isinstance(components, dict):
-            raise ValidationError("Invalid components configuration")
+        Args:
+            file_paths: List of file paths to process
+        """
+        if self.monitoring:
+            self.monitoring.start()
             
-        for name, config in components.items():
-            if not isinstance(config, dict):
-                raise ValidationError(f"Invalid component configuration: {name}")
-            self.components[name] = config
+        try:
+            # Initialize processor
+            self._initialize()
             
-    def _initialize_metrics(self) -> None:
-        """Initialize processor metrics."""
-        metrics = self.config.get("metrics", {})
-        if not isinstance(metrics, dict):
-            raise ValidationError("Invalid metrics configuration")
-            
-        counters = metrics.get("counters", [])
-        if not isinstance(counters, list):
-            raise ValidationError("Invalid counters configuration")
-            
-        for counter in counters:
-            if counter not in self.metrics.counters:
-                self.metrics.register_counter(counter)
+            # Process each file
+            for file_path in file_paths:
+                await self._process_impl(file_path)
                 
-    def validate_component(self, name: str, config: Dict[str, Any]) -> None:
-        """Validate a component configuration.
+            # Clean up
+            self._cleanup()
+            
+        finally:
+            if self.monitoring:
+                self.monitoring.stop()
+    
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        # Clean up base resources
+        self._cleanup()
         
-        Args:
-            name: Component name
-            config: Component configuration
-            
-        Raises:
-            ValidationError: If configuration is invalid
-        """
-        if name not in self.components:
-            raise ValidationError(f"Unknown component: {name}")
-            
-        required_keys = self.components[name].get("required_keys", [])
-        for key in required_keys:
-            if key not in config:
-                raise ValidationError(f"Missing required key for {name}: {key}")
-                
-    def register_metric(self, name: str) -> None:
-        """Register a metric.
+        # Clean up monitoring
+        if self.monitoring:
+            self.monitoring.cleanup()
         
-        Args:
-            name: Metric name
-            
-        Raises:
-            ValidationError: If metric is invalid
-        """
-        if name in self.metrics.counters:
-            raise ValidationError(f"Metric already registered: {name}")
-            
-        self.metrics.register_counter(name)
-        
-    def register_monitor(self, name: str) -> None:
-        """Register a monitor.
-        
-        Args:
-            name: Monitor name
-            
-        Raises:
-            ValidationError: If monitor is invalid
-        """
-        if not isinstance(name, str):
-            raise ValidationError("Invalid monitor name")
-            
-        self.monitoring.register_phase(name)
-        
-    def register_error(self, name: str, message: str) -> None:
-        """Register an error.
-        
-        Args:
-            name: Error name
-            message: Error message
-            
-        Raises:
-            ValidationError: If error is invalid
-        """
-        if not isinstance(name, str):
-            raise ValidationError("Invalid error name")
-            
-        self.metrics.increment_counter(f"error_{name}")
-        self.monitoring.record_metric(
-            name=f"error_{name}",
-            value=message,
-            tags={"type": "error"}
-        )
-        
-    def register_cache(self, name: str, max_size: int) -> None:
-        """Register a cache.
-        
-        Args:
-            name: Cache name
-            max_size: Maximum cache size
-            
-        Raises:
-            ValidationError: If cache is invalid
-        """
-        if not isinstance(name, str):
-            raise ValidationError("Invalid cache name")
-            
-        if not isinstance(max_size, int) or max_size <= 0:
-            raise ValidationError("Invalid cache size")
-            
-    def process(self, input_file: Union[str, Path]) -> None:
-        """Process input file.
-        
-        Args:
-            input_file: Input file path
-            
-        Raises:
-            ValidationError: If processing fails
-        """
-        input_path = Path(input_file).resolve()
-        if not input_path.exists():
-            raise ValidationError(f"Input file not found: {input_path}")
-            
-        if not input_path.is_file():
-            raise ValidationError(f"Not a file: {input_path}")
-            
-        # Implement processing logic in derived classes
-        raise NotImplementedError("Process method must be implemented by derived classes")
-        
-    def cleanup(self) -> None:
-        """Clean up processor resources."""
-        self.metrics.clear()
-        self.monitoring.clear() 
+        # Clean up handlers
+        for handler in self.handlers:
+            if hasattr(handler, 'cleanup'):
+                await handler.cleanup()

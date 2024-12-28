@@ -1,9 +1,11 @@
 """Markdown handlers for Nova document processor."""
 
+# Standard library imports
 from typing import Dict, Any, Optional
 
-from .base import BaseHandler
-from ..errors import HandlerError
+# Nova package imports
+from nova.core.errors import HandlerError
+from nova.core.handlers.base import BaseHandler
 
 class MarkdownHandler(BaseHandler):
     """Handler for processing markdown content."""

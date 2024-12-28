@@ -1,5 +1,5 @@
 """Nova phases package."""
 
-from . import split
+from nova.phases import split
 
 __all__ = ['split']

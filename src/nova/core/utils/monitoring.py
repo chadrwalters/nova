@@ -241,6 +241,22 @@ class MonitoringManager:
             key = f"{name}_{','.join(f'{k}={v}' for k, v in sorted(labels.items()))}"
         self._metrics['counters'][key] = self._metrics['counters'].get(key, 0) + value
 
+    def record_error(self, error: str) -> None:
+        """Record an error.
+        
+        Args:
+            error: Error message
+        """
+        self._metrics['errors'] += 1
+        self.logger.error(error)
+
+    async def async_capture_resource_usage(self) -> None:
+        """Capture resource usage asynchronously."""
+        try:
+            self._metrics['resources'] = ResourceUsage.current()
+        except Exception as e:
+            self.logger.error(f"Error capturing resource usage: {str(e)}")
+
     def set_gauge(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
         """Set gauge metric value.
         

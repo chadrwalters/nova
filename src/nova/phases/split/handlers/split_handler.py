@@ -1,15 +1,17 @@
 """Handler for splitting markdown into summary, raw notes, and attachments."""
 
+# Standard library imports
 import os
-from pathlib import Path
-import shutil
 import re
+import shutil
+from pathlib import Path
 from typing import Dict, Any, Optional, List, Set, Tuple
 
+# Nova package imports
 from nova.core.models.result import ProcessingResult
-from nova.phases.core.base_handler import BaseHandler, HandlerResult
-from nova.core.utils.monitoring import MonitoringManager
 from nova.core.models.state import HandlerState
+from nova.core.utils.metrics import MonitoringManager
+from nova.phases.core.base_handler import BaseHandler, HandlerResult
 
 
 class SplitHandler(BaseHandler):

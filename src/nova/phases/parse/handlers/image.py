@@ -1,14 +1,18 @@
 """Handler for image files."""
 
+# Standard library imports
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+# Third-party imports
 import magic
 
-from ....core.base_handler import BaseHandler
-from ....core.models.result import ProcessingResult
-from ....core.utils.metrics import MetricsTracker
-from ....core.utils.timing import TimingManager
+# Nova package imports
+from nova.core.base_handler import BaseHandler
+from nova.core.models.result import ProcessingResult
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.timing import TimingManager
 
 
 class ImageHandler(BaseHandler):

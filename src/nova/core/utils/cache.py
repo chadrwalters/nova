@@ -1,538 +1,173 @@
 """Cache management utilities."""
 
-import json
-import logging
 import os
-import time
-import hashlib
+import shutil
+import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
-from collections import OrderedDict
+from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
 
 class CacheManager:
-    """Manages caching of processed data."""
-    
+    """Manages caching for pipeline phases."""
+
     def __init__(
         self,
-        cache_dir: Optional[Union[str, Path]] = None,
-        max_size_bytes: Optional[int] = None,
-        provider: str = "grok",
-        default_ttl: int = 24 * 60 * 60,  # 24 hours default
-        memory_entries: int = 100  # Max memory cache entries
-    ) -> None:
+        directory: Path,
+        max_size_mb: int = 1024,
+        max_age_days: int = 7,
+        cleanup_on_start: bool = True,
+        cleanup_on_error: bool = True
+    ):
         """Initialize cache manager.
         
         Args:
-            cache_dir: Directory to store cache files
-            max_size_bytes: Maximum cache size in bytes
-            provider: Provider name for cache key generation
-            default_ttl: Default time-to-live in seconds
-            memory_entries: Maximum number of entries to keep in memory
+            directory: Cache directory path
+            max_size_mb: Maximum cache size in MB
+            max_age_days: Maximum age of cache files in days
+            cleanup_on_start: Whether to clean up cache on start
+            cleanup_on_error: Whether to clean up cache on error
         """
-        self.cache_dir = Path(cache_dir) if cache_dir else None
-        self.provider = provider
-        self.max_size_bytes = max_size_bytes if max_size_bytes else 1024 * 1024 * 1024  # Default 1GB
-        self.default_ttl = default_ttl
-        self.memory_entries = memory_entries
+        self.directory = directory
+        self.max_size_mb = max_size_mb
+        self.max_age_days = max_age_days
+        self.cleanup_on_start = cleanup_on_start
+        self.cleanup_on_error = cleanup_on_error
+        self.logger = logging.getLogger(__name__)
+
+    async def initialize(self):
+        """Initialize cache directory.
         
-        # Initialize memory cache
-        self._memory_cache = OrderedDict()
-        self._memory_ttls = {}
-        
-        # Initialize stats
-        self.stats = {
-            'hits': 0,
-            'misses': 0,
-            'errors': 0,
-            'invalidations': 0,
-            'evictions': 0,
-            'expirations': 0,
-            'memory_hits': 0,
-            'memory_misses': 0,
-            'provider_stats': {},
-            'cache_size': 0,
-            'hit_ratio': 0.0,
-            'content_hits': 0,
-            'content_misses': 0
-        }
-        
-        # Initialize provider stats
-        for prov in ['grok', 'openai', 'content']:
-            self.stats['provider_stats'][prov] = {
-                'hits': 0,
-                'misses': 0,
-                'errors': 0,
-                'invalidations': 0,
-                'expirations': 0
-            }
-        
-        if self.cache_dir:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            # Create provider directories
-            for prov in ['grok', 'openai', 'content']:
-                (self.cache_dir / prov).mkdir(exist_ok=True)
-            logger.debug("Initialized cache in %s", self.cache_dir)
-    
-    def _get_cache_size(self) -> int:
-        """Get current cache size in bytes."""
-        if not self.cache_dir:
-            return 0
-        
-        total_size = 0
-        for root, _, files in os.walk(self.cache_dir):
-            for file in files:
-                file_path = Path(root) / file
-                total_size += file_path.stat().st_size
-        
-        return total_size
-    
-    def _cleanup_old_files(self, max_age: Optional[int] = None) -> None:
-        """Clean up old cache files.
-        
-        Args:
-            max_age: Maximum age in seconds
+        Creates cache directory if it doesn't exist and performs cleanup if enabled.
         """
-        if not self.cache_dir:
-            return
+        # Create cache directory if it doesn't exist
+        self.directory.mkdir(parents=True, exist_ok=True)
+
+        # Clean up cache if enabled
+        if self.cleanup_on_start:
+            await self.cleanup()
+
+    async def cleanup(self):
+        """Clean up cache directory.
         
-        current_time = time.time()
-        for root, _, files in os.walk(self.cache_dir):
-            for file in files:
-                file_path = Path(root) / file
-                try:
-                    if max_age and (current_time - file_path.stat().st_mtime) > max_age:
+        Removes old cache files and ensures cache size is within limits.
+        """
+        try:
+            # Remove old files
+            cutoff_date = datetime.now() - timedelta(days=self.max_age_days)
+            for file_path in self.directory.glob('**/*'):
+                if file_path.is_file():
+                    mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if mtime < cutoff_date:
                         file_path.unlink()
-                        self.stats['expirations'] += 1
-                except OSError:
-                    self.stats['errors'] += 1
-    
-    def _enforce_size_limit(self) -> None:
-        """Enforce cache size limit by removing old files."""
-        if not self.cache_dir or not self.max_size_bytes:
-            return
-        
-        current_size = self._get_cache_size()
-        if current_size <= self.max_size_bytes:
-            return
-        
-        # Get all cache files sorted by modification time
-        cache_files = []
-        for root, _, files in os.walk(self.cache_dir):
-            for file in files:
-                file_path = Path(root) / file
-                try:
-                    cache_files.append((file_path, file_path.stat().st_mtime))
-                except OSError:
-                    continue
-        
-        cache_files.sort(key=lambda x: x[1])  # Sort by mtime
-        
-        # Remove oldest files until under limit
-        for file_path, _ in cache_files:
-            try:
-                file_path.unlink()
-                self.stats['evictions'] += 1
-                current_size = self._get_cache_size()
-                if current_size <= self.max_size_bytes:
-                    break
-            except OSError:
-                self.stats['errors'] += 1
-    
-    def _generate_cache_key(self, image_path: Union[str, Path]) -> str:
-        """Generate cache key from image path and metadata.
+
+            # Check cache size
+            total_size = sum(f.stat().st_size for f in self.directory.glob('**/*') if f.is_file())
+            if total_size > self.max_size_mb * 1024 * 1024:
+                # Remove oldest files until under limit
+                files = [(f, f.stat().st_mtime) for f in self.directory.glob('**/*') if f.is_file()]
+                files.sort(key=lambda x: x[1])  # Sort by modification time
+                
+                for file_path, _ in files:
+                    file_path.unlink()
+                    total_size = sum(f.stat().st_size for f in self.directory.glob('**/*') if f.is_file())
+                    if total_size <= self.max_size_mb * 1024 * 1024:
+                        break
+
+        except Exception as e:
+            self.logger.error(f"Error cleaning up cache: {e}")
+
+    def get_cache_path(self, key: str) -> Path:
+        """Get cache file path for key.
         
         Args:
-            image_path: Path to image file
+            key: Cache key
             
         Returns:
-            Cache key string
+            Path to cache file
         """
-        path = Path(image_path)
-        if not path.exists():
-            return f"nonexistent_{path.name}"
-            
-        stats = path.stat()
-        return f"{path.stem}_{stats.st_size}_{int(stats.st_mtime)}"
-    
-    def _get_cache_path(self, key: str, provider: str) -> Path:
-        """Get cache file path for key and provider."""
-        if not self.cache_dir:
-            raise ValueError("Cache directory not set")
-        return self.cache_dir / provider / f"{key}.json"
-    
-    def _update_hit_stats(self, provider: str) -> None:
-        """Update hit statistics."""
-        self.stats['hits'] += 1
-        if provider in self.stats['provider_stats']:
-            self.stats['provider_stats'][provider]['hits'] += 1
-        self._update_hit_ratio()
-    
-    def _update_miss_stats(self, provider: str) -> None:
-        """Update miss statistics."""
-        self.stats['misses'] += 1
-        if provider in self.stats['provider_stats']:
-            self.stats['provider_stats'][provider]['misses'] += 1
-        self._update_hit_ratio()
-    
-    def _update_error_stats(self, provider: str) -> None:
-        """Update error statistics."""
-        self.stats['errors'] += 1
-        if provider in self.stats['provider_stats']:
-            self.stats['provider_stats'][provider]['errors'] += 1
-    
-    def _update_hit_ratio(self) -> None:
-        """Update cache hit ratio."""
-        total = self.stats['hits'] + self.stats['misses']
-        if total > 0:
-            self.stats['hit_ratio'] = self.stats['hits'] / total
-    
-    def get(self, image_path: Union[str, Path], provider: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        return self.directory / key
+
+    async def get(self, key: str) -> Optional[bytes]:
         """Get cached data.
         
         Args:
-            image_path: Path to image file
-            provider: Optional provider override
+            key: Cache key
             
         Returns:
-            Cached data if found and valid, None otherwise
+            Cached data or None if not found
         """
-        provider = provider or self.provider
-        key = self._generate_cache_key(image_path)
-        
-        # Try memory cache first
-        memory_key = f"{provider}:{key}"
-        if memory_key in self._memory_cache:
-            data = self._memory_cache[memory_key]
-            if self._memory_ttls.get(memory_key, float('inf')) > time.time():
-                self.stats['memory_hits'] += 1
-                self._update_hit_stats(provider)
-                return data if isinstance(data, dict) else {'description': data}
-            else:
-                # Expired
-                del self._memory_cache[memory_key]
-                del self._memory_ttls[memory_key]
-                self.stats['expirations'] += 1
-        else:
-            self.stats['memory_misses'] += 1
-        
-        # Try file cache
         try:
-            cache_path = self._get_cache_path(key, provider)
-            if not cache_path.exists():
-                self._update_miss_stats(provider)
-                return None
-            
-            # Check if file is too old
-            if self.default_ttl and (time.time() - cache_path.stat().st_mtime) > self.default_ttl:
-                cache_path.unlink()
-                self.stats['expirations'] += 1
-                self._update_miss_stats(provider)
-                return None
-            
-            # Load cache data
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Handle string values for backward compatibility
-            if isinstance(data, str):
-                data = {'description': data}
-            
-            # Validate metadata
-            metadata = data.get('_cache_metadata', {})
-            if metadata.get('image_path') != str(image_path):
-                self._update_miss_stats(provider)
-                return None
-            
-            # Check if image has been modified
-            path = Path(image_path)
-            if path.exists():
-                current_stats = path.stat()
-                if (metadata.get('image_size') != current_stats.st_size or
-                    metadata.get('image_mtime') != current_stats.st_mtime):
-                    self.stats['invalidations'] += 1
-                    self._update_miss_stats(provider)
-                    return None
-            
-            # Update memory cache
-            self._memory_cache[memory_key] = data
-            self._memory_ttls[memory_key] = time.time() + self.default_ttl
-            
-            # Enforce memory cache size
-            while len(self._memory_cache) > self.memory_entries:
-                oldest_key = next(iter(self._memory_cache))
-                del self._memory_cache[oldest_key]
-                del self._memory_ttls[oldest_key]
-                self.stats['evictions'] += 1
-            
-            self._update_hit_stats(provider)
-            return data
-            
+            cache_path = self.get_cache_path(key)
+            if cache_path.exists():
+                return cache_path.read_bytes()
         except Exception as e:
-            logger.error("Error reading cache: %s", str(e))
-            self._update_error_stats(provider)
-            return None
-    
-    def set(self, image_path: Union[str, Path], provider: str, data: Dict[str, Any]) -> None:
-        """Set cache data.
+            self.logger.error(f"Error reading from cache: {e}")
+        return None
+
+    async def set(self, key: str, data: bytes):
+        """Set cached data.
         
         Args:
-            image_path: Path to image file
-            provider: Provider name
+            key: Cache key
             data: Data to cache
         """
-        if not self.cache_dir:
-            return
-        
         try:
-            # Add metadata
-            path = Path(image_path)
-            if path.exists():
-                stats = path.stat()
-                data['_cache_metadata'] = {
-                    'provider': provider,
-                    'image_path': str(image_path),
-                    'image_size': stats.st_size,
-                    'image_mtime': stats.st_mtime,
-                    'timestamp': time.time()
-                }
-            
-            # Save to file
-            key = self._generate_cache_key(image_path)
-            cache_path = self._get_cache_path(key, provider)
-            
-            with open(cache_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
-            
-            # Update memory cache
-            memory_key = f"{provider}:{key}"
-            self._memory_cache[memory_key] = data
-            self._memory_ttls[memory_key] = time.time() + self.default_ttl
-            
-            # Enforce memory cache size
-            while len(self._memory_cache) > self.memory_entries:
-                oldest_key = next(iter(self._memory_cache))
-                del self._memory_cache[oldest_key]
-                del self._memory_ttls[oldest_key]
-                self.stats['evictions'] += 1
-            
-            # Enforce size limit
-            self._enforce_size_limit()
-            
+            cache_path = self.get_cache_path(key)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(data)
         except Exception as e:
-            logger.error("Error writing cache: %s", str(e))
-            self._update_error_stats(provider)
-    
-    def clear(self, provider: Optional[str] = None) -> None:
-        """Clear cache entries.
+            self.logger.error(f"Error writing to cache: {e}")
+
+    async def delete(self, key: str):
+        """Delete cached data.
         
         Args:
-            provider: Optional provider to clear cache for
+            key: Cache key
         """
-        if not self.cache_dir:
-            return
-            
-        if provider:
-            provider_dir = self.cache_dir / provider
-            if provider_dir.exists():
-                for f in provider_dir.glob('*.json'):
-                    f.unlink()
-        else:
-            for prov in ['grok', 'openai']:
-                provider_dir = self.cache_dir / prov
-                if provider_dir.exists():
-                    for f in provider_dir.glob('*.json'):
-                        f.unlink()
+        try:
+            cache_path = self.get_cache_path(key)
+            if cache_path.exists():
+                cache_path.unlink()
+        except Exception as e:
+            self.logger.error(f"Error deleting from cache: {e}")
+
+    async def clear(self):
+        """Clear all cached data."""
+        try:
+            if self.directory.exists():
+                shutil.rmtree(self.directory)
+            self.directory.mkdir(parents=True)
+        except Exception as e:
+            self.logger.error(f"Error clearing cache: {e}")
+
+    def get_size(self) -> int:
+        """Get current cache size in bytes.
         
-        # Clear memory cache
-        self._memory_cache.clear()
-        self._memory_ttls.clear()
-        
-        # Reset stats
-        self.stats = {
-            'hits': 0,
-            'misses': 0,
-            'errors': 0,
-            'invalidations': 0,
-            'evictions': 0,
-            'expirations': 0,
-            'memory_hits': 0,
-            'memory_misses': 0,
-            'provider_stats': {},
-            'cache_size': 0,
-            'hit_ratio': 0.0
-        }
-        
-        # Reset provider stats
-        for prov in ['grok', 'openai']:
-            self.stats['provider_stats'][prov] = {
-                'hits': 0,
-                'misses': 0,
-                'errors': 0,
-                'invalidations': 0,
-                'expirations': 0
-            }
-    
-    def cleanup(self, max_age: Optional[int] = None, provider: Optional[str] = None) -> None:
-        """Clean up old cache entries.
-        
-        Args:
-            max_age: Maximum age in seconds
-            provider: Optional provider to clean
+        Returns:
+            Cache size in bytes
         """
-        if not self.cache_dir:
-            return
-            
-        current_time = time.time()
-        
-        def clean_provider(prov: str) -> None:
-            provider_dir = self.cache_dir / prov
-            if provider_dir.exists():
-                for f in provider_dir.glob('*.json'):
-                    try:
-                        if max_age and (current_time - f.stat().st_mtime) > max_age:
-                            f.unlink()
-                            self.stats['expirations'] += 1
-                    except OSError:
-                        self.stats['errors'] += 1
-        
-        if provider:
-            clean_provider(provider)
-        else:
-            for prov in ['grok', 'openai']:
-                clean_provider(prov)
-    
+        try:
+            return sum(f.stat().st_size for f in self.directory.glob('**/*') if f.is_file())
+        except Exception as e:
+            self.logger.error(f"Error getting cache size: {e}")
+            return 0
+
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics.
         
         Returns:
-            Dictionary of cache statistics
+            Dictionary containing cache statistics
         """
-        # Update cache size
-        self.stats['cache_size'] = self._get_cache_size()
-        
-        # Update hit ratio
-        total = self.stats['hits'] + self.stats['misses']
-        if total > 0:
-            self.stats['hit_ratio'] = self.stats['hits'] / total
-        
-        return self.stats
-    
-    def _generate_content_key(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Generate cache key from content and metadata.
-        
-        Args:
-            content: Content to generate key for
-            metadata: Optional metadata to include in key generation
-            
-        Returns:
-            Cache key string
-        """
-        key_parts = [content]
-        if metadata:
-            key_parts.append(json.dumps(metadata, sort_keys=True))
-        
-        combined = '|'.join(key_parts)
-        return hashlib.sha256(combined.encode()).hexdigest()
-    
-    def cache_content(self, content: str, metadata: Optional[Dict[str, Any]] = None, ttl: Optional[int] = None) -> str:
-        """Cache processed content with metadata.
-        
-        Args:
-            content: Content to cache
-            metadata: Optional metadata to store with content
-            ttl: Optional time-to-live in seconds
-            
-        Returns:
-            Cache key for the stored content
-        """
-        key = self._generate_content_key(content, metadata)
-        cache_data = {
-            'content': content,
-            'metadata': metadata or {},
-            'timestamp': time.time()
-        }
-        
-        # Store in memory cache
-        memory_key = f"content:{key}"
-        self._memory_cache[memory_key] = cache_data
-        self._memory_ttls[memory_key] = time.time() + (ttl or self.default_ttl)
-        
-        # Enforce memory cache size
-        while len(self._memory_cache) > self.memory_entries:
-            oldest_key = next(iter(self._memory_cache))
-            del self._memory_cache[oldest_key]
-            del self._memory_ttls[oldest_key]
-            self.stats['evictions'] += 1
-        
-        # Store in file cache
-        if self.cache_dir:
-            cache_path = self._get_cache_path(key, 'content')
-            try:
-                with open(cache_path, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f)
-            except Exception as e:
-                logger.error("Error writing content cache: %s", str(e))
-                self._update_error_stats('content')
-        
-        return key
-    
-    def get_cached_content(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get cached content by key.
-        
-        Args:
-            key: Cache key to retrieve
-            
-        Returns:
-            Dictionary containing content and metadata if found, None otherwise
-        """
-        # Try memory cache first
-        memory_key = f"content:{key}"
-        if memory_key in self._memory_cache:
-            data = self._memory_cache[memory_key]
-            if self._memory_ttls.get(memory_key, float('inf')) > time.time():
-                self.stats['memory_hits'] += 1
-                self.stats['content_hits'] += 1
-                self._update_hit_stats('content')
-                return data
-            else:
-                # Expired
-                del self._memory_cache[memory_key]
-                del self._memory_ttls[memory_key]
-                self.stats['expirations'] += 1
-        else:
-            self.stats['memory_misses'] += 1
-        
-        # Try file cache
         try:
-            cache_path = self._get_cache_path(key, 'content')
-            if not cache_path.exists():
-                self.stats['content_misses'] += 1
-                self._update_miss_stats('content')
-                return None
-            
-            # Check if file is too old
-            if self.default_ttl and (time.time() - cache_path.stat().st_mtime) > self.default_ttl:
-                cache_path.unlink()
-                self.stats['expirations'] += 1
-                self.stats['content_misses'] += 1
-                self._update_miss_stats('content')
-                return None
-            
-            # Load cache data
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # Update memory cache
-            self._memory_cache[memory_key] = data
-            self._memory_ttls[memory_key] = time.time() + self.default_ttl
-            
-            self.stats['content_hits'] += 1
-            self._update_hit_stats('content')
-            return data
-            
+            files = list(self.directory.glob('**/*'))
+            return {
+                'size_bytes': sum(f.stat().st_size for f in files if f.is_file()),
+                'file_count': len([f for f in files if f.is_file()]),
+                'directory_count': len([f for f in files if f.is_dir()]),
+                'oldest_file': min((f.stat().st_mtime for f in files if f.is_file()), default=0),
+                'newest_file': max((f.stat().st_mtime for f in files if f.is_file()), default=0)
+            }
         except Exception as e:
-            logger.error("Error reading content cache: %s", str(e))
-            self._update_error_stats('content')
-            return None
+            self.logger.error(f"Error getting cache stats: {e}")
+            return {}

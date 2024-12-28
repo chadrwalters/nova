@@ -1,12 +1,14 @@
-"""OpenAI utilities."""
+"""OpenAI API utilities."""
 
 import os
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
 import json
+import time
+import asyncio
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
-from ..errors import PipelineError
-from .paths import ensure_directory
+from .file_ops import FileOperationsManager
+from ..errors import APIError
 
 class OpenAICache:
     """Cache for OpenAI API responses."""

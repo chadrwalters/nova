@@ -221,7 +221,7 @@ async def process(
         from ..phases.parse.processor import ParseProcessor
         from ..phases.consolidate.processor import ConsolidateProcessor
         from ..phases.aggregate.processor import AggregateProcessor
-        from ..phases.split.processor import ThreeFileSplitProcessor
+        from ..phases.split.processor import SplitProcessor
         
         pipeline.register_processor('MARKDOWN_PARSE', ParseProcessor(
             ProcessorConfig(output_dir=Path(os.getenv('NOVA_PHASE_MARKDOWN_PARSE'))),
@@ -235,9 +235,13 @@ async def process(
             ProcessorConfig(output_dir=Path(os.getenv('NOVA_PHASE_MARKDOWN_AGGREGATE'))),
             config
         ))
-        pipeline.register_processor('MARKDOWN_SPLIT_THREEFILES', ThreeFileSplitProcessor(
-            split_config,
-            config
+        pipeline.register_processor('MARKDOWN_SPLIT', SplitProcessor(
+            config=split_config,
+            timing=timing_manager,
+            metrics=metrics_tracker,
+            monitoring=monitoring_manager,
+            console=console_logger,
+            pipeline_state=pipeline_state
         ))
         
         # Run pipeline
@@ -411,9 +415,13 @@ async def main():
             ProcessorConfig(output_dir=Path(os.getenv('NOVA_PHASE_MARKDOWN_AGGREGATE'))),
             config
         ))
-        pipeline.register_processor('MARKDOWN_SPLIT_THREEFILES', ThreeFileSplitProcessor(
-            split_config,
-            config
+        pipeline.register_processor('MARKDOWN_SPLIT', SplitProcessor(
+            config=split_config,
+            timing=timing_manager,
+            metrics=metrics_tracker,
+            monitoring=monitoring_manager,
+            console=console_logger,
+            pipeline_state=pipeline_state
         ))
         
         # Run pipeline

@@ -1,10 +1,12 @@
 """Markdown content classifier."""
 
+# Standard library imports
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from ..models.parsed_result import ParsedResult
+# Nova package imports
+from nova.models.parsed_result import ParsedResult
 
 class MarkdownClassifier:
     """Classifies markdown content into different sections."""

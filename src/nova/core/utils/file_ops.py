@@ -1,20 +1,24 @@
 """File operations utilities for Nova."""
 
+# Standard library imports
+import asyncio
+import json
+import logging
 import os
 import shutil
-import asyncio
-import aiofiles
-import logging
-from pathlib import Path
-from typing import Optional, Dict, Any, Union, List, Set
+import time
 from datetime import datetime
 from functools import wraps
-import time
-import psutil
-import json
+from pathlib import Path
+from typing import Optional, Dict, Any, Union, List, Set
 
-from ..errors import FileOperationError
-from ..logging import get_logger
+# Third-party imports
+import aiofiles
+import psutil
+
+# Nova package imports
+from nova.core.errors import FileOperationError
+from nova.core.logging import get_logger
 
 def monitor_performance(operation_name: str):
     """Decorator to monitor performance of file operations.
@@ -398,13 +402,16 @@ class FileOperationsManager:
                 raise FileOperationError(f"Source file still exists after move: {src}")
     
     @monitor_performance('copy')
-    async def copy_file(self, src: Union[str, Path], dst: Union[str, Path], overwrite: bool = False) -> None:
+    async def copy_file(self, src: Union[str, Path], dst: Union[str, Path], overwrite: bool = False) -> Path:
         """Copy a file with retry and verification.
         
         Args:
             src: Source file path
             dst: Destination file path
             overwrite: Whether to overwrite existing files
+            
+        Returns:
+            Path to the copied file
             
         Raises:
             FileOperationError: If copy fails or manager not initialized
@@ -428,19 +435,15 @@ class FileOperationsManager:
             
             # Copy file with retry
             async def _do_copy():
-                # Use shutil for large files, aiofiles for small files
-                if src_path.stat().st_size > 10 * 1024 * 1024:  # 10MB
-                    await asyncio.to_thread(shutil.copy2, src_path, dst_path)
-                else:
-                    async with aiofiles.open(src_path, 'rb') as fsrc:
-                        async with aiofiles.open(dst_path, 'wb') as fdst:
-                            await fdst.write(await fsrc.read())
+                await asyncio.to_thread(shutil.copy2, src_path, dst_path)
             
             await self._retry_operation(_do_copy)
             
             # Verify copy if configured
             if self.config['validation']['verify_copies']:
                 await self._verify_operation(src_path, dst_path, 'copy')
+            
+            return dst_path
             
         except Exception as e:
             self.metrics['errors']['copy_errors'] += 1
@@ -621,4 +624,121 @@ class FileOperationsManager:
         except Exception as e:
             raise FileOperationError(f"Failed to read file {file_path}: {str(e)}") from e
         finally:
-            await self._complete_operation() 
+            await self._complete_operation()
+    
+    def get_relative_path(self, path: Union[str, Path], base: Union[str, Path]) -> Path:
+        """Get relative path.
+        
+        Args:
+            path: Path to make relative
+            base: Base path
+            
+        Returns:
+            Relative path
+            
+        Raises:
+            FileOperationError: If path cannot be made relative
+        """
+        try:
+            path = Path(path)
+            base = Path(base)
+            return path.relative_to(base)
+        except Exception as e:
+            raise FileOperationError(f"Failed to get relative path: {str(e)}")
+    
+    def get_file_size(self, path: Union[str, Path]) -> int:
+        """Get file size.
+        
+        Args:
+            path: Path to file
+            
+        Returns:
+            File size in bytes
+            
+        Raises:
+            FileOperationError: If file size cannot be determined
+        """
+        try:
+            path = Path(path)
+            return path.stat().st_size
+        except Exception as e:
+            raise FileOperationError(f"Failed to get file size: {str(e)}")
+    
+    def ensure_directory(self, directory: Union[str, Path]) -> Path:
+        """Ensure a directory exists, creating it if necessary.
+        
+        Args:
+            directory: Directory path to ensure exists
+            
+        Returns:
+            Path to the directory
+            
+        Raises:
+            FileOperationError: If directory cannot be created
+        """
+        try:
+            directory = Path(directory)
+            directory.mkdir(parents=True, exist_ok=True)
+            return directory
+        except Exception as e:
+            raise FileOperationError(f"Failed to create directory: {str(e)}")
+    
+    @monitor_performance('write')
+    async def write_file(self, file_path: Union[str, Path], content: str) -> Path:
+        """Write content to file asynchronously.
+        
+        Args:
+            file_path: Path to file
+            content: Content to write
+            
+        Returns:
+            Path to the written file
+            
+        Raises:
+            FileOperationError: If write fails or manager not initialized
+        """
+        if not self._initialized:
+            raise FileOperationError("FileOperationsManager not initialized. Use async with context.")
+            
+        await self._track_operation()
+        try:
+            file_path = Path(file_path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+                await f.write(content)
+            
+            return file_path
+            
+        except Exception as e:
+            raise FileOperationError(f"Failed to write file {file_path}: {str(e)}") from e
+        finally:
+            await self._complete_operation()
+    
+    def write_file_sync(self, file_path: Union[str, Path], content: str) -> Path:
+        """Write content to file synchronously.
+        
+        Args:
+            file_path: Path to file
+            content: Content to write
+            
+        Returns:
+            Path to the written file
+            
+        Raises:
+            FileOperationError: If write fails or manager not initialized
+        """
+        if not self._initialized:
+            raise FileOperationError("FileOperationsManager not initialized. Use async with context.")
+            
+        try:
+            file_path = Path(file_path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            return file_path
+            
+        except Exception as e:
+            raise FileOperationError(f"Failed to write file {file_path}: {str(e)}") 

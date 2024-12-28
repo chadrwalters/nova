@@ -188,7 +188,7 @@ def main(
                         "markdown_split": {
                             "description": "Split aggregated markdown into separate files",
                             "output_dir": os.getenv("NOVA_PHASE_MARKDOWN_SPLIT"),
-                            "processor": "ThreeFileSplitProcessor",
+                            "processor": "SplitProcessor",
                             "enabled": True,
                             "handlers": [
                                 {

@@ -1,8 +1,11 @@
 """Base configuration classes for Nova document processor."""
 
-from typing import Dict, Any, List, Optional, Union
-from pydantic import BaseModel, Field, model_validator
+# Standard library imports
 from pathlib import Path
+from typing import Dict, Any, List, Optional, Union
+
+# Third-party imports
+from pydantic import BaseModel, Field, model_validator
 
 class HandlerConfig(BaseModel):
     """Configuration for a handler component."""
@@ -41,14 +44,118 @@ class PathConfig(BaseModel):
     processing_dir: Optional[str] = Field(None, description="Processing directory")
     temp_dir: Optional[str] = Field(None, description="Temporary directory")
 
-class ProcessorConfig(BaseModel):
-    """Processor configuration."""
-    name: str = Field(description="Processor name")
-    description: str = Field(description="Processor description")
-    processor: str = Field(description="Processor class name")
-    input_dir: Optional[str] = Field(None, description="Input directory")
-    output_dir: Optional[str] = Field(None, description="Output directory")
-    options: Dict[str, Any] = Field(default_factory=dict, description="Processor options")
+class CacheConfig(BaseModel):
+    """Cache configuration."""
+    enabled: bool = Field(False, description="Whether caching is enabled")
+    directory: str = Field(..., description="Cache directory path")
+    max_size_mb: int = Field(1024, description="Maximum cache size in MB")
+    max_age_days: int = Field(7, description="Maximum age of cache files in days")
+    cleanup_on_start: bool = Field(True, description="Whether to clean up cache on start")
+    cleanup_on_error: bool = Field(True, description="Whether to clean up cache on error")
+
+class ProcessorConfig:
+    """Base processor configuration."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        processor: str,
+        input_dir: Optional[str] = None,
+        output_dir: Optional[str] = None,
+        components: Optional[Dict[str, Any]] = None,
+        cache: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize processor configuration.
+        
+        Args:
+            name: Processor name
+            description: Processor description
+            processor: Processor class name
+            input_dir: Input directory path
+            output_dir: Output directory path
+            components: Component configurations
+            cache: Cache configuration
+        """
+        self.name = name
+        self.description = description
+        self.processor = processor
+        self.input_dir = Path(input_dir) if input_dir else None
+        self.output_dir = Path(output_dir) if output_dir else None
+        self.components = components or {}
+        
+        # Initialize cache configuration
+        if cache and isinstance(cache, dict):
+            self.cache = CacheConfig(**cache)
+        else:
+            self.cache = CacheConfig(
+                enabled=False,
+                directory=str(Path(output_dir) / '.cache') if output_dir else '',
+                max_size_mb=1024,
+                max_age_days=7,
+                cleanup_on_start=True,
+                cleanup_on_error=True
+            )
+
+    def get_component_config(self, component_name: str) -> Dict[str, Any]:
+        """Get component configuration.
+        
+        Args:
+            component_name: Component name
+            
+        Returns:
+            Component configuration dictionary
+        """
+        return self.components.get(component_name, {})
+
+    def get_cache_config(self) -> CacheConfig:
+        """Get cache configuration.
+        
+        Returns:
+            Cache configuration
+        """
+        return self.cache
+
+    def set_cache_config(self, config: Dict[str, Any]):
+        """Set cache configuration.
+        
+        Args:
+            config: Cache configuration dictionary
+        """
+        if isinstance(config, dict):
+            self.cache = CacheConfig(**config)
+        elif isinstance(config, CacheConfig):
+            self.cache = config
+
+    def get_input_dir(self) -> Optional[Path]:
+        """Get input directory path.
+        
+        Returns:
+            Input directory path
+        """
+        return self.input_dir
+
+    def get_output_dir(self) -> Optional[Path]:
+        """Get output directory path.
+        
+        Returns:
+            Output directory path
+        """
+        return self.output_dir
+
+class PhaseConfig(BaseModel):
+    """Phase configuration."""
+    name: str = Field(..., description="Phase name")
+    description: str = Field(..., description="Phase description")
+    output_dir: str = Field(..., description="Output directory path")
+    processor: str = Field(..., description="Processor class name")
+    components: Dict[str, Any] = Field(default_factory=dict, description="Phase-specific component configurations")
+    dependencies: list[str] = Field(default_factory=list, description="Phase dependencies")
+    timing: Dict[str, Any] = Field(default_factory=dict, description="Timing configuration")
+    metrics: Dict[str, Any] = Field(default_factory=dict, description="Metrics configuration")
+    monitoring: Dict[str, Any] = Field(default_factory=dict, description="Monitoring configuration")
+    error_handling: Dict[str, Any] = Field(default_factory=dict, description="Error handling configuration")
+    cache: Optional[CacheConfig] = Field(None, description="Phase-specific cache configuration")
 
 class PipelineConfig(BaseModel):
     """Pipeline configuration."""
@@ -60,6 +167,7 @@ class PipelineConfig(BaseModel):
     log_level: str = Field("INFO", description="Logging level")
     phases: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Pipeline phases")
     options: Dict[str, Any] = Field(default_factory=dict, description="Pipeline options")
+    cache: Optional[CacheConfig] = Field(None, description="Global cache configuration")
 
     @model_validator(mode='before')
     @classmethod
@@ -93,6 +201,11 @@ class PipelineConfig(BaseModel):
         for key in ['input_dir', 'output_dir', 'processing_dir', 'temp_dir', 'cache_dir']:
             if key in values and values[key] is not None:
                 values[key] = str(values[key])
+
+        # Extract cache configuration
+        if 'pipeline' in values and isinstance(values['pipeline'], dict):
+            if 'cache' in values['pipeline']:
+                values['cache'] = values['pipeline'].pop('cache')
 
         return values
 
@@ -218,13 +331,6 @@ class OpenAIConfig(BaseModel):
     max_tokens: int = 500
     temperature: float = 0.7
     retry: Optional[Dict[str, Any]] = None
-
-class CacheConfig(BaseModel):
-    """Cache configuration."""
-    enabled: bool = True
-    max_size: int = 1073741824  # 1GB
-    max_age: int = 2592000      # 30 days
-    cleanup_interval: int = 3600 # 1 hour
 
 class FormatConfig(BaseModel):
     """Format configuration."""

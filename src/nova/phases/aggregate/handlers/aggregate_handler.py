@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List, Set
 
 from nova.core.models.result import ProcessingResult
 from nova.phases.core.base_handler import BaseHandler, HandlerResult
-from nova.core.utils.monitoring import MonitoringManager
+from nova.core.utils.metrics import MonitoringManager
 from nova.core.models.state import HandlerState
 
 

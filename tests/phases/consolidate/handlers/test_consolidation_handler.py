@@ -1,144 +1,227 @@
-"""Tests for the consolidation handler."""
+"""Tests for the ConsolidationHandler."""
 
-import pytest
-from pathlib import Path
-import tempfile
+# Standard library imports
 import os
-import shutil
-from typing import Dict, Any
+from pathlib import Path
 
-from nova.phases.consolidate.handlers.consolidation_handler import ConsolidationHandler
+# Third-party imports
+import pytest
+from rich.console import Console
+
+# Nova package imports
 from nova.core.models.result import ProcessingResult
+from nova.core.pipeline.pipeline_state import PipelineState
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.monitoring import MonitoringManager
+from nova.core.utils.timing import TimingManager
+from nova.phases.consolidate.handlers import ConsolidationHandler
 
+# Mock classes for testing
+class MockMonitoringManager:
+    """Mock monitoring manager for testing."""
+    def __init__(self):
+        self.metrics = {}
+        self.errors = []
+        
+    def record_metric(self, name: str, value: float) -> None:
+        """Record a metric."""
+        self.metrics[name] = value
+        
+    def record_error(self, error: str) -> None:
+        """Record an error."""
+        self.errors.append(error)
+        
+    def async_capture_resource_usage(self) -> None:
+        """Capture resource usage."""
+        pass
 
-@pytest.fixture
-def test_files():
-    """Create test files."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Create input directory
-        input_dir = Path(temp_dir) / "input"
-        input_dir.mkdir()
+class MockPipelineState:
+    """Mock pipeline state for testing."""
+    def __init__(self):
+        self.state = {}
         
-        # Create output directory
-        output_dir = Path(temp_dir) / "output"
-        output_dir.mkdir()
+    def get(self, key: str, default=None):
+        """Get state value."""
+        return self.state.get(key, default)
         
-        # Create test markdown file
-        test_md = input_dir / "test.md"
-        test_md.write_text("""# Test Document
-        
-This is a test document with an image:
-![Test Image](images/test.png)
-
-And a link:
-[Test Link](docs/test.pdf)
-""")
-        
-        # Create test image
-        image_dir = input_dir / "images"
-        image_dir.mkdir()
-        test_image = image_dir / "test.png"
-        test_image.write_bytes(b'test image content')
-        
-        # Create test document
-        doc_dir = input_dir / "docs"
-        doc_dir.mkdir()
-        test_doc = doc_dir / "test.pdf"
-        test_doc.write_bytes(b'test document content')
-        
-        yield {
-            "input_dir": input_dir,
-            "output_dir": output_dir,
-            "test_md": test_md,
-            "test_image": test_image,
-            "test_doc": test_doc
-        }
-
+    def set(self, key: str, value: any) -> None:
+        """Set state value."""
+        self.state[key] = value
 
 @pytest.fixture
-def handler(test_files):
-    """Create handler instance with test configuration."""
+def test_data_dir():
+    """Get the test data directory."""
+    return Path("tests/data/consolidate")
+
+@pytest.fixture
+def output_dir(tmp_path):
+    """Create a temporary output directory."""
+    output = tmp_path / "output"
+    output.mkdir(exist_ok=True)
+    return output
+
+@pytest.fixture
+def monitoring():
+    """Create a mock monitoring manager."""
+    return MockMonitoringManager()
+
+@pytest.fixture
+def pipeline_state():
+    """Create a mock pipeline state."""
+    return MockPipelineState()
+
+@pytest.fixture
+def handler(monitoring, pipeline_state, output_dir):
+    """Create a ConsolidationHandler instance."""
     config = {
-        "output_dir": str(test_files["output_dir"])
+        'input_dir': 'input',
+        'output_dir': str(output_dir),
+        'base_dir': '.',
+        'pipeline_config': {},
+        'processor_config': {}
     }
-    return ConsolidationHandler(config)
-
+    return ConsolidationHandler(
+        config=config,
+        console=Console(force_terminal=False)
+    )
 
 @pytest.mark.asyncio
-async def test_can_handle(handler, test_files):
-    """Test file type detection."""
-    # Test markdown file
-    assert await handler.can_handle(test_files["test_md"])
+async def test_can_handle():
+    """Test can_handle method."""
+    config = {
+        'input_dir': 'input',
+        'output_dir': 'output',
+        'base_dir': '.',
+        'pipeline_config': {},
+        'processor_config': {}
+    }
+    handler = ConsolidationHandler(
+        config=config,
+        console=Console(force_terminal=False)
+    )
     
-    # Test non-markdown file
-    assert not await handler.can_handle(test_files["test_image"])
-    
-    # Test non-existent file
-    non_existent = test_files["input_dir"] / "nonexistent.md"
-    assert not await handler.can_handle(non_existent)
-    assert handler.monitoring.metrics["errors"] > 0
-    assert len(handler.state.errors) > 0
-
+    assert await handler.can_handle(Path("test.md"))
+    assert not await handler.can_handle(Path("test.txt"))
+    assert not await handler.can_handle(Path("test.py"))
 
 @pytest.mark.asyncio
-async def test_find_attachments(handler, test_files):
-    """Test finding attachments in markdown content."""
-    content = test_files["test_md"].read_text()
-    attachments = handler._find_attachments(content)
-    
-    assert len(attachments) == 2
-    assert "images/test.png" in attachments
-    assert "docs/test.pdf" in attachments
+async def test_process_basic_markdown(handler, test_data_dir, output_dir):
+    """Test processing a basic markdown file."""
+    # Create test file
+    test_file = test_data_dir / "basic.md"
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text("""# Test Document
 
+## Summary
+This is a test summary.
+
+## Raw Notes
+These are raw notes.
+
+## Attachments
+- test.png
+""")
+    
+    # Process the file
+    result = await handler.process(test_file)
+    
+    # Verify success
+    assert result.success
+    assert result.output
+    assert len(result.output_files) > 0
+    
+    # Verify output file exists
+    output_file = output_dir / test_file.name
+    assert output_file.exists()
+    
+    # Verify sections were parsed
+    assert result.metadata
+    assert 'sections' in result.metadata
+    assert len(result.metadata['sections']['summary']) > 0
+    assert len(result.metadata['sections']['raw_notes']) > 0
+    assert len(result.metadata['sections']['attachments']) > 0
 
 @pytest.mark.asyncio
-async def test_copy_attachment(handler, test_files):
-    """Test copying attachments."""
-    # Test valid attachment
-    new_path = handler._copy_attachment(
-        "images/test.png",
-        test_files["input_dir"],
-        test_files["output_dir"]
-    )
-    assert new_path is not None
-    assert (test_files["output_dir"] / "images/test.png").exists()
+async def test_process_multiple_files(handler, test_data_dir, output_dir):
+    """Test processing multiple markdown files."""
+    # Create test files
+    files = []
+    for i in range(3):
+        test_file = test_data_dir / f"test{i}.md"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text(f"""# Test Document {i}
+
+## Summary
+This is test summary {i}.
+
+## Raw Notes
+These are raw notes {i}.
+
+## Attachments
+- test{i}.png
+""")
+        files.append(test_file)
     
-    # Test non-existent attachment
-    new_path = handler._copy_attachment(
-        "nonexistent.png",
-        test_files["input_dir"],
-        test_files["output_dir"]
-    )
-    assert new_path is None
-    assert handler.monitoring.metrics["errors"] > 0
-    assert len(handler.state.errors) > 0
-
-
-def test_find_attachments():
-    """Test finding attachments in content."""
-    handler = ConsolidationHandler()
-    content = "![image](attachments/image.png)\n[doc](attachments/doc.pdf)"
-    attachments = handler._find_attachments(content)
-    assert "attachments/image.png" in attachments
-    assert "attachments/doc.pdf" in attachments
-
-
-def test_validation():
-    """Test result validation."""
-    handler = ConsolidationHandler()
+    # Process files
+    results = []
+    for file in files:
+        result = await handler.process(file)
+        results.append(result)
     
-    valid_result = ProcessingResult(
-        success=True,
-        processed_files=["test.md"],
-        content="# Test\nContent",
-        metadata={"title": "Test"}
-    )
-    assert handler.validate(valid_result)
+    # Verify all succeeded
+    assert all(r.success for r in results)
+    assert all(r.output for r in results)
+    assert all(len(r.output_files) > 0 for r in results)
     
-    invalid_result = ProcessingResult(
-        success=False,
-        processed_files=[],
-        content=None,
-        metadata={}
+    # Verify output files exist
+    for file in files:
+        output_file = output_dir / file.name
+        assert output_file.exists()
+
+@pytest.mark.asyncio
+async def test_process_invalid_file(handler, output_dir):
+    """Test processing an invalid file."""
+    # Process nonexistent file
+    result = await handler.process(Path("nonexistent.md"))
+    
+    # Verify failure
+    assert not result.success
+    assert result.error
+    assert not result.output
+    assert not result.output_files
+
+@pytest.mark.asyncio
+async def test_process_no_output_dir(test_data_dir):
+    """Test processing with no output directory."""
+    # Create handler without output directory
+    config = {
+        'input_dir': 'input',
+        'base_dir': '.',
+        'pipeline_config': {},
+        'processor_config': {}
+    }
+    handler = ConsolidationHandler(
+        config=config,
+        console=Console(force_terminal=False)
     )
-    assert not handler.validate(invalid_result) 
+    
+    # Create test file
+    test_file = test_data_dir / "test.md"
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text("# Test\nThis is a test.")
+    
+    # Process file with nonexistent output dir
+    result = await handler.process(test_file)
+    
+    # Verify failure
+    assert not result.success
+    assert len(result.errors) > 0
+    assert "No output directory specified" in result.errors[0]
+    assert not result.output
+    assert not result.output_files
+
+@pytest.mark.asyncio
+async def test_cleanup(handler):
+    """Test cleanup method."""
+    await handler.cleanup()
+    # No assertions needed - just verify it doesn't raise exceptions 

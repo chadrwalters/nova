@@ -1,16 +1,20 @@
 """Office file handler."""
 
+# Standard library imports
+import asyncio
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
-import asyncio
+
+# Third-party imports
 from rich.console import Console
 
+# Nova package imports
 from nova.core.errors import HandlerError
-from nova.core.logging import get_logger
 from nova.core.handlers.base import BaseHandler
-from nova.core.utils.timing import TimingManager
+from nova.core.logging import get_logger
 from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.timing import TimingManager
 
 logger = get_logger(__name__)
 

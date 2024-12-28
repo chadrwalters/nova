@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+# Exit on error and undefined variables
+set -eu
+
+# Trap errors and interrupts
+trap 'on_error $?' ERR
+trap 'on_interrupt' INT TERM
 
 # Source environment variables
 if [ -f .env ]; then
@@ -11,35 +15,38 @@ else
     exit 1
 fi
 
-# Expand environment variables
-NOVA_BASE_DIR=$(eval echo "$NOVA_BASE_DIR")
-NOVA_INPUT_DIR=$(eval echo "$NOVA_INPUT_DIR")
-NOVA_OUTPUT_DIR=$(eval echo "$NOVA_OUTPUT_DIR")
-NOVA_PROCESSING_DIR=$(eval echo "$NOVA_PROCESSING_DIR")
-NOVA_TEMP_DIR=$(eval echo "$NOVA_TEMP_DIR")
-NOVA_STATE_DIR=$(eval echo "$NOVA_STATE_DIR")
-NOVA_PHASE_MARKDOWN_PARSE=$(eval echo "$NOVA_PHASE_MARKDOWN_PARSE")
-NOVA_PHASE_MARKDOWN_CONSOLIDATE=$(eval echo "$NOVA_PHASE_MARKDOWN_CONSOLIDATE")
-NOVA_PHASE_MARKDOWN_AGGREGATE=$(eval echo "$NOVA_PHASE_MARKDOWN_AGGREGATE")
-NOVA_PHASE_MARKDOWN_SPLIT=$(eval echo "$NOVA_PHASE_MARKDOWN_SPLIT")
-NOVA_ORIGINAL_IMAGES_DIR=$(eval echo "$NOVA_ORIGINAL_IMAGES_DIR")
-NOVA_PROCESSED_IMAGES_DIR=$(eval echo "$NOVA_PROCESSED_IMAGES_DIR")
-NOVA_IMAGE_METADATA_DIR=$(eval echo "$NOVA_IMAGE_METADATA_DIR")
-NOVA_IMAGE_CACHE_DIR=$(eval echo "$NOVA_IMAGE_CACHE_DIR")
-NOVA_OFFICE_ASSETS_DIR=$(eval echo "$NOVA_OFFICE_ASSETS_DIR")
-NOVA_OFFICE_TEMP_DIR=$(eval echo "$NOVA_OFFICE_TEMP_DIR")
-
-# Logging utilities
+# Logging utilities with timestamps
 log_info() {
-    echo "[INFO] $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $1"
 }
 
 log_error() {
-    echo "[ERROR] $1" >&2
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2
 }
 
 log_warning() {
-    echo "[WARNING] $1" >&2
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] $1" >&2
+}
+
+log_debug() {
+    if [ "${NOVA_LOG_LEVEL:-INFO}" = "DEBUG" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DEBUG] $1"
+    fi
+}
+
+# Error handling
+on_error() {
+    local exit_code=$1
+    log_error "Script failed with exit code: $exit_code"
+    # Cleanup any temporary resources
+    clean_temp_files force
+    exit "$exit_code"
+}
+
+on_interrupt() {
+    log_warning "Received interrupt signal"
+    clean_temp_files force
+    exit 130
 }
 
 # Get directory size in MB
@@ -75,7 +82,7 @@ verify_dir() {
     local min_free="${5:-}"    # Optional min free space in MB
     local cleanup_age="${6:-}" # Optional cleanup age in days
     
-    echo "DEBUG: Verifying directory: '$dir'"
+    log_debug "Verifying directory: '$dir'"
     
     if [ -z "$dir" ]; then
         log_error "Empty directory path provided"
@@ -126,16 +133,52 @@ verify_dir() {
     if [ -n "$cleanup_age" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             # macOS: Use find with -mtime
-            find "$dir" -type f -mtime +"$cleanup_age" -delete
+            find "$dir" -type f -mtime +"$cleanup_age" -delete 2>/dev/null || true
         else
             # Linux: Use find with -atime
-            find "$dir" -type f -atime +"$cleanup_age" -delete
+            find "$dir" -type f -atime +"$cleanup_age" -delete 2>/dev/null || true
         fi
+    fi
+}
+
+# Clean state files
+clean_state() {
+    log_info "Cleaning state files..."
+    
+    # Clean state directory
+    if [ -d "$NOVA_STATE_DIR" ]; then
+        log_info "Cleaning state directory: $NOVA_STATE_DIR"
+        # Remove all .state files but keep directory structure
+        find "$NOVA_STATE_DIR" -type f -name "*.state" -delete 2>/dev/null || true
+        # Remove empty directories
+        find "$NOVA_STATE_DIR" -type d -empty -delete 2>/dev/null || true
+    fi
+    
+    # Clean cache files older than 7 days
+    if [ -d "$NOVA_IMAGE_CACHE_DIR" ]; then
+        log_info "Cleaning old cache files..."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            find "$NOVA_IMAGE_CACHE_DIR" -type f -mtime +7 -delete 2>/dev/null || true
+        else
+            find "$NOVA_IMAGE_CACHE_DIR" -type f -atime +7 -delete 2>/dev/null || true
+        fi
+    fi
+}
+
+# Clean monitoring files
+clean_monitoring() {
+    log_info "Cleaning monitoring files..."
+    
+    # Clean monitoring files from temp directory
+    if [ -d "$NOVA_TEMP_DIR" ]; then
+        find "$NOVA_TEMP_DIR" -type f -name "*.monitor" -delete 2>/dev/null || true
+        find "$NOVA_TEMP_DIR" -type f -name "*.metrics" -delete 2>/dev/null || true
     fi
 }
 
 # Clean temporary files
 clean_temp_files() {
+    local force="${1:-false}"
     log_info "Cleaning temporary files and processing directories..."
     
     # Clean temp directories with size and age limits
@@ -167,7 +210,16 @@ clean_temp_files() {
     do
         if [ -d "$dir" ]; then
             log_info "Cleaning directory: $dir"
-            rm -rf "${dir:?}"/* 2>/dev/null || true
+            if [ "$force" = "force" ]; then
+                rm -rf "${dir:?}"/* 2>/dev/null || true
+            else
+                # Only clean files older than 1 day
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    find "$dir" -type f -mtime +1 -delete 2>/dev/null || true
+                else
+                    find "$dir" -type f -atime +1 -delete 2>/dev/null || true
+                fi
+            fi
         fi
     done
     
@@ -185,19 +237,69 @@ clean_temp_files() {
     log_info "All processing directories cleaned"
 }
 
+# Verify all required directories exist
+verify_directories() {
+    log_info "Verifying directory structure..."
+    
+    # Verify all directories
+    local dirs=(
+        "$NOVA_BASE_DIR"
+        "$NOVA_INPUT_DIR"
+        "$NOVA_OUTPUT_DIR"
+        "$NOVA_PROCESSING_DIR"
+        "$NOVA_TEMP_DIR"
+        "$NOVA_STATE_DIR"
+        "$NOVA_PHASE_MARKDOWN_PARSE"
+        "$NOVA_PHASE_MARKDOWN_CONSOLIDATE"
+        "$NOVA_PHASE_MARKDOWN_AGGREGATE"
+        "$NOVA_PHASE_MARKDOWN_SPLIT"
+        "$NOVA_ORIGINAL_IMAGES_DIR"
+        "$NOVA_PROCESSED_IMAGES_DIR"
+        "$NOVA_IMAGE_METADATA_DIR"
+        "$NOVA_IMAGE_CACHE_DIR"
+        "$NOVA_OFFICE_ASSETS_DIR"
+        "$NOVA_OFFICE_TEMP_DIR"
+    )
+    
+    for dir in "${dirs[@]}"; do
+        if ! verify_dir "$dir" true 755; then
+            log_error "Failed to verify directory: $dir"
+            return 1
+        fi
+    done
+    
+    log_info "Directory structure verified"
+}
+
 # Main execution
 main() {
-    local command="${1:-create}"
+    local command="${1:-clean}"
+    
+    log_info "Starting cleanup with command: $command"
     
     case "$command" in
         clean)
+            verify_directories
             clean_temp_files
+            clean_state
+            clean_monitoring
+            ;;
+        force-clean)
+            verify_directories
+            clean_temp_files force
+            clean_state
+            clean_monitoring
+            ;;
+        verify)
+            verify_directories
             ;;
         *)
-            echo "Usage: $0 [clean]"
+            echo "Usage: $0 [clean|force-clean|verify]"
             exit 1
             ;;
     esac
+    
+    log_info "Cleanup completed successfully"
 }
 
 # Execute main function

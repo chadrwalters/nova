@@ -1,13 +1,17 @@
 """Image handling components for Nova processors."""
 
+# Standard library imports
+import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-import shutil
+
+# Third-party imports
 from PIL import Image
 
-from .base import BaseHandler
-from ..errors import ProcessingError, ImageProcessingError
-from ..image_processor import ImageProcessor
+# Nova package imports
+from nova.core.errors import ProcessingError, ImageProcessingError
+from nova.core.handlers.base import BaseHandler
+from nova.core.image_processor import ImageProcessor
 
 class ImageHandler(BaseHandler):
     """Handles image processing and optimization."""

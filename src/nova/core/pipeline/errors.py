@@ -7,20 +7,20 @@ class PipelineError(Exception):
 
 
 class ValidationError(PipelineError):
-    """Raised when validation fails."""
+    """Error raised when validation fails."""
     pass
 
 
 class ProcessingError(PipelineError):
-    """Raised when processing fails."""
+    """Error raised when processing fails."""
     pass
 
 
 class ConfigurationError(PipelineError):
-    """Raised when configuration is invalid."""
+    """Error raised when configuration is invalid."""
     pass
 
 
 class DependencyError(PipelineError):
-    """Raised when dependencies are invalid."""
+    """Error raised when a dependency is missing or invalid."""
     pass 
