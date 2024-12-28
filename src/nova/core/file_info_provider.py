@@ -1,10 +1,13 @@
 """File information provider module."""
 
+# Standard library imports
 import os
-import magic
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional
-from dataclasses import dataclass
+
+# Third-party imports
+import magic
 
 @dataclass
 class FileInfo:

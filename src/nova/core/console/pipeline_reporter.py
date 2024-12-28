@@ -9,8 +9,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, BarColumn
 
-from nova.core.utils.timing import TimingManager
-from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.metrics import TimingManager, MetricsTracker
 from nova.core.utils.error_tracker import ErrorTracker
 from nova.core.console.logger import ConsoleLogger
 from nova.core.console.color_scheme import ColorScheme

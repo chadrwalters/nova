@@ -1,65 +1,145 @@
-"""Pipeline state management."""
-from typing import Dict, Any, Optional
+"""Core pipeline state management."""
+
 from pathlib import Path
-from nova.core.pipeline.errors import ValidationError, ProcessingError
-from nova.core.pipeline.pipeline_config import PipelineConfig
-from nova.core.pipeline.pipeline_phase import PipelinePhase
-from nova.core.console.pipeline_reporter import PipelineReporter
+from typing import Dict, Any, Optional, List, Set
+import json
 
 
 class PipelineState:
-    """Pipeline state manager."""
-
-    def __init__(self, config: PipelineConfig):
+    """Class for managing pipeline state."""
+    
+    def __init__(self, state_file: Optional[Path] = None):
         """Initialize pipeline state.
         
         Args:
-            config: Pipeline configuration
+            state_file: Optional path to state file
         """
-        self.config = config
-        self.current_phase: Optional[PipelinePhase] = None
-        self.phase_states: Dict[str, Dict[str, Any]] = {}
-        self.reporter = PipelineReporter()
-
-    def start_phase(self, phase: PipelinePhase) -> None:
-        """Start a phase.
+        self.state_file = state_file
+        self.state: Dict[str, Any] = {}
+        self.processed_files: Set[str] = set()
+        self.failed_files: Set[str] = set()
+        self.skipped_files: Set[str] = set()
+        
+        if state_file and state_file.exists():
+            self.load_state()
+            
+    def load_state(self) -> None:
+        """Load state from file."""
+        if not self.state_file:
+            return
+            
+        try:
+            with open(self.state_file, "r") as f:
+                data = json.load(f)
+                self.state = data.get("state", {})
+                self.processed_files = set(data.get("processed_files", []))
+                self.failed_files = set(data.get("failed_files", []))
+                self.skipped_files = set(data.get("skipped_files", []))
+        except Exception as e:
+            print(f"Failed to load state: {str(e)}")
+            
+    def save_state(self) -> None:
+        """Save state to file."""
+        if not self.state_file:
+            return
+            
+        try:
+            data = {
+                "state": self.state,
+                "processed_files": list(self.processed_files),
+                "failed_files": list(self.failed_files),
+                "skipped_files": list(self.skipped_files)
+            }
+            with open(self.state_file, "w") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save state: {str(e)}")
+            
+    def mark_processed(self, file_path: str) -> None:
+        """Mark a file as processed.
         
         Args:
-            phase: The phase to start
+            file_path: Path to processed file
         """
-        self.current_phase = phase
-        self.phase_states[phase.name] = {
-            "status": "running",
-            "retry_count": 0,
-            "error": None
-        }
-        self.reporter.start_phase(phase.name, 0)
-
-    def complete_phase(self, phase: PipelinePhase) -> None:
-        """Complete a phase.
+        self.processed_files.add(file_path)
+        self.save_state()
+        
+    def mark_failed(self, file_path: str) -> None:
+        """Mark a file as failed.
         
         Args:
-            phase: The phase to complete
+            file_path: Path to failed file
         """
-        self.current_phase = None
-        self.phase_states[phase.name]["status"] = "completed"
-        self.reporter.end_phase(phase.name)
-
-    def handle_phase_error(self, phase: PipelinePhase, error: Exception) -> None:
-        """Handle a phase error.
+        self.failed_files.add(file_path)
+        self.save_state()
+        
+    def mark_skipped(self, file_path: str) -> None:
+        """Mark a file as skipped.
         
         Args:
-            phase: The phase that errored
-            error: The error that occurred
+            file_path: Path to skipped file
         """
-        phase_state = self.phase_states[phase.name]
-        phase_state["error"] = error
-
-        # Check if retries are enabled and available
-        max_retries = phase.error_handling.get("max_retries", 0)
-        phase_state["retry_count"] = phase_state.get("retry_count", 0) + 1
-
-        if phase_state["retry_count"] < max_retries:
-            phase_state["status"] = "retrying"
-        else:
-            phase_state["status"] = "error" 
+        self.skipped_files.add(file_path)
+        self.save_state()
+        
+    def is_processed(self, file_path: str) -> bool:
+        """Check if a file has been processed.
+        
+        Args:
+            file_path: Path to check
+            
+        Returns:
+            True if file has been processed
+        """
+        return file_path in self.processed_files
+        
+    def is_failed(self, file_path: str) -> bool:
+        """Check if a file has failed processing.
+        
+        Args:
+            file_path: Path to check
+            
+        Returns:
+            True if file has failed
+        """
+        return file_path in self.failed_files
+        
+    def is_skipped(self, file_path: str) -> bool:
+        """Check if a file has been skipped.
+        
+        Args:
+            file_path: Path to check
+            
+        Returns:
+            True if file has been skipped
+        """
+        return file_path in self.skipped_files
+        
+    def get_state(self, key: str) -> Any:
+        """Get state value.
+        
+        Args:
+            key: State key
+            
+        Returns:
+            State value or None if not found
+        """
+        return self.state.get(key)
+        
+    def set_state(self, key: str, value: Any) -> None:
+        """Set state value.
+        
+        Args:
+            key: State key
+            value: State value
+        """
+        self.state[key] = value
+        self.save_state()
+        
+    def clear_state(self) -> None:
+        """Clear all state."""
+        self.state.clear()
+        self.processed_files.clear()
+        self.failed_files.clear()
+        self.skipped_files.clear()
+        self.save_state() 

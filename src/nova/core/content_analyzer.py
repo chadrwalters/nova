@@ -1,10 +1,12 @@
 """Content analyzer for detecting and categorizing markdown content."""
 
+# Standard library imports
 import re
-from typing import Dict, Any, List, Tuple, Optional
 from enum import Enum
+from typing import Dict, Any, List, Tuple, Optional
 
-from .logging import get_logger
+# Nova package imports
+from nova.core.logging import get_logger
 
 logger = get_logger(__name__)
 

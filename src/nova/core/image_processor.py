@@ -1,17 +1,21 @@
 """Image processing module."""
 
-import os
-import time
+# Standard library imports
 import base64
+import io
 import logging
+import os
+import subprocess
+import tempfile
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
-from PIL import Image, ExifTags
-import tempfile
-import subprocess
-import io
 
+# Third-party imports
+from PIL import Image, ExifTags
+
+# Nova package imports
 from nova.core.logging import get_logger
 from nova.core.providers.grok_provider import GrokProvider
 

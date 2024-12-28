@@ -1,5 +1,5 @@
 """Handlers for split phase."""
 
-from .split_handler import SplitHandler
+from nova.phases.split.handlers.split_handler import SplitHandler
 
 __all__ = ['SplitHandler'] 

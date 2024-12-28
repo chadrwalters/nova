@@ -1,16 +1,20 @@
 """Core models for Nova document processor."""
 
-from typing import Dict, Any, List, Optional, Annotated
+# Standard library imports
 from pathlib import Path
+from typing import Dict, Any, List, Optional, Annotated
+
+# Third-party imports
 from pydantic import BaseModel, Field, ConfigDict
 
-from ..config.base import PathConfig
-from ..config.processor import ProcessorConfig
-from ..config.logging import LoggingConfig
-from ..config.openai import OpenAIConfig
-from ..config.retry import RetryConfig
-from ..config.cache import CacheConfig
-from .document import Document
+# Nova package imports
+from nova.core.config.base import PathConfig
+from nova.core.config.cache import CacheConfig
+from nova.core.config.logging import LoggingConfig
+from nova.core.config.openai import OpenAIConfig
+from nova.core.config.processor import ProcessorConfig
+from nova.core.config.retry import RetryConfig
+from nova.core.models.document import Document
 
 __all__ = [
     'Document',

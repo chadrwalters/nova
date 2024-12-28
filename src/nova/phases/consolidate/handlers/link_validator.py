@@ -1,11 +1,13 @@
 """Handler for validating links in markdown files."""
 
+# Standard library imports
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import re
 
-from ....core.base_handler import BaseHandler
-from ....core.models.result import ProcessingResult
+# Nova package imports
+from nova.core.base_handler import BaseHandler
+from nova.core.models.result import ProcessingResult
 
 
 class LinkValidator(BaseHandler):
@@ -37,43 +39,70 @@ class LinkValidator(BaseHandler):
         """
         return file_path.suffix.lower() == '.md'
     
-    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+    async def process(self, file_path: Path, context: Dict[str, Any]) -> ProcessingResult:
         """Process a markdown file.
         
         Args:
             file_path: Path to the file to process
-            context: Optional processing context
+            context: Processing context
             
         Returns:
             ProcessingResult containing processed content and metadata
         """
         try:
-            # Read input file
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Initialize result
+            result = ProcessingResult()
+            result.input_file = file_path
+            result.output_dir = Path(context.get('output_dir', ''))
             
-            # Find all links
+            # Read content
+            content = file_path.read_text()
+            
+            # Find and validate links
             links = self._find_links(content)
-            
-            # Validate links
+            valid_links = []
             invalid_links = []
+            
             for link in links:
-                if not self._validate_link(link):
+                if self._validate_link(link):
+                    valid_links.append(link)
+                else:
                     invalid_links.append(link)
             
-            # Create result
-            result = ProcessingResult(
-                success=len(invalid_links) == 0,
-                content=content,
-                metadata={'invalid_links': invalid_links}
-            )
-            result.add_processed_file(file_path)
+            # Create output file
+            output_file = result.output_dir / file_path.name
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(content)
+            
+            # Update result
+            result.success = len(invalid_links) == 0
+            result.output_files.append(output_file)
+            result.content = content
+            result.metadata = {
+                'links': {
+                    'total': len(links),
+                    'valid': len(valid_links),
+                    'invalid': len(invalid_links),
+                    'valid_links': valid_links,
+                    'invalid_links': invalid_links
+                }
+            }
+            
+            # Add errors for invalid links
+            for link in invalid_links:
+                error_msg = f"Invalid link found: {link}"
+                result.errors.append(error_msg)
+                if self.monitoring:
+                    self.monitoring.record_error(error_msg)
             
             return result
             
         except Exception as e:
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            return ProcessingResult(success=False, errors=[error_msg])
+            error_msg = f"Failed to process file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            if self.monitoring:
+                self.monitoring.record_error(error_msg)
+            raise ValidationError(error_msg)
     
     def _find_links(self, content: str) -> List[str]:
         """Find all links in content.

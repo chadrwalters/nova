@@ -1,11 +1,14 @@
 """Handler for classifying markdown content."""
 
+# Standard library imports
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import re
 
-from ....core.base_handler import BaseHandler
-from ....core.models.result import ProcessingResult
+# Nova package imports
+from nova.core.base_handler import BaseHandler
+from nova.core.models.result import ProcessingResult
+from nova.core.exceptions import ValidationError
 
 
 class ClassificationHandler(BaseHandler):
@@ -37,37 +40,54 @@ class ClassificationHandler(BaseHandler):
         """
         return file_path.suffix.lower() == '.md'
     
-    async def process(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+    async def process(self, file_path: Path, context: Dict[str, Any]) -> ProcessingResult:
         """Process a markdown file.
         
         Args:
             file_path: Path to the file to process
-            context: Optional processing context
+            context: Processing context
             
         Returns:
             ProcessingResult containing classified content and metadata
         """
         try:
-            # Read input file
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Initialize result
+            result = ProcessingResult()
+            result.input_file = file_path
+            result.output_dir = Path(context.get('output_dir', ''))
             
-            # Classify content sections
+            # Read content
+            content = file_path.read_text()
+            
+            # Classify sections
             sections = self._classify_sections(content)
             
-            # Create result
-            result = ProcessingResult(
-                success=True,
-                content=content,
-                metadata={'sections': sections}
-            )
-            result.add_processed_file(file_path)
+            # Create output file
+            output_file = result.output_dir / file_path.name
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(content)
+            
+            # Update result
+            result.success = True
+            result.output_files.append(output_file)
+            result.content = content
+            result.metadata = {
+                'sections': sections,
+                'classification': {
+                    'has_summary': bool(sections.get('summary')),
+                    'has_notes': bool(sections.get('raw_notes')),
+                    'has_attachments': bool(sections.get('attachments'))
+                }
+            }
             
             return result
             
         except Exception as e:
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            return ProcessingResult(success=False, errors=[error_msg])
+            error_msg = f"Failed to process file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            if self.monitoring:
+                self.monitoring.record_error(error_msg)
+            raise ValidationError(error_msg)
     
     def _classify_sections(self, content: str) -> Dict[str, List[str]]:
         """Classify content sections.

@@ -1,18 +1,20 @@
 """Office document handlers for Nova."""
 
+# Standard library imports
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from ..config.base import ComponentConfig
-from ..errors import (
+# Nova package imports
+from nova.core.config.base import ComponentConfig
+from nova.core.errors import (
     OfficeProcessingError,
     FileNotFoundError,
     FileOperationError,
     ErrorContext
 )
-from ..logging import get_logger
-from ..utils.retry import async_retry
+from nova.core.logging import get_logger
+from nova.core.utils.retry import async_retry
 
 logger = get_logger(__name__)
 

@@ -1,8 +1,11 @@
 """Text file handler."""
 
+# Standard library imports
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
+# Nova package imports
 from nova.core.pipeline.base_handler import BaseHandler
 from nova.core.pipeline.errors import ValidationError
 from nova.core.pipeline.types import ProcessingResult

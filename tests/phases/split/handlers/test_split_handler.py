@@ -1,14 +1,18 @@
 """Tests for the split handler."""
 
-import pytest
-from pathlib import Path
-import tempfile
+# Standard library imports
 import os
 import shutil
+import tempfile
+from pathlib import Path
 from typing import Dict, Any
 
-from nova.phases.split.handlers.split_handler import SplitHandler
+# Third-party imports
+import pytest
+
+# Nova package imports
 from nova.core.models.result import ProcessingResult
+from nova.phases.split.handlers.split_handler import SplitHandler
 
 
 @pytest.fixture
@@ -148,15 +152,15 @@ def test_validation():
     
     valid_result = ProcessingResult(
         success=True,
-        processed_files=["test.md"],
-        content="# Test\nContent",
+        output="Test content",
+        content="test.md",
         metadata={"title": "Test"}
     )
     assert handler.validate(valid_result)
     
     invalid_result = ProcessingResult(
         success=False,
-        processed_files=[],
+        output=None,
         content=None,
         metadata={}
     )

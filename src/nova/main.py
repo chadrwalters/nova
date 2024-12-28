@@ -18,7 +18,7 @@ from nova.core.logging import get_logger
 from nova.phases.parse.processor import MarkdownParseProcessor
 from nova.phases.consolidate.processor import MarkdownConsolidateProcessor
 from nova.phases.aggregate.processor import MarkdownAggregateProcessor
-from nova.phases.split.processor import ThreeFileSplitProcessor
+from nova.phases.split.processor import SplitProcessor
 from nova.core.config import ProcessorConfig, HandlerConfig, PathConfig, PipelineConfig
 from nova.core.file_info_provider import FileInfoProvider
 
@@ -110,7 +110,7 @@ async def process_files(input_path: Path, output_path: Path, analyze_images: boo
                     name='MARKDOWN_SPLIT',
                     description='Split aggregated markdown into summary, raw notes, and attachments',
                     output_dir=str(Path(os.path.expandvars(os.environ.get('NOVA_PHASE_MARKDOWN_SPLIT', '')))),
-                    processor='ThreeFileSplitProcessor'
+                    processor='SplitProcessor'
                 )
             ]
         )
@@ -130,9 +130,13 @@ async def process_files(input_path: Path, output_path: Path, analyze_images: boo
             pipeline_config=pipeline_config
         )
         
-        split_processor = ThreeFileSplitProcessor(
-            processor_config=pipeline_config.phases[3],
-            pipeline_config=pipeline_config
+        split_processor = SplitProcessor(
+            config=pipeline_config.phases[3],
+            timing=timing_manager,
+            metrics=metrics_tracker,
+            monitoring=monitoring_manager,
+            console=console_logger,
+            pipeline_state=pipeline_state
         )
         
         # Process files
@@ -260,7 +264,7 @@ async def main() -> int:
                 PhaseConfig(
                     name='split',
                     description='Split markdown files',
-                    processor='MarkdownSplitProcessor',
+                    processor='SplitProcessor',
                     input_dir=str(aggregate_dir),
                     output_dir=str(split_dir)
                 )

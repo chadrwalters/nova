@@ -1,16 +1,18 @@
 """Base handler for file processing."""
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+# Standard library imports
 import asyncio
 import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+# Third-party imports
 from rich.console import Console
 
-from nova.core.utils.metrics import MetricsTracker
-from nova.core.utils.monitoring import MonitoringManager
+# Nova package imports
 from nova.core.models.result import ProcessingResult
 from nova.core.models.state import HandlerState
+from nova.core.utils.metrics import MetricsTracker, MonitoringManager
 
 
 class BaseHandler:
@@ -18,7 +20,8 @@ class BaseHandler:
     
     def __init__(
         self,
-        config: Optional[Dict[str, Any]] = None,
+        name: str,
+        options: Dict[str, Any],
         metrics: Optional[MetricsTracker] = None,
         monitoring: Optional[MonitoringManager] = None,
         console: Optional[Console] = None
@@ -26,12 +29,14 @@ class BaseHandler:
         """Initialize the handler.
         
         Args:
-            config: Optional configuration dictionary
+            name: Handler name
+            options: Handler options
             metrics: Optional metrics tracker instance
             monitoring: Optional monitoring manager instance
             console: Optional rich console instance
         """
-        self.config = config or {}
+        self.name = name
+        self.options = options
         self.metrics = metrics or MetricsTracker()
         self.monitoring = monitoring or MonitoringManager()
         self.console = console or Console()
@@ -98,7 +103,7 @@ class BaseHandler:
         Returns:
             True if output directory is specified, False otherwise
         """
-        return bool(self.config.get("output_dir"))
+        return bool(self.options.get("output_dir"))
     
     async def _process_impl(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
         """Implementation of the process method.

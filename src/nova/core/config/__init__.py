@@ -1,12 +1,15 @@
 """Configuration management and utilities."""
 
+# Standard library imports
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any, Union, List
 
+# Third-party imports
 import yaml
 from pydantic import BaseModel, Field, ConfigDict
 
+# Nova package imports
 from nova.core.errors import ConfigurationError
 
 

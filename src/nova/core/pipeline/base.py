@@ -6,8 +6,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from rich.console import Console
 
-from nova.core.utils.metrics import MetricsTracker
-from nova.core.utils.timing import TimingManager
+from nova.core.utils.metrics import MetricsTracker, TimingManager
 from nova.core.config.base import ProcessorConfig, PipelineConfig
 from nova.core.models.result import ProcessingResult
 
@@ -39,7 +38,7 @@ class BaseProcessor:
         self.console = console or Console()
         
         # Initialize paths
-        self.input_dir = Path(processor_config.input_dir or '') if processor_config.input_dir else None
+        self.input_dir = Path(pipeline_config.input_dir) if pipeline_config.input_dir else None
         self.output_dir = Path(processor_config.output_dir) if processor_config.output_dir else None
         self.temp_dir = Path(pipeline_config.temp_dir) if pipeline_config.temp_dir else None
         

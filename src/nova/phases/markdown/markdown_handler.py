@@ -1,3 +1,14 @@
+"""Utility functions for markdown handling."""
+
+# Standard library imports
+import os
+import logging
+from pathlib import Path
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+
 def _get_env_path(key: str, default: str = '') -> Path:
     """Get environment variable as Path with proper expansion."""
     value = os.environ.get(key, default)

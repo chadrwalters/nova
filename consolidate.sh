@@ -1,114 +1,205 @@
 #!/bin/bash
 
+# Exit on error and undefined variables
+set -eu
+
+# Trap errors and interrupts
+trap 'on_error $?' ERR
+trap 'on_interrupt' INT TERM
+
 # Source environment variables
-source .env
-
-# Validate environment variables
-echo "Validating environment variables..."
-if [ -z "$NOVA_BASE_DIR" ]; then
-    echo "Error: NOVA_BASE_DIR not set"
+if [ -f .env ]; then
+    source .env
+else
+    echo "Error: .env file not found"
     exit 1
 fi
 
-if [ -z "$NOVA_INPUT_DIR" ]; then
-    echo "Error: NOVA_INPUT_DIR not set"
-    exit 1
-fi
+# Logging utilities with timestamps
+log_info() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $1"
+}
 
-if [ -z "$NOVA_PROCESSING_DIR" ]; then
-    echo "Error: NOVA_PROCESSING_DIR not set"
-    exit 1
-fi
+log_error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2
+}
 
-if [ -z "$NOVA_TEMP_DIR" ]; then
-    echo "Error: NOVA_TEMP_DIR not set"
-    exit 1
-fi
+log_warning() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] $1" >&2
+}
 
-# Print directories being used
-echo "Using directories:"
-echo "Base dir: $NOVA_BASE_DIR"
-echo "Input dir: $NOVA_INPUT_DIR"
-echo "Processing dir: $NOVA_PROCESSING_DIR"
-echo "Temp dir: $NOVA_TEMP_DIR"
+log_debug() {
+    if [ "${NOVA_LOG_LEVEL:-INFO}" = "DEBUG" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] [DEBUG] $1"
+    fi
+}
 
-# Create required directories
-echo "Creating required directories..."
-mkdir -p "$NOVA_BASE_DIR"
-mkdir -p "$NOVA_INPUT_DIR"
-mkdir -p "$NOVA_PROCESSING_DIR"
-mkdir -p "$NOVA_TEMP_DIR"
+# Error handling
+on_error() {
+    local exit_code=$1
+    log_error "Script failed with exit code: $exit_code"
+    # Run cleanup script with force option
+    ./cleanup.sh force-clean
+    exit "$exit_code"
+}
 
-# Create phase directories
-echo "Creating phase directories..."
-mkdir -p "$NOVA_PHASE_MARKDOWN_PARSE"
-mkdir -p "$NOVA_PHASE_MARKDOWN_CONSOLIDATE"
-mkdir -p "$NOVA_PHASE_MARKDOWN_AGGREGATE"
-mkdir -p "$NOVA_PHASE_MARKDOWN_SPLIT"
+on_interrupt() {
+    log_warning "Received interrupt signal"
+    ./cleanup.sh force-clean
+    exit 130
+}
 
-# Create image directories
-echo "Creating image directories..."
-mkdir -p "$NOVA_ORIGINAL_IMAGES_DIR"
-mkdir -p "$NOVA_PROCESSED_IMAGES_DIR"
-mkdir -p "$NOVA_IMAGE_METADATA_DIR"
-mkdir -p "$NOVA_IMAGE_CACHE_DIR"
-mkdir -p "$NOVA_IMAGE_TEMP_DIR"
+# Verify environment
+verify_environment() {
+    log_info "Verifying environment..."
+    
+    # Check required environment variables
+    local required_vars=(
+        "NOVA_BASE_DIR"
+        "NOVA_INPUT_DIR"
+        "NOVA_OUTPUT_DIR"
+        "NOVA_PROCESSING_DIR"
+        "NOVA_TEMP_DIR"
+        "NOVA_STATE_DIR"
+        "NOVA_LOG_LEVEL"
+        "NOVA_MAX_WORKERS"
+        "NOVA_BATCH_SIZE"
+        "NOVA_ENABLE_CACHE"
+    )
+    
+    for var in "${required_vars[@]}"; do
+        if [ -z "${!var:-}" ]; then
+            log_error "Required environment variable not set: $var"
+            return 1
+        fi
+    done
+    
+    # Verify Python environment
+    if ! command -v python3 &> /dev/null; then
+        log_error "Python 3 is required but not found"
+        return 1
+    fi
+    
+    # Verify poetry installation
+    if ! command -v poetry &> /dev/null; then
+        log_error "Poetry is required but not found"
+        return 1
+    fi
+    
+    log_info "Environment verified"
+    return 0
+}
 
-# Create office directories
-echo "Creating office directories..."
-mkdir -p "$NOVA_OFFICE_ASSETS_DIR"
-mkdir -p "$NOVA_OFFICE_TEMP_DIR"
+# Verify input files
+verify_input() {
+    log_info "Verifying input files..."
+    
+    # Check input directory exists and contains markdown files
+    if [ ! -d "$NOVA_INPUT_DIR" ]; then
+        log_error "Input directory does not exist: $NOVA_INPUT_DIR"
+        return 1
+    fi
+    
+    # Count markdown files
+    local md_count=$(find "$NOVA_INPUT_DIR" -type f -name "*.md" | wc -l)
+    if [ "$md_count" -eq 0 ]; then
+        log_warning "No markdown files found in input directory"
+        return 1
+    fi
+    
+    log_info "Found $md_count markdown files to process"
+    return 0
+}
 
-# Verify directories exist
-echo "Verifying directories..."
-if [ ! -d "$NOVA_BASE_DIR" ]; then
-    echo "Error: Base directory does not exist: $NOVA_BASE_DIR"
-    exit 1
-fi
+# Run pipeline with progress monitoring
+run_pipeline() {
+    local config_file="${1:-config/pipeline_config.yaml}"
+    log_info "Running consolidation pipeline..."
+    
+    # Verify config file exists
+    if [ ! -f "$config_file" ]; then
+        log_error "Configuration file not found: $config_file"
+        return 1
+    fi
+    
+    # Export additional environment variables
+    export PYTHONPATH="src:${PYTHONPATH:-}"
+    export NOVA_CONFIG_FILE="$config_file"
+    
+    # Run the async pipeline with progress monitoring
+    log_info "Starting pipeline execution..."
+    if ! python3 -m nova.cli.consolidate \
+        --config "$config_file" \
+        --log-level "${NOVA_LOG_LEVEL:-INFO}" \
+        --show-progress \
+        --monitor-resources; then
+        log_error "Pipeline execution failed"
+        return 1
+    fi
+    
+    log_info "Pipeline execution completed successfully"
+    return 0
+}
 
-if [ ! -d "$NOVA_INPUT_DIR" ]; then
-    echo "Error: Input directory does not exist: $NOVA_INPUT_DIR"
-    exit 1
-fi
+# Verify pipeline output
+verify_output() {
+    log_info "Verifying pipeline output..."
+    
+    # Check output directory exists and contains expected files
+    if [ ! -d "$NOVA_PHASE_MARKDOWN_PARSE" ]; then
+        log_error "Output directory does not exist: $NOVA_PHASE_MARKDOWN_PARSE"
+        return 1
+    fi
+    
+    # Check if any markdown files were processed
+    local markdown_files=("$NOVA_PHASE_MARKDOWN_PARSE"/*.md)
+    if [ ${#markdown_files[@]} -eq 0 ]; then
+        log_error "No markdown files found in output directory"
+        return 1
+    fi
+    
+    return 0
+}
 
-if [ ! -d "$NOVA_PROCESSING_DIR" ]; then
-    echo "Error: Processing directory does not exist: $NOVA_PROCESSING_DIR"
-    exit 1
-fi
+# Main execution
+main() {
+    local config_file="${1:-config/pipeline_config.yaml}"
+    
+    log_info "Starting consolidation process..."
+    
+    # Run cleanup first
+    log_info "Running cleanup..."
+    if ! ./cleanup.sh clean; then
+        log_error "Cleanup failed"
+        exit 1
+    fi
+    
+    # Verify environment
+    if ! verify_environment; then
+        log_error "Environment verification failed"
+        exit 1
+    fi
+    
+    # Verify input
+    if ! verify_input; then
+        log_error "Input verification failed"
+        exit 1
+    fi
+    
+    # Run pipeline
+    if ! run_pipeline "$config_file"; then
+        log_error "Pipeline execution failed"
+        exit 1
+    fi
+    
+    # Verify output
+    if ! verify_output; then
+        log_error "Output verification failed"
+        exit 1
+    fi
+    
+    log_info "Consolidation process completed successfully"
+}
 
-if [ ! -d "$NOVA_TEMP_DIR" ]; then
-    echo "Error: Temp directory does not exist: $NOVA_TEMP_DIR"
-    exit 1
-fi
-
-# Export environment variables
-export NOVA_BASE_DIR
-export NOVA_INPUT_DIR
-export NOVA_OUTPUT_DIR
-export NOVA_PROCESSING_DIR
-export NOVA_TEMP_DIR
-export NOVA_STATE_DIR
-export NOVA_PHASE_MARKDOWN_PARSE
-export NOVA_PHASE_MARKDOWN_CONSOLIDATE
-export NOVA_PHASE_MARKDOWN_AGGREGATE
-export NOVA_PHASE_MARKDOWN_SPLIT
-export NOVA_ORIGINAL_IMAGES_DIR
-export NOVA_PROCESSED_IMAGES_DIR
-export NOVA_IMAGE_METADATA_DIR
-export NOVA_IMAGE_CACHE_DIR
-export NOVA_IMAGE_TEMP_DIR
-export NOVA_OFFICE_ASSETS_DIR
-export NOVA_OFFICE_TEMP_DIR
-export OPENAI_API_KEY
-export XAI_API_KEY
-export XAI_CACHE_DIR
-export NOVA_LOG_LEVEL
-export NOVA_MAX_WORKERS
-export NOVA_BATCH_SIZE
-export NOVA_ENABLE_IMAGE_PROCESSING
-export NOVA_ENABLE_OFFICE_PROCESSING
-export NOVA_ENABLE_CACHE
-
-# Run consolidation pipeline
-echo "Running consolidation pipeline..."
-python -m nova.cli.consolidate --config config/pipeline_config.yaml --log-level INFO
+# Execute main function
+main "$@"

@@ -1,11 +1,15 @@
 """Document handling components for Nova processors."""
 
+# Standard library imports
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+
+# Third-party imports
 import aiofiles
 
-from .base import BaseHandler
-from ..errors import ProcessingError
+# Nova package imports
+from nova.core.errors import ProcessingError
+from nova.core.handlers.base import BaseHandler
 
 class DocumentHandler(BaseHandler):
     """Handles document processing and conversion."""

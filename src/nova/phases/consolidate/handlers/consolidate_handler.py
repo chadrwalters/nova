@@ -1,17 +1,21 @@
 """Handler for consolidating markdown files."""
 
+# Standard library imports
+import asyncio
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import asyncio
-import shutil
-import os
+
+# Third-party imports
 from rich.console import Console
 
+# Nova package imports
 from nova.core.base_handler import BaseHandler
 from nova.core.models.result import ProcessingResult
 
 
-class ConsolidateHandler(BaseHandler):
+class ConsolidationHandler(BaseHandler):
     """Handler for consolidating markdown files."""
     
     def __init__(
@@ -47,8 +51,9 @@ class ConsolidateHandler(BaseHandler):
         """Initialize the handler."""
         await super().initialize()
         
-        # Create output directory
-        os.makedirs(self.output_dir, exist_ok=True)
+        # Validate output directory exists
+        if not Path(self.output_dir).exists():
+            raise ValueError(f"Output directory does not exist: {self.output_dir}")
     
     async def can_handle(self, file_path: Path) -> bool:
         """Check if this handler can process the file.
@@ -61,71 +66,81 @@ class ConsolidateHandler(BaseHandler):
         """
         return file_path.suffix.lower() == '.md'
     
-    async def _process_impl(self, file_path: Path, context: Optional[Dict[str, Any]] = None) -> ProcessingResult:
+    async def process(self, file_path: Path, context: Dict[str, Any]) -> ProcessingResult:
         """Process a markdown file.
         
         Args:
-            file_path: Path to the file to process
-            context: Optional processing context
+            file_path: Path to the file
+            context: Processing context
             
         Returns:
-            ProcessingResult containing processed content and metadata
+            Processing result
         """
         try:
-            # Use configured output directory
-            output_dir = Path(self.output_dir)
+            # Initialize result
+            result = ProcessingResult()
+            result.input_file = file_path
+            result.output_dir = Path(context.get('output_dir', self.output_dir))
             
-            async with self.monitoring.async_monitor_operation("read_file"):
-                # Read input file
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+            # Process file
+            await self._process_impl(file_path, context, result)
             
-            async with self.monitoring.async_monitor_operation("process_attachments"):
-                # Create attachment directory
-                attachment_dir = output_dir / file_path.stem
-                os.makedirs(attachment_dir, exist_ok=True)
-                
-                # Process attachments if they exist
-                attachments = []
-                input_attachment_dir = file_path.parent / file_path.stem
-                
-                if input_attachment_dir.exists():
-                    # Process attachments
-                    for attachment in input_attachment_dir.iterdir():
-                        if attachment.is_file():
-                            dest_path = attachment_dir / attachment.name
-                            shutil.copy2(attachment, dest_path)
-                            attachments.append(dest_path)
-                            self.monitoring.increment_counter("attachments_processed")
-                            
-                            # Record attachment metrics
-                            self.monitoring.set_gauge("attachment_size", attachment.stat().st_size)
-            
-            # Create result
-            result = ProcessingResult(
-                success=True,
-                content=content,
-                metadata={
-                    'input_file': str(file_path),
-                    'output_dir': str(output_dir),
-                    'attachment_count': len(attachments),
-                    'attachment_paths': [str(path) for path in attachments]
-                }
-            )
-            result.add_processed_file(file_path)
-            for attachment in attachments:
-                result.add_processed_file(attachment)
-            
-            # Record success metrics
-            self.monitoring.increment_counter("files_processed")
-            self.monitoring.set_gauge("attachments_count", len(attachments))
+            # Post-process
+            await self._post_process(result)
             
             return result
             
         except Exception as e:
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            self.monitoring.record_error(error_msg)
-            return ProcessingResult(success=False, errors=[error_msg])
+            error_msg = f"Failed to process file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            if self.monitoring:
+                self.monitoring.record_error(error_msg)
+            raise ValidationError(error_msg)
+
+    async def _process_impl(self, file_path: Path, context: Dict[str, Any], result: ProcessingResult) -> None:
+        """Process implementation.
+        
+        Args:
+            file_path: Path to the file
+            context: Processing context
+            result: Processing result to update
+        """
+        try:
+            # Read content
+            content = file_path.read_text()
+            
+            # Process content
+            processed_content = await self._process_content(content)
+            
+            # Write output
+            output_file = result.output_dir / file_path.name
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(processed_content)
+            
+            # Update result
+            result.success = True
+            result.output_files.append(output_file)
+            result.content = processed_content
+            
+        except Exception as e:
+            error_msg = f"Failed to process file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            result.success = False
+            result.errors.append(error_msg)
+            if self.monitoring:
+                self.monitoring.record_error(error_msg)
+
+    async def _process_content(self, content: str) -> str:
+        """Process markdown content.
+        
+        Args:
+            content: Content to process
+            
+        Returns:
+            Processed content
+        """
+        # Process content here
+        return content
     
     async def _post_process(self, result: ProcessingResult) -> None:
         """Run post-processing hooks.

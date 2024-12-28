@@ -1,5 +1,6 @@
 """Default configuration for markdown parse phase."""
 
+# Standard library imports
 from typing import Dict, Any
 
 DEFAULT_CONFIG: Dict[str, Any] = {

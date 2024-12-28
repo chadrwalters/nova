@@ -1,12 +1,14 @@
 """Handler for processing file attachments."""
 
+# Standard library imports
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import shutil
-import os
 
-from ....core.handlers.base import BaseHandler
-from ....core.models.result import ProcessingResult
+# Nova package imports
+from nova.core.handlers.base import BaseHandler
+from nova.core.models.result import ProcessingResult
 
 
 class AttachmentProcessor(BaseHandler):

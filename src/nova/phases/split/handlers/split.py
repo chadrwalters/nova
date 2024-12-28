@@ -1,17 +1,20 @@
 """Handler for splitting markdown files."""
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+# Standard library imports
 import asyncio
 import os
 import shutil
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+# Third-party imports
 from rich.console import Console
 
-from ....core.base_handler import BaseHandler
-from ....core.utils.metrics import MetricsTracker
-from ....core.utils.timing import TimingManager
-from ....core.models.result import ProcessingResult
+# Nova package imports
+from nova.core.base_handler import BaseHandler
+from nova.core.models.result import ProcessingResult
+from nova.core.utils.metrics import MetricsTracker
+from nova.core.utils.timing import TimingManager
 
 
 class SplitHandler(BaseHandler):

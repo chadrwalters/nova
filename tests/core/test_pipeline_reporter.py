@@ -1,9 +1,14 @@
 """Tests for the pipeline reporter."""
 
-import pytest
-from datetime import datetime
-from nova.core.pipeline.pipeline_reporter import PipelineReporter, PhaseStats
+# Standard library imports
 import time
+from datetime import datetime
+
+# Third-party imports
+import pytest
+
+# Nova package imports
+from nova.core.pipeline.pipeline_reporter import PipelineReporter, PhaseStats
 
 
 @pytest.fixture

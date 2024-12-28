@@ -1,137 +1,140 @@
-"""Base handler interface for all pipeline phases."""
+"""Base handler for all phase handlers."""
 
-from abc import ABC, abstractmethod
+import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union, Callable, Awaitable
-from dataclasses import dataclass, field
-from datetime import datetime
+from typing import Dict, Any, Optional
 
-@dataclass
-class HandlerResult:
-    """Result from handler processing."""
-    content: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    processed_files: List[Path] = field(default_factory=list)
-    processed_attachments: List[Path] = field(default_factory=list)
-    file_map: Dict[str, Any] = field(default_factory=dict)
-    processing_time: float = 0.0
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    metrics: Dict[str, Any] = field(default_factory=dict)
+from nova.core.errors import ValidationError
+from nova.core.models.result import HandlerResult
+from nova.core.utils.metrics import TimingManager, MetricsTracker
+from nova.core.utils.monitoring import MonitoringManager
+from nova.core.console.logger import ConsoleLogger
 
-    def add_error(self, error: str) -> None:
-        """Add an error message."""
-        self.errors.append(error)
 
-    def add_warning(self, warning: str) -> None:
-        """Add a warning message."""
-        self.warnings.append(warning)
+class BaseHandler:
+    """Base handler for all phase handlers."""
 
-    def add_metric(self, key: str, value: Any) -> None:
-        """Add a metric."""
-        self.metrics[key] = value
-
-class BaseHandler(ABC):
-    """Base class for all handlers in the pipeline.
-    
-    This unified base handler combines functionality from parse and consolidate phases,
-    providing a consistent interface across the pipeline.
-    """
-    
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the handler with optional configuration."""
-        self.config = config or {}
-        self._pre_process_hooks: List[Callable[[Path, Dict[str, Any]], Awaitable[None]]] = []
-        self._post_process_hooks: List[Callable[[HandlerResult], Awaitable[None]]] = []
-        self._error_hooks: List[Callable[[Exception, HandlerResult], Awaitable[None]]] = []
-    
-    def get_option(self, key: str, default: Any = None) -> Any:
-        """Get option from config.
+    def __init__(
+        self,
+        name: str,
+        options: Dict[str, Any],
+        timing: Optional[TimingManager] = None,
+        metrics: Optional[MetricsTracker] = None,
+        monitoring: Optional[MonitoringManager] = None,
+        console: Optional[ConsoleLogger] = None
+    ):
+        """Initialize base handler.
         
         Args:
-            key: Option key
-            default: Default value if not found
-            
-        Returns:
-            Option value
+            name: Handler name
+            options: Handler options
+            timing: Optional timing manager
+            metrics: Optional metrics tracker
+            monitoring: Optional monitoring manager
+            console: Optional console logger
         """
-        if isinstance(self.config, dict):
-            return self.config.get(key, default)
-        return getattr(self.config, key, default)
-    
-    def add_pre_process_hook(self, hook: Callable[[Path, Dict[str, Any]], Awaitable[None]]) -> None:
-        """Add a hook to run before processing."""
-        self._pre_process_hooks.append(hook)
-    
-    def add_post_process_hook(self, hook: Callable[[HandlerResult], Awaitable[None]]) -> None:
-        """Add a hook to run after processing."""
-        self._post_process_hooks.append(hook)
-    
-    def add_error_hook(self, hook: Callable[[Exception, HandlerResult], Awaitable[None]]) -> None:
-        """Add a hook to run on error."""
-        self._error_hooks.append(hook)
-    
-    async def _pre_process(self, file_path: Path, context: Dict[str, Any]) -> None:
-        """Run pre-process hooks."""
-        for hook in self._pre_process_hooks:
-            await hook(file_path, context)
-    
-    async def _post_process(self, result: HandlerResult) -> None:
-        """Run post-process hooks."""
-        for hook in self._post_process_hooks:
-            await hook(result)
-    
-    async def _on_error(self, error: Exception, result: HandlerResult) -> None:
-        """Run error hooks."""
-        for hook in self._error_hooks:
-            await hook(error, result)
-    
-    @abstractmethod
-    def can_handle(self, file_path: Path, attachments: Optional[List[Path]] = None) -> bool:
-        """Determine if this handler can process the given file and optional attachments.
+        self.name = name
+        self.options = options
+        self.timing = timing or TimingManager()
+        self.metrics = metrics or MetricsTracker()
+        self.monitoring = monitoring or MonitoringManager()
+        self.console = console or ConsoleLogger()
+        self.logger = logging.getLogger(__name__)
+
+    def can_handle(self, file_path: Path) -> bool:
+        """Check if handler can process file.
         
         Args:
-            file_path: Path to the main file
-            attachments: Optional list of paths to attachments
+            file_path: Path to file
             
         Returns:
-            bool: True if this handler can process the file/attachments
+            True if handler can process file, False otherwise
+            
+        Raises:
+            NotImplementedError: If not implemented by subclass
         """
-        pass
-    
-    @abstractmethod
-    async def process(
-        self, 
-        file_path: Path, 
-        context: Dict[str, Any],
-        attachments: Optional[List[Path]] = None
-    ) -> HandlerResult:
-        """Process the file and optional attachments.
+        raise NotImplementedError("Subclasses must implement can_handle()")
+
+    async def process(self, file_path: Path, context: Dict[str, Any]) -> HandlerResult:
+        """Process file.
         
         Args:
-            file_path: Path to the main file
-            context: Additional context for processing
-            attachments: Optional list of paths to attachments
+            file_path: Path to file
+            context: Processing context
             
         Returns:
-            HandlerResult containing processing results and metadata
+            Handler result
+            
+        Raises:
+            NotImplementedError: If not implemented by subclass
         """
-        pass
-    
-    @abstractmethod
+        raise NotImplementedError("Subclasses must implement process()")
+
     def validate_output(self, result: HandlerResult) -> bool:
-        """Validate the processing results.
+        """Validate handler result.
         
         Args:
-            result: The HandlerResult to validate
+            result: Handler result
             
         Returns:
-            bool: True if results are valid
+            True if result is valid, False otherwise
+            
+        Raises:
+            NotImplementedError: If not implemented by subclass
+        """
+        raise NotImplementedError("Subclasses must implement validate_output()")
+
+    async def cleanup(self):
+        """Clean up handler resources.
+        
+        This method should be implemented by subclasses.
         """
         pass
-    
-    async def cleanup(self) -> None:
-        """Clean up any resources."""
-        pass 
+
+    def get_name(self) -> str:
+        """Get handler name.
+        
+        Returns:
+            Handler name
+        """
+        return self.name
+
+    def get_options(self) -> Dict[str, Any]:
+        """Get handler options.
+        
+        Returns:
+            Handler options
+        """
+        return self.options
+
+    def get_timing(self) -> TimingManager:
+        """Get timing manager.
+        
+        Returns:
+            Timing manager
+        """
+        return self.timing
+
+    def get_metrics(self) -> MetricsTracker:
+        """Get metrics tracker.
+        
+        Returns:
+            Metrics tracker
+        """
+        return self.metrics
+
+    def get_monitoring(self) -> MonitoringManager:
+        """Get monitoring manager.
+        
+        Returns:
+            Monitoring manager
+        """
+        return self.monitoring
+
+    def get_console(self) -> ConsoleLogger:
+        """Get console logger.
+        
+        Returns:
+            Console logger
+        """
+        return self.console 

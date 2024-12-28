@@ -1,5 +1,5 @@
 """Handlers for consolidating markdown files."""
 
-from .consolidation import ConsolidationHandler
+from nova.phases.consolidate.handlers.consolidate_handler import ConsolidationHandler
 
 __all__ = ['ConsolidationHandler']

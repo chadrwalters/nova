@@ -1,11 +1,13 @@
 """Reference management components for Nova processors."""
 
+# Standard library imports
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-import re
 
-from .base import BaseHandler
-from ..errors import ProcessingError
+# Nova package imports
+from nova.core.errors import ProcessingError
+from nova.core.handlers.base import BaseHandler
 
 class ReferenceManager(BaseHandler):
     """Manages references and links in markdown content."""

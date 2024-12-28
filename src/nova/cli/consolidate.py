@@ -1,63 +1,60 @@
-"""Consolidate markdown files."""
+"""Consolidate command line interface."""
 
-from pathlib import Path
-import asyncio
+import os
 import sys
 import logging
-import os
+import asyncio
+from pathlib import Path
 
-from ..core.pipeline.manager import PipelineManager
-from ..core.config import PipelineConfig
+import yaml
+
+from nova.core.config.base import PipelineConfig, CacheConfig
+from nova.core.pipeline.pipeline_manager import PipelineManager
+from nova.core.errors import ValidationError
 
 
-async def main() -> None:
-    """Run the consolidation pipeline."""
+async def main():
+    """Main entry point."""
     try:
-        # Configure logging
+        # Set up logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
-        
+
         # Load configuration
-        logger.info("Loading configuration from config/pipeline_config.yaml")
-        config = PipelineConfig.load("config/pipeline_config.yaml")
-        
-        # Create pipeline manager
+        config_path = os.environ.get('NOVA_CONFIG_PATH', 'config/pipeline_config.yaml')
+        logger.info(f"Loading configuration from {config_path}")
+
+        with open(config_path) as f:
+            config_data = yaml.safe_load(f)
+
+        # Extract pipeline configuration
+        if 'pipeline' in config_data:
+            pipeline_data = config_data['pipeline']
+        else:
+            pipeline_data = config_data
+
+        # Create cache configuration if present
+        if 'cache' in pipeline_data:
+            cache_config = CacheConfig(**pipeline_data['cache'])
+            pipeline_data['cache'] = cache_config
+
+        # Create pipeline configuration
+        config = PipelineConfig(**pipeline_data)
+
+        # Run pipeline
         logger.info("Running consolidation pipeline...")
         pipeline = PipelineManager(config)
-        
-        # Get input files
-        input_dir = os.environ.get('NOVA_INPUT_DIR')
-        if not input_dir:
-            logger.error("NOVA_INPUT_DIR environment variable not set")
-            sys.exit(1)
-            
-        input_dir = Path(input_dir)
-        if not input_dir.exists():
-            logger.error(f"Input directory does not exist: {input_dir}")
-            sys.exit(1)
-            
-        input_files = list(input_dir.glob('**/*.md'))
-        
-        if not input_files:
-            logger.warning("No markdown files found in input directory")
-            sys.exit(0)
-            
-        # Run pipeline
-        async with pipeline:
-            success = await pipeline.run()
-            
-            if not success:
-                logger.error("Pipeline failed")
-                sys.exit(1)
-                
-            logger.info("Pipeline completed successfully")
-            
-    except Exception as e:
+        await pipeline.run()
+
+    except ValidationError as e:
         logger.error(f"Pipeline failed: {str(e)}")
         sys.exit(1)
-        
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        sys.exit(1)
     finally:
-        await pipeline.cleanup()
+        if 'pipeline' in locals():
+            await pipeline.cleanup()
 
 
 if __name__ == '__main__':

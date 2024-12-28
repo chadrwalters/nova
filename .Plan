@@ -1,211 +1,128 @@
 # Nova Implementation Plan
 
-## Current Focus: Test Suite Cleanup
-- Status: IN PROGRESS
-- Priority: HIGH
-- Owner: TBD
-- Location: `tests/`
+## Current Status
+- All parse phase tests (19 total) are passing
+- Main handlers (MarkdownHandler and ConsolidationHandler) working correctly
+- Shell script refactoring completed with improved error handling and monitoring
+- Next major step: Performance testing and monitoring implementation
 
-### Test Cleanup Plan
+## Active Work
 
-1. Remove Obsolete Tests (Priority: HIGH)
-   - [✓] Delete tests requiring significant source changes:
-     - [✓] `tests/core/test_console_logger.py` (requires LogLevel enum)
-     - [✓] `tests/core/test_error_integration.py` (requires schema_validator)
-     - [✓] `tests/core/test_phase_runner.py` (requires error module restructure)
-     - [✓] `tests/core/pipeline/test_phase_interface.py` (requires Phase class)
-     - [✓] `tests/core/utils/test_component_handler.py` (requires component_handler)
-     - [✓] `tests/core/utils/test_schema_validator.py` (requires schema_validator)
+### 1. Performance Testing [IN_PROGRESS]
+- Required Changes:
+  1. Timing Implementation:
+     - [ ] Add phase timing tracking
+     - [ ] Add per-file timing tracking
+     - [ ] Add resource usage monitoring
+     - [ ] Add progress indicators
+  
+  2. Resource Monitoring:
+     - [ ] Add memory usage tracking
+     - [ ] Add disk usage monitoring
+     - [ ] Add CPU utilization tracking
+     - [ ] Add network usage monitoring (if applicable)
+  
+  3. Testing Framework:
+     - [ ] Create performance test suite
+     - [ ] Add baseline measurements
+     - [ ] Add regression tests
+     - [ ] Add load tests
+  
+  4. Reporting:
+     - [ ] Add performance reports
+     - [ ] Add resource usage summaries
+     - [ ] Add timing breakdowns
+     - [ ] Add bottleneck identification
 
-2. Fix Salvageable Tests (Priority: HIGH)
-   - [✓] Add missing error types to errors.py:
-     - [✓] Add HandlerError
-     - [✓] Add ErrorContext
-   - [✓] Fix config imports in processor tests:
-     - [✓] Update test_aggregate_processor.py
-     - [✓] Update test_consolidate_processor.py
-     - [✓] Update test_split_processor.py
-   - [✓] Fix image handler tests:
-     - [✓] Add HandlerError to core.errors
+- Next Steps:
+  1. [ ] Implement timing tracking
+  2. [ ] Add resource monitoring
+  3. [ ] Create test suite
+  4. [ ] Add reporting
 
-3. Consolidate Test Data (Priority: MEDIUM)
-   - [✓] Merge test data directories:
-     - [✓] Move `tests/fixtures/attachments` to `tests/data/attachments`
-     - [✓] Delete empty `tests/fixtures` directory
-   - [✓] Organize test data:
-     - [✓] Clean up duplicate data in `tests/data/input`
-     - [✓] Organize `tests/data/processing`
-     - [✓] Remove unused test data
+### 2. Enhanced Reporting [UPCOMING]
+- [ ] Total parse time tracking
+- [ ] File type statistics
+- [ ] Warning/error summaries
+- [ ] Resource usage metrics
 
-4. Test Organization (Priority: MEDIUM)
-   - [✓] Organize test files by component:
-     - [✓] Core tests in `tests/core/`
-     - [✓] Phase tests in `tests/phases/`
-     - [✓] Handler tests in `tests/phases/*/handlers/`
-   - [✓] Clean up test output:
-     - [✓] Add .gitignore rules for test output
-     - [✓] Remove committed test output files
+### 3. Documentation Updates [UPCOMING]
+- [ ] Update phase documentation
+- [ ] Document import standards
+- [ ] Add usage examples
 
-### Working Tests to Keep
-1. Pipeline Tests:
-   - `tests/core/pipeline/test_pipeline_cache.py`
-   - `tests/core/pipeline/test_pipeline_state.py`
-   - `tests/core/pipeline/test_error_handling.py`
-   - `tests/core/config/test_pipeline_config.py`
+## Recently Completed Work
 
-2. Handler Tests:
-   - `tests/phases/split/handlers/test_split_handler.py`
-   - `tests/phases/parse/handlers/test_office_handler.py`
-   - `tests/phases/aggregate/handlers/test_navigation_handler.py`
+### 1. Shell Script Refactoring [COMPLETED]
+1. cleanup.sh Updates:
+   - ✓ Added state directory cleanup
+   - ✓ Added cache directory management
+   - ✓ Improved error handling and reporting
+   - ✓ Added monitoring cleanup
+   - ✓ Added proper signal handling
 
-### Test Data Organization
-1. Test Data Structure:
-   ```
-   tests/
-     data/
-       input/          # Input test files
-       output/         # Expected output files
-       processing/     # Intermediate processing files
-       attachments/    # Test attachments
-       markdown/       # Markdown test files
-       images/        # Image test files
-   ```
+2. consolidate.sh Updates:
+   - ✓ Updated to use new async entry point
+   - ✓ Added configuration validation
+   - ✓ Updated environment variable handling
+   - ✓ Added proper signal handling
+   - ✓ Improved error reporting
+   - ✓ Added progress indicators
 
-2. Test Output:
-   ```
-   tests/
-     output/          # Generated test output (gitignored)
-   ```
+3. Integration Updates:
+   - ✓ Ensured proper phase ordering
+   - ✓ Added proper cleanup on failure
+   - ✓ Updated logging configuration
+   - ✓ Added resource monitoring
+   - ✓ Implemented proper signal handling
 
-### Next Steps
-1. Remove obsolete tests
-2. Add missing error types
-3. Fix config imports
-4. Consolidate test data
-5. Clean up test output directories
+### 2. Import Path Standardization [COMPLETED]
+1. Core Modules:
+   - ✓ All files in src/nova/core/* updated to use absolute imports
 
-### Rules for Future Tests
-1. No new test dependencies without source implementation
-2. Keep test data organized in tests/data
-3. Use consistent naming conventions
-4. Clean up test output after running
-5. Document test data requirements
+2. Phase Modules:
+   - ✓ Split phase: All files updated
+   - ✓ Parse phase: All files updated
+   - ✓ Consolidate phase: All files updated
+   - ✓ Aggregate phase: All files updated
+   - ✓ Core phase: All files updated
+   - ✓ Markdown phase: All files updated
 
-## Recently Completed
-1. Pipeline Cache Testing (January 2024)
-   - ✅ Added comprehensive cache test suite
-   - ✅ Tested cache configuration management
-   - ✅ Tested cache cleanup procedures
-   - ✅ Tested cache statistics reporting
-   - ✅ Test coverage maintained above 85%
+3. Test Files:
+   - ✓ All test files updated to use absolute imports
+   - ✓ Fixed import paths in conftest.py files
+   - ✓ Updated test utilities and fixtures
 
-2. Pipeline Manager Cache Integration (January 2024)
-   - ✅ Added cache configuration system
-   - ✅ Implemented cache cleanup during phase transitions
-   - ✅ Added cache statistics reporting
-   - ✅ Updated pipeline configuration schema
+### 3. Parse Phase Testing [COMPLETED]
+- Test Suite Baseline: 19 tests passing
+- Handler Tests:
+  - ✓ MarkdownHandler tests passing
+  - ✓ ConsolidationHandler tests passing
+  - ✓ MarkdownParseProcessor tests passing
 
-2. Markdown Caching Implementation (January 2024)
-   - ✅ Extended PipelineState with caching capabilities
-   - ✅ Enhanced MarkdownHandler with cache integration
-   - ✅ Added comprehensive cache tests
-   - ✅ Implemented dependency tracking
-   - ✅ Added cache statistics and reporting
-
-2. Pipeline State Analysis (January 2024)
-   - ✅ Identified existing state management
-   - ✅ Analyzed current metrics tracking
-   - ✅ Reviewed handler infrastructure
-   - ✅ Mapped caching integration points
-
-2. File State Tracking System (January 2024)
-   - ✅ Implemented FileState and FileStateManager classes
-   - ✅ Added file content hashing and change detection
-   - ✅ Added dependency tracking
-   - ✅ Implemented atomic state persistence
-   - ✅ Added comprehensive test suite
-
-2. Pipeline Monitoring & Reporting (January 2024)
-   - ✅ Enhanced monitoring system with resource tracking
-   - ✅ Added progress tracking with ETA
-   - ✅ Implemented detailed metrics collection
-   - ✅ Added comprehensive monitoring tests
-   - ✅ Test coverage maintained above 85%
-
-2. Pipeline Testing & Error Handling (January 2024)
-   - ✅ Fixed circular dependency detection in PipelineConfig
-   - ✅ Improved error handling logic in PipelineState
-   - ✅ All pipeline tests passing (16/16)
-   - ✅ Test coverage maintained above 85%
-
-3. Pipeline Manager Core (December 2023)
-   - ✅ Configuration validation system
-   - ✅ Phase dependency resolution
-   - ✅ Pipeline state management
-   - ✅ Progress tracking
-   - ✅ Error handling framework
-
-4. Split Handler Implementation (December 2023)
-   - ✅ Implementation complete
-   - ✅ Tests passing: 8/8
-   - ✅ Monitoring integrated
-   - ✅ Documentation updated
-
-5. Handler Updates (December 2023)
-   - ✅ Office Handler (10/10 tests)
-   - ✅ Consolidation Handler
-   - ✅ Aggregate Handler
-   - ✅ Navigation Handler
-   - ✅ Split Handler (8/8 tests)
-
-## Test Information
-### Running Tests
-```bash
-# Full test suite
-pytest tests/
-
-# Specific handler
-pytest tests/phases/split/handlers/test_split_handler.py
-
-# With coverage
-pytest --cov=nova tests/
-```
-
-### Key Test Files
-1. Handler Tests:
-   - `tests/phases/split/handlers/test_split_handler.py`
-   - `tests/phases/parse/handlers/test_office_handler.py`
-   - `tests/phases/aggregate/handlers/test_navigation_handler.py`
-
-2. Core Tests:
-   - `tests/core/utils/test_monitoring.py`
-   - `tests/core/pipeline/test_phase_interface.py`
-   - `tests/core/pipeline/test_pipeline_state.py`
-   - `tests/core/pipeline/test_error_handling.py`
-   - `tests/core/pipeline/test_pipeline_config.py`
-   - `tests/core/pipeline/test_pipeline_manager.py`
-
-## Architecture Overview
-### Pipeline Phases
-1. MARKDOWN_PARSE (Complete)
-   - Handles initial document processing
-   - Converts various formats to markdown
-
-2. MARKDOWN_CONSOLIDATE (Complete)
-   - Combines related markdown files
-   - Handles attachments and references
-
-3. MARKDOWN_AGGREGATE (Complete)
-   - Creates single consolidated document
-   - Adds navigation and structure
-
-4. MARKDOWN_SPLIT (Complete)
-   - Splits content into three files:
-     - summary.md
-     - raw_notes.md
-     - attachments.md
+- Issues Fixed:
+  1. Import Issues:
+     - ✓ Fixed src.nova imports in test files
+     - ✓ Updated monkeypatch paths
+  2. MonitoringManager Issues:
+     - ✓ Added record_error method
+     - ✓ Added async_capture_resource_usage method
+  3. ProcessingResult Issues:
+     - ✓ Added content attribute
+     - ✓ Added errors list for multiple errors
+     - ✓ Added helper methods
+     - ✓ Improved documentation
+  4. Handler Issues:
+     - ✓ Updated MarkdownHandler interface
+     - ✓ Fixed MarkdownParseProcessor
+     - ✓ Updated Path handling
+  5. Dependency Issues:
+     - ✓ Fixed markitdown module integration
+     - ✓ Added fallback handling
+     - ✓ Added configuration validation
 
 ## Reference
+
 ### Key Files
 - Main configuration: `config/pipeline_config.yaml`
 - Environment setup: `.env`
@@ -216,11 +133,11 @@ pytest --cov=nova tests/
 
 ### Important Commands
 - Setup: `./install.sh`
-- Run pipeline: `./consolidate.sh`
+- Run pipeline: `./cleanup.sh && ./consolidate.sh`
 - Cleanup: `./cleanup.sh`
 - Run tests: `./run_tests.sh`
 
-### Documentation
-- API docs: `docs/api.md`
-- Handler docs: `docs/handlers.md`
-- Monitoring docs: `docs/monitoring.md` 
+### Dependencies
+1. markitdown (optional, falls back to basic processing if not available)
+2. rich (for console output)
+3. pytest and related packages for testing 

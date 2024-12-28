@@ -1,10 +1,14 @@
 """Tests for pipeline configuration."""
 
+# Standard library imports
 import os
-import pytest
 from pathlib import Path
 
-from nova.core.config.pipeline_config import PipelineConfig, PhaseConfig
+# Third-party imports
+import pytest
+
+# Nova package imports
+from nova.core.config.base import PipelineConfig, PhaseConfig
 from nova.core.errors import ValidationError
 
 

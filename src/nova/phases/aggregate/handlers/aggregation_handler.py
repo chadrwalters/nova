@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
+"""Handler for aggregating classified markdown content."""
 
+# Standard library imports
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
+
+# Nova package imports
 from nova.models.parsed_result import ParsedResult
+
 
 class AggregationHandler:
     """Handles the aggregation of classified markdown content."""

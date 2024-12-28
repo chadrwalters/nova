@@ -1,15 +1,16 @@
-"""Manages output directory structure and file organization."""
+"""Output manager for Nova document processor."""
 
+# Standard library imports
+import json
 import os
-import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
-import json
 
-from .logging import get_logger
-from .errors import FileError, with_retry, handle_errors
-from .utils.file_ops import FileOperationsManager
+# Nova package imports
+from nova.core.errors import OutputError
+from nova.core.logging import get_logger
+from nova.core.utils.file_ops import FileOperationsManager
 
 logger = get_logger(__name__)
 

@@ -1,91 +1,35 @@
-# Pipeline Configuration Schema
+# Nova Document Processor Pipeline Configuration
 
-# TEMPORARY TESTING NOTE:
-# Currently, only the MARKDOWN_PARSE phase is enabled for testing purposes.
-# Other phases are temporarily disabled while we stabilize the parse phase functionality.
-# This is a deliberate testing strategy to ensure robust parsing before moving
-# to subsequent phases.
-
-# Global Cache Configuration
-cache:
-  enabled: true  # Enable/disable caching globally
-  max_age: 604800  # Maximum cache entry age in seconds (7 days)
-  cleanup_on_phase_transition: true  # Clean up cache between phases
-  cleanup_threshold: 0.8  # Clean up when cache size > 80% of max
-  max_size: 1073741824  # Maximum cache size in bytes (1GB)
-  report_stats: true  # Report cache statistics during execution
-
-# Pipeline Phases
-phases:
-  MARKDOWN_PARSE:
-    description: "Parse and process markdown files with embedded content"
-    output_dir: "${NOVA_PHASE_MARKDOWN_PARSE}"
-    processor: "MarkdownParseProcessor"
-    cache:  # Phase-specific cache configuration (overrides global)
-      enabled: true
-      max_age: 2592000  # 30 days for markdown files
-      cleanup_threshold: 0.9  # Higher threshold for markdown cache
-    components:
-      markdown_processor:
-        parser: "markitdown==0.0.1a3"
-        config:
-          document_conversion: true
-          image_processing: true
-          metadata_preservation: true
-        handlers:
-          - MarkitdownHandler:
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              document_conversion: true
-              image_processing: true
-              metadata_preservation: true
-          - ConsolidationHandler:
-              base_handler: "nova.phases.core.base_handler.BaseHandler"
-              sort_by_date: true
-              preserve_headers: true
-
-  # TEMPORARILY DISABLED PHASES
-  # Uncomment when parse phase is stable
-  
-  # MARKDOWN_CONSOLIDATE:
-  #   description: "Consolidate markdown files with their attachments"
-  #   output_dir: "${NOVA_PHASE_MARKDOWN_CONSOLIDATE}"
-  #   processor: "MarkdownConsolidateProcessor"
-  #   ...
-
-  # MARKDOWN_AGGREGATE:
-  #   description: "Aggregate all consolidated markdown files into a single file"
-  #   output_dir: "${NOVA_PHASE_MARKDOWN_AGGREGATE}"
-  #   processor: "MarkdownAggregateProcessor"
-  #   ...
-
-  # MARKDOWN_SPLIT:
-  #   description: "Split aggregated markdown into summary, raw notes, and attachments"
-  #   output_dir: "${NOVA_PHASE_MARKDOWN_SPLIT}"
-  #   processor: "ThreeFileSplitProcessor"
-  #   ...
-
-# Global Settings
-input_dir: "${NOVA_INPUT_DIR}"
-output_dir: "${NOVA_OUTPUT_DIR}"
-temp_dir: "${NOVA_TEMP_DIR}"
-
-# Monitoring Configuration
-monitoring:
-  enabled: true
-  log_level: "info"
-  metrics:
+pipeline:
+  cache:
     enabled: true
-    track_timing: true
-    track_memory: true
-  progress:
-    enabled: true
-    show_eta: true
-    update_interval: 1.0
+    directory: "/Users/ChadWalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing/.state"
+    max_size_mb: 1024
+    max_age_days: 7
+    cleanup_on_start: true
+    cleanup_on_error: true
 
-# Error Handling
-error_handling:
-  max_retries: 3
-  retry_delay: 1.0
-  continue_on_error: false
-  log_errors: true
-  cleanup_on_error: true 
+  phases:
+    MARKDOWN_PARSE:
+      name: "markdown_parse"
+      description: "Parse and process markdown files with embedded content"
+      input_dir: "/Users/ChadWalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+      output_dir: "/Users/ChadWalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing/phases/markdown_parse"
+      processor: "MarkdownParseProcessor"
+      components:
+        markdown_processor:
+          parser: "markitdown==0.0.1a3"
+          config:
+            document_conversion: true
+            image_processing: true
+            metadata_preservation: true
+          handlers:
+            - MarkdownHandler:
+                config:
+                  document_conversion: true
+                  image_processing: true
+                  metadata_preservation: true
+            - ConsolidationHandler:
+                config:
+                  sort_by_date: true
+                  preserve_headers: true 

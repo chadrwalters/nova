@@ -1,89 +1,84 @@
-"""Base handler."""
+"""Base handler for pipeline processors."""
 
-import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Set, Union
+
 from nova.core.pipeline.errors import ValidationError
-from nova.core.pipeline.types import ProcessingResult
+from nova.core.models.result import ProcessingResult
 
 
 class BaseHandler:
     """Base class for pipeline handlers."""
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, **kwargs: Any):
-        """Initialize base handler.
-        
-        Args:
-            config: Handler configuration
-            **kwargs: Additional arguments
-        """
-        self.config = config or {}
-        self.output_dir = self.config.get('output_dir')
-        self.options = self.config.get('options', {})
-        self.logger = logging.getLogger(__name__)
-
-    def validate(self) -> None:
-        """Validate handler configuration.
-        
-        Raises:
-            ValidationError: If validation fails
-        """
-        if not self.output_dir:
-            raise ValidationError("Output directory is required")
+    def __init__(self):
+        """Initialize base handler."""
+        self.monitoring = None
+        self.timing = None
+        self.state = None
 
     def can_handle(self, file_path: Path) -> bool:
-        """Check if handler can process file.
+        """Check if handler can process a file.
         
         Args:
             file_path: Path to file
             
         Returns:
-            Whether handler can process file
+            True if handler can process file
         """
         return False
 
-    async def process(self, file_path: Path) -> ProcessingResult:
-        """Process file.
+    def process(self, input_file: Path, output_dir: Path) -> ProcessingResult:
+        """Process a file.
         
         Args:
-            file_path: Path to file
+            input_file: Input file path
+            output_dir: Output directory path
             
         Returns:
             Processing result
+            
+        Raises:
+            ValidationError: If validation fails
+            ProcessingError: If processing fails
         """
-        try:
-            # Validate configuration
-            self.validate()
+        raise NotImplementedError("Subclasses must implement process()")
 
-            # Check if handler can process file
-            if not self.can_handle(file_path):
-                return ProcessingResult(
-                    success=False,
-                    errors=[f"Handler cannot process file: {file_path}"]
-                )
-
-            # Process file
-            return await self._process_file(file_path)
-
-        except Exception as e:
-            error_msg = f"Error processing {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            return ProcessingResult(
-                success=False,
-                errors=[error_msg]
-            )
-
-    async def _process_file(self, file_path: Path) -> ProcessingResult:
-        """Process a single file.
+    def validate(self, input_file: Path) -> None:
+        """Validate input file.
         
         Args:
-            file_path: Path to file
+            input_file: Input file path
+            
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not input_file.exists():
+            raise ValidationError(f"Input file does not exist: {input_file}")
+        if not input_file.is_file():
+            raise ValidationError(f"Input path is not a file: {input_file}")
+
+    def validate_output_dir(self, output_dir: Path) -> None:
+        """Validate output directory.
+        
+        Args:
+            output_dir: Output directory path
+            
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not output_dir.exists():
+            output_dir.mkdir(parents=True)
+        elif not output_dir.is_dir():
+            raise ValidationError(f"Output path is not a directory: {output_dir}")
+
+    def get_output_path(self, input_file: Path, output_dir: Path) -> Path:
+        """Get output path for input file.
+        
+        Args:
+            input_file: Input file path
+            output_dir: Output directory path
             
         Returns:
-            Processing result
+            Output file path
         """
-        raise NotImplementedError("Subclasses must implement _process_file")
-
-    async def cleanup(self) -> None:
-        """Clean up handler resources."""
-        pass 
+        return output_dir / input_file.name 
