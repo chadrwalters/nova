@@ -1,11 +1,7 @@
-"""Nova processing phases."""
+"""Nova pipeline phases."""
 
-from nova.phases.base import NovaPhase
+from nova.phases.base import Phase
 from nova.phases.parse import ParsePhase
 from nova.phases.split import SplitPhase
 
-__all__ = [
-    "NovaPhase",
-    "ParsePhase",
-    "SplitPhase",
-] 
+__all__ = ["Phase", "ParsePhase", "SplitPhase"] 

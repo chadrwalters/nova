@@ -30,17 +30,19 @@ class NovaJSONEncoder(json.JSONEncoder):
 
 @dataclass
 class DocumentMetadata:
-    """Document metadata."""
+    """Metadata for a document."""
     
     # File information
-    file_name: str
-    file_path: str
-    file_type: str
+    file_name: str = ""
+    file_path: str = ""
+    file_type: str = ""
     
     # Processing information
-    handler_name: str
-    handler_version: str
+    handler_name: str = ""
+    handler_version: str = ""
     processed: bool = False
+    unchanged: bool = False
+    reprocessed: bool = False
     
     # Content information
     title: Optional[str] = None
@@ -55,7 +57,10 @@ class DocumentMetadata:
     
     # Error information
     error: Optional[str] = None
-    errors: List[Dict[str, str]] = field(default_factory=list)
+    errors: Dict[str, str] = field(default_factory=dict)
+    
+    # Output files
+    output_files: List[Path] = field(default_factory=list)
     
     @classmethod
     def from_file(cls, file_path: Path, handler_name: str, handler_version: str) -> "DocumentMetadata":
@@ -69,14 +74,14 @@ class DocumentMetadata:
         Returns:
             Document metadata.
         """
-        return cls(
-            file_name=file_path.name,
-            file_path=str(file_path),
-            file_type=file_path.suffix[1:] if file_path.suffix else "",
-            handler_name=handler_name,
-            handler_version=handler_version,
-            processed=False,
-        )
+        metadata = cls()
+        metadata.file_name = file_path.name
+        metadata.file_path = str(file_path)
+        metadata.file_type = file_path.suffix.lstrip('.')
+        metadata.handler_name = handler_name
+        metadata.handler_version = handler_version
+        metadata.title = file_path.stem
+        return metadata
     
     @property
     def dict(self) -> Dict:
@@ -137,6 +142,4 @@ class DocumentMetadata:
         Args:
             output_path: Path to output file.
         """
-        if 'output_files' not in self.metadata:
-            self.metadata['output_files'] = []
-        self.metadata['output_files'].append(str(output_path))
+        self.output_files.append(output_path)

@@ -38,9 +38,26 @@ class TextHandler(BaseHandler):
             
         Returns:
             Processed content.
+            
+        Raises:
+            UnicodeDecodeError: If file contains invalid UTF-8.
         """
         # Read file content
-        content = self._safe_read_file(file_path)
+        with open(file_path, 'rb') as f:
+            raw_content = f.read()
+            
+        # Try to decode as UTF-8
+        try:
+            content = raw_content.decode('utf-8')
+        except UnicodeDecodeError:
+            # Try to detect encoding
+            detected = chardet.detect(raw_content)
+            if detected['encoding'] is None:
+                raise UnicodeDecodeError(
+                    'utf-8', raw_content, 0, len(raw_content),
+                    'File contains invalid or binary data'
+                )
+            content = raw_content.decode(detected['encoding'])
         
         # Split into lines and remove trailing whitespace
         lines = [line.rstrip() for line in content.splitlines()]
@@ -57,37 +74,30 @@ class TextHandler(BaseHandler):
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a text file.
         
         Args:
             file_path: Path to text file.
-            output_dir: Directory to write output files.
             metadata: Document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Create output directory
-            output_dir = Path(str(output_dir))
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Create markdown file
-            markdown_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Get output path from output manager
+            markdown_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
             # Read text file
-            text = self._safe_read_file(file_path)
+            text = await self._process_content(file_path)
             
-            # Get relative path from input directory
-            rel_path = file_path.relative_to(Path(self.config.input_dir))
-            
-            # Write markdown file with text content and reference to original
+            # Write markdown file with text content
             content = f"""# {file_path.stem}
-
-[Download Original]({rel_path})
 
 ## Content
 
@@ -96,20 +106,18 @@ class TextHandler(BaseHandler):
 ```
 """
             # Write with UTF-8 encoding and replace any invalid characters
-            with open(markdown_path, 'w', encoding='utf-8', errors='replace') as f:
-                f.write(content)
+            self._safe_write_file(markdown_path, content, encoding='utf-8')
             
             # Update metadata
             metadata.title = file_path.stem
-            metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['text'] = text
             metadata.processed = True
-            metadata.add_output_file(markdown_path)
+            metadata.metadata['text'] = text
+            metadata.output_files.append(markdown_path)
             
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process text file {file_path}: {str(e)}")
-            metadata.add_error(self.name, str(e))
-            metadata.processed = False
+            error_msg = f"Failed to process text file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            metadata.add_error(self.name, error_msg)
             return metadata 

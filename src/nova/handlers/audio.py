@@ -63,15 +63,11 @@ class AudioHandler(BaseHandler):
         Returns:
             Markdown content.
         """
-        # Get relative path from markdown to original
-        rel_path = self._get_relative_path(output_path, audio_path)
-        
         return f"""# Audio: {audio_path.stem}
 
 TODO: Implement audio transcription and generate detailed description.
 
 ## Audio Information
-- Original File: [{audio_path.name}]({rel_path})
 - Format: {audio_path.suffix.lstrip('.')}
 
 ## Placeholder Description
@@ -81,14 +77,12 @@ This is a placeholder markdown file for the audio. The actual audio transcriptio
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an audio file.
         
         Args:
             file_path: Path to file.
-            output_dir: Output directory.
             metadata: Document metadata.
                 
         Returns:
@@ -98,8 +92,12 @@ This is a placeholder markdown file for the audio. The actual audio transcriptio
             ValueError: If file cannot be processed.
         """
         try:
-            # Create output file
-            output_path = output_dir / f"{file_path.stem}.md"
+            # Get output path from output manager
+            output_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
             # Create placeholder markdown
             content = self._create_placeholder_markdown(file_path, output_path)

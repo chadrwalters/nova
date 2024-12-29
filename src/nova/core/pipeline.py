@@ -1,123 +1,162 @@
-"""Nova document processing pipeline."""
+"""Nova pipeline implementation."""
 
-import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional, Set, Union
-import shutil
-from datetime import datetime
-import json
+from typing import Dict, List, Optional, Set, Union
 
-from nova.core.logging import create_progress_bar, print_summary
-from nova.core.progress import FileProgress, PhaseProgress, ProcessingStatus, ProgressTracker
-from nova.models.document import DocumentMetadata
 from nova.config.manager import ConfigManager
+from nova.core.metadata import FileMetadata
+from nova.phases.base import Phase
 from nova.phases.parse import ParsePhase
 from nova.phases.split import SplitPhase
-from nova.handlers.registry import HandlerRegistry
+from nova.core.logging import print_summary
 
-logger = logging.getLogger("nova")
-
+logger = logging.getLogger(__name__)
 
 class NovaPipeline:
-    """Nova document processing pipeline."""
+    """Pipeline for processing files."""
     
-    def __init__(self):
-        """Initialize pipeline."""
-        self.progress = ProgressTracker()
-        self.progress_bar = create_progress_bar()
-        self.unchanged_files = 0
-        self.reprocessed_files = 0
-        self.config = ConfigManager()
-    
-    async def process_file(
-        self,
-        file_path: Path,
-        phases: List[str],
-    ) -> Optional[DocumentMetadata]:
-        """Process a single file through all phases.
+    def __init__(self, config: ConfigManager):
+        """Initialize pipeline.
         
         Args:
-            file_path: Path to file to process.
-            phases: List of phases to run.
-            
-        Returns:
-            Document metadata.
+            config: Configuration manager
         """
-        # Skip .DS_Store files
-        if file_path.name == ".DS_Store":
-            return None
-            
-        # Get relative path from input directory
-        input_dir = Path(self.config.input_dir)
-        try:
-            rel_path = file_path.relative_to(input_dir)
-        except ValueError:
-            logger.error(f"File {file_path} is not under input directory {input_dir}")
-            return None
-            
-        # Start file processing
-        await self.progress.start_file(file_path)
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize empty state
+        self.state = {}
         
         # Initialize phases
-        for phase in phases:
-            await self.progress.add_phase(phase, 1)  # Only processing one file
-            await self.progress.start_phase(phase, file_path)
+        self.phases = {
+            "parse": ParsePhase(self),
+            "split": SplitPhase(self)
+        }
         
-        # Create metadata
-        metadata = await self.get_existing_metadata(file_path)
-        if not metadata:
-            metadata = DocumentMetadata(
-                file_name=file_path.name,
-                file_path=str(file_path),
-                file_type=file_path.suffix[1:] if file_path.suffix else "",
-                handler_name="nova",
-                handler_version="0.1.0",
-                processed=False,
-            )
+        # Reset state after phases are initialized
+        self.reset_state()
+        
+    def reset_state(self) -> None:
+        """Reset pipeline state."""
+        # Initialize standard state for parse phase
+        self.state = {
+            "parse": {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set()
+            }
+        }
+        
+        # Initialize custom state for split phase
+        self.state["split"] = {
+            'summary_sections': 0,
+            'raw_notes_sections': 0,
+            'attachments': 0,
+            'skipped_files': set(),
+            'failed_files': set(),
+            'successful_files': set(),  # Keep this for pipeline compatibility
+            'unchanged_files': set(),   # Keep this for pipeline compatibility
+            'reprocessed_files': set()  # Keep this for pipeline compatibility
+        }
+        
+    async def process_directory(self, directory: Path, phases: List[str] = None) -> None:
+        """Process all files in a directory.
+        
+        Args:
+            directory: Directory to process
+            phases: Optional list of phases to run. If None, run all phases.
+        """
+        # Reset state for this run
+        self.reset_state()
+        
+        # Get list of phases to run
+        if phases is None:
+            phases = list(self.phases.keys())
             
         # Process each phase
         for phase in phases:
-            if not await self.needs_reprocessing(file_path, phase):
-                continue
-                
-            logger.info(f"[{phase}] Starting {phase} phase")
-            phase_instance = self.get_phase(phase)
-            try:
-                phase_metadata = await phase_instance.process_file(file_path)
-                if phase_metadata and phase_metadata.has_errors:
-                    logger.error(f"Errors in {phase} phase: {phase_metadata.errors}")
-                    metadata.errors.extend(phase_metadata.errors)
-                    await self.progress.fail_phase(phase, file_path)
-                    break
-                if phase_metadata:
-                    metadata = phase_metadata
-                await self.progress.complete_phase(phase, file_path)
-            except Exception as e:
-                logger.error(f"Error in {phase} phase: {str(e)}")
-                metadata.errors.append({
-                    "phase": phase,
-                    "message": str(e)
-                })
-                await self.progress.fail_phase(phase, file_path)
-                break
-                
-            logger.info(f"[{phase}] Completed {phase} phase")
+            phase_start_time = time.time()
+            logger.info(f"Running {phase} phase...")
             
-        # Complete file processing
-        if metadata.has_errors:
-            await self.progress.fail_file(file_path)
-            metadata.processed = False
-        else:
-            await self.progress.complete_file(file_path)
-            metadata.processed = True
+            # Get phase instance
+            phase_instance = self.phases[phase]
             
-        return metadata
-    
-    async def needs_reprocessing(self, file_path: Path, phases: List[str]) -> bool:
-        """
-        Return True if any phase output is missing or older than the input file;
+            # Get files to process
+            if phase == "parse":
+                # For parse phase, get all files in input directory
+                files = list(directory.rglob("*"))
+                files = [f for f in files if f.is_file() and not f.name.startswith(".")]
+            else:
+                # For other phases, get files from previous phase
+                prev_phase = phases[phases.index(phase) - 1]
+                prev_phase_dir = self.config.processing_dir / "phases" / prev_phase
+                files = list(prev_phase_dir.rglob("*"))
+                files = [f for f in files if f.is_file() and not f.name.startswith(".")]
+            
+            # Create output directory
+            output_dir = self.config.processing_dir / "phases" / phase
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Process each file
+            for i, file_path in enumerate(files, 1):
+                logger.info(f"Processing file {i}/{len(files)}: {file_path.name}")
+                
+                # Check if file needs reprocessing
+                if not await self.needs_reprocessing(file_path, phase):
+                    self.state[phase]['unchanged_files'].add(file_path)
+                    continue
+                    
+                # Process file
+                metadata = await phase_instance.process_file(file_path, output_dir)
+                
+                # Update state based on metadata
+                if metadata is None:
+                    self.state[phase]['failed_files'].add(file_path)
+                elif metadata.unchanged:
+                    self.state[phase]['unchanged_files'].add(file_path)
+                else:
+                    self.state[phase]['successful_files'].add(file_path)
+                    if metadata.reprocessed:
+                        self.state[phase]['reprocessed_files'].add(file_path)
+            
+            # Call finalize after all files have been processed
+            if hasattr(phase_instance, 'finalize'):
+                phase_instance.finalize()
+            
+            # Print phase summary
+            phase_duration = time.time() - phase_start_time
+            print(f"\n{phase.upper()} Phase Summary")
+            
+            # Use different summary format for split phase
+            if phase == "split":
+                print("\n   Processing Summary")
+                print("┏━━━━━━━━━━━━━┳━━━━━━━━┓")
+                print("┃ Metric      ┃  Value ┃")
+                print("┡━━━━━━━━━━━━━╇━━━━━━━━┩")
+                print(f"│ Summaries   │ {self.state[phase]['summary_sections']:>6d} │")
+                print(f"│ Raw Notes   │ {self.state[phase]['raw_notes_sections']:>6d} │")
+                print(f"│ Attachments │ {self.state[phase]['attachments']:>6d} │")
+                print(f"│ Failed      │ {len(self.state[phase]['failed_files']):>6d} │")
+                print(f"│ Duration    │ {phase_duration:>6.2f}s │")
+                print("└─────────────┴────────┘")
+            else:
+                print_summary(
+                    total_files=len(files),
+                    successful=len(self.state[phase]['successful_files']),
+                    failed=len(self.state[phase]['failed_files']),
+                    skipped=len(self.state[phase]['skipped_files']),
+                    duration=phase_duration,
+                    unchanged=list(self.state[phase]['unchanged_files']),
+                    reprocessed=list(self.state[phase]['reprocessed_files']),
+                    failures=[]
+                )
+
+    async def needs_reprocessing(self, file_path: Path, phase: str) -> bool:
+        """Return True if any phase output is missing or older than the input file;
         otherwise False.
         """
         # Skip .DS_Store files
@@ -128,218 +167,102 @@ class NovaPipeline:
         phases_dir = Path(processing_dir) / "phases"
         logger.debug(f"Checking if {file_path} needs reprocessing in {processing_dir}")
 
-        # Get relative path from input directory
-        input_dir = Path(self.config.input_dir)
-        try:
-            rel_path = file_path.relative_to(input_dir)
-        except ValueError:
-            logger.error(f"File {file_path} is not under input directory {input_dir}")
-            return True
-
-        # If the user's input file or directory isn't valid, assume we need reprocessing
-        if not file_path.exists():
-            logger.debug(f"Input file {file_path} doesn't exist - needs reprocessing")
-            return True
-
-        # Check if output exists for each phase
-        for phase in phases:
-            phase_dir = phases_dir / phase
-            
-            # For parse phase, look for .parsed.md file in the same relative directory
-            if phase == "parse":
-                # Preserve directory structure
-                relative_output_dir = phase_dir / rel_path.parent
-                output_path = relative_output_dir / f"{rel_path.stem}.parsed.md"
-                logger.debug(f"Checking parse output: {output_path}")
-                
-                # If .parsed.md file doesn't exist => must reprocess
-                if not output_path.exists():
-                    logger.debug(f"Missing parsed output file for {phase}, reprocessing required")
-                    return True
-                
-                # Check if input is newer than output
-                try:
-                    input_mtime = file_path.stat().st_mtime
-                    output_mtime = output_path.stat().st_mtime
-                    logger.debug(f"Comparing timestamps for {file_path.name}")
-                    if output_mtime < input_mtime:
-                        logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
-                        return True
-                except OSError as e:
-                    logger.error(f"Error checking file times: {str(e)}")
-                    return True
-                    
-            else:
-                # For other phases, use normal path preserving directory structure
-                output_path = phase_dir / rel_path
-                logger.debug(f"Checking output: {output_path}")
-                
-                # If file doesn't exist for this phase => must reprocess
-                if not output_path.exists():
-                    logger.debug(f"Missing output file for {phase}, reprocessing required")
-                    return True
-                
-                # If output is older => must reprocess
-                try:
-                    input_mtime = file_path.stat().st_mtime
-                    output_mtime = output_path.stat().st_mtime
-                    logger.debug(f"Comparing timestamps for {file_path.name}")
-                    if output_mtime < input_mtime:
-                        logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
-                        return True
-                except OSError as e:
-                    logger.error(f"Error checking file times: {str(e)}")
-                    return True
-
-        # Check cache state
-        cache_state_dir = Path(self.config.cache_dir) / "state"
-        processing_history_path = cache_state_dir / "processing_history.json"
-        
-        if processing_history_path.exists():
+        # For parse phase, check against input directory
+        if phase == "parse":
+            # Get relative path from input directory
+            input_dir = Path(self.config.input_dir)
             try:
-                with open(processing_history_path, 'r') as f:
-                    processing_history = json.loads(f.read())
-                    
-                # Check if file is in processing history
-                file_history = processing_history.get(str(file_path))
-                if file_history:
-                    # Get the cached modification time
-                    cached_mtime = file_history.get('modified_time')
-                    current_mtime = file_path.stat().st_mtime
-                    
-                    # If file hasn't been modified since last processing, we can skip
-                    if cached_mtime and current_mtime <= cached_mtime:
-                        logger.debug(f"File {file_path} hasn't been modified since last processing")
-                        return False
-                    else:
-                        logger.debug(f"File {file_path} has been modified since last processing")
-                        return True
-            except Exception as e:
-                logger.error(f"Error reading processing history: {str(e)}")
-                # If we can't read the cache, assume we need to reprocess
+                rel_path = file_path.relative_to(input_dir)
+            except ValueError:
+                logger.error(f"File {file_path} is not under input directory {input_dir}")
                 return True
 
-        # If we get here, we need to reprocess
-        return True
-    
-    async def get_existing_metadata(self, file_path: Path) -> DocumentMetadata:
-        """Get metadata from existing processed output.
-        
-        Args:
-            file_path: Path to input file.
+            # If the user's input file or directory isn't valid, assume we need reprocessing
+            if not file_path.exists():
+                logger.debug(f"Input file {file_path} doesn't exist - needs reprocessing")
+                return True
+
+            # For markdown files in the root directory, look in the root output directory
+            if file_path.suffix.lower() == '.md' and len(rel_path.parts) == 1:
+                output_path = phases_dir / phase / f"{file_path.stem}.parsed.md"
+            else:
+                # For all other files, preserve the directory structure
+                output_path = phases_dir / phase / rel_path.parent / f"{file_path.stem}.parsed.md"
             
-        Returns:
-            Metadata from existing processed output.
-        """
-        # TODO: Load metadata from existing output file
-        return DocumentMetadata.from_file(
-            file_path=file_path,
-            handler_name="nova",
-            handler_version="0.1.0",
-        )
-    
-    async def process_directory(
-        self,
-        input_dir: Path,
-        phases: List[str],
-    ) -> None:
-        """Process all files in a directory.
-        
-        Args:
-            input_dir: Directory containing files to process.
-            phases: List of phases to run.
-        """
-        # Log input directory
-        logger.info(f"Searching for files in: {input_dir}")
-        
-        # Get list of files to process
-        files = [f for f in input_dir.rglob("*") if f.is_file() and f.name != ".DS_Store"]
-        total_files = len(files)
-        
-        # Log found files
-        logger.info(f"Found {total_files} files to process:")
-        for file in files:
-            logger.info(f"  - {file.name}")
-        
-        # Initialize progress tracking
-        start_time = time.time()
-        for phase in phases:
-            await self.progress.add_phase(phase, total_files)
-        
-        # Create progress bar task
-        task_id = self.progress_bar.add_task(
-            "Processing files...",
-            total=total_files,
-        )
-        
-        # Process files
-        successful = 0
-        failed = 0
-        skipped = 0
-        failures = []
-        
-        with self.progress_bar:
-            for i, file_path in enumerate(files, 1):
-                # Log progress
-                logger.info(f"Processing file {i}/{total_files}: {file_path.name}", extra={"progress": f"{i}/{total_files}"})
+            logger.debug(f"Checking parse output: {output_path}")
+            
+            # If .parsed.md file doesn't exist => must reprocess
+            if not output_path.exists():
+                logger.debug(f"Missing parsed output file for {phase}, reprocessing required")
+                return True
+            
+            # Check if input is newer than output
+            try:
+                input_mtime = file_path.stat().st_mtime
+                output_mtime = output_path.stat().st_mtime
+                logger.debug(f"Comparing timestamps for {file_path.name}")
+                if output_mtime < input_mtime:
+                    logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
+                    return True
+            except OSError as e:
+                logger.error(f"Error checking file times: {str(e)}")
+                return True
                 
-                try:
-                    # Process file
-                    metadata = await self.process_file(file_path, phases)
-                    
-                    # Update counters
-                    if metadata is None:
-                        # File was ignored or no handler available
-                        skipped += 1
-                    elif metadata.errors or metadata.error:
-                        # Only count as failure if it's not an ignored file
-                        if not any(err.get("message", "").startswith("No handler found") for err in metadata.errors):
-                            failed += 1
-                            # Add failure details
-                            error_msg = metadata.errors[-1]["message"] if metadata.errors else metadata.error
-                            failures.append((file_path, error_msg))
-                        else:
-                            skipped += 1
-                    else:
-                        successful += 1
-                    
-                except Exception as e:
-                    # Log error and update counter
-                    logger.error(f"Failed to process file: {file_path}\n{str(e)}")
-                    failed += 1
-                    failures.append((file_path, str(e)))
+        else:
+            # For split phase, check if output exists and is newer than input
+            output_path = phases_dir / phase / file_path.name
+            
+            # If output doesn't exist => must reprocess
+            if not output_path.exists():
+                logger.debug(f"Missing output file for {phase}, reprocessing required")
+                return True
+            
+            # If output is older => must reprocess
+            try:
+                input_mtime = file_path.stat().st_mtime
+                output_mtime = output_path.stat().st_mtime
+                logger.debug(f"Comparing timestamps for {file_path.name}")
+                if output_mtime < input_mtime:
+                    logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
+                    return True
+            except OSError as e:
+                logger.error(f"Error checking file times: {str(e)}")
+                return True
+
+        # Check if input file has been modified
+        try:
+            # Get current file content
+            with open(file_path, 'rb') as f:
+                current_content = f.read()
+            
+            # Get previous file content from cache
+            cache_dir = Path(self.config.cache_dir) / "content"
+            cache_file = cache_dir / file_path.name
+            
+            # If cache file doesn't exist => must reprocess
+            if not cache_file.exists():
+                # Create cache directory and save current content
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_file, 'wb') as f:
+                    f.write(current_content)
+                return True
+            
+            # Compare content
+            with open(cache_file, 'rb') as f:
+                cached_content = f.read()
+            
+            if current_content != cached_content:
+                # Update cache with new content
+                with open(cache_file, 'wb') as f:
+                    f.write(current_content)
+                return True
                 
-                # Update progress bar
-                self.progress_bar.update(task_id, advance=1)
-        
-        # Calculate duration
-        duration = time.time() - start_time
-        
-        # Log completion
-        logger.info(
-            "Directory processing complete",
-            extra={
-                "duration": duration,
-                "total_files": total_files,
-                "successful": successful,
-                "failed": failed,
-                "skipped": skipped,
-                "unchanged": self.unchanged_files,
-                "reprocessed": self.reprocessed_files,
-            },
-        )
-        
-        # Print summary table
-        print_summary(
-            total_files=total_files,
-            successful=successful,
-            failed=failed,
-            skipped=skipped,
-            duration=duration,
-            unchanged=self.unchanged_files,
-            reprocessed=self.reprocessed_files,
-            failures=failures
-        ) 
+        except Exception as e:
+            logger.error(f"Error checking file content: {str(e)}")
+            return True
+
+        # If we get here, we don't need to reprocess
+        return False
 
     def get_phase_output_dir(self, phase: str) -> Path:
         """Get the output directory for a phase."""
@@ -353,4 +276,27 @@ class NovaPipeline:
         elif phase == "split":
             return SplitPhase(self.config)
         else:
-            raise ValueError(f"Unknown phase: {phase}") 
+            raise ValueError(f"Unknown phase: {phase}")
+
+    async def _process_file(self, phase: Phase, file_path: Path) -> Optional[FileMetadata]:
+        """Process a file with a phase.
+        
+        Args:
+            phase: Phase to process file with.
+            file_path: Path to file to process.
+            
+        Returns:
+            Document metadata if successful, None otherwise.
+        """
+        try:
+            # Get output directory for phase
+            output_dir = self.get_phase_output_dir(phase.name)
+            
+            # Process file
+            metadata = await phase.process(file_path, output_dir)
+            
+            return metadata
+            
+        except Exception as e:
+            logger.error(f"Failed to process {file_path} with {phase.name}: {str(e)}")
+            return None 
