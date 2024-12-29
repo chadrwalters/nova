@@ -10,6 +10,7 @@ from nova.core.metadata import FileMetadata
 from nova.phases.base import Phase
 from nova.phases.parse import ParsePhase
 from nova.phases.split import SplitPhase
+from nova.phases.finalize import FinalizePhase
 from nova.core.logging import print_summary
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,8 @@ class NovaPipeline:
         # Initialize phases
         self.phases = {
             "parse": ParsePhase(self),
-            "split": SplitPhase(self)
+            "split": SplitPhase(self),
+            "finalize": FinalizePhase(self)
         }
         
         # Reset state after phases are initialized
@@ -63,6 +65,15 @@ class NovaPipeline:
             'reprocessed_files': set()  # Keep this for pipeline compatibility
         }
         
+        # Initialize finalize phase state
+        self.state["finalize"] = {
+            'successful_files': set(),
+            'failed_files': set(),
+            'skipped_files': set(),
+            'unchanged_files': set(),
+            'reprocessed_files': set()
+        }
+        
     async def process_directory(self, directory: Path, phases: List[str] = None) -> None:
         """Process all files in a directory.
         
@@ -76,6 +87,9 @@ class NovaPipeline:
         # Get list of phases to run
         if phases is None:
             phases = list(self.phases.keys())
+        elif "finalize" not in phases:
+            # Always append finalize phase if not included
+            phases.append("finalize")
             
         # Process each phase
         for phase in phases:
@@ -85,7 +99,34 @@ class NovaPipeline:
             # Get phase instance
             phase_instance = self.phases[phase]
             
-            # Get files to process
+            # Special handling for finalize phase
+            if phase == "finalize":
+                # Check if previous phases succeeded
+                if phase_instance.check_pipeline_success():
+                    # Get files from split phase to copy
+                    split_dir = self.config.processing_dir / "phases" / "split"
+                    files = list(split_dir.rglob("*"))
+                    files = [f for f in files if f.is_file() and not f.name.startswith(".")]
+                    
+                    # Create output directory for finalize phase (temporary, for tracking)
+                    output_dir = self.config.processing_dir / "phases" / "finalize"
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Process each file (copy to output)
+                    for file_path in files:
+                        metadata = await phase_instance.process_file(file_path, output_dir)
+                        if metadata is None:
+                            self.state[phase]['failed_files'].add(file_path)
+                        else:
+                            self.state[phase]['successful_files'].add(file_path)
+                else:
+                    logger.warning("Skipping file copy in finalize phase due to previous phase failures")
+                    
+                # Print final summary
+                phase_instance.print_final_summary()
+                continue
+            
+            # For other phases, get files to process normally
             if phase == "parse":
                 # For parse phase, get all files in input directory
                 files = list(directory.rglob("*"))
@@ -106,7 +147,8 @@ class NovaPipeline:
                 logger.info(f"Processing file {i}/{len(files)}: {file_path.name}")
                 
                 # Check if file needs reprocessing
-                if not await self.needs_reprocessing(file_path, phase):
+                needs_reprocess = await self.needs_reprocessing(file_path, phase)
+                if not needs_reprocess:
                     self.state[phase]['unchanged_files'].add(file_path)
                     continue
                     
@@ -144,16 +186,43 @@ class NovaPipeline:
                 print(f"│ Duration    │ {phase_duration:>6.2f}s │")
                 print("└─────────────┴────────┘")
             else:
-                print_summary(
-                    total_files=len(files),
-                    successful=len(self.state[phase]['successful_files']),
-                    failed=len(self.state[phase]['failed_files']),
-                    skipped=len(self.state[phase]['skipped_files']),
-                    duration=phase_duration,
-                    unchanged=list(self.state[phase]['unchanged_files']),
-                    reprocessed=list(self.state[phase]['reprocessed_files']),
-                    failures=[]
-                )
+                # Enhanced summary with reprocessing info
+                total_files = len(files)
+                successful = len(self.state[phase]['successful_files'])
+                failed = len(self.state[phase]['failed_files'])
+                skipped = len(self.state[phase]['skipped_files'])
+                unchanged = len(self.state[phase]['unchanged_files'])
+                reprocessed = len(self.state[phase]['reprocessed_files'])
+                
+                # For parse phase, count unchanged files as processed
+                if phase == "parse":
+                    processed = successful + unchanged
+                else:
+                    processed = successful
+                
+                print("\n   Processing Summary")
+                print("┏━━━━━━━━━━━━━┳━━━━━━━━┓")
+                print("┃ Metric      ┃  Value ┃")
+                print("┡━━━━━━━━━━━━━╇━━━━━━━━┩")
+                print(f"│ Total Files │ {total_files:>6d} │")
+                print(f"│ Processed   │ {processed:>6d} │")
+                print(f"│ Failed      │ {failed:>6d} │")
+                print(f"│ Skipped     │ {skipped:>6d} │")
+                print(f"│ Unchanged   │ {unchanged:>6d} │")
+                print(f"│ Reprocessed │ {reprocessed:>6d} │")
+                print(f"│ Duration    │ {phase_duration:>6.2f}s │")
+                print("└─────────────┴────────┘")
+                
+                # Print list of unchanged and reprocessed files if any
+                if unchanged > 0:
+                    print("\nUnchanged files:")
+                    for f in sorted(self.state[phase]['unchanged_files']):
+                        print(f"  • {f.name}")
+                        
+                if reprocessed > 0:
+                    print("\nReprocessed files:")
+                    for f in sorted(self.state[phase]['reprocessed_files']):
+                        print(f"  • {f.name}")
 
     async def needs_reprocessing(self, file_path: Path, phase: str) -> bool:
         """Return True if any phase output is missing or older than the input file;
@@ -179,7 +248,7 @@ class NovaPipeline:
 
             # If the user's input file or directory isn't valid, assume we need reprocessing
             if not file_path.exists():
-                logger.debug(f"Input file {file_path} doesn't exist - needs reprocessing")
+                logger.info(f"Input file {file_path} doesn't exist - will process when it appears")
                 return True
 
             # For markdown files in the root directory, look in the root output directory
@@ -193,7 +262,7 @@ class NovaPipeline:
             
             # If .parsed.md file doesn't exist => must reprocess
             if not output_path.exists():
-                logger.debug(f"Missing parsed output file for {phase}, reprocessing required")
+                logger.info(f"No previous output found for {file_path.name} - will process")
                 return True
             
             # Check if input is newer than output
@@ -201,9 +270,16 @@ class NovaPipeline:
                 input_mtime = file_path.stat().st_mtime
                 output_mtime = output_path.stat().st_mtime
                 logger.debug(f"Comparing timestamps for {file_path.name}")
+                
+                # Get formatted timestamps for logging
+                input_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(input_mtime))
+                output_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(output_mtime))
+                
                 if output_mtime < input_mtime:
-                    logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
+                    logger.info(f"File {file_path.name} modified ({input_time}) after last processing ({output_time}) - will reprocess")
                     return True
+                else:
+                    logger.info(f"File {file_path.name} unchanged since last processing ({output_time}) - skipping")
             except OSError as e:
                 logger.error(f"Error checking file times: {str(e)}")
                 return True
@@ -214,7 +290,7 @@ class NovaPipeline:
             
             # If output doesn't exist => must reprocess
             if not output_path.exists():
-                logger.debug(f"Missing output file for {phase}, reprocessing required")
+                logger.info(f"No previous output found for {file_path.name} in {phase} phase - will process")
                 return True
             
             # If output is older => must reprocess
@@ -222,9 +298,16 @@ class NovaPipeline:
                 input_mtime = file_path.stat().st_mtime
                 output_mtime = output_path.stat().st_mtime
                 logger.debug(f"Comparing timestamps for {file_path.name}")
+                
+                # Get formatted timestamps for logging
+                input_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(input_mtime))
+                output_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(output_time))
+                
                 if output_mtime < input_mtime:
-                    logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
+                    logger.info(f"File {file_path.name} modified ({input_time}) after last {phase} processing ({output_time}) - will reprocess")
                     return True
+                else:
+                    logger.info(f"File {file_path.name} unchanged since last {phase} processing ({output_time}) - skipping")
             except OSError as e:
                 logger.error(f"Error checking file times: {str(e)}")
                 return True
@@ -245,6 +328,7 @@ class NovaPipeline:
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
                 with open(cache_file, 'wb') as f:
                     f.write(current_content)
+                logger.info(f"No content cache found for {file_path.name} - will process")
                 return True
             
             # Compare content
@@ -255,7 +339,10 @@ class NovaPipeline:
                 # Update cache with new content
                 with open(cache_file, 'wb') as f:
                     f.write(current_content)
+                logger.info(f"Content changed for {file_path.name} - will reprocess")
                 return True
+            else:
+                logger.debug(f"Content unchanged for {file_path.name}")
                 
         except Exception as e:
             logger.error(f"Error checking file content: {str(e)}")
