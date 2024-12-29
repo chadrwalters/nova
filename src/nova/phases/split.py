@@ -39,21 +39,104 @@ class SplitPhase(Phase):
         super().__init__(pipeline)
         self.attachments_by_main = {}  # Map of main file name to set of attachment paths
         self.metadata_by_file = {}  # Map of file name to metadata
-        self.successful_attachments = set()  # Set of successfully processed attachments
-        self.output_files = set()  # Set of output files
-        self.processed_files = set()  # Set of processed files
+        self.output_files = set()  # Set of output files created
         
-        # Initialize state
+        # Initialize state with detailed section tracking
         self.pipeline.state['split'] = {
-            'attachments': 0,  # Number of attachments processed
-            'successful_files': set(),  # Set of successfully processed files
-            'failed_files': set(),  # Set of failed files
-            'skipped_files': set(),  # Set of skipped files
-            'summary_sections': 0,  # Number of summary sections processed
-            'raw_notes_sections': 0  # Number of raw notes sections processed
+            'successful_files': set(),
+            'failed_files': set(),
+            'skipped_files': set(),
+            'section_stats': {
+                'summary': {
+                    'total': 0,
+                    'processed': 0,
+                    'empty': 0,
+                    'errors': 0
+                },
+                'raw_notes': {
+                    'total': 0,
+                    'processed': 0,
+                    'empty': 0,
+                    'errors': 0
+                },
+                'attachments': {
+                    'total': 0,
+                    'processed': 0,
+                    'by_type': {},  # Track attachment types
+                    'errors': 0
+                }
+            }
         }
+    
+    def _ensure_section_stats(self):
+        """Ensure section stats are properly initialized in the pipeline state."""
+        if 'split' not in self.pipeline.state:
+            self.pipeline.state['split'] = {}
+            
+        state = self.pipeline.state['split']
         
-    async def process(self, file_path: Path, output_dir: Path, metadata: Optional[FileMetadata] = None) -> Optional[FileMetadata]:
+        # Initialize basic state tracking if not present
+        if 'successful_files' not in state:
+            state['successful_files'] = set()
+        if 'failed_files' not in state:
+            state['failed_files'] = set()
+        if 'skipped_files' not in state:
+            state['skipped_files'] = set()
+            
+        # Initialize section stats if not present
+        if 'section_stats' not in state:
+            state['section_stats'] = {
+                'summary': {
+                    'total': 0,
+                    'processed': 0,
+                    'empty': 0,
+                    'errors': 0
+                },
+                'raw_notes': {
+                    'total': 0,
+                    'processed': 0,
+                    'empty': 0,
+                    'errors': 0
+                },
+                'attachments': {
+                    'total': 0,
+                    'processed': 0,
+                    'by_type': {},
+                    'errors': 0
+                }
+            }
+            
+    def _update_section_stats(self, section_type: str, status: str, attachment_type: Optional[str] = None):
+        """Update section statistics.
+        
+        Args:
+            section_type: Type of section ('summary', 'raw_notes', 'attachments')
+            status: Status of processing ('processed', 'empty', 'error')
+            attachment_type: Type of attachment if section_type is 'attachments'
+        """
+        # Ensure stats are initialized
+        self._ensure_section_stats()
+        
+        stats = self.pipeline.state['split']['section_stats'][section_type]
+        stats['total'] += 1
+        
+        if status == 'processed':
+            stats['processed'] += 1
+            if section_type == 'attachments' and attachment_type:
+                if attachment_type not in stats['by_type']:
+                    stats['by_type'][attachment_type] = 0
+                stats['by_type'][attachment_type] += 1
+        elif status == 'empty':
+            stats['empty'] += 1
+        elif status == 'error':
+            stats['errors'] += 1
+    
+    async def process(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[FileMetadata] = None
+    ) -> Optional[FileMetadata]:
         """Process a file.
         
         Args:
@@ -64,31 +147,55 @@ class SplitPhase(Phase):
         Returns:
             Metadata about processed file, or None if file was skipped
         """
-        # Call the sync version of process_file
-        metadata = await self.process_file(file_path, output_dir)
-        if metadata:
-            # Get the file stem (without extension)
-            file_stem = file_path.stem
-            if file_stem.endswith('.parsed'):
-                file_stem = file_stem[:-7]  # Remove .parsed suffix
+        try:
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = FileMetadata(file_path)
             
-            # Store metadata for later use
-            self.metadata_by_file[file_stem] = metadata
+            # Process the file
+            metadata = await self.process_file(file_path, output_dir, metadata)
+            if metadata:
+                # Get the file stem (without extension)
+                file_stem = file_path.stem
+                if file_stem.endswith('.parsed'):
+                    file_stem = file_stem[:-7]  # Remove .parsed suffix
+                
+                # Store metadata for later use
+                self.metadata_by_file[file_stem] = metadata
+                
+                return metadata
+            return None
             
-            return metadata
-        return None
+        except Exception as e:
+            self.logger.error(f"Failed to process file in split phase: {file_path}")
+            self.logger.error(traceback.format_exc())
+            if metadata:
+                metadata.add_error("SplitPhase", str(e))
+                metadata.processed = False
+                return metadata
+            return None
         
-    async def process_file(self, file_path: Path, output_dir: Optional[Path] = None) -> Optional[FileMetadata]:
-        """Process a single file.
+    async def process_file(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[FileMetadata] = None
+    ) -> Optional[FileMetadata]:
+        """Process a file through the split phase.
         
         Args:
-            file_path: Path to the file to process
-            output_dir: Optional directory to write output files to
+            file_path: Path to file to process
+            output_dir: Directory to write output files to
+            metadata: Optional metadata from previous phase
             
         Returns:
-            FileMetadata if file was processed successfully, None otherwise
+            Document metadata if successful, None otherwise
         """
         try:
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = FileMetadata(file_path)
+            
             # Get the file stem (without extension)
             file_stem = file_path.stem
             if file_stem.endswith('.parsed'):
@@ -97,107 +204,100 @@ class SplitPhase(Phase):
             # Get the parent directory name
             parent_dir = file_path.parent.name
             
-            # Create metadata for the file
-            metadata = FileMetadata(file_path)
-            metadata.processed = True
-            metadata.unchanged = False  # File was processed, so it's not unchanged
-            metadata.reprocessed = False  # Not reprocessing in this phase
-            
             # If this is a main file (not in a subdirectory)
             if parent_dir == 'parse':
-                logger.info(f"Processing main file: {file_path}")
-                # Use file stem for main file
-                main_file_name = file_stem
-                logger.debug(f"Using file stem for main file: {main_file_name} (from {file_path})")
-                # Store metadata for main file
-                self.metadata_by_file[main_file_name] = metadata
-                logger.debug(f"Storing metadata for main file: {main_file_name}")
-                
-                # Read the file content
+                # Read content from file
                 try:
                     content = file_path.read_text(encoding='utf-8')
-                    logger.info(f"Successfully read content from {file_path}: {len(content)} characters")
                     
-                    # Split content into summary and raw notes
+                    # Split content into sections
                     summary, raw_notes = self._split_content(content)
                     
-                    # Create output directory if it doesn't exist
-                    output_dir = self.pipeline.config.processing_dir / "phases" / "split"
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # Write summary to Summary.md
+                    # Update summary stats
                     if summary:
-                        summary_file = output_dir / "Summary.md"
-                        try:
-                            # Create file if it doesn't exist
-                            if not summary_file.exists():
-                                with open(summary_file, 'w', encoding='utf-8') as f:
-                                    f.write("# Summary\n\n")
-                            
-                            # Append summary section
-                            with open(summary_file, 'a', encoding='utf-8') as f:
-                                f.write(f"\n## {main_file_name}\n\n")
-                                f.write(summary + "\n\n")
-                                f.write("---\n\n")
-                            
-                            # Add to metadata
-                            metadata.add_output_file(summary_file)
-                            self.output_files.add(summary_file)
-                            self.pipeline.state['split']['summary_sections'] += 1
-                            logger.info(f"Successfully wrote summary section for {main_file_name}")
-                        except Exception as e:
-                            logger.error(f"Failed to write summary section for {main_file_name}: {e}")
-                            logger.error(traceback.format_exc())
+                        self._update_section_stats('summary', 'processed')
+                    else:
+                        self._update_section_stats('summary', 'empty')
                     
-                    # Write raw notes to Raw Notes.md
+                    # Update raw notes stats
                     if raw_notes:
-                        raw_notes_file = output_dir / "Raw Notes.md"
-                        try:
-                            # Create file if it doesn't exist
-                            if not raw_notes_file.exists():
-                                with open(raw_notes_file, 'w', encoding='utf-8') as f:
-                                    f.write("# Raw Notes\n\n")
-                            
-                            # Append raw notes section
-                            with open(raw_notes_file, 'a', encoding='utf-8') as f:
-                                f.write(f"\n## {main_file_name}\n\n")
-                                f.write(raw_notes + "\n\n")
-                                f.write("---\n\n")
-                            
-                            # Add to metadata
-                            metadata.add_output_file(raw_notes_file)
-                            self.output_files.add(raw_notes_file)
-                            self.pipeline.state['split']['raw_notes_sections'] += 1
-                            logger.info(f"Successfully wrote raw notes section for {main_file_name}")
-                        except Exception as e:
-                            logger.error(f"Failed to write raw notes section for {main_file_name}: {e}")
-                            logger.error(traceback.format_exc())
+                        self._update_section_stats('raw_notes', 'processed')
+                    else:
+                        self._update_section_stats('raw_notes', 'empty')
+                    
+                    # Process attachments
+                    attachments = self._extract_attachments(content)
+                    for attachment in attachments:
+                        attachment_type = attachment.suffix.lower().lstrip('.')
+                        self._update_section_stats('attachments', 'processed', attachment_type)
+                    
+                    # Create output files
+                    summary_file = output_dir / "Summary.md"
+                    raw_notes_file = output_dir / "Raw Notes.md"
+                    
+                    # Write summary
+                    if not summary_file.exists():
+                        summary_file.write_text("# Summary\n\n", encoding='utf-8')
+                    with open(summary_file, 'a', encoding='utf-8') as f:
+                        if summary:
+                            f.write(f"\n## {file_stem}\n\n{summary}\n")
+                    
+                    # Write raw notes
+                    if not raw_notes_file.exists():
+                        raw_notes_file.write_text("# Raw Notes\n\n", encoding='utf-8')
+                    with open(raw_notes_file, 'a', encoding='utf-8') as f:
+                        if raw_notes:
+                            f.write(f"\n## {file_stem}\n\n{raw_notes}\n")
+                    
+                    # Add output files to metadata
+                    metadata.add_output_file(summary_file)
+                    metadata.add_output_file(raw_notes_file)
+                    
+                    # Add to output files set
+                    self.output_files.add(summary_file)
+                    self.output_files.add(raw_notes_file)
+                    
+                    # Mark file as successful
+                    self.pipeline.state['split']['successful_files'].add(file_path)
+                    metadata.processed = True
+                    
+                    return metadata
                     
                 except Exception as e:
-                    logger.error(f"Failed to process main file {file_path}: {e}")
-                    logger.error(traceback.format_exc())
+                    self.logger.error(f"Failed to process main file {file_path}: {e}")
+                    self.logger.error(traceback.format_exc())
+                    self._update_section_stats('summary', 'error')
+                    self._update_section_stats('raw_notes', 'error')
                     self.pipeline.state['split']['failed_files'].add(file_path)
-                    return None
+                    metadata.add_error("SplitPhase", str(e))
+                    metadata.processed = False
+                    return metadata
                 
-                # Mark file as successful
-                self.pipeline.state['split']['successful_files'].add(file_path)
             else:
                 # This is an attachment file
-                logger.debug(f"Using directory name for attachment: {parent_dir} (from {file_path})")
-                # Use parent directory name as main file name
-                main_file_name = parent_dir
                 # Add this attachment to the main file's list
+                main_file_name = self._get_main_file_name(file_path)
                 if main_file_name not in self.attachments_by_main:
                     self.attachments_by_main[main_file_name] = set()
                 self.attachments_by_main[main_file_name].add(file_path)
-                logger.info(f"Found attachment {file_path} for main file {main_file_name}")
-            
-            return metadata
+                
+                # Update attachment stats
+                attachment_type = file_path.suffix.lower().lstrip('.')
+                self._update_section_stats('attachments', 'processed', attachment_type)
+                
+                # Mark file as successful
+                self.pipeline.state['split']['successful_files'].add(file_path)
+                metadata.processed = True
+                
+                return metadata
             
         except Exception as e:
-            logger.error(f"Failed to process file {file_path}: {e}")
-            logger.error(traceback.format_exc())
-            self.pipeline.state['split']['failed_files'].add(file_path)
+            self.logger.error(f"Failed to process file: {file_path}")
+            self.logger.error(traceback.format_exc())
+            if metadata:
+                metadata.add_error("SplitPhase", str(e))
+                metadata.processed = False
+                return metadata
             return None
             
     def finalize(self):
@@ -283,20 +383,35 @@ class SplitPhase(Phase):
         Returns:
             The normalized main file name
         """
-        # Get relative path from parse directory
+        # Get the input directory and parse directory
+        input_dir = Path(self.pipeline.config.input_dir)
         parse_dir = self.pipeline.config.processing_dir / "phases" / "parse"
-        rel_path = file_path.relative_to(parse_dir)
         
-        # If this is an attachment (in a subdirectory), use the directory name
-        if len(rel_path.parts) > 1:
-            main_file_name = self._normalize_main_file_name(rel_path.parts[0])
-            logger.debug(f"Using directory name for attachment: {main_file_name} (from {file_path})")
+        try:
+            # Try to get relative path from input directory
+            rel_path = file_path.relative_to(input_dir)
+            # Get the first directory name as the main file name
+            main_file_name = rel_path.parts[0]
+            # Remove date prefix if present (e.g., "20241226 - ")
+            if main_file_name.startswith("2024"):
+                main_file_name = " - ".join(main_file_name.split(" - ")[1:])
             return main_file_name
-        
-        # Otherwise, use the file stem
-        main_file_name = self._normalize_main_file_name(file_path.stem)
-        logger.debug(f"Using file stem for main file: {main_file_name} (from {file_path})")
-        return main_file_name
+        except ValueError:
+            try:
+                # Try to get relative path from parse directory
+                rel_path = file_path.relative_to(parse_dir)
+                # If this is an attachment (in a subdirectory), use the directory name
+                if len(rel_path.parts) > 1:
+                    main_file_name = self._normalize_main_file_name(rel_path.parts[0])
+                    return main_file_name
+                
+                # Otherwise, use the file stem
+                main_file_name = self._normalize_main_file_name(file_path.stem)
+                return main_file_name
+            except ValueError:
+                # If both attempts fail, just use the file stem
+                main_file_name = self._normalize_main_file_name(file_path.stem)
+                return main_file_name
         
     def _split_content(self, content: str) -> Tuple[str, str]:
         """Split content into summary and raw notes.
@@ -381,8 +496,6 @@ class SplitPhase(Phase):
             True if attachment was processed successfully, False otherwise
         """
         try:
-            logger.info(f"Starting to process attachment: {attachment_path}")
-            
             # Check if attachment file exists
             if not attachment_path.exists():
                 logger.error(f"Attachment file does not exist: {attachment_path}")
@@ -403,12 +516,9 @@ class SplitPhase(Phase):
             if original_ext:
                 filename = Path(filename).stem  # Remove the original extension
             
-            logger.info(f"Processing attachment {attachment_path} with original filename {filename}")
-            
             # Read the attachment content
             try:
                 attachment_content = attachment_path.read_text(encoding='utf-8')
-                logger.info(f"Successfully read attachment content from {attachment_path}: {len(attachment_content)} characters")
                 if not attachment_content.strip():
                     logger.error(f"Attachment content is empty after stripping whitespace: {attachment_path}")
                     return False
@@ -422,12 +532,10 @@ class SplitPhase(Phase):
             section_id = re.sub(r'[^a-zA-Z0-9-]', '-', section_id)
             section_id = re.sub(r'-+', '-', section_id)
             section_id = section_id.strip('-').lower()
-            logger.info(f"Created section ID: {section_id}")
             
             # Update links in the attachment content
             try:
                 attachment_content = self._update_links(attachment_content, section_id)
-                logger.info(f"Successfully updated links in attachment content for {filename}")
             except Exception as e:
                 logger.error(f"Failed to update links in attachment content for {filename}: {e}")
                 logger.error(traceback.format_exc())
@@ -435,7 +543,6 @@ class SplitPhase(Phase):
             
             # Write the attachment content with proper header
             try:
-                logger.info(f"Writing attachment content for {filename}")
                 # Add original extension to header if it exists
                 header_text = filename
                 if original_ext:
@@ -457,14 +564,11 @@ class SplitPhase(Phase):
                 # Ensure content is written
                 output_file.flush()
                 
-                logger.info(f"Successfully wrote attachment content for {filename}")
-                
                 # Track successful attachment
                 self.successful_attachments.add(attachment_path)
                 
                 # Mark attachment as successful
                 self.pipeline.state['split']['successful_files'].add(attachment_path)
-                logger.info(f"Successfully processed attachment {filename}")
                 
                 return True
                 
@@ -478,3 +582,80 @@ class SplitPhase(Phase):
             logger.error(traceback.format_exc())
             self.pipeline.state['split']['failed_files'].add(attachment_path)
             return False
+
+    def print_summary(self):
+        """Print a summary of the split phase results."""
+        state = self.pipeline.state['split']
+        section_stats = state['section_stats']
+        
+        # Print overall stats
+        print("\nSplit Phase Summary:")
+        print("===================")
+        print(f"Total files processed: {len(state['successful_files']) + len(state['failed_files'])}")
+        print(f"Successful files: {len(state['successful_files'])}")
+        print(f"Failed files: {len(state['failed_files'])}")
+        print(f"Skipped files: {len(state['skipped_files'])}")
+        
+        # Print section stats
+        print("\nSection Statistics:")
+        print("-----------------")
+        
+        # Summary section stats
+        summary_stats = section_stats['summary']
+        print("\nSummary Sections:")
+        print(f"  Total: {summary_stats['total']}")
+        print(f"  Processed: {summary_stats['processed']}")
+        print(f"  Empty: {summary_stats['empty']}")
+        print(f"  Errors: {summary_stats['errors']}")
+        
+        # Raw notes section stats
+        raw_notes_stats = section_stats['raw_notes']
+        print("\nRaw Notes Sections:")
+        print(f"  Total: {raw_notes_stats['total']}")
+        print(f"  Processed: {raw_notes_stats['processed']}")
+        print(f"  Empty: {raw_notes_stats['empty']}")
+        print(f"  Errors: {raw_notes_stats['errors']}")
+        
+        # Attachments stats
+        attachment_stats = section_stats['attachments']
+        print("\nAttachments:")
+        print(f"  Total: {attachment_stats['total']}")
+        print(f"  Processed: {attachment_stats['processed']}")
+        print(f"  Errors: {attachment_stats['errors']}")
+        
+        # Print attachment types if any were processed
+        if attachment_stats['by_type']:
+            print("\nAttachment Types:")
+            for file_type, count in sorted(attachment_stats['by_type'].items()):
+                print(f"  {file_type}: {count}")
+        
+        # Print any failed files
+        if state['failed_files']:
+            print("\nFailed Files:")
+            for file in sorted(state['failed_files']):
+                print(f"  {file}")
+
+    def _extract_attachments(self, content: str) -> List[Path]:
+        """Extract attachment paths from content.
+        
+        Args:
+            content: Content to extract attachments from
+            
+        Returns:
+            List of attachment paths
+        """
+        attachments = []
+        
+        # Find all markdown links
+        pattern = r'!\[(.*?)\]\((.*?)\)'
+        matches = re.finditer(pattern, content)
+        
+        for match in matches:
+            path_str = match.group(2)
+            # URL decode the path
+            path_str = unquote(path_str)
+            # Convert to Path object
+            path = Path(path_str)
+            attachments.append(path)
+            
+        return attachments

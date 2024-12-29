@@ -115,4 +115,5 @@ This is a placeholder markdown file for the audio. The actual audio transcriptio
             
         except Exception as e:
             metadata.add_error("AudioHandler", str(e))
-            return metadata 
+            metadata.processed = False
+            return None 

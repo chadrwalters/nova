@@ -4,6 +4,7 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Optional, Dict, Any
+import traceback
 
 from nova.core.metadata import FileMetadata
 from nova.phases.base import Phase
@@ -32,36 +33,66 @@ class FinalizePhase(Phase):
             'reprocessed_files': set()
         }
         
-    async def process_file(self, file_path: Path, output_dir: Path) -> Optional[FileMetadata]:
+    async def process_file(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[FileMetadata] = None
+    ) -> Optional[FileMetadata]:
         """Process a single file by copying it to the final output directory.
         
         Args:
             file_path: Path to file to process
             output_dir: Directory to write output files to
+            metadata: Optional metadata from previous phase
             
         Returns:
             Metadata about processed file, or None if file was skipped
         """
         try:
-            # Get relative path from split phase directory
+            self.logger.debug(f"Finalize phase processing file: {file_path}")
+            
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = FileMetadata(file_path)
+            
+            # Get the split phase directory
             split_dir = self.pipeline.config.processing_dir / "phases" / "split"
-            rel_path = file_path.relative_to(split_dir)
+            self.logger.debug(f"Split directory: {split_dir}")
             
-            # Determine output path in final directory
-            final_output_path = self.pipeline.config.output_dir / rel_path
-            final_output_path.parent.mkdir(parents=True, exist_ok=True)
+            # Look for the main files in the split directory
+            main_files = ["Summary.md", "Raw Notes.md", "Attachments.md"]
+            for main_file in main_files:
+                main_file_path = split_dir / main_file
+                if main_file_path.exists():
+                    # Copy to the output directory
+                    final_output_path = self.pipeline.config.output_dir / main_file
+                    self.logger.debug(f"Copying {main_file_path} to {final_output_path}")
+                    
+                    # Create output directory if it doesn't exist
+                    final_output_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Copy the file
+                    shutil.copy2(main_file_path, final_output_path)
+                    self.logger.debug(f"Successfully copied {main_file} to {final_output_path}")
+                    
+                    # Update metadata
+                    metadata.processed = True
+                    metadata.add_output_file(final_output_path)
+                    self.pipeline.state['finalize']['successful_files'].add(main_file_path)
+                else:
+                    self.logger.debug(f"Main file not found: {main_file_path}")
             
-            # Copy the file
-            shutil.copy2(file_path, final_output_path)
-            self.logger.info(f"Copied {file_path.name} to {final_output_path}")
-            
-            # Create and return metadata
-            metadata = FileMetadata(file_path)
-            metadata.processed = True
             return metadata
             
         except Exception as e:
             self.logger.error(f"Failed to copy file {file_path}: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            if metadata:
+                metadata.add_error("FinalizePhase", str(e))
+                metadata.processed = False
+                self.pipeline.state['finalize']['failed_files'].add(file_path)
+                return metadata
             return None
             
     def print_final_summary(self) -> None:

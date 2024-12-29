@@ -27,10 +27,20 @@ def configure_logging(debug: bool = False, no_color: bool = False) -> None:
     # Configure root logger
     root = logging.getLogger()
     root.addHandler(handler)
-    root.setLevel(logging.DEBUG if debug else logging.INFO)
+    root.setLevel(logging.DEBUG if debug else logging.WARNING)
     
-    # Configure nova logger
-    logger.setLevel(logging.DEBUG if debug else logging.INFO)
+    # Configure nova logger (using module-level logger)
+    nova_logger = logging.getLogger("nova")
+    nova_logger.setLevel(logging.DEBUG if debug else logging.WARNING)
+    
+    # Configure specific loggers to reduce verbosity
+    for logger_name in logging.root.manager.loggerDict:
+        if logger_name.startswith('nova'):
+            current_logger = logging.getLogger(logger_name)
+            current_logger.setLevel(logging.DEBUG if debug else logging.WARNING)
+            # Only show file skipping messages in debug mode
+            if not debug and 'unchanged since last processing' in str(current_logger.handlers):
+                current_logger.handlers = []
 
 
 async def main(args: Optional[List[str]] = None) -> int:
@@ -62,8 +72,7 @@ async def main(args: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--phases",
         nargs="+",
-        default=["parse", "split"],
-        help="Processing phases to run",
+        help="Override phases from config",
     )
     parser.add_argument(
         "--debug",
@@ -103,10 +112,11 @@ async def main(args: Optional[List[str]] = None) -> int:
             logger.error("No output directory specified")
             return 1
         
-        # Get phases from config or command line
-        phases = parsed_args.phases
-        if hasattr(config, "phases"):
-            phases = config.phases
+        # Get phases from config or command line override
+        phases = config.pipeline.phases if hasattr(config.pipeline, "phases") else ["parse", "split"]
+        if parsed_args.phases:
+            logger.info("Overriding phases from config with command line arguments")
+            phases = parsed_args.phases
         
         # Process directory
         await pipeline.process_directory(input_dir, phases)
