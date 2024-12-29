@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 import logging
 import os
+import shutil
 
 from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
@@ -124,9 +125,18 @@ class BaseHandler(ABC):
                         stem = stem[:-7]  # Remove .parsed
                     file_path = file_path.parent / (stem + ".parsed.md")
                 
-            # Write content to file
-            with open(file_path, "w") as f:
+            # Create a temporary file in the same directory
+            temp_path = file_path.parent / f"{file_path.name}.tmp"
+            
+            # Write content to temporary file
+            with open(temp_path, "w") as f:
                 f.write(content)
+                
+            # Use shutil.copy2 to preserve timestamps when moving to final location
+            shutil.copy2(temp_path, file_path)
+            
+            # Clean up temporary file
+            temp_path.unlink()
                 
         except Exception as e:
             self.logger.error(f"Failed to write file {file_path}: {str(e)}")
@@ -277,8 +287,8 @@ class BaseHandler(ABC):
                 self.logger.info(f"Processing {file_path} with {self.name} handler")
                 metadata = await self.process_impl(file_path, output_dir, metadata)
                 
-                # Cache result if successful (skip for parse phase)
-                if metadata is not None and metadata.processed and self.cache_manager and "phases/parse" not in str(output_dir):
+                # Cache result if successful
+                if metadata is not None and metadata.processed and self.cache_manager:
                     self.logger.debug(f"Caching result for {file_path}")
                     self.cache_manager.store_result(
                         file_path,

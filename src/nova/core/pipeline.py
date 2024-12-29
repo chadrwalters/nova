@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import List, Optional, Set
 import shutil
+from datetime import datetime
+import json
 
 from nova.core.logging import create_progress_bar, print_summary
 from nova.core.progress import FileProgress, PhaseProgress, ProcessingStatus, ProgressTracker
@@ -30,7 +32,7 @@ class NovaPipeline:
         self,
         file_path: Path,
         phases: List[str],
-    ) -> DocumentMetadata:
+    ) -> Optional[DocumentMetadata]:
         """Process a file.
         
         Args:
@@ -40,6 +42,11 @@ class NovaPipeline:
         Returns:
             Document metadata.
         """
+        # Skip .DS_Store files completely
+        if file_path.name == ".DS_Store":
+            logger.debug(f"Skipping ignored file: {file_path}")
+            return None
+            
         # Start tracking progress for this file
         await self.progress.start_file(file_path)
         
@@ -96,7 +103,7 @@ class NovaPipeline:
                     logger.debug(f"Creating parent directories for: {output_path}")
                     output_path.parent.mkdir(parents=True, exist_ok=True)
                     logger.debug(f"Output path: {output_path}")
-
+                    
                     # Import and use the appropriate phase module
                     if phase == "parse":
                         from nova.phases.parse import ParsePhase
@@ -122,7 +129,7 @@ class NovaPipeline:
                         metadata.add_error(phase, f"Unknown phase: {phase}")
                         await self.progress.fail_phase(phase, file_path)
                         break
-
+                    
                     # Complete phase
                     await self.progress.complete_phase(phase, file_path)
                     logger.info(
@@ -164,31 +171,13 @@ class NovaPipeline:
         Return True if any phase output is missing or older than the input file;
         otherwise False.
         """
+        # Skip .DS_Store files
+        if file_path.name == ".DS_Store":
+            return False
+            
         processing_dir = self.config.processing_dir
         phases_dir = Path(processing_dir) / "phases"
         logger.debug(f"Checking if {file_path} needs reprocessing in {processing_dir}")
-
-        # If processing directory doesn't exist yet, we need to process everything
-        if not Path(processing_dir).exists():
-            logger.debug("Processing directory doesn't exist yet - needs reprocessing")
-            return True
-
-        # If phases directory doesn't exist yet, we need to process everything
-        if not phases_dir.exists():
-            logger.debug("Phases directory doesn't exist yet - needs reprocessing")
-            return True
-
-        # Check if any phase directories are missing
-        for phase in phases:
-            phase_dir = phases_dir / phase
-            if not phase_dir.exists():
-                logger.debug(f"Phase directory {phase} doesn't exist yet - needs reprocessing")
-                return True
-
-        # If the user's input file or directory isn't valid, assume we need reprocessing
-        if not file_path.exists():
-            logger.debug(f"Input file {file_path} doesn't exist - needs reprocessing")
-            return True
 
         # Get relative path from input directory
         input_dir = Path(self.config.input_dir)
@@ -198,38 +187,41 @@ class NovaPipeline:
             logger.error(f"File {file_path} is not under input directory {input_dir}")
             return True
 
-        # Check per-phase output
+        # If the user's input file or directory isn't valid, assume we need reprocessing
+        if not file_path.exists():
+            logger.debug(f"Input file {file_path} doesn't exist - needs reprocessing")
+            return True
+
+        # Check if output exists for each phase
         for phase in phases:
             phase_dir = phases_dir / phase
             
-            # For parse phase, check for .parsed extension
+            # For parse phase, look for .parsed.md file in the same relative directory
             if phase == "parse":
-                # Get the stem and suffix of the relative path
-                stem = rel_path.stem
-                suffix = rel_path.suffix
-                # Look for .parsed file
-                output_path = phase_dir / f"{stem}.parsed{suffix}"
+                # Preserve directory structure
+                relative_output_dir = phase_dir / rel_path.parent
+                output_path = relative_output_dir / f"{rel_path.stem}.parsed.md"
                 logger.debug(f"Checking parse output: {output_path}")
                 
-                # If .parsed file doesn't exist => must reprocess
+                # If .parsed.md file doesn't exist => must reprocess
                 if not output_path.exists():
                     logger.debug(f"Missing parsed output file for {phase}, reprocessing required")
                     return True
                 
-                # If output is older => must reprocess
+                # Check if input is newer than output
                 try:
                     input_mtime = file_path.stat().st_mtime
                     output_mtime = output_path.stat().st_mtime
+                    logger.debug(f"Comparing timestamps for {file_path.name}")
                     if output_mtime < input_mtime:
-                        logger.debug(
-                            f"Output file {output_path} is older than input {file_path}"
-                        )
+                        logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
                         return True
                 except OSError as e:
                     logger.error(f"Error checking file times: {str(e)}")
                     return True
+                    
             else:
-                # For other phases, use normal path
+                # For other phases, use normal path preserving directory structure
                 output_path = phase_dir / rel_path
                 logger.debug(f"Checking output: {output_path}")
                 
@@ -242,18 +234,44 @@ class NovaPipeline:
                 try:
                     input_mtime = file_path.stat().st_mtime
                     output_mtime = output_path.stat().st_mtime
+                    logger.debug(f"Comparing timestamps for {file_path.name}")
                     if output_mtime < input_mtime:
-                        logger.debug(
-                            f"Output file {output_path} is older than input {file_path}"
-                        )
+                        logger.debug(f"Output file {output_path} is older than input file {file_path}, reprocessing required")
                         return True
                 except OSError as e:
                     logger.error(f"Error checking file times: {str(e)}")
                     return True
 
-        # If all phases have up-to-date outputs, we do NOT need reprocessing
-        logger.debug(f"All outputs for {file_path} are up to date")
-        return False
+        # Check cache state
+        cache_state_dir = Path(self.config.cache_dir) / "state"
+        processing_history_path = cache_state_dir / "processing_history.json"
+        
+        if processing_history_path.exists():
+            try:
+                with open(processing_history_path, 'r') as f:
+                    processing_history = json.loads(f.read())
+                    
+                # Check if file is in processing history
+                file_history = processing_history.get(str(file_path))
+                if file_history:
+                    # Get the cached modification time
+                    cached_mtime = file_history.get('modified_time')
+                    current_mtime = file_path.stat().st_mtime
+                    
+                    # If file hasn't been modified since last processing, we can skip
+                    if cached_mtime and current_mtime <= cached_mtime:
+                        logger.debug(f"File {file_path} hasn't been modified since last processing")
+                        return False
+                    else:
+                        logger.debug(f"File {file_path} has been modified since last processing")
+                        return True
+            except Exception as e:
+                logger.error(f"Error reading processing history: {str(e)}")
+                # If we can't read the cache, assume we need to reprocess
+                return True
+
+        # If we get here, we need to reprocess
+        return True
     
     async def get_existing_metadata(self, file_path: Path) -> DocumentMetadata:
         """Get metadata from existing processed output.
@@ -325,10 +343,14 @@ class NovaPipeline:
                         # File was ignored or no handler available
                         skipped += 1
                     elif metadata.errors or metadata.error:
-                        failed += 1
-                        # Add failure details
-                        error_msg = metadata.errors[-1]["message"] if metadata.errors else metadata.error
-                        failures.append((file_path, error_msg))
+                        # Only count as failure if it's not an ignored file
+                        if not any(err.get("message", "").startswith("No handler found") for err in metadata.errors):
+                            failed += 1
+                            # Add failure details
+                            error_msg = metadata.errors[-1]["message"] if metadata.errors else metadata.error
+                            failures.append((file_path, error_msg))
+                        else:
+                            skipped += 1
                     else:
                         successful += 1
                     
