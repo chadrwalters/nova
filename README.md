@@ -1,78 +1,139 @@
-Nova Document Processing System
+# Nova Document Processing System
 
-Nova is a multi-phase document processing pipeline that converts various file formats into structured Markdown outputs. The system has evolved through several versions, each adding key features and improvements:
-	•	V1: Generated PDFs from Markdown files, then merged them into a single PDF document.
-	•	V1.5: Began splitting output into three Markdown files—Summary, Raw Notes, and Attachments—but the codebase had limited reliability and clarity.
-	•	V2 (Current): Complete rewrite using a phase-based architecture with caching. We can easily add new phases without regenerating all outputs, saving time when files are unchanged.
+A powerful document processing pipeline that converts various file formats into structured Markdown outputs, with support for AI-powered analysis and rich metadata extraction.
 
-Key Features
-	1.	Phase-Based Pipeline
-	•	Parse Phase: Converts original documents into .parsed.md files with rich metadata and asset extraction
-	•	Split Phase: Intelligently organizes content using section markers (--==SUMMARY==-- etc.)
-	•	Finalize Phase: Ensures proper link resolution and creates clean output structure
-	•	Additional phases can be added to src/nova/phases as needed
+## Overview
 
-	2.	Rich Metadata & Asset Handling
-	•	Extracts and preserves document metadata (creation date, author, etc.)
-	•	Manages assets in structured directories (images, attachments)
-	•	AI-powered image analysis and description generation
-	•	Smart cross-referencing between documents
+Nova processes your documents through a configurable pipeline, organizing content into structured Markdown files with intelligent section splitting, asset management, and metadata preservation.
 
-	3.	Handlers for Multiple Formats
-	•	Document Handler: PDF (text + images), DOCX (with styles), RTF
-	•	Image Handler: JPEG, PNG, HEIC with AI-powered descriptions
-	•	Audio Handler: MP3, WAV with metadata extraction
-	•	Spreadsheet Handler: XLSX, CSV with table formatting
-	•	Markdown Handler: Direct MD processing
-	•	Archive Handler: ZIP with nested content support
-	•	HTML Handler: Web page conversion with styling
+## Features
 
-	4.	Intelligent Processing
-	•	Section detection and organization
-	•	Smart link resolution between documents
-	•	Asset deduplication and path normalization
-	•	Configurable content splitting rules
+### 🔄 Phase-Based Pipeline
+- **Parse Phase**: Converts documents to intermediate Markdown with metadata
+- **Split Phase**: Organizes content into structured sections
+- **Finalize Phase**: Creates clean output with resolved links
+- Extensible architecture - easily add new phases
 
-	5.	Progress Tracking & Logging
-	•	Rich console interface with progress bars
-	•	Color-coded status messages
-	•	Detailed logging with configurable verbosity
-	•	Error tracking with context
+### 📄 Format Support
+- **Documents**: PDF, DOCX, RTF
+- **Images**: JPEG, PNG, HEIC (with AI descriptions)
+- **Audio**: MP3, WAV
+- **Data**: XLSX, CSV
+- **Web**: HTML
+- **Archives**: ZIP (with nested content)
 
-How Nova Works
+### 🧠 Intelligent Processing
+- AI-powered image analysis and descriptions
+- Smart section detection and organization
+- Automatic link resolution
+- Asset deduplication
+- Rich metadata extraction
 
-1. Input Organization
-	•	Place source files in _NovaInput/
-	•	Supports nested directory structure
-	•	Maintains relative paths in output
-	•	Handles duplicate file names
+### 📊 Progress & Logging
+- Real-time progress tracking
+- Detailed logging with configurable levels
+- Color-coded console output
+- Comprehensive error reporting
 
-2. Parse Phase
-Each file is processed by its appropriate handler:
+## Installation
 
-_NovaProcessing/phases/parse/
-├── documents/
-│   ├── report.parsed.md
-│   ├── report.metadata.json
-│   └── report.assets/
-├── images/
-│   ├── diagram.parsed.md
-│   └── diagram.metadata.json
-└── spreadsheets/
-    └── data.parsed.md
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/nova.git
+cd nova
+```
 
-3. Split Phase
-Processes all parsed files and generates three main outputs:
+2. Run the installation script:
+```bash
+./install.sh
+```
 
-_NovaProcessing/phases/split/
-├── Summary.md       # Key points and highlights
-├── Raw Notes.md     # Detailed content and notes
-├── Attachments.md   # Asset catalog and references
-└── assets/         # Consolidated attachments
+This will install required system dependencies:
+- Tesseract (OCR)
+- libheif (HEIC support)
+- FFmpeg (audio processing)
+- ImageMagick (image processing)
+- Python dependencies via Poetry
 
-4. Finalize Phase
-Creates the final output structure:
+## Configuration
 
+1. Create your config file:
+```bash
+cp config/nova.template.yaml config/nova.yaml
+```
+
+2. Configure your settings:
+```yaml
+base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
+input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
+
+# Configure pipeline phases
+pipeline:
+  phases:
+    - parse
+    - split
+    - finalize
+```
+
+3. Optional environment variables:
+- `NOVA_CONFIG_PATH`: Override default config location
+- `NOVA_LOG_LEVEL`: Set logging verbosity (DEBUG, INFO, etc.)
+- `OPENAI_API_KEY`: Required for AI image analysis
+
+## Usage
+
+### Basic Usage
+```bash
+./run_nova.sh
+```
+
+This will process files from `_NovaInput` through all configured phases.
+
+### Advanced Usage
+```bash
+# Process specific phases
+./run_nova.sh --phases parse split
+
+# Process a single file
+./run_nova.sh --input-dir ~/Documents/file.pdf
+
+# Enable debug logging
+./run_nova.sh --debug
+```
+
+## Directory Structure
+
+### Input
+Place your files in the configured input directory:
+```
+_NovaInput/
+├── Documents/
+│   └── report.pdf
+├── Images/
+│   └── diagram.png
+└── Data/
+    └── spreadsheet.xlsx
+```
+
+### Processing
+Files are processed through phases:
+```
+_NovaProcessing/
+├── phases/
+│   ├── parse/
+│   │   └── *.parsed.md
+│   └── split/
+│       ├── Summary.md
+│       ├── Raw Notes.md
+│       └── Attachments.md
+└── cache/
+```
+
+### Output
+Final output is organized as:
+```
 _Nova/
 ├── Summary.md
 ├── Raw Notes.md
@@ -81,65 +142,14 @@ _Nova/
     ├── images/
     ├── documents/
     └── other/
+```
 
-5. Content Markers
+## Content Organization
+
 Nova uses special markers to organize content:
-```
---==SUMMARY==--
-Key points and highlights go here
-
+```markdown
 --==RAW NOTES==--
-Detailed notes and content go here
-
---==ATTACHMENTS==--
-List of attachments and references
+Detailed content and notes
 ```
 
-Installation & Setup
-	1.	Install Dependencies
-
-./install.sh
-
-Installs Tesseract, libheif, FFmpeg, ImageMagick (and more), plus Python dependencies.
-
-	2.	Configure
-	•	Duplicate config/nova.template.yaml to config/nova.yaml.
-	•	Update api_key fields if using AI/vision modules.
-	•	Adjust directory paths for input_dir, output_dir, etc.
-	•	Optional environment variables:
-		- NOVA_CONFIG_PATH: Override default config location
-		- NOVA_LOG_LEVEL: Set logging verbosity (DEBUG, INFO, etc.)
-		- OPENAI_API_KEY: Required for AI image analysis
-	3.	Run Nova
-
-./run_nova.sh
-
-By default, Nova looks for files in _NovaInput and outputs to _NovaProcessing (intermediate) and _Nova (final).
-
-Usage Examples
-
-Processing a Single File
-
-poetry run python3 -m nova.cli --input-dir ~/Documents/TestFile.pdf --phases parse
-
-Processes only the parse phase for a single file.
-
-Processing Entire Directory
-
-poetry run python3 -m nova.cli --input-dir ~/Documents/NovaDemos --phases parse split
-
-Runs both parse and split phases, generating .parsed.md files and the three consolidated Markdown outputs.
-
-Future Enhancements
-	•	Additional Pipeline Phases:
-		- Publish Phase: Generate documentation sites or PDFs
-		- Index Phase: Create searchable indexes
-		- AI Summary Phase: Generate executive summaries
-	•	Performance Optimizations:
-		- Parallel processing for large files
-		- Improved caching strategies
-	•	Extended Handler Support:
-		- Additional document formats
-		- Enhanced OCR capabilities
-		- Video file processing
 

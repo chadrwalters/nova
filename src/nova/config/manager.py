@@ -6,7 +6,7 @@ import logging
 
 import yaml
 
-from nova.config.settings import NovaConfig, CacheConfig
+from nova.config.settings import NovaConfig, CacheConfig, PipelineConfig
 
 logger = logging.getLogger(__name__)
 
@@ -243,4 +243,9 @@ class ConfigManager:
     @property
     def cache(self) -> CacheConfig:
         """Get cache configuration."""
-        return self.config.cache 
+        return self.config.cache
+
+    @property
+    def pipeline(self) -> PipelineConfig:
+        """Get pipeline configuration."""
+        return self.config.pipeline 

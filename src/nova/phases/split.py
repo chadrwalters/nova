@@ -40,6 +40,7 @@ class SplitPhase(Phase):
         self.attachments_by_main = {}  # Map of main file name to set of attachment paths
         self.metadata_by_file = {}  # Map of file name to metadata
         self.output_files = set()  # Set of output files created
+        self.successful_attachments = set()  # Set of successfully processed attachments
         
         # Initialize state with detailed section tracking
         self.pipeline.state['split'] = {
@@ -230,6 +231,9 @@ class SplitPhase(Phase):
                     for attachment in attachments:
                         attachment_type = attachment.suffix.lower().lstrip('.')
                         self._update_section_stats('attachments', 'processed', attachment_type)
+                    
+                    # Create output directory if it doesn't exist
+                    output_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Create output files
                     summary_file = output_dir / "Summary.md"
@@ -659,3 +663,25 @@ class SplitPhase(Phase):
             attachments.append(path)
             
         return attachments
+
+    def _content_exists(self, file_path: Path, section_title: str) -> bool:
+        """Check if a section already exists in a file.
+        
+        Args:
+            file_path: Path to file to check
+            section_title: Title of section to look for
+            
+        Returns:
+            True if section exists, False otherwise
+        """
+        if not file_path.exists():
+            return False
+        
+        try:
+            content = file_path.read_text(encoding='utf-8')
+            # Look for the exact section header
+            section_header = f"\n## {section_title}\n"
+            return section_header in content
+        except Exception as e:
+            self.logger.error(f"Error checking for existing content: {e}")
+            return False

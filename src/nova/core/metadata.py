@@ -15,7 +15,7 @@ class FileMetadata:
         self.unchanged = False
         self.reprocessed = False
         self.output_files = set()
-        self.errors = []
+        self.errors: Dict[str, str] = {}
         self.metadata: Dict[str, Any] = {}
         self.title: Optional[str] = None
         self.has_errors = False
@@ -50,7 +50,7 @@ class FileMetadata:
         Returns:
             File metadata
         """
-        metadata = cls()
+        metadata = cls(file_path)
         metadata.title = file_path.stem
         metadata.metadata = {
             'file_name': file_path.name,
