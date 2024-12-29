@@ -19,6 +19,7 @@ class FileMetadata:
         self.metadata: Dict[str, Any] = {}
         self.title: Optional[str] = None
         self.has_errors = False
+        self.links = []
         
     def add_error(self, handler_name: str, error: str) -> None:
         """Add an error from a handler.
@@ -37,6 +38,30 @@ class FileMetadata:
             output_file: Path to output file
         """
         self.output_files.add(output_file)
+
+    def add_link(self, link_context) -> None:
+        """Add a link to the document's links.
+        
+        Args:
+            link_context: Link context to add
+        """
+        self.links.append(link_context)
+    
+    def get_outgoing_links(self) -> List:
+        """Get all outgoing links from this document.
+        
+        Returns:
+            List of link contexts
+        """
+        return [link for link in self.links if link.source_file == str(self.file_path)]
+    
+    def get_incoming_links(self) -> List:
+        """Get all incoming links to this document.
+        
+        Returns:
+            List of link contexts
+        """
+        return [link for link in self.links if link.target_file == str(self.file_path)]
             
     @classmethod
     def from_file(cls, file_path: Path, handler_name: str, handler_version: str) -> 'FileMetadata':

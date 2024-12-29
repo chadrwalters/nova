@@ -4,7 +4,9 @@ import json
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Set
+
+from .links import LinkMap, LinkContext, LinkType
 
 
 class NovaJSONEncoder(json.JSONEncoder):
@@ -52,6 +54,9 @@ class DocumentMetadata:
     # Relationships
     attachments: List["DocumentMetadata"] = field(default_factory=list)
     
+    # Link information
+    links: LinkMap = field(default_factory=LinkMap)
+    
     # Additional metadata
     metadata: Dict[str, Union[str, int, float, bool]] = field(default_factory=dict)
     
@@ -60,7 +65,7 @@ class DocumentMetadata:
     errors: Dict[str, str] = field(default_factory=dict)
     
     # Output files
-    output_files: List[Path] = field(default_factory=list)
+    output_files: Set[Path] = field(default_factory=set)
     
     @classmethod
     def from_file(cls, file_path: Path, handler_name: str, handler_version: str) -> "DocumentMetadata":
@@ -77,7 +82,7 @@ class DocumentMetadata:
         metadata = cls()
         metadata.file_name = file_path.name
         metadata.file_path = str(file_path)
-        metadata.file_type = file_path.suffix.lstrip('.')
+        metadata.file_type = file_path.suffix[1:] if file_path.suffix else ""
         metadata.handler_name = handler_name
         metadata.handler_version = handler_version
         metadata.title = file_path.stem
@@ -119,11 +124,7 @@ class DocumentMetadata:
             phase: Phase name.
             error: Error message.
         """
-        error_dict = {
-            "phase": phase,
-            "message": error
-        }
-        self.errors.append(error_dict)
+        self.errors[phase] = error
         if not self.error:
             self.error = error
     
@@ -142,4 +143,47 @@ class DocumentMetadata:
         Args:
             output_path: Path to output file.
         """
-        self.output_files.append(output_path)
+        self.output_files.add(output_path)
+    
+    def add_link(self, link: LinkContext) -> None:
+        """Add a link to the document's link map.
+        
+        Args:
+            link: Link context to add
+        """
+        self.links.add_link(link)
+    
+    def get_outgoing_links(self) -> List[LinkContext]:
+        """Get all outgoing links from this document.
+        
+        Returns:
+            List of link contexts
+        """
+        return self.links.get_outgoing_links(self.file_path)
+    
+    def get_incoming_links(self) -> List[LinkContext]:
+        """Get all incoming links to this document.
+        
+        Returns:
+            List of link contexts
+        """
+        return self.links.get_incoming_links(self.file_path)
+    
+    def get_links_by_type(self, link_type: LinkType) -> List[LinkContext]:
+        """Get all links of a specific type.
+        
+        Args:
+            link_type: Type of links to get
+            
+        Returns:
+            List of link contexts
+        """
+        return self.links.get_links_by_type(link_type)
+    
+    def validate_links(self) -> List[str]:
+        """Validate all links in the document.
+        
+        Returns:
+            List of validation error messages
+        """
+        return self.links.validate_links()

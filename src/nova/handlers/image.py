@@ -332,18 +332,30 @@ class ImageHandler(BaseHandler):
         if image_type == "screenshot":
             content = f"""# {title}
 
+--==SUMMARY==--
+Screenshot analysis of {title}
+
+--==RAW NOTES==--
 ## Screenshot Context
 {context}
 """
         elif image_type == "photograph":
             content = f"""# {title}
 
+--==SUMMARY==--
+Photograph analysis of {title}
+
+--==RAW NOTES==--
 ## Image Description
 {context}
 """
         else:  # diagram or unknown
             content = f"""# {title}
 
+--==SUMMARY==--
+Analysis of {title} ({image_type})
+
+--==RAW NOTES==--
 ## Content Analysis
 {context}
 """

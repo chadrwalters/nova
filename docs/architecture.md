@@ -101,10 +101,12 @@ _NovaProcessing/
      - `--==SUMMARY==--`: Content for Summary.md
      - `--==RAW NOTES==--`: Content for Raw Notes.md
      - `--==ATTACHMENTS==--`: Content for Attachments.md
-  3. Handles cross-linking:
+  3. Handles attachments and cross-linking:
+     - Generates unique identifiers for attachments (e.g., `[ATTACH:PDF:20240118-document-name]`)
+     - Groups attachments by type (PDF, JPG, etc.)
+     - Preserves attachment metadata and content
      - Updates relative paths for images/attachments
      - Creates consistent link structure between documents
-     - Generates unique IDs for cross-references
   4. Console shows consolidation progress and link status
 
 **Output Structure**:
@@ -112,12 +114,17 @@ _NovaProcessing/
 _NovaProcessing/
 └── phases/
     └── split/
-        ├── Summary.md
-        ├── Raw Notes.md
-        ├── Attachments.md
+        ├── Summary.md         # Contains [ATTACH:type:id] references
+        ├── Raw Notes.md       # Contains [NOTE:id] references
+        ├── Attachments.md     # Contains [ATTACH:type:id] sections with content
         └── assets/
             └── (consolidated attachments)
 ```
+
+**Reference Format**:
+- Attachments: `[ATTACH:TYPE:ID]` (e.g., `[ATTACH:PDF:20240118-document-name]`)
+- Notes: `[NOTE:ID]` (e.g., `[NOTE:20240118-meeting-notes]`)
+- IDs are generated from filenames with date prefixes when available
 
 ### Finalize Phase
 - **Goal**: Create final output with resolved links and cleaned structure

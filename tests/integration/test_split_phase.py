@@ -60,14 +60,13 @@ def test_files(test_config):
     md_file.write_text(dedent("""
         # Test Document
         
+        --==SUMMARY==--
         This is a test document.
         
-        ## RAW NOTES
-        
+        --==RAW NOTES==--
         Some raw notes here.
         
-        ## Attachments
-        
+        --==ATTACHMENTS==--
         - [test.pdf](test.pdf)
         - [image.jpg](image.jpg)
     """).strip())

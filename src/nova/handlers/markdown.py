@@ -89,7 +89,7 @@ class MarkdownHandler(BaseHandler):
             # Update metadata
             metadata.title = file_path.stem
             metadata.processed = True
-            metadata.output_files.append(output_file)
+            metadata.output_files.add(output_file)
             
             return metadata
             
