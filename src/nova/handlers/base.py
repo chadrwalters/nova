@@ -237,48 +237,37 @@ class BaseHandler(ABC):
         file_path: Path,
         output_dir: Path,
         metadata: Optional[DocumentMetadata] = None,
-    ) -> DocumentMetadata:
-        """Process a file."""
-        # Create output directory
-        output_dir.mkdir(parents=True, exist_ok=True)
+    ) -> Optional[DocumentMetadata]:
+        """Process a file.
         
-        # Create metadata if not provided
-        if not metadata:
-            metadata = DocumentMetadata(
-                file_name=file_path.name,
-                file_path=str(file_path),
-                file_type=file_path.suffix[1:] if file_path.suffix else "",
-                handler_name=self.name,
-                handler_version=self.version,
-                processed=True,
-            )
-            
-        # Process file
+        Args:
+            file_path: Path to file to process.
+            output_dir: Output directory.
+            metadata: Document metadata.
+                
+        Returns:
+            Document metadata, or None if file is ignored.
+        """
         try:
-            # Process content
-            content = await self._process_content(file_path)
-            metadata.metadata["text"] = content
+            # Create output directory
+            output_dir = Path(str(output_dir))
+            output_dir.mkdir(parents=True, exist_ok=True)
             
-            # Create output file
-            output_file = output_dir / f"{file_path.stem}.parsed.md"
-            output_file.parent.mkdir(parents=True, exist_ok=True)
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = DocumentMetadata.from_file(
+                    file_path,
+                    self.name,
+                    self.version,
+                )
             
-            # Write markdown file
-            self._write_markdown(output_file, file_path.stem, file_path, content)
-            
-            # Add output file to metadata
-            metadata.metadata.setdefault("output_files", []).append(str(output_file))
-            metadata.processed = True
-            
-            return metadata
+            # Process file
+            return await self.process_impl(file_path, output_dir, metadata)
             
         except Exception as e:
             self.logger.error(f"Failed to process file {file_path}: {str(e)}")
-            metadata.errors.append({
-                "phase": self.name,
-                "message": str(e)
-            })
-            metadata.processed = False
+            if metadata is not None:
+                metadata.add_error(self.name, str(e))
             return metadata
     
     async def process_impl(
