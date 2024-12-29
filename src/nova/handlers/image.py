@@ -25,7 +25,7 @@ class ImageHandler(BaseHandler):
     
     name = "image"
     version = "0.1.0"
-    file_types = ["jpg", "jpeg", "png", "gif", "webp", "heic"]
+    file_types = ["jpg", "jpeg", "png", "gif", "webp", "heic", "svg"]
     
     def __init__(self, config: ConfigManager) -> None:
         """Initialize handler.
@@ -36,7 +36,7 @@ class ImageHandler(BaseHandler):
         super().__init__(config)
         self.name = "Image Handler"
         self.version = "0.1.0"
-        self.file_types = ["jpg", "jpeg", "png", "gif", "webp", "heic"]
+        self.file_types = ["jpg", "jpeg", "png", "gif", "webp", "heic", "svg"]
         
         # Initialize OpenAI client
         self.openai_client = None
@@ -359,7 +359,7 @@ class ImageHandler(BaseHandler):
         """Process an image file.
         
         Args:
-            file_path: Path to image file.
+            file_path: Path to file.
             metadata: Document metadata.
             
         Returns:
@@ -396,4 +396,5 @@ class ImageHandler(BaseHandler):
             self.logger.error(f"Failed to process image file {file_path}: {str(e)}")
             if metadata is not None:
                 metadata.add_error("Image Handler", str(e))
+                metadata.processed = False
             return metadata 

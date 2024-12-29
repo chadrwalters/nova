@@ -18,7 +18,7 @@ class DocumentHandler(BaseHandler):
     
     name = "document"
     version = "0.1.0"
-    file_types = ["doc", "docx", "pdf", "rtf", "odt"]
+    file_types = ["doc", "docx", "pdf", "rtf", "odt", "pptx"]
     
     def __init__(self, config: ConfigManager) -> None:
         """Initialize document handler.
@@ -61,12 +61,29 @@ class DocumentHandler(BaseHandler):
                         text.append(para.text)
                 
                 return "\n\n".join(text)
+
+            elif file_path.suffix.lower() == '.pptx':
+                # Create a placeholder for PowerPoint files
+                return f"""# PowerPoint Presentation: {file_path.stem}
+
+## Note
+This PowerPoint file has been detected but not fully processed.
+The presentation content will be extracted in a future update.
+
+## File Information
+- File: {file_path.name}
+- Type: PowerPoint Presentation (.pptx)
+
+## TODO
+- Implement text extraction from slides
+- Extract embedded images
+- Preserve slide structure and formatting"""
                 
             else:
                 raise ValueError(f"Unsupported file type: {file_path.suffix}")
                 
         except Exception as e:
-            return f"Error extracting text: {str(e)}" 
+            return f"Error extracting text: {str(e)}"
     
     async def process_impl(
         self,
@@ -95,8 +112,9 @@ class DocumentHandler(BaseHandler):
                 text = await self._process_content(file_path)
             except Exception as e:
                 self.logger.error(f"Failed to extract text from {file_path}: {str(e)}")
-                text = f"Error extracting text: {str(e)}"
                 metadata.add_error(self.name, str(e))
+                metadata.processed = False
+                return None
             
             # Write markdown file with text content
             content = f"""# {file_path.stem}
@@ -121,7 +139,7 @@ class DocumentHandler(BaseHandler):
             self.logger.error(f"Failed to process document {file_path}: {str(e)}")
             metadata.add_error(self.name, str(e))
             metadata.processed = False
-            return metadata
+            return None
     
     def _extract_pdf_text(self, file_path: Path) -> str:
         """Extract text from PDF file.

@@ -5,6 +5,13 @@ input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
 output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
 processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
 
+# Pipeline Configuration
+pipeline:
+  phases:
+    - parse
+    - split
+    - finalize
+
 cache:
   dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
   enabled: true

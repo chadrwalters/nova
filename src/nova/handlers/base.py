@@ -248,7 +248,11 @@ class BaseHandler(ABC):
             
             # Process file
             metadata = await self.process_impl(file_path, metadata)
-            return metadata
+            
+            # Only return metadata if processing was successful
+            if metadata and metadata.processed:
+                return metadata
+            return None
             
         except Exception as e:
             self.logger.error(f"Failed to process file: {str(e)}")
@@ -300,7 +304,8 @@ class BaseHandler(ABC):
         except Exception as e:
             self.logger.error(f"Failed to process file: {str(e)}")
             metadata.add_error(self.name, str(e))
-            return metadata
+            metadata.processed = False
+            return None
     
     def supports_file(self, file_path: Union[str, Path]) -> bool:
         """Check if handler supports file.

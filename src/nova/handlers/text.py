@@ -120,4 +120,5 @@ class TextHandler(BaseHandler):
             error_msg = f"Failed to process text file {file_path}: {str(e)}"
             self.logger.error(error_msg)
             metadata.add_error(self.name, error_msg)
-            return metadata 
+            metadata.processed = False
+            return None 

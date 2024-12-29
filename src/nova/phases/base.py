@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 import logging
 import shutil
+import traceback
 
 from nova.core.metadata import FileMetadata
 from nova.utils.file_utils import safe_write_file
@@ -21,41 +22,40 @@ class Phase:
         # Use the actual class's module name for logging
         self.logger = logging.getLogger(self.__class__.__module__)
         
-    async def process_file(self, file_path: Path, output_dir: Path) -> Optional[FileMetadata]:
-        """Process a single file through this phase.
+    async def process_file(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[FileMetadata] = None
+    ) -> Optional[FileMetadata]:
+        """Process a file.
         
         Args:
             file_path: Path to file to process
             output_dir: Directory to write output files to
+            metadata: Optional metadata from previous phase
             
         Returns:
             Metadata about processed file, or None if file was skipped
         """
         try:
-            # Create output directory if needed
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = FileMetadata(file_path)
             
-            # Get relative path from input directory to maintain directory structure
-            rel_path = file_path.relative_to(self.pipeline.config.input_dir)
-            output_path = output_dir / rel_path.parent / f"{rel_path.stem}.parsed.md"
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Process content
-            content = await self._process_content(file_path)
-            
-            # Write output file
-            was_written = self._safe_write_file(output_path, content)
-            
-            # Create metadata
-            metadata = FileMetadata(file_path)
-            metadata.processed = True
-            metadata.unchanged = not was_written
-            metadata.add_output_file(output_path)
-            
-            return metadata
+            # Process the file
+            metadata = await self.process_impl(file_path, output_dir, metadata)
+            if metadata:
+                return metadata
+            return None
             
         except Exception as e:
-            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
+            self.logger.error(f"Failed to process file: {file_path}")
+            self.logger.error(traceback.format_exc())
+            if metadata:
+                metadata.add_error(self.name, str(e))
+                metadata.processed = False
+                return metadata
             return None
 
     def _safe_write_file(self, file_path: Path, content: str, encoding: str = 'utf-8') -> bool:

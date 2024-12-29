@@ -5,6 +5,7 @@ from nova.handlers.document import DocumentHandler
 from nova.handlers.image import ImageHandler
 from nova.handlers.markdown import MarkdownHandler
 from nova.handlers.text import TextHandler
+from nova.handlers.video import VideoHandler
 
 __all__ = [
     "BaseHandler",
@@ -12,4 +13,5 @@ __all__ = [
     "ImageHandler",
     "MarkdownHandler",
     "TextHandler",
+    "VideoHandler",
 ] 

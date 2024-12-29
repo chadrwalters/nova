@@ -13,6 +13,7 @@ from .text import TextHandler
 from .markdown import MarkdownHandler
 from .spreadsheet import SpreadsheetHandler
 from .html import HTMLHandler
+from .video import VideoHandler
 
 
 class HandlerRegistry:
@@ -41,6 +42,7 @@ class HandlerRegistry:
             MarkdownHandler(self.config),
             SpreadsheetHandler(self.config),
             HTMLHandler(self.config),
+            VideoHandler(self.config),
         ]
         
         for handler in handlers:

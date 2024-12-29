@@ -97,4 +97,5 @@ class MarkdownHandler(BaseHandler):
             error_msg = f"Failed to process markdown file {file_path}: {str(e)}"
             self.logger.error(error_msg)
             metadata.add_error(self.name, error_msg)
+            metadata.processed = False
             return metadata 
