@@ -42,13 +42,14 @@ Nova’s main goals:
 ---
 
 ## Phases & Workflow
-Below is a high-level look at how Nova processes content through two primary phases. Additional phases can be added in the future.
+Below is a high-level look at how Nova processes content through its phases:
 
 ```mermaid
 flowchart LR
     InputDir((Input Directory)) -->|Raw Files| PhaseParse
     PhaseParse -->|*.parsed.md + metadata| PhaseSplit
-    PhaseSplit -->|Summary.md / Raw Notes.md / Attachments.md| OutputDir((Output Directory))
+    PhaseSplit -->|Consolidated MD Files| PhaseFinal
+    PhaseFinal -->|Final Output| OutputDir((Output Directory))
 
     subgraph "Parse Phase"
       direction TB
@@ -60,25 +61,103 @@ flowchart LR
       PhaseSplit([SplitPhase<br/>Summary/RawNotes/Attachments]) --> SplitOutput[(Consolidated MD Files)]
     end
 
-Parse Phase
-	•	Goal: Convert each input file into a *.parsed.md file (plus optional metadata).
-	•	Implementation:
-	1.	The pipeline enumerates each file in the input directory.
-	2.	For each file, a relevant handler is retrieved from the Handler Registry.
-	3.	The handler extracts text, metadata, or additional context (e.g., an image description from an AI model) and writes out a filename.parsed.md.
-	4.	Any references (attachments, images) are also captured, with links updated in the new Markdown output.
-	•	Key Classes:
-	•	nova.phases.parse.ParsePhase
-	•	nova.handlers.* (e.g., ImageHandler, DocumentHandler, etc.)
-	•	DocumentMetadata (tracks data about a file as it passes through)
+    subgraph "Finalize Phase"
+      direction TB
+      PhaseFinal([FinalizePhase<br/>Link Resolution<br/>Cleanup]) --> FinalOutput[(Final Files)]
+    end
+```
 
-Split Phase
-	•	Goal: Read all *.parsed.md files produced by the Parse Phase, gather them, and split out summary sections, raw notes, and attachments into three consolidated Markdown files: Summary.md, Raw Notes.md, Attachments.md.
-	•	Implementation:
-	1.	The SplitPhase scans the parse phase output directory (_NovaProcessing/phases/parse) looking for *.parsed.md files.
-	2.	For each file, the content is inspected for markers such as --==RAW NOTES==--. Text before the marker is appended to Summary.md, while text after is appended to Raw Notes.md.
-	3.	Attachments are extracted by scanning for embedded references, which are then appended to Attachments.md.
-	4.	The resulting consolidated files are placed in _NovaProcessing/phases/split/.
+### Parse Phase
+- **Goal**: Convert each input file into a `*.parsed.md` file with metadata
+- **Implementation**:
+  1. Pipeline enumerates files in input directory
+  2. HandlerRegistry matches file extensions to appropriate handlers
+  3. Handler processes file and generates:
+     - `<filename>.parsed.md`: Main content with metadata header
+     - `<filename>.metadata.json`: Extended metadata (if applicable)
+     - `<filename>.assets/`: Directory for extracted images/attachments
+  4. Console output shows progress bar and handler status
+  5. Errors are logged with file paths and handler details
+
+**Output Structure**:
+```
+_NovaProcessing/
+└── phases/
+    └── parse/
+        ├── document1.parsed.md
+        ├── document1.metadata.json
+        ├── document1.assets/
+        │   └── extracted_image1.png
+        ├── image1.parsed.md
+        ├── image1.metadata.json
+        └── ...
+```
+
+### Split Phase
+- **Goal**: Organize parsed content into logical sections and resolve cross-references
+- **Implementation**:
+  1. Reads all `*.parsed.md` files from parse phase
+  2. Processes content markers and sections:
+     - `--==SUMMARY==--`: Content for Summary.md
+     - `--==RAW NOTES==--`: Content for Raw Notes.md
+     - `--==ATTACHMENTS==--`: Content for Attachments.md
+  3. Handles cross-linking:
+     - Updates relative paths for images/attachments
+     - Creates consistent link structure between documents
+     - Generates unique IDs for cross-references
+  4. Console shows consolidation progress and link status
+
+**Output Structure**:
+```
+_NovaProcessing/
+└── phases/
+    └── split/
+        ├── Summary.md
+        ├── Raw Notes.md
+        ├── Attachments.md
+        └── assets/
+            └── (consolidated attachments)
+```
+
+### Finalize Phase
+- **Goal**: Create final output with resolved links and cleaned structure
+- **Implementation**:
+  1. Validates all cross-references
+  2. Ensures asset paths are correct
+  3. Copies final files to output directory
+  4. Cleans up temporary processing files
+  5. Console shows completion status and any warnings
+
+**Output Structure**:
+```
+_Nova/
+├── Summary.md
+├── Raw Notes.md
+├── Attachments.md
+└── assets/
+    └── (final consolidated assets)
+```
+
+### Console Output
+The pipeline provides rich console feedback:
+- Progress bars for each phase
+- File processing status with handler information
+- Warning/error messages in color-coded format
+- Summary statistics (files processed, errors, timing)
+- Detailed logging for debugging (when verbose mode enabled)
+
+### Requirements
+- Python 3.9+
+- Rich library for console output
+- Specific handler requirements:
+  - Document Handler: python-docx, PyPDF2
+  - Image Handler: Pillow, libheif
+  - Audio Handler: ffmpeg-python
+  - Archive Handler: python-magic
+- Environment variables:
+  - `OPENAI_API_KEY`: For AI-powered image analysis
+  - `NOVA_CONFIG_PATH`: Optional custom config location
+  - `NOVA_LOG_LEVEL`: Control logging verbosity
 
 Further Phases (Future Roadmap)
 

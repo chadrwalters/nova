@@ -7,53 +7,93 @@ Nova is a multi-phase document processing pipeline that converts various file fo
 
 Key Features
 	1.	Phase-Based Pipeline
-	•	Parse Phase: Converts original documents into .parsed.md files while preserving original data.
-	•	Split Phase: Generates three consolidated files from the parsed outputs: Summary.md, Raw Notes.md, and Attachments.md.
-	•	Additional phases (like image classification, audio processing, or custom tasks) can be added to src/nova/phases as needed.
-	2.	Caching & Reprocessing
-	•	Checks if input files (or their relevant metadata) have changed before regenerating output.
-	•	Skips processing for unchanged files, speeding up repeated runs.
+	•	Parse Phase: Converts original documents into .parsed.md files with rich metadata and asset extraction
+	•	Split Phase: Intelligently organizes content using section markers (--==SUMMARY==-- etc.)
+	•	Finalize Phase: Ensures proper link resolution and creates clean output structure
+	•	Additional phases can be added to src/nova/phases as needed
+
+	2.	Rich Metadata & Asset Handling
+	•	Extracts and preserves document metadata (creation date, author, etc.)
+	•	Manages assets in structured directories (images, attachments)
+	•	AI-powered image analysis and description generation
+	•	Smart cross-referencing between documents
+
 	3.	Handlers for Multiple Formats
-	•	Document Handler (Word, PDF, etc.)
-	•	Image Handler (JPEG, PNG, HEIC, etc.)
-	•	Audio Handler (MP3, WAV, etc.)
-	•	Spreadsheet Handler (XLSX, CSV, etc.)
-	•	Markdown Handler (MD files themselves)
-	•	Archive Handler (ZIP archives)
-Each handler converts an input into .parsed.md, often including AI-assisted transformations where possible.
-	4.	Extensible Configuration
-	•	YAML-based config (e.g., nova.yaml), supplemented by environment variables.
-	•	Allows custom directory locations for input, output, cache, and processing directories.
-	•	Flexible to add new phases or modify existing ones with minimal disruption.
-	5.	Advanced Logging & Metrics
-	•	Rich logs for debugging (via rich and custom formatting).
-	•	Optionally track performance metrics (timings, memory usage, etc.) in JSON logs.
-	6.	Pluggable Phase Architecture
-	•	Implementation in src/nova/phases/<phase>.py.
-	•	Each phase can read or write .parsed.md files, generate or update metadata, and place new output in the pipeline’s processing directory.
+	•	Document Handler: PDF (text + images), DOCX (with styles), RTF
+	•	Image Handler: JPEG, PNG, HEIC with AI-powered descriptions
+	•	Audio Handler: MP3, WAV with metadata extraction
+	•	Spreadsheet Handler: XLSX, CSV with table formatting
+	•	Markdown Handler: Direct MD processing
+	•	Archive Handler: ZIP with nested content support
+	•	HTML Handler: Web page conversion with styling
+
+	4.	Intelligent Processing
+	•	Section detection and organization
+	•	Smart link resolution between documents
+	•	Asset deduplication and path normalization
+	•	Configurable content splitting rules
+
+	5.	Progress Tracking & Logging
+	•	Rich console interface with progress bars
+	•	Color-coded status messages
+	•	Detailed logging with configurable verbosity
+	•	Error tracking with context
 
 How Nova Works
-	1.	Input Directory
-Place all source files (PDFs, images, spreadsheets, etc.) in the configured input_dir (by default _NovaInput in iCloud).
-	2.	Parse Phase
-Each file is assigned a handler based on extension. The handler produces a .parsed.md file in phases/parse/. Example:
 
-└── parse/
-    ├── MyDocument.parsed.md
-    ├── MyImage.parsed.md
-    └── ...
+1. Input Organization
+	•	Place source files in _NovaInput/
+	•	Supports nested directory structure
+	•	Maintains relative paths in output
+	•	Handles duplicate file names
 
+2. Parse Phase
+Each file is processed by its appropriate handler:
 
-	3.	Split Phase
-Collects all .parsed.md files, locates the raw notes marker (--==RAW NOTES==--), extracts a short “summary” block, and populates three consolidated outputs:
-	1.	Summary.md (30-40% of content)
-	2.	Raw Notes.md (50-60% of content)
-	3.	Attachments.md (5-10% listing and linking attachments)
-	4.	Caching
-	•	Each file’s modification time is tracked; if it’s the same, we skip reprocessing.
-	•	Caches AI calls (e.g., image recognition or text extraction) to avoid repetitive API usage.
-	5.	Output
-Final processed Markdown files end up in the phases/split/ directory, and optionally in the main _Nova directory if desired.
+_NovaProcessing/phases/parse/
+├── documents/
+│   ├── report.parsed.md
+│   ├── report.metadata.json
+│   └── report.assets/
+├── images/
+│   ├── diagram.parsed.md
+│   └── diagram.metadata.json
+└── spreadsheets/
+    └── data.parsed.md
+
+3. Split Phase
+Processes all parsed files and generates three main outputs:
+
+_NovaProcessing/phases/split/
+├── Summary.md       # Key points and highlights
+├── Raw Notes.md     # Detailed content and notes
+├── Attachments.md   # Asset catalog and references
+└── assets/         # Consolidated attachments
+
+4. Finalize Phase
+Creates the final output structure:
+
+_Nova/
+├── Summary.md
+├── Raw Notes.md
+├── Attachments.md
+└── assets/
+    ├── images/
+    ├── documents/
+    └── other/
+
+5. Content Markers
+Nova uses special markers to organize content:
+```
+--==SUMMARY==--
+Key points and highlights go here
+
+--==RAW NOTES==--
+Detailed notes and content go here
+
+--==ATTACHMENTS==--
+List of attachments and references
+```
 
 Installation & Setup
 	1.	Install Dependencies
