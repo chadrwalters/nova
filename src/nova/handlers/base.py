@@ -116,7 +116,8 @@ class BaseHandler(ABC):
             file_path.parent.mkdir(parents=True, exist_ok=True)
             
             # If we're in the parse directory, ensure we only write markdown files
-            if str(file_path).find("/phases/parse/") != -1:
+            parse_dir = os.path.join("phases", "parse")
+            if parse_dir in str(file_path):
                 # Convert file path to .parsed.md if it's not already
                 if not str(file_path).endswith(".parsed.md"):
                     # Remove any existing .parsed extension
@@ -159,7 +160,7 @@ class BaseHandler(ABC):
             # If paths are on different drives, use absolute path
             return str(to_path).replace("\\", "/")
 
-    def _write_markdown(self, markdown_path: Path, title: str, file_path: Path, content: str) -> None:
+    def _write_markdown(self, markdown_path: Path, title: str, file_path: Path, content: str, **kwargs) -> None:
         """Write markdown content to file.
         
         Args:
@@ -167,6 +168,7 @@ class BaseHandler(ABC):
             title: Title for markdown file
             file_path: Path to original file
             content: Processed content
+            **kwargs: Additional handler-specific parameters
         """
         # Get relative path from markdown to original
         rel_path = self._get_relative_path(markdown_path, file_path)
@@ -232,82 +234,52 @@ class BaseHandler(ABC):
     
     async def process(
         self,
-        file_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None,
+        file_path: Path,
+        output_dir: Path,
         metadata: Optional[DocumentMetadata] = None,
-    ) -> Optional[DocumentMetadata]:
-        """Process a file.
+    ) -> DocumentMetadata:
+        """Process a file."""
+        # Create output directory
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        Args:
-            file_path: Path to file to process.
-            output_dir: Optional output directory. If not provided,
-                will use configured output directory.
-            metadata: Optional metadata about the document.
-                
-        Returns:
-            Document metadata, or None if file is ignored.
-        """
+        # Create metadata if not provided
+        if not metadata:
+            metadata = DocumentMetadata(
+                file_name=file_path.name,
+                file_path=str(file_path),
+                file_type=file_path.suffix[1:] if file_path.suffix else "",
+                handler_name=self.name,
+                handler_version=self.version,
+                processed=True,
+            )
+            
+        # Process file
         try:
-            # Check if file exists
-            file_path = Path(file_path)
-            if not file_path.exists():
-                self.logger.error(f"File not found: {file_path}")
-                return None
+            # Process content
+            content = await self._process_content(file_path)
+            metadata.metadata["text"] = content
             
-            # Check if file type is supported
-            if not self.supports_file(file_path):
-                self.logger.debug(f"File type not supported: {file_path}")
-                return None
+            # Create output file
+            output_file = output_dir / f"{file_path.stem}.parsed.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
             
-            # Check cache first (skip for parse phase)
-            if self.cache_manager and "phases/parse" not in str(output_dir):
-                cached_result = self.cache_manager.get_result(file_path, self.name)
-                if cached_result is not None:
-                    self.logger.info(f"Using cached result for {file_path}")
-                    return DocumentMetadata(**cached_result)
+            # Write markdown file
+            self._write_markdown(output_file, file_path.stem, file_path, content)
             
-            # Process file
-            if output_dir is None:
-                output_dir = self.config.output_dir
-            output_dir = Path(output_dir)
+            # Add output file to metadata
+            metadata.metadata.setdefault("output_files", []).append(str(output_file))
+            metadata.processed = True
             
-            # Create output directory if it doesn't exist
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Initialize metadata if not provided
-            if metadata is None:
-                metadata = DocumentMetadata.from_file(
-                    file_path,
-                    self.name,
-                    self.version,
-                )
-            
-            # Process file
-            try:
-                self.logger.info(f"Processing {file_path} with {self.name} handler")
-                metadata = await self.process_impl(file_path, output_dir, metadata)
-                
-                # Cache result if successful
-                if metadata is not None and metadata.processed and self.cache_manager:
-                    self.logger.debug(f"Caching result for {file_path}")
-                    self.cache_manager.store_result(
-                        file_path,
-                        self.name,
-                        metadata.to_dict(),
-                    )
-                
-                return metadata
-                
-            except Exception as e:
-                # Log error and create error metadata
-                self.logger.warning(f"Failed to process file {file_path}: {str(e)}")
-                metadata.processed = False
-                metadata.add_error(self.__class__.__name__, str(e))
-                return metadata
+            return metadata
             
         except Exception as e:
             self.logger.error(f"Failed to process file {file_path}: {str(e)}")
-            return None
+            metadata.errors.append({
+                "phase": self.name,
+                "message": str(e)
+            })
+            metadata.processed = False
+            return metadata
     
     async def process_impl(
         self,

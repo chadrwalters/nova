@@ -182,7 +182,7 @@ class Nova:
         """
         # Convert paths safely
         input_dir = self._safe_path(input_dir or self.config.input_dir)
-        output_dir = self._safe_path(output_dir or self.config.output_dir)
+        output_dir = self._safe_path(self.config.processing_dir / "phases" / "parse")
         
         self.logger.info(f"Processing directory: {input_dir}")
         
@@ -194,7 +194,10 @@ class Nova:
             for file_path in input_dir.glob(pattern):
                 if file_path.is_file():
                     try:
-                        metadata = await self.process_file(file_path, output_dir)
+                        # Get relative path from input dir to maintain directory structure
+                        rel_path = file_path.relative_to(input_dir)
+                        file_output_dir = output_dir / rel_path.parent
+                        metadata = await self.process_file(file_path, file_output_dir)
                         if metadata is not None:
                             results.append(metadata)
                     except Exception as e:

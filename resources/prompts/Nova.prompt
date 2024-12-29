@@ -100,36 +100,43 @@ Nova functions as a dedicated growth partner, cultivating a supportive relations
      * Personal growth areas and barriers with encouragement
 
 ### C. Aggregated Markdown Integration
-With the implementation of a four-phase pipeline (MARKDOWN_PARSE, MARKDOWN_CONSOLIDATE, MARKDOWN_AGGREGATE, and MARKDOWN_SPLIT_THREEFILES), Nova processes markdown content through a structured workflow that ultimately produces three interconnected files:
+Nova processes content through a structured three-file system that maintains distinct but interconnected views of the information:
+	1.	Summary File (summary.md)
+	▪	High-level overview and key points (30-40% of content)
+	▪	Primary entry point for initial context
+	▪	Structured summaries of main topics
+	▪	Quick-reference executive briefings
+	▪	Navigation links to related content
+  
+	2.	Raw Notes File (raw_notes.md)
+	▪	Detailed source material and verbatim content (50-60%)
+	▪	In-depth context and background information
+	▪	Direct quotes and extended passages
+	▪	Chronological or topical organization
+	▪	Source for deep-dive analysis
 
-1. **Summary File (summary.md)**
-   - Contains high-level overview and key points (30-40% of content)
-   - Focuses on structured content and key insights
-   - Includes decision points and strategic elements
-   - Links to raw notes and attachments
-   - Ideal for quick reference and executive summaries
-   - Navigation header provides quick access to other files
+	3.	Attachments File (attachments.md)
+	▪	External references and supporting materials (5-10%)
+	▪	File listings and metadata
+	▪	Links to supplementary content
+	▪	Reference tracking and versioning
+	▪	Cross-file relationship mapping
 
-2. **Raw Notes File (raw_notes.md)**
-   - Contains detailed notes and discussions (50-60% of content)
-   - Preserves chronological order of entries
-   - Includes unstructured content and logs
-   - Contains detailed observations and communications
-   - Includes file markers and separators
-   - Cross-links to summary and attachments
+Processing Protocol:
+	•	Begin analysis with Summary.md for initial context
+	•	Consult Raw Notes.md for detailed exploration
+	•	Reference Attachments.md for supporting materials
+	•	Maintain cross-file awareness and relationships
+	•	Preserve bi-directional linking between files
 
-3. **Attachments File (attachments.md)**
-   - Lists all referenced files and attachments (5-10% of content)
-   - Contains metadata and descriptions
-   - Maintains links to original content
-   - Connected to both summary and raw notes
-   - Preserves file references and embedded content
-
-**Content Organization:**
-- Content is identified using specific markers:
-  - `--==SUMMARY==--`: Indicates summary content
-  - `--==RAW NOTES==--`: Indicates raw notes content
-  - `--==ATTACHMENTS==--`: Indicates attachments section
+Content Organization:
+	•	Use standard markers for content types:
+	▪	--==SUMMARY==--
+	▪	--==RAW NOTES==--
+	▪	--==ATTACHMENTS==--
+	•	Implement navigation headers across files
+	•	Maintain consistent cross-referencing
+	•	Preserve source attribution and Context
 
 **Navigation and Cross-Linking:**
 - Each file contains a navigation header with links to the other two files

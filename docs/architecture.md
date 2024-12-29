@@ -1,1389 +1,246 @@
 # Nova System Architecture
 
 ## Table of Contents
-1. [System Overview](#system-overview)
-2. [High-Level Architecture](#high-level-architecture)
-3. [Core Components](#core-components)
-4. [Handler Extension Architecture](#handler-extension-architecture)
-5. [Pipeline Specification](#pipeline-specification)
-6. [Data Flow & Directory Structure](#data-flow--directory-structure)
-7. [Technology Stack](#technology-stack)
-8. [Error Handling](#error-handling)
-9. [Implementation Guidelines](#implementation-guidelines)
-10. [Security & Performance](#security--performance)
+1. [Overview](#overview)
+2. [Core Concept & Goals](#core-concept--goals)
+3. [Phases & Workflow](#phases--workflow)
+    1. [Parse Phase](#parse-phase)
+    2. [Split Phase](#split-phase)
+    3. [Further Phases (Future Roadmap)](#further-phases-future-roadmap)
+4. [Key Components](#key-components)
+5. [Directory & Filesystem Structure](#directory--filesystem-structure)
+6. [Handler Extension Architecture](#handler-extension-architecture)
+7. [Error Handling & Logging](#error-handling--logging)
+8. [Data Flow & Caching](#data-flow--caching)
+9. [Configuration & Environment Setup](#configuration--environment-setup)
+10. [Security & Performance Considerations](#security--performance-considerations)
+11. [Testing & CI](#testing--ci)
+12. [Future Enhancements & Roadmap](#future-enhancements--roadmap)
 
-## System Overview
+---
 
-Nova is a document processing pipeline designed to transform Markdown documents with embedded content into structured, interlinked outputs. The system follows a phase-based architecture with clear boundaries between components and well-defined data flows.
+## Overview
+Nova is a document-processing pipeline designed to handle various input file types (e.g., PDF, DOCX, images, text, spreadsheets, HTML) and produce interlinked, consolidated Markdown outputs. The system is organized around a **phase-based** architecture, each phase handling a specific concern such as parsing raw inputs or splitting and organizing the processed content.
 
-## High-Level Architecture
+Nova’s main goals:
+1. **Convert** arbitrary file formats into standardized Markdown representations.
+2. **Aggregate** relevant content from these files into structured summary documents.
+3. **Enhance** the output with additional context (metadata, image analysis, etc.).
+
+---
+
+## Core Concept & Goals
+1. **Phase-Oriented Pipeline**  
+   Nova uses distinct phases (currently *parse* and *split*) to separate the tasks of converting source files into Markdown vs. splitting or reorganizing those Markdown files.
+
+2. **Handler-Based Parsing**  
+   Each file type (PDF, DOCX, images, spreadsheets, etc.) is parsed by a specialized *handler*, which extracts text or metadata and then writes a `*.parsed.md` file.  
+
+3. **Configurable & Extensible**  
+   Handlers, phases, and other features are all made modular so that new file types, additional phases, or advanced AI-based analyses can be integrated with minimal disruption.
+
+---
+
+## Phases & Workflow
+Below is a high-level look at how Nova processes content through two primary phases. Additional phases can be added in the future.
 
 ```mermaid
-graph TD
-    Input[Input Directory] --> Pipeline[Nova Pipeline]
-    Pipeline --> |Parse Phase| Parse[Parse & Process]
-    Pipeline --> |Split Phase| Split[Split & Organize]
-    Parse --> Output[Output Directory]
-    Split --> Output
-    
+flowchart LR
+    InputDir((Input Directory)) -->|Raw Files| PhaseParse
+    PhaseParse -->|*.parsed.md + metadata| PhaseSplit
+    PhaseSplit -->|Summary.md / Raw Notes.md / Attachments.md| OutputDir((Output Directory))
+
     subgraph "Parse Phase"
-        Parse --> |Copy| Original[Original Files]
-        Parse --> |Convert| Markdown[Markdown Files]
-        Parse --> |Generate| Meta[Metadata]
-        Parse --> |Process| Attach[Attachments]
+      direction TB
+      PhaseParse([ParsePhase<br/>Handlers<br/>Markdown Conversion]) --> ParseOutput[(Parsed Files)]
     end
-    
+
     subgraph "Split Phase"
-        Split --> |Organize| Categories[Category Organization]
-        Split --> |Generate| Indexes[Index Generation]
-        Split --> |Update| Relations[Relationship Updates]
+      direction TB
+      PhaseSplit([SplitPhase<br/>Summary/RawNotes/Attachments]) --> SplitOutput[(Consolidated MD Files)]
     end
-```
 
-## Core Components
+Parse Phase
+	•	Goal: Convert each input file into a *.parsed.md file (plus optional metadata).
+	•	Implementation:
+	1.	The pipeline enumerates each file in the input directory.
+	2.	For each file, a relevant handler is retrieved from the Handler Registry.
+	3.	The handler extracts text, metadata, or additional context (e.g., an image description from an AI model) and writes out a filename.parsed.md.
+	4.	Any references (attachments, images) are also captured, with links updated in the new Markdown output.
+	•	Key Classes:
+	•	nova.phases.parse.ParsePhase
+	•	nova.handlers.* (e.g., ImageHandler, DocumentHandler, etc.)
+	•	DocumentMetadata (tracks data about a file as it passes through)
 
-### 1. Pipeline Runner (run_nova.sh)
-- Single entry point for processing
-- Handles configuration loading
-- Manages pipeline execution
-- Provides progress feedback
-- Handles error reporting
+Split Phase
+	•	Goal: Read all *.parsed.md files produced by the Parse Phase, gather them, and split out summary sections, raw notes, and attachments into three consolidated Markdown files: Summary.md, Raw Notes.md, Attachments.md.
+	•	Implementation:
+	1.	The SplitPhase scans the parse phase output directory (_NovaProcessing/phases/parse) looking for *.parsed.md files.
+	2.	For each file, the content is inspected for markers such as --==RAW NOTES==--. Text before the marker is appended to Summary.md, while text after is appended to Raw Notes.md.
+	3.	Attachments are extracted by scanning for embedded references, which are then appended to Attachments.md.
+	4.	The resulting consolidated files are placed in _NovaProcessing/phases/split/.
 
-### 2. Directory Structure
-```
-_NovaProcessing/
-├── original/          # Original files preserved
-├── markdown/          # Markdown representations
-├── metadata/          # File metadata
-├── attachments/       # Processed attachments
-└── [categories]/      # Organized output
-    └── index.md      # Category indexes
-```
+Further Phases (Future Roadmap)
 
-### 3. Phase Implementation
-- **Parse Phase**
-  - Preserves original files
-  - Converts to markdown
-  - Processes attachments
-  - Generates metadata
-  - Updates links
+Nova is designed to allow additional phases to be appended as the pipeline grows. Examples might include:
+	•	Phase: Publish
+Generate a final distribution package or upload to a documentation site.
+	•	Phase: Index
+Produce cross-referenced indexes or tables for easy searching.
+	•	Phase: AI Summaries
+Summarize Raw Notes.md using advanced AI models for short, bullet-point briefs.
 
-- **Split Phase**
-  - Organizes files by category
-  - Generates indexes
-  - Updates relationships
-  - Consolidates metadata
+Key Components
 
-## Handler Extension Architecture
+Pipeline Runner (run_nova.sh / nova.core.pipeline.NovaPipeline)
+	•	Single Entry Point for configuring, instantiating, and running the pipeline from the command line.
+	•	Coordinates the phases, loads config, handles logging.
 
-### Overview
+Directory Structure
+	1.	_NovaProcessing/
+Temporary working area for parsed intermediate files, final consolidated MD, and attachments.
+	2.	_NovaInput/
+Location for raw input files to be processed.
+	3.	_Nova/
+Final output directory for Summary.md, Raw Notes.md, and Attachments.md.
 
-```mermaid
+Handlers
+	•	Overview: Each handler focuses on one file type and knows how to convert that type to Markdown. Examples:
+	•	DocumentHandler: PDF, DOCX
+	•	ImageHandler: JPG, PNG, HEIC
+	•	TextHandler: plain text, JSON, XML
+	•	SpreadsheetHandler: CSV, XLSX
+	•	Registry: HandlerRegistry automatically picks the right handler based on file extension.
+
+Configuration
+	•	nova.config
+Manages YAML config files, environment variables, caching directories, and file paths.
+
+Directory & Filesystem Structure
+
+The root project folder typically looks like this (simplified):
+
+nova
+├── docs/
+│   └── architecture.md     # This file 
+├── src/
+│   └── nova/
+│       ├── phases/
+│       │   ├── parse.py    # Parse Phase
+│       │   ├── split.py    # Split Phase
+│       │   └── base.py
+│       ├── handlers/       # All file-type handlers
+│       ├── config/         # Configuration management
+│       ├── core/           # Core pipeline, logging, metadata, metrics
+│       ├── models/         # Pydantic or dataclass-based metadata models
+│       └── utils/          # Utility functions 
+├── tests/
+│   └── integration/        # Integration tests for each phase
+└── ...
+
+Key Subfolders:
+	•	src/nova/phases/: Phase classes (ParsePhase, SplitPhase) implementing the pipeline steps.
+	•	src/nova/handlers/: Specialized classes for each file type.
+	•	src/nova/models/: Data structures for metadata, including DocumentMetadata.
+	•	src/nova/config/: Config loading, environment setup, and caching parameters.
+	•	tests/: Unit and integration tests covering handlers, phases, and system-level tests.
+
+Handler Extension Architecture
+
+Handlers manage “reading -> extracting -> converting” data for a file type. Each inherits from BaseHandler:
+	1.	Registration: HandlerRegistry maps file extensions to handlers.
+	2.	Processing:
+	•	process(...) is invoked with a Path, an output_dir, and a DocumentMetadata.
+	•	Handler extracts content, writes a *.parsed.md, and updates metadata.processed = True.
+	3.	Fallback: If a file extension isn’t recognized, a default or error path is used, adding a note that no handler was found.
+
+A UML-ish representation:
+
 classDiagram
     class BaseHandler {
-        <<markitdown>>
-        +convert(content) Result
-        +validate() bool
-        #_process() None
-        #_cleanup() None
+        <<abstract>>
+        +process(file_path, output_dir, metadata) -> DocumentMetadata?
+        +process_impl() -> DocumentMetadata? (override)
+        #_safe_read_file()
+        #_safe_write_file()
     }
-    
-    class NovaBaseHandler {
-        +convert(content) EnhancedResult
-        +validate() bool
-        #_pre_process() None
-        #_post_process() None
-        #_enhance_metadata() None
-    }
-    
-    class ImageHandler {
-        <<markitdown>>
-        +convert(image) Result
-        -_process_image() None
-    }
-    
-    class EnhancedImageHandler {
-        +convert(image) EnhancedResult
-        -_classify_image() str
-        -_process_heic() None
-        -_apply_vision_api() str
-        -_generate_markdown() str
-    }
-    
     class DocumentHandler {
-        <<markitdown>>
-        +convert(doc) Result
-        -_extract_content() None
+        +process_impl() -> DocumentMetadata?
+        -_extract_pdf_text()
+        -_extract_docx_text()
     }
-    
-    class EnhancedDocumentHandler {
-        +convert(doc) EnhancedResult
-        -_process_attachments() None
-        -_handle_embedded() None
-        -_preserve_context() None
+    class ImageHandler {
+        +process_impl() -> DocumentMetadata?
+        -_get_image_context()
+        -_classify_image_type()
+        -_write_markdown()
     }
-    
-    BaseHandler <|-- NovaBaseHandler
-    NovaBaseHandler <|-- EnhancedImageHandler
-    NovaBaseHandler <|-- EnhancedDocumentHandler
-    ImageHandler <|-- EnhancedImageHandler
-    DocumentHandler <|-- EnhancedDocumentHandler
-```
+    BaseHandler <|-- DocumentHandler
+    BaseHandler <|-- ImageHandler
+
+Error Handling & Logging
+	•	Central Exceptions: nova.core.errors defines NovaError, ProcessingError, etc.
+	•	Per-Phase & Per-Handler: Each handler or phase can add errors to a DocumentMetadata record with add_error().
+	•	Logging:
+	•	Rich / Python Logging used for console output, debug logs, and file logs.
+	•	Nova logs to nova.log in the base_dir/logs folder with separate console output for immediate feedback.
+
+Data Flow & Caching
+	•	Data Flow:
+	1.	Input: Raw files placed in _NovaInput.
+	2.	Parse: Writes *.parsed.md into _NovaProcessing/phases/parse/<relative-subfolders>.
+	3.	Split: Reads those *.parsed.md files, appending text to Summary.md, Raw Notes.md, and listing references in Attachments.md under _NovaProcessing/phases/split/.
+	•	Cache:
+	•	nova.cache.manager.CacheManager can store partial results (especially for heavy operations like AI-based image analysis) in _NovaCache.
+	•	The pipeline checks if cached results are valid or if input files are newer than the cached output.
+
+Configuration & Environment Setup
+
+Nova’s configuration:
+	1.	nova.yaml: main config file in config/.
+	2.	Environment Variables:
+	•	OPENAI_API_KEY needed for ImageHandler AI features.
+	•	NOVA_CONFIG_PATH can override the default config path.
+	3.	Auto-Generation: Scripts like install.sh or set_env.sh create .env files or directories if missing.
+
+Sample:
+
+base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
+input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
 
-### Handler Extension Pattern
-
-1. **Base Handler Extension**
-```python
-from markitdown.handlers import BaseHandler
-from typing import Optional, Dict, Any
-
-class NovaBaseHandler(BaseHandler):
-    """Base handler extending markitdown's functionality."""
-    
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__()
-        self.config = config
-        self.metadata = {}
-        
-    def convert(self, content: Any) -> 'EnhancedResult':
-        """Enhanced conversion with pre/post processing."""
-        self._pre_process(content)
-        result = super().convert(content)
-        enhanced_result = self._post_process(result)
-        return enhanced_result
-        
-    def _pre_process(self, content: Any) -> None:
-        """Pre-processing hook for enhanced handlers."""
-        pass
-        
-    def _post_process(self, result: 'Result') -> 'EnhancedResult':
-        """Post-processing hook for enhanced handlers."""
-        pass
-        
-    def _enhance_metadata(self) -> Dict[str, Any]:
-        """Add Nova-specific metadata."""
-        pass
-```
-
-2. **Enhanced Image Handler - Production Implementation**
-```python
-class ImageHandler(BaseHandler):
-    """Handler for image files with vision API integration."""
-    
-    def __init__(self, config: ConfigManager) -> None:
-        super().__init__(config)
-        self.openai_client = None
-        self.openai_model = "gpt-4o"  # Verified working model
-        self.openai_max_tokens = None
-        
-        # Initialize OpenAI with proper error handling
-        if hasattr(config.config, 'apis') and hasattr(config.config.apis, 'openai'):
-            openai_config = config.config.apis.openai
-            api_key = os.environ.get('OPENAI_API_KEY') or getattr(openai_config, 'api_key', None)
-            
-            if api_key:
-                self.openai_client = openai.OpenAI(api_key=api_key)
-                self.openai_max_tokens = getattr(openai_config, 'max_tokens', 500)
-                
-    async def _get_image_context(self, image_path: Path) -> str:
-        """Production-verified image context retrieval."""
-        if not self.openai_client:
-            return self._get_basic_image_info(image_path)
-            
-        try:
-            # Handle HEIC conversion if needed
-            image_path = await self._handle_heic_conversion(image_path)
-            
-            # Process with Vision API
-            base64_image = self._get_base64_image(image_path)
-            return await self._call_vision_api(base64_image)
-            
-        except (openai.RateLimitError, 
-                openai.AuthenticationError, 
-                openai.APIError) as api_error:
-            self.logger.error(f"API error: {str(api_error)}")
-            return f"No context available - {str(api_error)}"
-            
-        except Exception as e:
-            self.logger.error(f"Processing error: {str(e)}")
-            return "No context available - Image processing error"
-```
-
-**Key Implementation Points**:
-1. Use of `gpt-4o` model for reliable vision processing
-2. Robust error handling for API and processing failures
-3. HEIC format support with conversion
-4. Proper cleanup of temporary files
-5. Graceful fallback to basic image info when API unavailable
-6. Clear separation of concerns in processing steps
-7. Comprehensive logging for debugging
-8. Memory-efficient base64 encoding
-9. Proper async/await pattern usage
-10. Secure API key handling
-
-3. **Enhanced Document Handler**
-```python
-class EnhancedDocumentHandler(NovaBaseHandler):
-    """Extended document handler with attachment support."""
-    
-    def convert(self, document: bytes) -> 'EnhancedResult':
-        """Process document with attachment handling."""
-        attachments = self._process_attachments(document)
-        embedded = self._handle_embedded(document)
-        
-        base_result = super().convert(document)
-        
-        context = self._preserve_context(
-            base_result,
-            attachments,
-            embedded
-        )
-        
-        return EnhancedResult(
-            markdown=base_result.markdown,
-            metadata=self._enhance_metadata(),
-            context=context
-        )
-```
-
-### Handler Registration
-
-```python
-from markitdown import MarkItDown
-from nova.handlers import EnhancedImageHandler, EnhancedDocumentHandler
-
-def register_handlers(md: MarkItDown, config: Dict[str, Any]) -> None:
-    """Register Nova's enhanced handlers with markitdown."""
-    md.register_handler(
-        "image",
-        EnhancedImageHandler(config["image_handler"])
-    )
-    md.register_handler(
-        "document",
-        EnhancedDocumentHandler(config["document_handler"])
-    )
-```
-
-### Handler Configuration
-
-```yaml
-handlers:
-  image_handler:
-    vision_api:
-      provider: "openai"
-      model: "gpt-4-vision-preview"
-      fallback_provider: "xai"
-    classification:
-      model: "resnet50"
-      confidence_threshold: 0.85
-    heic:
-      quality: 85
-      output_format: "jpeg"
-    
-  document_handler:
-    attachment_processing:
-      enabled: true
-      recursive: true
-      max_depth: 3
-    context_preservation:
-      enabled: true
-      metadata_format: "json"
-```
-
-### Result Types
-
-```python
-from dataclasses import dataclass
-from typing import Optional, Dict, Any
-
-@dataclass
-class EnhancedResult:
-    """Extended result type with additional metadata."""
-    markdown: str
-    metadata: Dict[str, Any]
-    context: Optional[Dict[str, Any]] = None
-    original_result: Optional['Result'] = None
-    processing_history: Optional[Dict[str, Any]] = None
-```
-
-### Handler Lifecycle
-
-1. **Initialization**
-   - Load configuration
-   - Initialize API clients
-   - Set up processing tools
-
-2. **Pre-processing**
-   - Format detection
-   - Content validation
-   - Resource preparation
-
-3. **Base Processing**
-   - Call markitdown's base handler
-   - Capture base result
-   - Preserve original metadata
-
-4. **Enhancement**
-   - Apply additional processing
-   - Generate enhanced content
-   - Create extended metadata
-
-5. **Post-processing**
-   - Clean up resources
-   - Cache results if needed
-   - Update processing history
-
-### Error Handling
-
-```python
-class HandlerError(Exception):
-    """Base class for handler errors."""
-    pass
-
-class PreProcessError(HandlerError):
-    """Error during pre-processing stage."""
-    pass
-
-class EnhancementError(HandlerError):
-    """Error during enhancement stage."""
-    pass
-
-class PostProcessError(HandlerError):
-    """Error during post-processing stage."""
-    pass
-```
-
-## Pipeline Specification
-
-### Pipeline Overview
-
-```mermaid
-sequenceDiagram
-    participant Input as Input Directory
-    participant Parse as Parse Phase
-    participant Split as Split Phase
-    participant Output as Output Directory
-
-    Input->>Parse: Raw Markdown + Attachments
-    Note over Parse: Process Markdown<br/>Extract Attachments<br/>Generate Metadata
-    Parse->>Split: Processed MD + Metadata
-    Note over Split: Generate Summary<br/>Process Raw Notes<br/>Link Attachments
-    Split->>Output: Final Documents
-```
-
-### Phase 1: Parse
-
-#### Processing Steps
-1. **Document Loading**
-   - Read Markdown content
-   - Detect embedded content markers
-   - Identify attachment references
-
-2. **Attachment Processing**
-   - Extract embedded content
-   - Convert attachments to Markdown
-   - Process images and documents
-   - Generate attachment metadata
-
-3. **Metadata Generation**
-   - Create document structure metadata
-   - Record attachment relationships
-   - Generate processing history
-   - Create link references
-
-#### Metadata Schema
-```json
-{
-  "document": {
-    "id": "unique_identifier",
-    "source_path": "relative/path/to/source.md",
-    "file_metadata": {
-      "created_at": "2024-01-09T10:00:00Z",
-      "modified_at": "2024-01-09T11:30:00Z",
-      "hash": "sha256_hash_of_content",
-      "size_bytes": 12345,
-      "original_name": "document.md"
-    },
-    "processing_metadata": {
-      "parse_timestamp": "2024-01-09T12:00:00Z",
-      "parser_version": "0.0.1a3",
-      "cache_status": {
-        "is_cached": true,
-        "cache_date": "2024-01-09T12:00:00Z",
-        "cache_valid": true,
-        "invalidation_reason": null
-      }
-    },
-    "sections": {
-      "summary": {
-        "start_line": 1,
-        "end_line": 41,
-        "attachments": ["ref1", "ref2"],
-        "word_count": 250,
-        "reading_time_minutes": 2
-      },
-      "raw_notes": {
-        "start_line": 43,
-        "end_line": 142,
-        "attachments": ["ref3", "ref4"],
-        "word_count": 800,
-        "reading_time_minutes": 6
-      }
-    },
-    "attachments": [
-      {
-        "id": "ref1",
-        "type": "image",
-        "original_path": "path/to/original",
-        "processed_path": "path/to/processed",
-        "metadata_path": "path/to/metadata",
-        "file_metadata": {
-          "created_at": "2024-01-09T09:00:00Z",
-          "modified_at": "2024-01-09T09:00:00Z",
-          "hash": "sha256_hash_of_content",
-          "size_bytes": 54321
-        },
-        "image_processing": {
-          "original_format": "HEIC",
-          "converted_format": "JPEG",
-          "conversion_timestamp": "2024-01-09T12:00:00Z",
-          "classification": {
-            "type": "screenshot",
-            "confidence": 0.95,
-            "detected_elements": ["text", "ui_components"]
-          },
-          "ocr_results": {
-            "text": "Extracted text content...",
-            "confidence": 0.92,
-            "format_preserved": true
-          },
-          "vision_api": {
-            "provider": "openai",
-            "model": "gpt-4-vision-preview",
-            "description": "A detailed description of the image...",
-            "processing_timestamp": "2024-01-09T12:00:05Z",
-            "cache_key": "hash_of_image_content",
-            "confidence_score": 0.95,
-            "context_analysis": {
-              "type": "technical_screenshot",
-              "relevance": "Shows system configuration settings",
-              "key_points": [
-                "Configuration panel visible",
-                "Important settings highlighted"
-              ]
-            }
-          }
-        },
-        "cache_info": {
-          "is_cached": true,
-          "cache_date": "2024-01-09T12:00:00Z",
-          "cache_key": "unique_cache_identifier",
-          "dependencies": ["vision_api_response", "ocr_results"]
-        }
-      }
-    ],
-    "link_map": {
-      "ref1": {
-        "id": "ref1",
-        "title": "Configuration Screenshot",
-        "anchor": "configuration-screenshot",
-        "references": [
-          {
-            "type": "summary",
-            "link": "../summary.md#configuration-section",
-            "context": "Configuration setup details"
-          },
-          {
-            "type": "raw_notes",
-            "link": "../raw_notes.md#initial-setup",
-            "context": "Initial system configuration"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-### Phase 2: Split
-
-#### Processing Steps
-1. **Content Analysis**
-   - Read metadata files
-   - Identify document sections
-   - Map attachment relationships
-
-2. **Document Generation**
-   - Extract and combine summaries
-   - Consolidate raw notes
-   - Process attachment references
-
-3. **Link Creation**
-   - Generate bidirectional links
-   - Update document references
-   - Create navigation structure
-
-#### Output Document Structure
-1. **summary.md**
-   ```markdown
-   # Summary Document
-   
-   ## Document 1 Summary
-   [Content with links to attachments]
-   
-   ## Document 2 Summary
-   [Content with links to attachments]
-   ```
-
-2. **raw_notes.md**
-   ```markdown
-   # Raw Notes
-   
-   ## Document 1 Notes
-   [Content with links to attachments and summaries]
-   
-   ## Document 2 Notes
-   [Content with links to attachments and summaries]
-   ```
-
-3. **attachments.md**
-   ```markdown
-   # Attachments
-   
-   ## Document 1 Attachments
-   - [Attachment 1](link) - Referenced in [Summary](link)
-   - [Attachment 2](link) - Referenced in [Raw Notes](link)
-   ```
-
-## Data Flow & Directory Structure
-
-### Input Structure
-```
-_NovaInput/
-└── document.md (with embedded content)
-│   └── document/
-│       ├── attached1.doc
-│       ├── attached2.jpg
-│       └── attached3.pdf
-```
-
-### Processing Structure
-```
-_NovaProcessing/
-├── phases/
-│   └── parse/
-│       ├── document.md
-│       ├── metadata.json
-│       └── document/
-│           ├── attached1.md
-│           ├── attached2.md
-│           └── attached3.md
-│           └── embeddedattached.md
-├── images/
-│   ├── original/
-│   └── processed/
-└── metadata/
-```
-
-### Output Structure
-```
-_Nova/
-├── summary.md
-├── raw_notes.md
-└── attachments.md
-```
-
-## Technology Stack
-
-### Core Dependencies
-1. **Python Environment**
-   - Python 3.11.7+
-   - Poetry for dependency management
-
-2. **Document Processing**
-   - markitdown==0.0.1a3 (Markdown processing)
-   - pillow>=10.1.0 (Image processing)
-   - pyheif>=0.7.1 (HEIC support)
-   - openai>=1.3.5 (Vision API)
-   - xai-client>=1.0.0 (xAI Vision API)
-
-3. **Configuration**
-   - YAML for configuration files
-   - JSON for metadata storage
-
-4. **Image Processing**
-   - ImageMagick 6.x (via system)
-   - libheif (via system)
-
-### Development Tools
-1. **Testing**
-   - pytest for unit/integration tests
-   - No coverage tracking
-
-2. **Code Quality**
-   - Type hints
-   - Docstring documentation
-   - Error handling patterns
-
-## Error Handling
-
-### Error Categories
-1. **Parse Phase Errors**
-   - Invalid Markdown syntax
-   - Attachment conversion failures
-   - Missing references
-
-2. **Split Phase Errors**
-   - Metadata inconsistencies
-   - Link resolution failures
-   - Content consolidation issues
-
-### Recovery Mechanisms
-1. **Processing State**
-   - Track file progress
-   - Monitor phase completion
-   - Handle interruptions
-
-2. **Error Recovery**
-   - Partial processing resume
-   - State restoration
-   - Cleanup procedures
-
-## Implementation Guidelines
-
-### Code Organization
-```
-src/nova/
-├── config/
-├── phases/
-│   ├── parse/
-│   └── split/
-├── handlers/
-├── utils/
-└── core/
-```
-
-### Testing Structure
-```
-tests/
-├── unit/
-├── integration/
-├── performance/
-└── data/
-```
-
-### Documentation Structure
-```
-docs/
-├── architecture.md
-├── guides/
-└── examples/
-```
-
-## Security & Performance
-
-### Security Considerations
-1. **File System**
-   - Secure file handling
-   - Path traversal prevention
-   - Permission management
-
-2. **Configuration**
-   - Secure credential handling
-   - Configuration validation
-   - Environment isolation
-
-### Performance Considerations
-1. **Resource Management**
-   - Memory-efficient processing
-   - Streaming for large files
-   - Proper resource cleanup
-
-2. **Optimization Points**
-   - Batch processing capabilities
-   - Caching strategies
-   - Parallel processing options
-
-## Configuration
-
-### Environment Variables
-```yaml
-NOVA_BASE_DIR: Base directory for operations
-NOVA_INPUT_DIR: Input directory path
-NOVA_PROCESSING_DIR: Processing directory path
-NOVA_OUTPUT_DIR: Output directory path
-```
-
-### Phase Configuration
-```yaml
-parse_phase:
-  handlers:
-    - markdown_handler:
-        parser: markitdown
-        version: 0.0.1a3
-        supported_formats:
-          - pdf
-          - pptx
-          - docx
-          - xlsx
-          - html
-          - csv
-          - json
-          - xml
-          - zip
-          - audio
-        audio_processing:
-          extract_metadata: true
-          transcribe: true
-        document_options:
-          preserve_formatting: true
-          extract_images: true
-          handle_attachments: true
-    - enhanced_image_handler:
-        supported_formats: [jpg, jpeg, png, gif, webp, heic, HEIC]
-        base_handler: markitdown
-        extend_capabilities:
-          - heic_conversion
-          - smart_classification
-          - context_analysis
-        image_processing:
-          heic_conversion:
-            enabled: true
-            output_format: "jpeg"
-            quality: 85
-          vision_api:
-            provider: "openai"  # or "xai"
-            model: "gpt-4-vision-preview"
-            fallback_provider: "xai"
-            cache_results: true
-            cache_dir: "${NOVA_PROCESSING_DIR}/cache/vision"
-            prompt_templates:
-              default: "Describe this image in detail, focusing on its content, context, and any visible text."
-              screenshot: "This appears to be a screenshot. Please extract and structure any visible text, preserving formatting where possible."
-              photo: "Describe this photograph in detail, focusing on subject matter, composition, and relevance to document context."
-              diagram: "Analyze this diagram, identifying its type, key components, and overall purpose. Structure the response as a technical description."
-          image_classification:
-            enabled: true
-            types:
-              - screenshot
-              - photo
-              - diagram
-              - chart
-              - mixed
-            confidence_threshold: 0.85
-          ocr:
-            enabled: true
-            engine: "tesseract"
-            preserve_formatting: true
-            confidence_threshold: 0.9
-``` 
-
-## Format-Specific Conversion Rules
-
-### Image Content
-
-1. **Screenshots**
-   ```yaml
-   rules:
-     detection:
-       - UI elements presence
-       - Text density > 30%
-       - Regular geometric shapes
-     processing:
-       - OCR with layout preservation
-       - Element identification
-       - Context extraction
-     markdown_template: |
-       ### Screenshot: {title}
-       ![{context_description}]({image_path})
-       
-       #### Extracted Content:
-       ```text
-       {ocr_content}
-       ```
-       
-       **Context**: {context_description}
-       **Source**: {source_context}
-   ```
-
-2. **Photographs**
-   ```yaml
-   rules:
-     detection:
-       - Natural image features
-       - Low text density
-       - Organic shapes
-     processing:
-       - Vision API analysis
-       - Context matching
-       - Subject identification
-     markdown_template: |
-       ### {detected_subject}
-       ![{vision_description}]({image_path})
-       
-       **Description**: {vision_description}
-       **Context**: {document_context}
-       **Relevance**: {content_relevance}
-   ```
-
-3. **Diagrams/Charts**
-   ```yaml
-   rules:
-     detection:
-       - Structured layout
-       - Connected elements
-       - Technical notation
-     processing:
-       - Structure analysis
-       - Element relationship mapping
-       - Label extraction
-     markdown_template: |
-       ### {diagram_type}: {title}
-       ![{diagram_description}]({image_path})
-       
-       **Type**: {identified_type}
-       **Components**:
-       {component_list}
-       
-       **Relationships**:
-       {relationship_map}
-   ```
-
-### Document Content
-
-1. **PDF Documents**
-   ```yaml
-   rules:
-     processing:
-       - Text extraction with layout
-       - Image handling
-       - Table recognition
-     structure_preservation:
-       - Headers/footers
-       - Page breaks
-       - Footnotes
-     markdown_template: |
-       # {document_title}
-       
-       {content_with_preserved_structure}
-       
-       ---
-       **Source**: PDF Document
-       **Pages**: {page_count}
-   ```
-
-2. **Office Documents**
-   ```yaml
-   rules:
-     word:
-       - Preserve formatting
-       - Handle track changes
-       - Process comments
-     powerpoint:
-       - Slide separation
-       - Speaker notes
-       - Animation notes
-     excel:
-       - Table formatting
-       - Formula documentation
-       - Sheet organization
-     markdown_templates:
-       word: |
-         # {document_title}
-         
-         {formatted_content}
-         
-         ---
-         **Comments and Changes**:
-         {tracked_changes}
-       
-       powerpoint: |
-         # {presentation_title}
-         
-         ## Slide {number}: {slide_title}
-         
-         {slide_content}
-         
-         **Notes**: {speaker_notes}
-         
-       excel: |
-         # {workbook_name}
-         
-         ## Sheet: {sheet_name}
-         
-         {table_content}
-         
-         **Formulas**:
-         {formula_documentation}
-   ```
-
-3. **HTML Content**
-   ```yaml
-   rules:
-     processing:
-       - Structure preservation
-       - Style extraction
-       - Interactive element handling
-     markdown_template: |
-       {converted_content}
-       
-       ---
-       **Original Source**: HTML
-       **Interactive Elements**: {preserved_elements}
-   ```
-
-4. **CSV Files**
-   ```yaml
-   rules:
-     processing:
-       - UTF-8 encoding attempt
-       - Chardet encoding detection
-       - Fallback to warning markdown
-     error_handling:
-       - Generate warning for encoding issues
-       - Preserve original file link
-       - Provide remediation steps
-     markdown_template: |
-       # {file_title}
-       
-       {processed_content}
-       
-       **Original**: [Download CSV]({file_path})
-       
-       ## Error Template (if encoding fails)
-       # Warning: Encoding Issue
-       
-       The CSV file could not be processed due to encoding issues.
-       
-       ## Original File
-       - [📥 Download Original]({file_path})
-       
-       ## Recommendations
-       1. Try opening the file in Excel or another spreadsheet program
-       2. Save it with UTF-8 encoding
-       3. Replace any special characters that might be causing issues
-   ```
-
-5. **Excel Documents**
-   ```yaml
-   rules:
-     processing:
-       - Text extraction with layout
-       - Image handling
-       - Table recognition
-     structure_preservation:
-       - Headers/footers
-       - Page breaks
-       - Footnotes
-     markdown_template: |
-       # {document_title}
-       
-       {content_with_preserved_structure}
-       
-       ---
-       **Source**: Excel Document
-       **Sheets**: {sheet_count}
-   ```
-
-### Audio Content
-
-```yaml
-rules:
-  processing:
-    - Metadata extraction
-    - Speech transcription
-    - Speaker identification
-  markdown_template: |
-    # Audio Transcription: {title}
-    
-    **Duration**: {duration}
-    **Speakers**: {speaker_count}
-    
-    ## Transcript
-    
-    {timestamped_transcript}
-    
-    ## Metadata
-    - Format: {format}
-    - Quality: {quality_metrics}
-    - Recording Info: {recording_metadata}
-```
-
-### Embedded Content
-
-```yaml
-rules:
-  processing:
-    - Base64 detection
-    - Format identification
-    - Content extraction
-  markdown_template: |
-    ## Embedded {content_type}
-    
-    {converted_content}
-    
-    **Original Format**: {detected_format}
-    **Embedding Type**: {embedding_method}
-```
-
-### Archive Content
-
-```yaml
-rules:
-  processing:
-    - Recursive extraction
-    - Structure preservation
-    - Relationship mapping
-  markdown_template: |
-    # Archive Contents: {archive_name}
-    
-    ## Structure
-    {directory_tree}
-    
-    ## Converted Contents
-    {processed_contents}
-    
-    **Archive Type**: {archive_format}
-    **Original Structure**: [View]({structure_link})
-```
-
-### Text-Based Formats
-
-```yaml
-rules:
-  csv:
-    - Header detection
-    - Type inference
-    - Table formatting
-  json:
-    - Structure preservation
-    - Pretty printing
-    - Schema documentation
-  xml:
-    - Structure preservation
-    - Namespace handling
-    - DTD documentation
-  markdown_templates:
-    csv: |
-      ## {filename}
-      
-      {formatted_table}
-      
-      **Column Types**: {type_information}
-    
-    json: |
-      ## {filename}
-      
-      ```json
-      {formatted_content}
-      ```
-      
-      ### Schema
-      {schema_documentation}
-    
-    xml: |
-      ## {filename}
-      
-      ```xml
-      {formatted_content}
-      ```
-      
-      ### Structure
-      {structure_documentation}
-```
-
-### Conversion Priorities
-
-1. **Content Preservation**
-   - Original meaning and context
-   - Important formatting
-   - Structural relationships
-   - Metadata and references
-
-2. **Enhanced Understanding**
-   - AI-generated descriptions
-   - Content classification
-   - Context integration
-   - Cross-references
-
-3. **Accessibility**
-   - Clear structure
-   - Alternative text
-   - Content descriptions
-   - Navigation aids
-
-4. **Performance**
-   - Efficient processing
-   - Resource management
-   - Caching strategy
-   - Parallel processing
-
-### Attachment Representation Templates
-
-1. **PDF Documents**
-```markdown
-### Document: {title}
-
-![PDF Preview](path/to/preview.png)
-
-**Type**: PDF Document
-**Pages**: {page_count}
-**Last Modified**: {modified_date}
-**Size**: {size_formatted}
-
-[📥 Download PDF]({download_path})
-
-#### Quick Summary
-{ai_generated_summary}
-
-#### Table of Contents
-{extracted_toc}
-
-**View in**: [Summary](../summary.md#{anchor}) | [Raw Notes](../raw_notes.md#{anchor})
-```
-
-2. **Office Documents**
-```markdown
-### Document: {title}
-
-![Document Preview](path/to/preview.png)
-
-**Type**: {document_type} ({original_format})
-**Author**: {author}
-**Last Modified**: {modified_date}
-**Size**: {size_formatted}
-
-[📥 Download Original]({download_path})
-
-#### Content Overview
-{ai_generated_summary}
-
-#### Document Structure
-{structure_overview}
-
-**View in**: [Summary](../summary.md#{anchor}) | [Raw Notes](../raw_notes.md#{anchor})
-```
-
-3. **Images**
-```markdown
-### Image: {title}
-
-![{alt_text}]({image_path})
-
-**Type**: {image_type}
-**Dimensions**: {width}x{height}
-**Format**: {format}
-
-#### Description
-{vision_api_description}
-
-#### Context
-{document_context}
-
-**View in**: [Summary](../summary.md#{anchor}) | [Raw Notes](../raw_notes.md#{anchor})
-```
-
-### Caching Strategy
-
-1. **Cache Structure**
-```
-_NovaProcessing/
-├── cache/
-│   ├── documents/
-│   │   ├── {hash}/
-│   │   │   ├── metadata.json
-│   │   │   ├── processed.md
-│   │   │   └── attachments/
-│   ├── images/
-│   │   ├── {hash}/
-│   │   │   ├── metadata.json
-│   │   │   ├── processed.jpg
-│   │   │   └── vision_api_response.json
-│   └── state/
-│       ├── file_hashes.json
-│       └── processing_history.json
-```
-
-2. **Cache Validation**
-```python
-@dataclass
-class CacheValidation:
-    """Cache validation rules and state."""
-    
-    file_hash: str
-    modified_time: float
-    dependencies: List[str]
-    cache_date: datetime
-    ttl_seconds: Optional[int] = None
-    
-    def is_valid(self) -> bool:
-        """Check if cache entry is still valid."""
-        if self.ttl_seconds and self._is_expired():
-            return False
-            
-        if self._source_modified():
-            return False
-            
-        if not self._dependencies_valid():
-            return False
-            
-        return True
-        
-    def _is_expired(self) -> bool:
-        """Check if cache has exceeded TTL."""
-        if not self.ttl_seconds:
-            return False
-        
-        age = datetime.now() - self.cache_date
-        return age.total_seconds() > self.ttl_seconds
-        
-    def _source_modified(self) -> bool:
-        """Check if source file has been modified."""
-        current_mtime = os.path.getmtime(self.source_path)
-        return current_mtime > self.modified_time
-        
-    def _dependencies_valid(self) -> bool:
-        """Check if all cache dependencies are valid."""
-        return all(
-            dependency_cache.is_valid()
-            for dependency_cache in self._load_dependencies()
-        )
-```
-
-3. **Cache Management**
-```python
-class CacheManager:
-    """Manages document and image processing cache."""
-    
-    def __init__(self, config: Dict[str, Any]):
-        self.cache_dir = config["cache_dir"]
-        self.state_file = Path(self.cache_dir) / "state/processing_history.json"
-        self.hash_file = Path(self.cache_dir) / "state/file_hashes.json"
-        
-    def get_cached_result(
-        self,
-        file_path: str,
-        processor_type: str
-    ) -> Optional[ProcessingResult]:
-        """Retrieve cached result if valid."""
-        cache_key = self._compute_cache_key(file_path)
-        cache_path = self._get_cache_path(cache_key, processor_type)
-        
-        if not self._is_cache_valid(cache_path, file_path):
-            return None
-            
-        return self._load_cached_result(cache_path)
-        
-    def store_result(
-        self,
-        file_path: str,
-        processor_type: str,
-        result: ProcessingResult
-    ) -> None:
-        """Store processing result in cache."""
-        cache_key = self._compute_cache_key(file_path)
-        cache_path = self._get_cache_path(cache_key, processor_type)
-        
-        self._save_result(cache_path, result)
-        self._update_cache_metadata(
-            file_path,
-            cache_key,
-            processor_type
-        )
-        
-    def invalidate(
-        self,
-        file_path: str,
-        processor_type: Optional[str] = None
-    ) -> None:
-        """Invalidate cache entries for file."""
-        cache_key = self._compute_cache_key(file_path)
-        
-        if processor_type:
-            cache_path = self._get_cache_path(
-                cache_key,
-                processor_type
-            )
-            self._remove_cache_entry(cache_path)
-        else:
-            self._remove_all_cache_entries(cache_key)
-```
-
-4. **Cache Configuration**
-```yaml
 cache:
+  dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
   enabled: true
-  base_dir: "${NOVA_PROCESSING_DIR}/cache"
-  ttl:
-    vision_api: 2592000  # 30 days in seconds
-    ocr_results: 2592000
-    document_processing: 86400  # 1 day in seconds
-  validation:
-    check_source_modified: true
-    verify_dependencies: true
-    validate_on_load: true
-  cleanup:
-    max_size_gb: 10
-    min_free_space_gb: 5
-    cleanup_interval_hours: 24
-```
+  ttl: 3600
 
-### Link Structure
+Security & Performance Considerations
+	1.	Security:
+	•	Paths are sanitized to prevent directory traversal.
+	•	Handlers do not execute untrusted code or macros from user documents.
+	•	OpenAI calls require API keys stored securely in environment variables.
+	2.	Performance:
+	•	Large PDFs or image files can be memory-intensive. Handlers may handle them in streaming or partial ways in the future.
+	•	Caching is used for repeated AI calls on the same images.
+	•	Phase-based structure allows partial or incremental reprocessing if only certain files changed.
 
-1. **Cross-Document Links**
-```markdown
-<!-- In summary.md -->
-See detailed notes in [Setup Process](../raw_notes.md#setup-process)
+Testing & CI
+	•	Test Layout:
+	•	tests/unit/: Unit tests for handlers and utilities.
+	•	tests/integration/: End-to-end tests ensuring parse and split phases produce correct *.parsed.md and consolidated outputs.
+	•	tests/performance/: (Optional) checks speed or memory usage for large inputs.
+	•	Automated:
+	•	run_tests.sh uses pytest with pytest.ini or pyproject.toml for configurations.
 
-<!-- In raw_notes.md -->
-As mentioned in the [Executive Summary](../summary.md#executive-summary)
+Future Enhancements & Roadmap
+	•	Additional Phases: “Publish” or “Index” to further structure or upload results.
+	•	Improved AI Integrations:
+	•	Expand ImageHandler to handle bounding boxes, advanced classification, or OCR layouts.
+	•	Add advanced text summarization handlers for large documents.
+	•	Granular Caching:
+	•	Intelligent re-checking so that only changed pages/images are reprocessed.
+	•	Live/Interactive:
+	•	Possible integration with a web-based UI or event-based triggers (like dropping new files into _NovaInput).
 
-<!-- In attachments.md -->
-Referenced in:
-- [Project Overview](../summary.md#project-overview)
-- [Installation Steps](../raw_notes.md#installation)
-```
 
-2. **Attachment Links**
-```markdown
-<!-- In summary.md -->
-![System Architecture](../attachments.md#system-architecture-diagram)
-
-<!-- In raw_notes.md -->
-For more details, see [Configuration File](../attachments.md#config-screenshot)
-
-<!-- In attachments.md -->
-### System Architecture Diagram {#system-architecture-diagram}
-![Architecture](path/to/image.png)
-
-Referenced in:
-- [System Overview](../summary.md#system-overview)
-- [Design Details](../raw_notes.md#design)
-```
-
-3. **Link Metadata**
-```json
-{
-  "links": {
-    "system-architecture-diagram": {
-      "id": "system-architecture-diagram",
-      "type": "image",
-      "title": "System Architecture Diagram",
-      "references": [
-        {
-          "file": "summary.md",
-          "section": "system-overview",
-          "context": "Overview of system design"
-        },
-        {
-          "file": "raw_notes.md",
-          "section": "design",
-          "context": "Detailed design discussion"
-        }
-      ]
-    }
-  }
-}
-```
-
-``` 
