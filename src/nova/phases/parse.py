@@ -36,7 +36,7 @@ class ParsePhase(Phase):
             'file_type_stats': {}
         }
         
-    async def process_file(
+    async def process_impl(
         self,
         file_path: Path,
         output_dir: Path,

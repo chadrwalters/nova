@@ -3,6 +3,7 @@
 from typing import Dict, List, Optional, Set, Tuple
 from dataclasses import dataclass
 import json
+from pathlib import Path
 
 from nova.models.links import LinkContext, LinkType
 from nova.models.link_map import LinkRelationshipMap, NavigationPath

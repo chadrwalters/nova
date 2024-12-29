@@ -5,6 +5,7 @@ import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import unquote
+import shutil
 
 from nova.phases.base import Phase
 from nova.models.document import DocumentMetadata
@@ -66,7 +67,7 @@ class SplitPhase(Phase):
             }
         }
 
-    async def process(
+    async def process_impl(
         self,
         file_path: Path,
         output_dir: Path,
@@ -96,7 +97,7 @@ class SplitPhase(Phase):
                 return None
             
             # Process the file
-            return await self.process_file(file_path, output_dir, metadata)
+            return await self._process_file(file_path, output_dir, metadata)
             
         except Exception as e:
             self.logger.error(f"Failed to process file in split phase: {file_path}")
@@ -107,7 +108,7 @@ class SplitPhase(Phase):
                 return metadata
             return None
 
-    async def process_file(
+    async def _process_file(
         self,
         file_path: Path,
         output_dir: Path,
@@ -141,6 +142,16 @@ class SplitPhase(Phase):
             
             # Split content into sections
             sections = self._split_content(content)
+            
+            # Skip if no valid sections found
+            if not sections or not any(key in sections for key in ['summary', 'raw_notes', 'attachments']):
+                self.logger.warning(f"No valid sections found in {file_path}")
+                if metadata:
+                    metadata.add_error("SplitPhase", "No valid sections found")
+                    metadata.processed = False
+                    if file_path not in self.pipeline.state["split"]["failed_files"]:
+                        self.pipeline.state["split"]["failed_files"].append(file_path)
+                return None
             
             # Create output directory
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -182,11 +193,20 @@ class SplitPhase(Phase):
                 # Add link to raw notes at the end
                 summary_content += f"\n---\nRaw Notes: [NOTE:{file_stem}]\n"
                 
-                if not summary_path.exists():
-                    summary_path.write_text("# Summary\n")
-                with open(summary_path, 'a') as f:
-                    f.write(summary_content)
-                metadata.add_output_file(summary_path)
+                # Check if content already exists
+                existing_content = ""
+                if summary_path.exists():
+                    existing_content = summary_path.read_text()
+                
+                if summary_content not in existing_content:
+                    if not summary_path.exists():
+                        summary_path.write_text("# Summary\n")
+                    with open(summary_path, 'a') as f:
+                        f.write(summary_content)
+                    metadata.add_output_file(summary_path)
+                    self.section_stats['summary']['processed'] += 1
+            else:
+                self.section_stats['summary']['empty'] += 1
             
             # Update raw notes file
             if 'raw_notes' in sections:
@@ -204,27 +224,52 @@ class SplitPhase(Phase):
                 # Format the raw notes section
                 raw_notes_content = f"\n## [NOTE:{file_stem}]\n\n{raw_notes.strip()}\n"
                 
-                if not raw_notes_path.exists():
-                    raw_notes_path.write_text("# Raw Notes\n")
-                with open(raw_notes_path, 'a') as f:
-                    f.write(raw_notes_content)
-                metadata.add_output_file(raw_notes_path)
+                # Check if content already exists
+                existing_content = ""
+                if raw_notes_path.exists():
+                    existing_content = raw_notes_path.read_text()
+                
+                if raw_notes_content not in existing_content:
+                    if not raw_notes_path.exists():
+                        raw_notes_path.write_text("# Raw Notes\n")
+                    with open(raw_notes_path, 'a') as f:
+                        f.write(raw_notes_content)
+                    metadata.add_output_file(raw_notes_path)
+                    self.section_stats['raw_notes']['processed'] += 1
+            else:
+                self.section_stats['raw_notes']['empty'] += 1
             
-            # Update attachments file
-            attachments_content = self._build_attachments_markdown(file_stem, attachments, file_path)
-            if attachments_content:
-                if not attachments_path.exists():
-                    attachments_path.write_text("# Attachments\n")
-                with open(attachments_path, 'a') as f:
-                    f.write(attachments_content)
-                metadata.add_output_file(attachments_path)
-            elif not attachments_path.exists():
-                # Create empty attachments file if it doesn't exist
+            # Create attachments directory and copy files
+            attachments_dir = output_dir / "attachments"
+            attachments_dir.mkdir(exist_ok=True)
+            
+            # Copy attachments
+            for attach in attachments:
+                src_path = Path(attach["url"])
+                if src_path.exists():
+                    dst_path = attachments_dir / src_path.name
+                    if not dst_path.exists():
+                        shutil.copy2(src_path, dst_path)
+                        metadata.add_output_file(dst_path)
+                        self.section_stats['attachments']['processed'] += 1
+                else:
+                    self.logger.warning(f"Attachment {src_path} not found")
+                    self.section_stats['attachments']['empty'] += 1
+            
+            # Create attachments section
+            attachments_content = self._create_attachments_section(file_stem, attachments)
+            attachments_path = output_dir / "Attachments.md"
+            if not attachments_path.exists():
                 attachments_path.write_text("# Attachments\n")
-                metadata.add_output_file(attachments_path)
+            with open(attachments_path, 'a') as f:
+                f.write(attachments_content)
+            metadata.add_output_file(attachments_path)
             
             # Store metadata for later use
             self.metadata_by_file[file_stem] = metadata
+            
+            # Mark as processed
+            metadata.processed = True
             
             return metadata
             
@@ -338,31 +383,37 @@ class SplitPhase(Phase):
         
         return sections
 
-    def _create_attachments_section(self, main_file: str, attachments: List[Dict]) -> str:
-        """Create the attachments section markdown content."""
-        result = ["# Attachments\n"]
+    def _create_attachments_section(self, main_file: str, attachments: List[Dict[str, str]]) -> str:
+        """Create attachments section markdown.
         
-        for attach_info in attachments:
-            # Get the attachment file path
-            attach_path = Path(attach_info['url'])
-            if not attach_path.exists():
-                continue
+        Args:
+            main_file: Main file name
+            attachments: List of attachment dictionaries with text, url, reference, and type
             
-            # Read the content from the parsed markdown file
-            try:
-                with open(attach_path, 'r', encoding='utf-8') as f:
-                    content = f.read().strip()
-            except Exception as e:
-                logger.warning(f"Failed to read attachment content from {attach_path}: {e}")
-                continue
+        Returns:
+            Markdown content for attachments section
+        """
+        if not attachments:
+            return "# Attachments\n"
             
-            # Add the attachment reference and content
-            result.append(f"\n## {attach_info['reference']}\n")
-            result.append("\n## Content\n")
-            result.append(content)
-            result.append("\n")
+        # Group attachments by type
+        attachments_by_type = {}
+        for attach in attachments:
+            attach_type = attach['type']
+            if attach_type not in attachments_by_type:
+                attachments_by_type[attach_type] = []
+            attachments_by_type[attach_type].append(attach)
+            
+        # Build markdown content
+        content = ["# Attachments"]
         
-        return "\n".join(result)
+        # Add each type section
+        for attach_type in sorted(attachments_by_type.keys()):
+            content.append(f"\n## {attach_type} Files")
+            for attach in attachments_by_type[attach_type]:
+                content.append(f"- [{attach['text']}]({attach['url']})")
+                
+        return "\n".join(content) + "\n"
 
     def _get_main_file_name(self, attachment_path: Path) -> str:
         """Get main file name from attachment path.
