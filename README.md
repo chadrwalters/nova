@@ -146,10 +146,52 @@ _Nova/
 
 ## Content Organization
 
-Nova uses special markers to organize content:
+Nova uses special markers and reference formats to organize content:
+
+### Section Markers
 ```markdown
+--==SUMMARY==--
+High-level summary content
+
 --==RAW NOTES==--
 Detailed content and notes
+
+--==ATTACHMENTS==--
+Referenced attachments and their content
 ```
+
+### Reference Format
+Nova uses a consistent reference system across files:
+
+- **Attachments**: `[ATTACH:TYPE:ID]`
+  ```markdown
+  [ATTACH:PDF:20240118-document-name]
+  [ATTACH:JPG:20240118-screenshot]
+  ```
+
+- **Notes**: `[NOTE:ID]`
+  ```markdown
+  [NOTE:20240118-meeting-notes]
+  ```
+
+IDs are generated from filenames and include date prefixes when available.
+
+### Output Structure
+Content is organized into three main files:
+
+1. **Summary.md**
+   - High-level summaries
+   - References to attachments using `[ATTACH:type:id]`
+   - Links to raw notes
+
+2. **Raw Notes.md**
+   - Detailed notes organized by `[NOTE:id]` sections
+   - References to attachments
+   - Original content structure preserved
+
+3. **Attachments.md**
+   - Attachments grouped by type
+   - Each attachment has its own `[ATTACH:type:id]` section
+   - Preserves metadata and content from source files
 
 

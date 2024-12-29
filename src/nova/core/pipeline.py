@@ -154,7 +154,8 @@ class NovaPipeline:
                     # For split phase, look in parse phase output directory
                     parse_dir = self.config.processing_dir / "phases" / "parse"
                     if parse_dir.exists():
-                        for file_path in parse_dir.rglob('*.parsed.md'):
+                        # Only process main files (not in subdirectories)
+                        for file_path in parse_dir.glob('*.parsed.md'):
                             if file_path.is_file():
                                 files.append(file_path)
                 elif phase == "finalize":
@@ -162,15 +163,13 @@ class NovaPipeline:
                     split_dir = self.config.processing_dir / "phases" / "split"
                     self.debug(f"Looking for files to finalize in: {split_dir}")
                     if split_dir.exists():
-                        # Look for the three main files
+                        # Look for all main files in subdirectories
                         main_files = ["Summary.md", "Raw Notes.md", "Attachments.md"]
                         for file_name in main_files:
                             file_path = split_dir / file_name
-                            if file_path.exists():
+                            if file_path.is_file():
                                 self.debug(f"Found file to finalize: {file_path}")
                                 files.append(file_path)
-                            else:
-                                self.debug(f"Expected file not found: {file_path}")
                     else:
                         self.debug(f"Split directory does not exist: {split_dir}")
                 
@@ -207,28 +206,16 @@ class NovaPipeline:
                             output_dir = self.get_phase_output_dir(phase)
                             self.debug(f"Output directory: {output_dir}")
                             
-                            # Initialize metadata
-                            file_metadata = FileMetadata(file_path)
+                            # Create output directory if it doesn't exist
+                            output_dir.mkdir(parents=True, exist_ok=True)
                             
                             # Process file
-                            self.debug(f"Starting {phase} phase processing for {file_path}")
-                            metadata = await phase_instance.process_file(file_path, output_dir, file_metadata)
-                            self.debug(f"Completed {phase} phase processing for {file_path}")
-                            
-                            # Update state based on metadata
-                            if metadata is None:
-                                error_msg = "Processing failed - no metadata returned"
-                                self.debug(f"Error processing {file_path}: {error_msg}")
-                                self._add_failed_file(phase, file_path, error_msg)
-                            elif metadata.unchanged:
-                                self.debug(f"File unchanged: {file_path}")
-                                self.state[phase]['unchanged_files'].add(file_path)
-                            else:
-                                self.debug(f"File processed successfully: {file_path}")
+                            metadata = await phase_instance.process_file(file_path, output_dir)
+                            if metadata:
                                 self.state[phase]['successful_files'].add(file_path)
-                                if metadata.reprocessed:
-                                    self.debug(f"File reprocessed: {file_path}")
-                                    self.state[phase]['reprocessed_files'].add(file_path)
+                            else:
+                                self.state[phase]['failed_files'].add(file_path)
+                                
                         except Exception as e:
                             self.logger.error(f"Failed to process {file_path}: {str(e)}")
                             self.logger.error(traceback.format_exc())

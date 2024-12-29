@@ -1,45 +1,40 @@
 """Finalize phase module."""
 
-import logging
-import shutil
-from pathlib import Path
-from typing import Optional, Dict, Any
+import re
 import traceback
+from pathlib import Path
+from typing import Dict, List, Optional, Set
 
-from nova.core.metadata import FileMetadata
 from nova.phases.base import Phase
-from rich.console import Console
-from rich.table import Table
+from nova.models.document import DocumentMetadata
+from nova.models.links import LinkContext, LinkType
+from nova.ui.navigation import (
+    NavigationHeader,
+    inject_navigation_elements,
+    add_tooltips_to_links
+)
+from nova.ui.visualization import LinkVisualizer
+
 
 class FinalizePhase(Phase):
-    """Final phase that checks overall pipeline success and copies results if successful."""
+    """Finalize phase of the document processing pipeline."""
     
     def __init__(self, pipeline):
         """Initialize finalize phase.
         
         Args:
-            pipeline: Pipeline instance this phase belongs to
+            pipeline: Pipeline instance
         """
         super().__init__(pipeline)
-        self.logger = logging.getLogger(__name__)
-        self.name = "finalize"
-        
-        # Initialize state
-        self.pipeline.state["finalize"] = {
-            'successful_files': set(),
-            'failed_files': set(),
-            'skipped_files': set(),
-            'unchanged_files': set(),
-            'reprocessed_files': set()
-        }
-        
-    async def process_file(
+        self.link_map = None
+    
+    async def process_impl(
         self,
         file_path: Path,
         output_dir: Path,
-        metadata: Optional[FileMetadata] = None
-    ) -> Optional[FileMetadata]:
-        """Process a single file by copying it to the final output directory.
+        metadata: Optional[DocumentMetadata] = None
+    ) -> Optional[DocumentMetadata]:
+        """Process a file.
         
         Args:
             file_path: Path to file to process
@@ -50,31 +45,85 @@ class FinalizePhase(Phase):
             Metadata about processed file, or None if file was skipped
         """
         try:
-            self.logger.debug(f"Finalize phase processing file: {file_path}")
-            
             # Initialize metadata if not provided
             if metadata is None:
-                metadata = FileMetadata(file_path)
+                metadata = DocumentMetadata.from_file(
+                    file_path=file_path,
+                    handler_name="finalize",
+                    handler_version="1.0"
+                )
             
-            # Get the split phase directory
+            # Initialize link map if not already initialized
+            if self.link_map is None:
+                self.link_map = metadata.links
+            
+            # Process the file
             split_dir = self.pipeline.config.processing_dir / "phases" / "split"
-            self.logger.debug(f"Split directory: {split_dir}")
-            
-            # Look for the main files in the split directory
-            main_files = ["Summary.md", "Raw Notes.md", "Attachments.md"]
-            for main_file in main_files:
+            if split_dir.exists():
+                # Get main file name
+                main_file = file_path.name
                 main_file_path = split_dir / main_file
+                
                 if main_file_path.exists():
-                    # Copy to the output directory
-                    final_output_path = self.pipeline.config.output_dir / main_file
-                    self.logger.debug(f"Copying {main_file_path} to {final_output_path}")
+                    # Validate links
+                    validation_errors = self._validate_links(metadata)
+                    if validation_errors:
+                        for error in validation_errors:
+                            metadata.add_error("LinkValidation", error)
+                    
+                    # Read the file content
+                    content = main_file_path.read_text(encoding='utf-8')
+                    
+                    # Create navigation header
+                    header = NavigationHeader(
+                        title=main_file.replace(".md", ""),
+                        file_path=str(main_file_path),
+                        parent_path=str(split_dir)
+                    )
+                    
+                    # Add quick links if available
+                    outgoing_links = metadata.get_outgoing_links()
+                    if outgoing_links:
+                        # Use most referenced files as quick links
+                        link_counts = {}
+                        for link in outgoing_links:
+                            link_counts[link.target_file] = link_counts.get(link.target_file, 0) + 1
+                        top_links = sorted(outgoing_links, key=lambda l: link_counts[l.target_file], reverse=True)[:5]
+                        header.quick_links = top_links
+                    
+                    # Add navigation elements to content
+                    content = inject_navigation_elements(content, header)
+                    
+                    # Add tooltips to links
+                    content = add_tooltips_to_links(content, outgoing_links if outgoing_links else [])
+                    
+                    # Add visualization if we have links
+                    if outgoing_links:
+                        # Get all related files
+                        related_files = set()
+                        related = self.link_map.get_related_files(str(main_file_path))
+                        related_files.add(str(main_file_path))
+                        related_files.update(related['outgoing'])
+                        related_files.update(related['incoming'])
+                        
+                        # Create visualizer and render graph
+                        visualizer = LinkVisualizer(self.link_map)
+                        graph_html = visualizer.render_graph(related_files)
+                        
+                        # Add graph before the first heading or at the end
+                        if "# " in content:
+                            first_heading = content.index("# ")
+                            content = content[:first_heading] + "\n" + graph_html + "\n" + content[first_heading:]
+                        else:
+                            content += "\n" + graph_html
                     
                     # Create output directory if it doesn't exist
+                    final_output_path = self.pipeline.config.output_dir / main_file
                     final_output_path.parent.mkdir(parents=True, exist_ok=True)
                     
-                    # Copy the file
-                    shutil.copy2(main_file_path, final_output_path)
-                    self.logger.debug(f"Successfully copied {main_file} to {final_output_path}")
+                    # Write the enhanced content
+                    final_output_path.write_text(content, encoding='utf-8')
+                    self.logger.debug(f"Successfully wrote enhanced content to {final_output_path}")
                     
                     # Update metadata
                     metadata.processed = True
@@ -90,95 +139,93 @@ class FinalizePhase(Phase):
             self.logger.error(traceback.format_exc())
             if metadata:
                 metadata.add_error("FinalizePhase", str(e))
-                metadata.processed = False
             return metadata
-            
-    def print_final_summary(self) -> None:
-        """Print a consolidated summary of all phases in a table format."""
-        console = Console()
-        table = Table(title="Nova Pipeline Summary")
-        
-        # Add columns
-        table.add_column("Phase", style="cyan")
-        table.add_column("Status", style="bold")
-        table.add_column("Processed", justify="right")
-        table.add_column("Failed", justify="right", style="red")
-        table.add_column("Skipped", justify="right", style="yellow")
-        table.add_column("Unchanged", justify="right", style="blue")
-        
-        # Add rows for each phase
-        for phase_name, phase_state in self.pipeline.state.items():
-            # Calculate status
-            has_failures = bool(phase_state.get('failed_files', set()))
-            status = "[red]Failed[/red]" if has_failures else "[green]Success[/green]"
-            
-            # Count files
-            successful = len(phase_state.get('successful_files', set()))
-            failed = len(phase_state.get('failed_files', set()))
-            skipped = len(phase_state.get('skipped_files', set()))
-            unchanged = len(phase_state.get('unchanged_files', set()))
-            
-            # For parse phase, count unchanged files as processed
-            if phase_name == "parse":
-                processed = successful + unchanged
-            else:
-                processed = successful
-            
-            table.add_row(
-                phase_name.capitalize(),
-                status,
-                str(processed),
-                str(failed),
-                str(skipped),
-                str(unchanged)
-            )
-        
-        # Print the table
-        console.print(table)
-        
-    def check_pipeline_success(self) -> bool:
-        """Check if all previous phases completed successfully.
-        
-        Returns:
-            bool: True if all phases succeeded, False otherwise
-        """
-        for phase_name, phase_state in self.pipeline.state.items():
-            if phase_name == "finalize":
-                continue
-            if phase_state.get('failed_files', set()):
-                return False
-        return True 
 
-    def finalize(self):
-        """Finalize the phase by copying successful files to output directory."""
-        # Get paths
-        split_dir = self.pipeline.config.processing_dir / "phases" / "split"
-        output_dir = self.pipeline.config.output_dir
+    def _validate_links(self, metadata: DocumentMetadata) -> List[str]:
+        """Validate links in a document.
         
-        # Create output directory if it doesn't exist
-        output_dir.mkdir(parents=True, exist_ok=True)
+        Args:
+            metadata: Document metadata
+            
+        Returns:
+            List of validation error messages
+        """
+        errors = []
         
+        # Get all outgoing links
+        outgoing_links = metadata.get_outgoing_links()
+        
+        # Check each link
+        for link in outgoing_links:
+            # Check if target file exists
+            target_path = Path(link.target_file)
+            if not target_path.exists():
+                errors.append(f"Broken link: {link.target_file} does not exist")
+                continue
+            
+            # Check if target section exists (if specified)
+            if link.target_section:
+                if not self._section_exists(target_path, link.target_section):
+                    errors.append(f"Broken link: Section {link.target_section} not found in {link.target_file}")
+        
+        return errors
+
+    def _section_exists(self, file_path: Path, section_id: str) -> bool:
+        """Check if a section exists in a file.
+        
+        Args:
+            file_path: Path to file
+            section_id: Section ID to look for
+            
+        Returns:
+            True if section exists, False otherwise
+        """
         try:
-            # Copy Summary.md, Raw Notes.md, and Attachments.md if they exist
-            for filename in ["Summary.md", "Raw Notes.md", "Attachments.md"]:
-                src_file = split_dir / filename
-                if src_file.exists():
-                    dst_file = output_dir / filename
-                    shutil.copy2(src_file, dst_file)
-                    self.logger.info(f"Copied {filename} to output directory")
-                    self.pipeline.state["finalize"]["successful_files"].add(dst_file)
-                else:
-                    self.logger.warning(f"{filename} not found in split directory")
-                    
-            # Copy assets directory if it exists
-            assets_dir = split_dir / "assets"
-            if assets_dir.exists():
-                dst_assets = output_dir / "assets"
-                if dst_assets.exists():
-                    shutil.rmtree(dst_assets)
-                shutil.copytree(assets_dir, dst_assets)
-                self.logger.info("Copied assets directory to output")
-                
-        except Exception as e:
-            self.logger.error(f"Error in finalize phase: {e}")
-            self.logger.error(traceback.format_exc()) 
+            content = file_path.read_text(encoding='utf-8')
+            return f'<a id="{section_id}"></a>' in content
+        except Exception:
+            return False
+
+    def finalize(self) -> None:
+        """Finalize the finalize phase.
+        
+        This method is called after all files have been processed.
+        It performs any necessary cleanup and validation.
+        """
+        # Log summary
+        self.logger.info("Finalize phase completed")
+        
+        # Check for any failed files
+        failed_files = self.pipeline.state['finalize']['failed_files']
+        if failed_files:
+            self.logger.warning(f"Failed to process {len(failed_files)} files:")
+            for file_path in failed_files:
+                self.logger.warning(f"  - {file_path}")
+        
+        # Check link validation results
+        if hasattr(self, 'link_map') and self.link_map:
+            # Get overall link stats
+            total_links = 0
+            broken_links = 0
+            repaired_links = 0
+            
+            # Count links in outgoing_links
+            for links in self.link_map.outgoing_links.values():
+                total_links += len(links)
+                # Count broken links
+                for link in links:
+                    if not Path(link.target_file).exists():
+                        broken_links += 1
+            
+            # Log link stats
+            self.logger.info("Link validation summary:")
+            self.logger.info(f"  Total links: {total_links}")
+            self.logger.info(f"  Broken links: {broken_links}")
+            self.logger.info(f"  Repaired links: {repaired_links}")
+            
+            # Update pipeline state
+            self.pipeline.state['finalize']['link_validation'] = {
+                'total_links': total_links,
+                'broken_links': broken_links,
+                'repaired_links': repaired_links
+            } 

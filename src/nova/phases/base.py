@@ -6,7 +6,7 @@ import logging
 import shutil
 import traceback
 
-from nova.core.metadata import FileMetadata
+from nova.models.document import DocumentMetadata
 from nova.utils.file_utils import safe_write_file
 
 class Phase:
@@ -26,8 +26,8 @@ class Phase:
         self,
         file_path: Path,
         output_dir: Path,
-        metadata: Optional[FileMetadata] = None
-    ) -> Optional[FileMetadata]:
+        metadata: Optional[DocumentMetadata] = None
+    ) -> Optional[DocumentMetadata]:
         """Process a file.
         
         Args:
@@ -41,7 +41,11 @@ class Phase:
         try:
             # Initialize metadata if not provided
             if metadata is None:
-                metadata = FileMetadata(file_path)
+                metadata = DocumentMetadata.from_file(
+                    file_path=file_path,
+                    handler_name=self.__class__.__name__,
+                    handler_version="1.0"
+                )
             
             # Process the file
             metadata = await self.process_impl(file_path, output_dir, metadata)
@@ -53,7 +57,7 @@ class Phase:
             self.logger.error(f"Failed to process file: {file_path}")
             self.logger.error(traceback.format_exc())
             if metadata:
-                metadata.add_error(self.name, str(e))
+                metadata.add_error(self.__class__.__name__, str(e))
                 metadata.processed = False
                 return metadata
             return None

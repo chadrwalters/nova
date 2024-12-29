@@ -119,8 +119,10 @@ The presentation content will be extracted in a future update.
             # Write markdown file with text content
             content = f"""# {file_path.stem}
 
-## Content
+--==SUMMARY==--
+{file_path.stem} document content.
 
+--==RAW NOTES==--
 {text}
 """
             # Write with UTF-8 encoding and replace any invalid characters

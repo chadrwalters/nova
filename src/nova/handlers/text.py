@@ -99,8 +99,10 @@ class TextHandler(BaseHandler):
             # Write markdown file with text content
             content = f"""# {file_path.stem}
 
-## Content
+--==SUMMARY==--
+Text content from {file_path.stem}
 
+--==RAW NOTES==--
 ```
 {text}
 ```
@@ -112,7 +114,7 @@ class TextHandler(BaseHandler):
             metadata.title = file_path.stem
             metadata.processed = True
             metadata.metadata['text'] = text
-            metadata.output_files.append(markdown_path)
+            metadata.output_files.add(markdown_path)
             
             return metadata
             
