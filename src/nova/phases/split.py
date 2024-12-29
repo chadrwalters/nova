@@ -266,17 +266,17 @@ class SplitPhase(NovaPhase):
 
     async def process(
         self,
-        file_path: Union[str, Path],
-        output_dir: Union[str, Path],
+        file_path: Path,
+        output_dir: Path,
         metadata: Optional[DocumentMetadata] = None,
     ) -> DocumentMetadata:
         """Process a file.
         
         Args:
-            file_path: Path to file.
+            file_path: Path to file to process.
             output_dir: Output directory.
             metadata: Document metadata.
-            
+                
         Returns:
             Document metadata.
         """
@@ -297,7 +297,11 @@ class SplitPhase(NovaPhase):
             
             # Update metadata
             if metadata is None:
-                metadata = DocumentMetadata.from_file(file_path)
+                metadata = DocumentMetadata.from_file(
+                    file_path,
+                    self.name,
+                    "0.1.0",  # Split phase version
+                )
             metadata.processed = True
             metadata.add_output_file(output_file)
             metadata.add_output_file(self.output_dir / "Summary.md")
