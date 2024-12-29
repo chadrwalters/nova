@@ -95,6 +95,12 @@ class MarkdownHandler(BaseHandler):
             Relative path to copied attachment, or None if copy fails.
         """
         try:
+            # Skip copying if we're in the parse directory
+            if str(output_path).find("/phases/parse/") != -1:
+                # Just return the relative path to the original file
+                rel_path = self._get_relative_path(output_path, orig_path)
+                return rel_path
+            
             # Create attachments directory if it doesn't exist
             attachments_dir.mkdir(parents=True, exist_ok=True)
             
