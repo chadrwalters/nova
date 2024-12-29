@@ -27,50 +27,70 @@ class HTMLHandler(BaseHandler):
         super().__init__(config)
         self.logger = logging.getLogger("nova.handlers.html")
     
+    def _write_markdown(self, output_path: Path, title: str, file_path: Path, content: str) -> bool:
+        """Write markdown file with HTML content.
+        
+        Args:
+            output_path: Path to write markdown file.
+            title: Title for markdown file.
+            file_path: Path to original file.
+            content: Processed content.
+            
+        Returns:
+            True if file was written, False if unchanged.
+        """
+        markdown_content = f"""# {title}
+
+## Content
+
+{content}
+"""
+        return self._safe_write_file(output_path, markdown_content)
+    
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an HTML file.
         
         Args:
-            file_path: Path to HTML file.
-            output_dir: Directory to write output files.
+            file_path: Path to file.
             metadata: Document metadata.
-            
+                
         Returns:
-            Document metadata.
+            Document metadata, or None if file is ignored.
+            
+        Raises:
+            ValueError: If file cannot be processed.
         """
         try:
-            # Create output directory
-            output_dir = Path(str(output_dir))
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # Get output path from output manager
+            output_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
-            # Create markdown file
-            markdown_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Process content
+            content = await self._process_content(file_path)
             
-            # Convert HTML to markdown
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                html = f.read()
-            markdown = self._convert_html_to_markdown(html)
-            
-            # Write markdown file with converted content and reference to original
-            self._write_markdown(markdown_path, file_path.stem, file_path, markdown)
+            # Write markdown file
+            was_written = self._write_markdown(output_path, file_path.stem, file_path, content)
             
             # Update metadata
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['markdown'] = markdown
             metadata.processed = True
-            metadata.add_output_file(markdown_path)
+            metadata.unchanged = not was_written
+            metadata.add_output_file(output_path)
             
             return metadata
             
         except Exception as e:
             self.logger.error(f"Failed to process HTML file {file_path}: {str(e)}")
-            return None 
+            metadata.add_error(self.name, str(e))
+            return metadata
     
     def _convert_html_to_markdown(self, html: str) -> str:
         """Convert HTML to markdown.

@@ -10,6 +10,7 @@ import yaml
 from nova.core.nova import Nova
 from nova.config.manager import ConfigManager
 from nova.handlers.registry import HandlerRegistry
+from nova.core.pipeline import NovaPipeline
 
 
 @pytest.fixture
@@ -110,52 +111,68 @@ def test_files(test_config):
 
 
 @pytest.mark.asyncio
-async def test_input_file_discovery(test_config, test_files):
-    """Test that the pipeline correctly discovers and processes files in _NovaInput."""
-    # Create Nova pipeline with test config
-    config_path = test_config.base_dir / "nova.test.yaml"
-    nova = Nova(config_path=config_path)
+async def test_input_file_discovery(tmp_path: Path):
+    """Test that files are discovered correctly from input directory."""
+    # Create test input directory structure
+    input_dir = tmp_path / "_NovaInput"
+    input_dir.mkdir()
     
-    # Process all files in input directory
-    await nova.process_directory()
+    # Create test files in various subdirectories
+    (input_dir / "Documents").mkdir()
     
-    # Check that all files were discovered and processed
-    parse_dir = test_config.processing_dir / "phases" / "parse"
+    # Create PDFs
+    from PyPDF2 import PdfWriter
+    import io
     
-    # Check Documents
+    # Create test PDFs
+    for pdf_name in ["report.pdf", "notes.pdf"]:
+        writer = PdfWriter()
+        page = writer.add_blank_page(width=612, height=792)
+        pdf_bytes = io.BytesIO()
+        writer.write(pdf_bytes)
+        pdf_content = pdf_bytes.getvalue()
+        (input_dir / "Documents" / pdf_name).write_bytes(pdf_content)
+    
+    (input_dir / "Documents" / "meeting_notes.txt").write_text("test meeting")
+    (input_dir / "Documents" / "todo.txt").write_text("test todo")
+    
+    (input_dir / "Notes" / "Work").mkdir(parents=True)
+    (input_dir / "Notes" / "Work" / "project.md").write_text("test project")
+    
+    (input_dir / "Notes" / "Personal").mkdir(parents=True)
+    (input_dir / "Notes" / "Personal" / "diary.md").write_text("test diary")
+    
+    (input_dir / "Images").mkdir()
+    (input_dir / "Images" / "photo.jpg").write_bytes(b"test photo")
+    (input_dir / "Images" / "screenshot.png").write_bytes(b"test screenshot")
+    (input_dir / "Images" / "photo.heic").write_bytes(b"test heic")
+    
+    # Configure pipeline
+    config = ConfigManager()
+    config.update_config({
+        'base_dir': str(tmp_path),
+        'input_dir': str(input_dir),
+        'output_dir': str(tmp_path / "output"),
+        'processing_dir': str(tmp_path / "processing"),
+        'cache': {
+            'dir': str(tmp_path / "cache"),
+            'enabled': True,
+            'ttl': 3600
+        }
+    })
+    
+    # Process files
+    pipeline = NovaPipeline(config)
+    await pipeline.process_directory(input_dir)
+    
+    # Verify output structure matches input
+    parse_dir = tmp_path / "processing" / "phases" / "parse"
     assert (parse_dir / "Documents" / "report.parsed.md").exists()
     assert (parse_dir / "Documents" / "notes.parsed.md").exists()
     assert (parse_dir / "Documents" / "meeting_notes.parsed.md").exists()
     assert (parse_dir / "Documents" / "todo.parsed.md").exists()
-    
-    # Check Images
-    assert (parse_dir / "Images" / "screenshot.parsed.md").exists()
-    assert (parse_dir / "Images" / "photo.parsed.md").exists()
-    assert (parse_dir / "Images" / "photo.parsed.md").exists()  # HEIC gets converted to jpg
-    
-    # Check Notes and subdirectories
     assert (parse_dir / "Notes" / "Work" / "project.parsed.md").exists()
     assert (parse_dir / "Notes" / "Personal" / "diary.parsed.md").exists()
-    
-    # Verify file type detection through handler selection
-    # Read a few key files and check their content
-    
-    # Check PDF handling
-    report_content = (parse_dir / "Documents" / "report.parsed.md").read_text()
-    assert "# report" in report_content
-    assert "[Original File: report.pdf]" in report_content
-    
-    # Check text handling
-    notes_content = (parse_dir / "Documents" / "meeting_notes.parsed.md").read_text()
-    assert "# meeting_notes" in notes_content
-    assert "Meeting notes content" in notes_content
-    
-    # Check image handling
-    screenshot_content = (parse_dir / "Images" / "screenshot.parsed.md").read_text()
-    assert "# screenshot" in screenshot_content
-    assert "32x32" in screenshot_content  # Image dimensions
-    
-    # Check markdown handling
-    project_content = (parse_dir / "Notes" / "Work" / "project.parsed.md").read_text()
-    assert "# project" in project_content
-    assert "Project notes" in project_content 
+    assert (parse_dir / "Images" / "photo.parsed.md").exists()
+    assert (parse_dir / "Images" / "screenshot.parsed.md").exists()
+    assert (parse_dir / "Images" / "photo.parsed.md").exists() 

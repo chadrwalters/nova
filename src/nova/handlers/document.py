@@ -71,37 +71,42 @@ class DocumentHandler(BaseHandler):
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a document file.
         
         Args:
             file_path: Path to document file.
-            output_dir: Directory to write output files.
             metadata: Document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Create output directory
-            output_dir = Path(str(output_dir))
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # Get output path from output manager
+            markdown_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
-            # Create markdown file
-            markdown_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Process document content
+            try:
+                text = await self._process_content(file_path)
+            except Exception as e:
+                self.logger.error(f"Failed to extract text from {file_path}: {str(e)}")
+                text = f"Error extracting text: {str(e)}"
+                metadata.add_error(self.name, str(e))
             
-            # Extract text based on file type
-            if file_path.suffix.lower() == '.pdf':
-                text = self._extract_pdf_text(file_path)
-            elif file_path.suffix.lower() == '.docx':
-                text = self._extract_docx_text(file_path)
-            else:
-                raise ValueError(f"Unsupported document type: {file_path.suffix}")
-            
-            # Write markdown file with extracted text and reference to original
-            self._write_markdown(markdown_path, file_path.stem, file_path, text)
+            # Write markdown file with text content
+            content = f"""# {file_path.stem}
+
+## Content
+
+{text}
+"""
+            # Write with UTF-8 encoding and replace any invalid characters
+            self._safe_write_file(markdown_path, content, encoding='utf-8')
             
             # Update metadata
             metadata.title = file_path.stem
@@ -114,7 +119,9 @@ class DocumentHandler(BaseHandler):
             
         except Exception as e:
             self.logger.error(f"Failed to process document {file_path}: {str(e)}")
-            return None 
+            metadata.add_error(self.name, str(e))
+            metadata.processed = False
+            return metadata
     
     def _extract_pdf_text(self, file_path: Path) -> str:
         """Extract text from PDF file.

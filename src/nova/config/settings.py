@@ -17,7 +17,7 @@ class OpenAIConfig(BaseModel):
     """OpenAI API configuration."""
     
     api_key: Optional[str] = None
-    model: str = "gpt-4-vision-preview-v2"
+    model: str = "gpt-4o"
     max_tokens: int = 500
     vision_prompt: str = (
         "Please analyze this image and provide a detailed description. "

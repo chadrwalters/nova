@@ -83,9 +83,9 @@ def print_summary(
     successful: int,
     failed: int,
     skipped: int,
-    unchanged: int,
-    reprocessed: int,
     duration: float,
+    unchanged: list,
+    reprocessed: list,
     failures: list
 ) -> None:
     """Print processing summary.
@@ -95,9 +95,9 @@ def print_summary(
         successful: Number of successfully processed files
         failed: Number of failed files
         skipped: Number of skipped files
-        unchanged: Number of unchanged files
-        reprocessed: Number of reprocessed files
         duration: Processing duration in seconds
+        unchanged: List of unchanged files
+        reprocessed: List of reprocessed files
         failures: List of (file_path, error_message) tuples
     """
     # Print existing summary table
@@ -105,13 +105,13 @@ def print_summary(
     print("┏━━━━━━━━━━━━━┳━━━━━━━━┓")
     print("┃ Metric      ┃  Value ┃")
     print("┡━━━━━━━━━━━━━╇━━━━━━━━┩")
-    print(f"│ Total Files │ {total_files:>6} │")
-    print(f"│ Successful  │ {successful:>6} │")
-    print(f"│ Failed      │ {failed:>6} │")
-    print(f"│ Skipped     │ {skipped:>6} │")
-    print(f"│ Unchanged   │ {unchanged:>6} │")
-    print(f"│ Reprocessed │ {reprocessed:>6} │")
-    print(f"│ Duration    │ {duration:.2f}s │")
+    print(f"│ Total Files │ {total_files:>6d} │")
+    print(f"│ Successful  │ {successful:>6d} │")
+    print(f"│ Failed      │ {failed:>6d} │")
+    print(f"│ Skipped     │ {skipped:>6d} │")
+    print(f"│ Unchanged   │ {len(unchanged):>6d} │")
+    print(f"│ Reprocessed │ {len(reprocessed):>6d} │")
+    print(f"│ Duration    │ {duration:>6.2f}s │")
     print("└─────────────┴────────┘")
 
     # Add failure details if there are any failures

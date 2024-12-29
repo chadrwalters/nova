@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 import logging
 import os
-import shutil
 
 from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
 from ..cache.manager import CacheManager
+from ..utils.output_manager import OutputManager
+from nova.utils.file_utils import safe_write_file
 
 
 class BaseHandler(ABC):
@@ -28,6 +29,7 @@ class BaseHandler(ABC):
         self.config = config
         self.metadata = None
         self.cache_manager = CacheManager(config)
+        self.output_manager = OutputManager(config)
         self.logger = logging.getLogger(__name__)
     
     def _get_safe_path_str(self, file_path: Union[str, Path]) -> str:
@@ -104,43 +106,18 @@ class BaseHandler(ABC):
         except Exception as e:
             raise ValueError(f"Failed to read file {self._get_safe_path_str(file_path)}: {str(e)}") from e
             
-    def _safe_write_file(self, file_path: Path, content: str) -> None:
-        """Write content to file safely.
+    def _safe_write_file(self, file_path: Path, content: str, encoding: str = 'utf-8') -> bool:
+        """Write content to file only if it has changed.
         
         Args:
-            file_path: Path to write file to.
+            file_path: Path to file.
             content: Content to write.
+            encoding: File encoding.
+            
+        Returns:
+            True if file was written, False if unchanged.
         """
-        try:
-            # Create parent directory if it doesn't exist
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # If we're in the parse directory, ensure we only write markdown files
-            parse_dir = os.path.join("phases", "parse")
-            if parse_dir in str(file_path):
-                # Convert file path to .parsed.md if it's not already
-                if not str(file_path).endswith(".parsed.md"):
-                    # Remove any existing .parsed extension
-                    stem = file_path.stem
-                    if stem.endswith(".parsed"):
-                        stem = stem[:-7]  # Remove .parsed
-                    file_path = file_path.parent / (stem + ".parsed.md")
-                
-            # Create a temporary file in the same directory
-            temp_path = file_path.parent / f"{file_path.name}.tmp"
-            
-            # Write content to temporary file
-            with open(temp_path, "w") as f:
-                f.write(content)
-                
-            # Use shutil.copy2 to preserve timestamps when moving to final location
-            shutil.copy2(temp_path, file_path)
-            
-            # Clean up temporary file
-            temp_path.unlink()
-                
-        except Exception as e:
-            self.logger.error(f"Failed to write file {file_path}: {str(e)}")
+        return safe_write_file(file_path, content, encoding)
 
     def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
         """Get relative path from one file to another.
@@ -160,7 +137,7 @@ class BaseHandler(ABC):
             # If paths are on different drives, use absolute path
             return str(to_path).replace("\\", "/")
 
-    def _write_markdown(self, markdown_path: Path, title: str, file_path: Path, content: str, **kwargs) -> None:
+    def _write_markdown(self, markdown_path: Path, title: str, file_path: Path, content: str, **kwargs) -> bool:
         """Write markdown content to file.
         
         Args:
@@ -169,11 +146,15 @@ class BaseHandler(ABC):
             file_path: Path to original file
             content: Processed content
             **kwargs: Additional handler-specific parameters
+            
+        Returns:
+            True if file was written, False if unchanged
         """
-        # Get relative path from markdown to original
-        rel_path = self._get_relative_path(markdown_path, file_path)
-        
-        markdown_content = f"""# {title}
+        try:
+            # Get relative path from markdown to original
+            rel_path = self._get_relative_path(markdown_path, file_path)
+            
+            markdown_content = f"""# {title}
 
 ## Content
 
@@ -181,8 +162,12 @@ class BaseHandler(ABC):
 
 [Original File: {file_path.name}]({rel_path})
 """
-        
-        self._safe_write_file(markdown_path, markdown_content)
+            
+            return self._safe_write_file(markdown_path, markdown_content)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to write markdown for {file_path}: {str(e)}")
+            raise
 
     async def _process_content(self, file_path: Path) -> str:
         """Process file content.
@@ -242,45 +227,44 @@ class BaseHandler(ABC):
         
         Args:
             file_path: Path to file to process.
-            output_dir: Output directory.
-            metadata: Document metadata.
-                
+            output_dir: Directory to write output files.
+            metadata: Optional metadata from previous phase.
+            
         Returns:
-            Document metadata, or None if file is ignored.
+            Document metadata, or None if file was skipped or failed.
         """
         try:
-            # Create output directory
-            output_dir = Path(str(output_dir))
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
             # Initialize metadata if not provided
             if metadata is None:
-                metadata = DocumentMetadata.from_file(
-                    file_path,
-                    self.name,
-                    self.version,
-                )
+                self._init_metadata(file_path)
+                metadata = self.metadata
+            
+            # Get output path for this file
+            output_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
             # Process file
-            return await self.process_impl(file_path, output_dir, metadata)
+            metadata = await self.process_impl(file_path, metadata)
+            return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
-            if metadata is not None:
-                metadata.add_error(self.name, str(e))
-            return metadata
+            self.logger.error(f"Failed to process file: {str(e)}")
+            if metadata:
+                metadata.add_error(str(e))
+            return None
     
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a file.
         
         Args:
             file_path: Path to file to process.
-            output_dir: Output directory.
             metadata: Document metadata.
                 
         Returns:
@@ -290,20 +274,25 @@ class BaseHandler(ABC):
         Override this method only if you need special processing.
         """
         try:
-            # Create markdown file path
-            markdown_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Get output path from output manager
+            markdown_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
             # Process content
             content = await self._process_content(file_path)
             
             # Write markdown file
-            self._write_markdown(markdown_path, file_path.stem, file_path, content)
+            was_written = self._write_markdown(markdown_path, file_path.stem, file_path, content)
             
             # Update metadata
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
             metadata.metadata['content_length'] = len(content)
             metadata.processed = True
+            metadata.unchanged = not was_written
             metadata.add_output_file(markdown_path)
             
             return metadata

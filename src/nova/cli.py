@@ -89,7 +89,7 @@ async def main(args: Optional[List[str]] = None) -> int:
         config = ConfigManager(parsed_args.config)
         
         # Create pipeline
-        pipeline = NovaPipeline()
+        pipeline = NovaPipeline(config=config)
         
         # Get input directory
         input_dir = parsed_args.input_dir or config.input_dir
