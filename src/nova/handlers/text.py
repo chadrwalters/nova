@@ -81,8 +81,23 @@ class TextHandler(BaseHandler):
             # Read text file
             text = self._safe_read_file(file_path)
             
+            # Get relative path from input directory
+            rel_path = file_path.relative_to(Path(self.config.input_dir))
+            
             # Write markdown file with text content and reference to original
-            self._write_markdown(markdown_path, file_path.stem, file_path, f"```\n{text}\n```")
+            content = f"""# {file_path.stem}
+
+[Download Original]({rel_path})
+
+## Content
+
+```
+{text}
+```
+"""
+            # Write with UTF-8 encoding and replace any invalid characters
+            with open(markdown_path, 'w', encoding='utf-8', errors='replace') as f:
+                f.write(content)
             
             # Update metadata
             metadata.title = file_path.stem
@@ -95,4 +110,6 @@ class TextHandler(BaseHandler):
             
         except Exception as e:
             self.logger.error(f"Failed to process text file {file_path}: {str(e)}")
-            return None 
+            metadata.add_error(self.name, str(e))
+            metadata.processed = False
+            return metadata 

@@ -222,78 +222,57 @@ class MarkdownHandler(BaseHandler):
         Returns:
             Processed markdown content.
         """
+        # Process sections based on headers
         lines = content.split('\n')
         processed_lines = []
-        
-        # Track sections
-        embedded_content = []
-        images = []
-        attachments = []
         
         for line in lines:
             try:
                 # Check for embedded content
-                if '<!-- {"embed":"true"} -->' in line:
-                    embedded_content.append(line)
+                embed_match = re.search(r'\[(.*?)\]\((.*?)\)<!-- \{"embed":"true"\} -->', line)
+                if embed_match:
+                    title, path = embed_match.groups()
+                    # Convert relative path to absolute
+                    if path.startswith("../"):
+                        abs_path = str(self.config.input_dir / path.replace("../../../_NovaInput/", ""))
+                    else:
+                        abs_path = str(self.config.input_dir / path)
+                    processed_lines.append(f"* {title}: [{path}]({abs_path}) <!-- {{'embed':'true'}} -->")
                     continue
-                    
+                
                 # Check for images
-                if line.strip().startswith('*') and ('[Image:' in line or '![' in line):
-                    try:
-                        # Extract image info and validate
-                        image_path = re.search(r'\(([^)]+)\)', line)
-                        if image_path:
-                            # Unquote the path to handle URL-encoded characters
-                            from urllib.parse import unquote
-                            image_path = unquote(image_path.group(1))
-                            # Resolve path relative to the markdown file
-                            orig_path = file_path.parent / image_path if not Path(image_path).is_absolute() else Path(image_path)
-                            if not orig_path.exists():
-                                self.failures['image_failures'].append(f"Image not found: {image_path}")
-                    except Exception as e:
-                        self.failures['image_failures'].append(f"Failed to process image link: {str(e)}")
-                    images.append(line)
+                image_match = re.search(r'!\[(.*?)\]\((.*?)\)', line)
+                if image_match:
+                    alt, path = image_match.groups()
+                    # Convert relative path to absolute
+                    if path.startswith("../"):
+                        abs_path = str(self.config.input_dir / path.replace("../../../_NovaInput/", ""))
+                    else:
+                        abs_path = str(self.config.input_dir / path)
+                    processed_lines.append(f"![{alt}]({abs_path})")
                     continue
-                    
-                # Check for other attachments
-                if line.strip().startswith('*') and any(ext in line for ext in ['.pdf', '.doc', '.docx']):
-                    attachments.append(line)
+                
+                # Check for file references
+                file_match = re.search(r'\* ([^:]+):\s*\[(.*?)\]\((.*?)\)', line)
+                if file_match:
+                    file_type, title, path = file_match.groups()
+                    # Convert relative path to absolute
+                    if path.startswith("../"):
+                        abs_path = str(self.config.input_dir / path.replace("../../../_NovaInput/", ""))
+                    else:
+                        abs_path = str(self.config.input_dir / path)
+                    processed_lines.append(f"* {file_type}: [{title}]({abs_path})")
                     continue
-                    
-                # Keep other lines as is
-                if line.strip():
-                    processed_lines.append(line)
+                
+                # Keep all other content unchanged
+                processed_lines.append(line)
                     
             except Exception as e:
-                error_msg = f"Failed to process line: {str(e)}"
-                self.failures['processing_failures'].append(error_msg)
-                self.logger.error(error_msg)
+                self.logger.error(f"Failed to process line: {line}")
+                self.logger.error(str(e))
+                processed_lines.append(line)
         
-        # Build final content
-        final_content = [f"# {file_path.stem}\n"]
-        
-        if embedded_content:
-            final_content.extend([
-                "## Embedded Content\n",
-                *embedded_content,
-                "\n"
-            ])
-            
-        if images:
-            final_content.extend([
-                "## Images\n",
-                *images,
-                "\n"
-            ])
-            
-        if attachments:
-            final_content.extend([
-                "## Attachments\n",
-                *attachments,
-                "\n"
-            ])
-            
-        return "\n".join(final_content)
+        return "\n".join(processed_lines)
 
     async def process_impl(
         self,
@@ -367,8 +346,8 @@ class MarkdownHandler(BaseHandler):
                     
                 processed_content += "\n" + "".join(failure_summary)
             
-            # Write processed content
-            self._safe_write_file(output_path, processed_content)
+            # Write processed content using base handler's method
+            self._write_markdown(output_path, file_path.stem, file_path, processed_content)
             
             # Update metadata
             metadata.processed = True

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Union
 import shutil
 from datetime import datetime
 import json
@@ -13,6 +13,9 @@ from nova.core.logging import create_progress_bar, print_summary
 from nova.core.progress import FileProgress, PhaseProgress, ProcessingStatus, ProgressTracker
 from nova.models.document import DocumentMetadata
 from nova.config.manager import ConfigManager
+from nova.phases.parse import ParsePhase
+from nova.phases.split import SplitPhase
+from nova.handlers.registry import HandlerRegistry
 
 logger = logging.getLogger("nova")
 
@@ -33,7 +36,7 @@ class NovaPipeline:
         file_path: Path,
         phases: List[str],
     ) -> Optional[DocumentMetadata]:
-        """Process a file.
+        """Process a single file through all phases.
         
         Args:
             file_path: Path to file to process.
@@ -42,128 +45,74 @@ class NovaPipeline:
         Returns:
             Document metadata.
         """
-        # Skip .DS_Store files completely
+        # Skip .DS_Store files
         if file_path.name == ".DS_Store":
-            logger.debug(f"Skipping ignored file: {file_path}")
             return None
             
-        # Start tracking progress for this file
-        await self.progress.start_file(file_path)
-        
         # Get relative path from input directory
         input_dir = Path(self.config.input_dir)
         try:
             rel_path = file_path.relative_to(input_dir)
         except ValueError:
             logger.error(f"File {file_path} is not under input directory {input_dir}")
-            return DocumentMetadata.from_file(
-                file_path=file_path,
+            return None
+            
+        # Start file processing
+        await self.progress.start_file(file_path)
+        
+        # Initialize phases
+        for phase in phases:
+            await self.progress.add_phase(phase, 1)  # Only processing one file
+            await self.progress.start_phase(phase, file_path)
+        
+        # Create metadata
+        metadata = await self.get_existing_metadata(file_path)
+        if not metadata:
+            metadata = DocumentMetadata(
+                file_name=file_path.name,
+                file_path=str(file_path),
+                file_type=file_path.suffix[1:] if file_path.suffix else "",
                 handler_name="nova",
                 handler_version="0.1.0",
+                processed=False,
             )
-        
-        # Initialize metadata
-        metadata = await self.get_existing_metadata(file_path)
-        
-        # Create phase directories
-        processing_dir = Path(self.config.processing_dir)
-        logger.debug(f"Creating processing directory: {processing_dir}")
-        processing_dir.mkdir(parents=True, exist_ok=True)
-        
-        phases_dir = processing_dir / "phases"
-        logger.debug(f"Creating phases directory: {phases_dir}")
-        phases_dir.mkdir(parents=True, exist_ok=True)
-        
-        logger.debug(f"Creating phase directories for phases: {phases}")
+            
+        # Process each phase
         for phase in phases:
-            phase_dir = phases_dir / phase
-            logger.debug(f"Creating phase directory: {phase_dir}")
-            phase_dir.mkdir(parents=True, exist_ok=True)
-            logger.debug(f"Created phase directory: {phase_dir}")
-        
-        # Check if we need reprocessing
-        needs_reprocessing = await self.needs_reprocessing(file_path, phases)
-        logger.debug(f"Needs reprocessing: {needs_reprocessing}")
-        
-        if needs_reprocessing:
-            self.reprocessed_files += 1
-            logger.info(f"Reprocessing {file_path} (changed)")
-
-            # Process each phase
-            for phase in phases:
-                logger.info(f"[{phase}] Starting {phase} phase")
-                try:
-                    await self.progress.start_phase(phase, file_path)
-                    
-                    # Prepare formal output path
-                    phase_dir = phases_dir / phase
-                    # Preserve the relative directory structure
-                    output_path = phase_dir / rel_path
-                    # Create all parent directories
-                    logger.debug(f"Creating parent directories for: {output_path}")
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    logger.debug(f"Output path: {output_path}")
-                    
-                    # Import and use the appropriate phase module
-                    if phase == "parse":
-                        from nova.phases.parse import ParsePhase
-                        from nova.handlers.registry import HandlerRegistry
-                        handler_registry = HandlerRegistry(self.config)
-                        phase_module = ParsePhase(self.config, handler_registry)
-                        
-                        # Process the file - don't copy it first
-                        metadata = await phase_module.process(file_path, output_path, metadata)
-                        
-                    elif phase == "split":
-                        from nova.phases.split import SplitPhase
-                        phase_module = SplitPhase(self.config)
-                        
-                        # First, copy the original file to the output path
-                        logger.debug(f"Copying {file_path} to {output_path}")
-                        shutil.copy2(file_path, output_path)
-                        
-                        # Process the file
-                        metadata = await phase_module.process(file_path, output_path, metadata)
-                    else:
-                        logger.error(f"Unknown phase: {phase}")
-                        metadata.add_error(phase, f"Unknown phase: {phase}")
-                        await self.progress.fail_phase(phase, file_path)
-                        break
-                    
-                    # Complete phase
-                    await self.progress.complete_phase(phase, file_path)
-                    logger.info(
-                        f"[{phase}] Completed {phase} phase",
-                        extra={"duration": self.progress.phases[phase].duration},
-                    )
-                    
-                except Exception as e:
-                    logger.error(f"Error in {phase} phase: {str(e)}")
-                    metadata.add_error(phase, str(e))
+            if not await self.needs_reprocessing(file_path, phase):
+                continue
+                
+            logger.info(f"[{phase}] Starting {phase} phase")
+            phase_instance = self.get_phase(phase)
+            try:
+                phase_metadata = await phase_instance.process_file(file_path)
+                if phase_metadata and phase_metadata.has_errors:
+                    logger.error(f"Errors in {phase} phase: {phase_metadata.errors}")
+                    metadata.errors.extend(phase_metadata.errors)
                     await self.progress.fail_phase(phase, file_path)
                     break
-        else:
-            self.unchanged_files += 1
-            logger.info(f"Using existing processed output for {file_path} (unchanged)")
+                if phase_metadata:
+                    metadata = phase_metadata
+                await self.progress.complete_phase(phase, file_path)
+            except Exception as e:
+                logger.error(f"Error in {phase} phase: {str(e)}")
+                metadata.errors.append({
+                    "phase": phase,
+                    "message": str(e)
+                })
+                await self.progress.fail_phase(phase, file_path)
+                break
+                
+            logger.info(f"[{phase}] Completed {phase} phase")
             
-            # Copy existing outputs to phase directories
-            for phase in phases:
-                phase_dir = phases_dir / phase
-                if phase == "parse":
-                    # Skip copying for parse phase - handlers should create markdown files
-                    continue
-                else:
-                    # For other phases, use normal path
-                    output_path = phase_dir / rel_path
-                    logger.debug(f"Creating parent directories for: {output_path}")
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    if not output_path.exists():
-                        logger.debug(f"Copying {file_path} to {output_path}")
-                        shutil.copy2(file_path, output_path)
-        
         # Complete file processing
-        duration = await self.progress.complete_file(file_path)
-        logger.info(f"Completed processing file: {file_path}", extra={"duration": duration})
+        if metadata.has_errors:
+            await self.progress.fail_file(file_path)
+            metadata.processed = False
+        else:
+            await self.progress.complete_file(file_path)
+            metadata.processed = True
+            
         return metadata
     
     async def needs_reprocessing(self, file_path: Path, phases: List[str]) -> bool:
@@ -391,3 +340,17 @@ class NovaPipeline:
             reprocessed=self.reprocessed_files,
             failures=failures
         ) 
+
+    def get_phase_output_dir(self, phase: str) -> Path:
+        """Get the output directory for a phase."""
+        return self.config.processing_dir / "phases" / phase
+
+    def get_phase(self, phase: str) -> Union[ParsePhase, SplitPhase]:
+        """Get the phase instance for a given phase name."""
+        if phase == "parse":
+            handler_registry = HandlerRegistry(self.config)
+            return ParsePhase(self.config, handler_registry)
+        elif phase == "split":
+            return SplitPhase(self.config)
+        else:
+            raise ValueError(f"Unknown phase: {phase}") 

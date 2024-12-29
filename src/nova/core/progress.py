@@ -153,3 +153,19 @@ class ProgressTracker:
             # Update phase progress
             phase_progress = self.phases[phase]
             phase_progress.failed_files += 1 
+    
+    async def fail_file(self, file_path: Path) -> float:
+        """Mark file as failed.
+        
+        Args:
+            file_path: Path to file.
+            
+        Returns:
+            Processing duration in seconds.
+        """
+        async with self._lock:
+            progress = self.files[file_path]
+            progress.status = ProcessingStatus.FAILED
+            progress.end_time = time.time()
+            progress.current_phase = None
+            return progress.duration 

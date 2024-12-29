@@ -60,66 +60,69 @@ class ParsePhase:
     
     async def process(
         self,
-        file_path: Union[str, Path],
-        output_path: Union[str, Path],
+        file_path: Path,
+        output_dir: Path,
         metadata: Optional[DocumentMetadata] = None,
-    ) -> Optional[DocumentMetadata]:
-        """Process a file through the parse phase.
+    ) -> DocumentMetadata:
+        """Process a file."""
+        # Create output directory
+        output_dir.mkdir(parents=True, exist_ok=True)
         
-        Args:
-            file_path: Path to file to process.
-            output_path: Path to output file.
-            metadata: Optional metadata from previous phase.
-            
-        Returns:
-            Updated document metadata, or None if file is ignored.
-        """
-        # Convert paths safely
-        file_path = Path(str(file_path).encode("utf-8", errors="replace").decode("utf-8"))
-        output_path = Path(str(output_path).encode("utf-8", errors="replace").decode("utf-8"))
-        
-        self.logger.debug(f"Processing file in parse phase: {file_path}")
-        
-        # Check if file should be ignored
-        if file_path.name in self.IGNORED_FILES:
-            self.logger.debug(f"Ignoring file: {file_path}")
-            return None
-            
-        # Get handler for file type
+        # Get handler for file
         handler = self.handler_registry.get_handler(file_path)
-        if handler is None:
-            self.logger.debug(f"No handler found for file: {file_path}")
-            return metadata
+        if not handler:
+            raise ValueError(f"No handler found for file: {file_path}")
             
-        # Create output directory if it doesn't exist
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Get relative path from input directory
-        rel_path = file_path.relative_to(Path(self.config.input_dir))
-        
         # Process file with handler
         try:
-            # Process file using the handler
-            metadata = await handler.process(
-                file_path=file_path,
-                output_dir=Path(self.config.processing_dir) / "phases" / "parse" / rel_path.parent,
-                metadata=metadata,
-            )
-            
-            if metadata is None:
-                metadata = DocumentMetadata.from_file(
-                    file_path=file_path,
+            metadata = await handler.process(file_path, output_dir, metadata)
+            if not metadata:
+                metadata = DocumentMetadata(
+                    file_name=file_path.name,
+                    file_path=str(file_path),
+                    file_type=file_path.suffix[1:] if file_path.suffix else "",
                     handler_name=handler.name,
                     handler_version=handler.version,
+                    processed=True,
                 )
             
-            metadata.processed = True
+            # Create output file
+            output_file = output_dir / f"{file_path.stem}.parsed.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_file, "w") as f:
+                f.write(f"# {metadata.title or file_path.stem}\n\n")
+                if metadata.description:
+                    f.write(f"{metadata.description}\n\n")
+                if "text" in metadata.metadata:
+                    f.write(metadata.metadata["text"])
+            
+            # Add output file to metadata
+            metadata.metadata.setdefault("output_files", []).append(str(output_file))
             
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Error processing file: {str(e)}")
-            if metadata is not None:
-                metadata.add_error("parse", str(e))
+            logger.error(f"Failed to process file {file_path}: {str(e)}")
+            if not metadata:
+                metadata = DocumentMetadata(
+                    file_name=file_path.name,
+                    file_path=str(file_path),
+                    file_type=file_path.suffix[1:] if file_path.suffix else "",
+                    handler_name="nova",
+                    handler_version="0.1.0",
+                    processed=False,
+                )
+            metadata.errors.append({
+                "phase": "parse",
+                "message": str(e)
+            })
             
-            return metadata 
+            return metadata
+
+    async def process_file(self, file_path: Path) -> DocumentMetadata:
+        """Process a single file."""
+        # Get output directory
+        output_dir = self.config.processing_dir / "phases" / "parse"
+        
+        # Process file
+        return await self.process(file_path, output_dir) 
