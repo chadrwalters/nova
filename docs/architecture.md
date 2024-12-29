@@ -151,13 +151,27 @@ The pipeline provides rich console feedback:
 - Rich library for console output
 - Specific handler requirements:
   - Document Handler: python-docx, PyPDF2
-  - Image Handler: Pillow, libheif
+  - Image Handler: Pillow, libheif, Tesseract (for OCR)
   - Audio Handler: ffmpeg-python
   - Archive Handler: python-magic
 - Environment variables:
   - `OPENAI_API_KEY`: For AI-powered image analysis
   - `NOVA_CONFIG_PATH`: Optional custom config location
   - `NOVA_LOG_LEVEL`: Control logging verbosity
+
+### Known Constraints & Performance Considerations
+- File Size Limits:
+  - PDFs: Recommended max 100MB per file
+  - Images: Recommended max 20MB per image
+  - Memory usage scales with file size
+- Performance Bottlenecks:
+  - OCR processing is CPU-intensive
+  - AI image analysis requires API calls
+  - Large archives may need significant temp storage
+- Caching Behavior:
+  - OCR results are cached to prevent reprocessing
+  - AI analysis results are cached with 1-hour TTL
+  - Cache can be cleared manually if needed
 
 Further Phases (Future Roadmap)
 
