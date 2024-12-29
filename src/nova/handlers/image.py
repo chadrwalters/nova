@@ -378,37 +378,30 @@ class ImageHandler(BaseHandler):
             Document metadata.
         """
         try:
-            # Create output directory
-            output_dir = Path(str(output_dir))
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Create markdown file
-            markdown_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Create output path with .parsed.md extension
+            output_path = output_dir / f"{file_path.stem}.parsed.md"
             
             # Get image context
-            try:
-                context = await self._get_image_context(file_path)
-            except Exception as e:
-                self.logger.error(f"Failed to get image context for {file_path.name}: {str(e)}")
-                context = "Error getting image context. Please try again later."
+            context = await self._get_image_context(file_path)
             
-            # Get image type
+            # Classify image type
             image_type = self._classify_image_type(file_path)
             
-            # Write markdown file with context, reference to original, and image type
-            self._write_markdown(markdown_path, file_path.stem, file_path, context, image_type)
+            # Write markdown file
+            self._write_markdown(output_path, file_path.stem, file_path, context, image_type)
             
             # Update metadata
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
+            metadata.metadata['image_type'] = image_type
             metadata.metadata['context'] = context
             metadata.processed = True
-            metadata.add_output_file(markdown_path)
+            metadata.add_output_file(output_path)
             
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process image {file_path}: {str(e)}")
-            metadata.add_error(self.name, str(e))
-            metadata.processed = False
+            self.logger.error(f"Failed to process image file {file_path}: {str(e)}")
+            if metadata is not None:
+                metadata.add_error("Image Handler", str(e))
             return metadata 

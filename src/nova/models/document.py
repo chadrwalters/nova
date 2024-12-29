@@ -63,23 +63,19 @@ class DocumentMetadata:
         
         Args:
             file_path: Path to file.
-            handler_name: Name of handler.
-            handler_version: Version of handler.
+            handler_name: Name of handler processing the file.
+            handler_version: Version of handler processing the file.
             
         Returns:
             Document metadata.
         """
-        # Convert file path to string with replacement of invalid chars
-        safe_name = str(file_path.name).encode("utf-8", errors="replace").decode("utf-8")
-        safe_path = str(file_path).encode("utf-8", errors="replace").decode("utf-8")
-        
         return cls(
-            file_name=safe_name,
-            file_path=safe_path,
-            file_type=file_path.suffix.lstrip("."),
+            file_name=file_path.name,
+            file_path=str(file_path),
+            file_type=file_path.suffix[1:] if file_path.suffix else "",
             handler_name=handler_name,
             handler_version=handler_version,
-            errors=[]
+            processed=False,
         )
     
     @property
