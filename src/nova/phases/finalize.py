@@ -86,14 +86,12 @@ class FinalizePhase(Phase):
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to copy file {file_path}: {str(e)}")
+            self.logger.error(f"Failed to finalize file: {file_path}")
             self.logger.error(traceback.format_exc())
             if metadata:
                 metadata.add_error("FinalizePhase", str(e))
                 metadata.processed = False
-                self.pipeline.state['finalize']['failed_files'].add(file_path)
-                return metadata
-            return None
+            return metadata
             
     def print_final_summary(self) -> None:
         """Print a consolidated summary of all phases in a table format."""
@@ -150,3 +148,37 @@ class FinalizePhase(Phase):
             if phase_state.get('failed_files', set()):
                 return False
         return True 
+
+    def finalize(self):
+        """Finalize the phase by copying successful files to output directory."""
+        # Get paths
+        split_dir = self.pipeline.config.processing_dir / "phases" / "split"
+        output_dir = self.pipeline.config.output_dir
+        
+        # Create output directory if it doesn't exist
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # Copy Summary.md, Raw Notes.md, and Attachments.md if they exist
+            for filename in ["Summary.md", "Raw Notes.md", "Attachments.md"]:
+                src_file = split_dir / filename
+                if src_file.exists():
+                    dst_file = output_dir / filename
+                    shutil.copy2(src_file, dst_file)
+                    self.logger.info(f"Copied {filename} to output directory")
+                    self.pipeline.state["finalize"]["successful_files"].add(dst_file)
+                else:
+                    self.logger.warning(f"{filename} not found in split directory")
+                    
+            # Copy assets directory if it exists
+            assets_dir = split_dir / "assets"
+            if assets_dir.exists():
+                dst_assets = output_dir / "assets"
+                if dst_assets.exists():
+                    shutil.rmtree(dst_assets)
+                shutil.copytree(assets_dir, dst_assets)
+                self.logger.info("Copied assets directory to output")
+                
+        except Exception as e:
+            self.logger.error(f"Error in finalize phase: {e}")
+            self.logger.error(traceback.format_exc()) 

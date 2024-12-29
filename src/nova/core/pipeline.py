@@ -118,8 +118,9 @@ class NovaPipeline:
         if phases is None:
             phases = self.get_phases()
             
-        # Store phase durations
+        # Store phase durations and file counts
         phase_durations = {}
+        phase_file_counts = {}
             
         # Process each phase
         for phase in phases:
@@ -142,9 +143,21 @@ class NovaPipeline:
                         'reprocessed_files': set()
                     }
                 
-                # Get list of files
+                # Get list of files based on phase
                 files = []
-                if phase == "finalize":
+                if phase == "parse":
+                    # For parse phase, look in input directory
+                    for file_path in directory.rglob('*'):
+                        if file_path.is_file() and not file_path.name.startswith('.'):
+                            files.append(file_path)
+                elif phase == "split":
+                    # For split phase, look in parse phase output directory
+                    parse_dir = self.config.processing_dir / "phases" / "parse"
+                    if parse_dir.exists():
+                        for file_path in parse_dir.rglob('*.parsed.md'):
+                            if file_path.is_file():
+                                files.append(file_path)
+                elif phase == "finalize":
                     # For finalize phase, look in split directory
                     split_dir = self.config.processing_dir / "phases" / "split"
                     self.debug(f"Looking for files to finalize in: {split_dir}")
@@ -160,17 +173,15 @@ class NovaPipeline:
                                 self.debug(f"Expected file not found: {file_path}")
                     else:
                         self.debug(f"Split directory does not exist: {split_dir}")
-                else:
-                    # For other phases, look in input directory
-                    for file_path in directory.rglob('*'):
-                        if file_path.is_file() and not file_path.name.startswith('.'):
-                            files.append(file_path)
+                
+                # Store the actual file count for this phase
+                phase_file_counts[phase] = len(files)
                 
                 if not files:
                     if phase == "finalize":
                         self.debug("No files found in split directory to finalize")
                     else:
-                        self.debug(f"No files found in {directory}")
+                        self.debug(f"No files found for {phase} phase")
                     continue
                 
                 # Process each file with progress bar
@@ -224,6 +235,13 @@ class NovaPipeline:
                             self._add_failed_file(phase, file_path, str(e))
                             
                         pbar.update(1)
+                
+                # Call finalize() on the phase after processing all files
+                try:
+                    phase_instance.finalize()
+                except Exception as e:
+                    self.logger.error(f"Error in {phase} finalize: {str(e)}")
+                    self.logger.error(traceback.format_exc())
                         
                 # Log phase completion
                 self.debug(f"Completed {phase} phase")
@@ -241,7 +259,7 @@ class NovaPipeline:
         
         # Show summaries for each completed phase
         for phase in phases:
-            total_files = len(files)
+            total_files = phase_file_counts.get(phase, 0)  # Use actual file count for this phase
             successful = len(self.state[phase]['successful_files'])
             failed = len(self.state[phase]['failed_files'])
             skipped = len(self.state[phase]['skipped_files'])
@@ -319,132 +337,68 @@ class NovaPipeline:
             print(f"\nProcessing completed with {total_failed} failures.")
 
     async def needs_reprocessing(self, file_path: Path, phase: str) -> bool:
-        """Return True if any phase output is missing or older than the input file;
-        otherwise False.
+        """Return True if file needs reprocessing.
+        Only the parse phase checks for actual changes - other phases always process.
         """
         # Skip .DS_Store files
         if file_path.name == ".DS_Store":
             return False
             
+        # Split and finalize phases always process
+        if phase != "parse":
+            return True
+            
         processing_dir = self.config.processing_dir
         phases_dir = Path(processing_dir) / "phases"
         logger.debug(f"Checking if {file_path} needs reprocessing in {processing_dir}")
 
-        # For parse phase, check against input directory
-        if phase == "parse":
-            # Get relative path from input directory
-            input_dir = Path(self.config.input_dir)
-            try:
-                rel_path = file_path.relative_to(input_dir)
-            except ValueError:
-                logger.error(f"File {file_path} is not under input directory {input_dir}")
-                return True
-
-            # If the user's input file or directory isn't valid, assume we need reprocessing
-            if not file_path.exists():
-                logger.info(f"Input file {file_path} doesn't exist - will process when it appears")
-                return True
-
-            # For markdown files in the root directory, look in the root output directory
-            if file_path.suffix.lower() == '.md' and len(rel_path.parts) == 1:
-                output_path = phases_dir / phase / f"{file_path.stem}.parsed.md"
-            else:
-                # For all other files, preserve the directory structure
-                output_path = phases_dir / phase / rel_path.parent / f"{file_path.stem}.parsed.md"
-            
-            logger.debug(f"Checking parse output: {output_path}")
-            
-            # If .parsed.md file doesn't exist => must reprocess
-            if not output_path.exists():
-                logger.info(f"No previous output found for {file_path.name} - will process")
-                return True
-            
-            # Check if input is newer than output
-            try:
-                input_mtime = file_path.stat().st_mtime
-                output_mtime = output_path.stat().st_mtime
-                logger.debug(f"Comparing timestamps for {file_path.name}")
-                
-                # Get formatted timestamps for logging
-                input_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(input_mtime))
-                output_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(output_mtime))
-                
-                if output_mtime < input_mtime:
-                    logger.info(f"File {file_path.name} modified ({input_time}) after last processing ({output_time}) - will reprocess")
-                    return True
-                else:
-                    logger.info(f"File {file_path.name} unchanged since last processing ({output_time}) - skipping")
-            except OSError as e:
-                logger.error(f"Error checking file times: {str(e)}")
-                return True
-                
-        else:
-            # For split phase, check if output exists and is newer than input
-            output_path = phases_dir / phase / file_path.name
-            
-            # If output doesn't exist => must reprocess
-            if not output_path.exists():
-                logger.info(f"No previous output found for {file_path.name} in {phase} phase - will process")
-                return True
-            
-            # If output is older => must reprocess
-            try:
-                input_mtime = file_path.stat().st_mtime
-                output_mtime = output_path.stat().st_mtime
-                logger.debug(f"Comparing timestamps for {file_path.name}")
-                
-                # Get formatted timestamps for logging
-                input_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(input_mtime))
-                output_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(output_time))
-                
-                if output_mtime < input_mtime:
-                    logger.info(f"File {file_path.name} modified ({input_time}) after last {phase} processing ({output_time}) - will reprocess")
-                    return True
-                else:
-                    logger.info(f"File {file_path.name} unchanged since last {phase} processing ({output_time}) - skipping")
-            except OSError as e:
-                logger.error(f"Error checking file times: {str(e)}")
-                return True
-
-        # Check if input file has been modified
+        # Get relative path from input directory
+        input_dir = Path(self.config.input_dir)
         try:
-            # Get current file content
-            with open(file_path, 'rb') as f:
-                current_content = f.read()
-            
-            # Get previous file content from cache
-            cache_dir = Path(self.config.cache_dir) / "content"
-            # Use relative path from input directory to preserve structure in cache
-            rel_path = file_path.relative_to(Path(self.config.input_dir))
-            cache_file = cache_dir / rel_path
-            
-            # If cache file doesn't exist => must reprocess
-            if not cache_file.exists():
-                # Create cache directory and save current content
-                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(cache_file, 'wb') as f:
-                    f.write(current_content)
-                logger.info(f"No content cache found for {file_path.name} - will process")
-                return True
-            
-            # Compare content
-            with open(cache_file, 'rb') as f:
-                cached_content = f.read()
-            
-            if current_content != cached_content:
-                # Update cache with new content
-                with open(cache_file, 'wb') as f:
-                    f.write(current_content)
-                logger.info(f"Content changed for {file_path.name} - will reprocess")
-                return True
-            else:
-                logger.debug(f"Content unchanged for {file_path.name}")
-                
-        except Exception as e:
-            logger.error(f"Error checking file content: {str(e)}")
+            rel_path = file_path.relative_to(input_dir)
+        except ValueError:
+            logger.error(f"File {file_path} is not under input directory {input_dir}")
             return True
 
-        # If we get here, we don't need to reprocess
+        # If the user's input file or directory isn't valid, assume we need reprocessing
+        if not file_path.exists():
+            logger.info(f"Input file {file_path} doesn't exist - will process when it appears")
+            return True
+
+        # For markdown files in the root directory, look in the root output directory
+        if file_path.suffix.lower() == '.md' and len(rel_path.parts) == 1:
+            output_path = phases_dir / phase / f"{file_path.stem}.parsed.md"
+        else:
+            # For all other files, preserve the directory structure
+            output_path = phases_dir / phase / rel_path.parent / f"{file_path.stem}.parsed.md"
+            
+        logger.debug(f"Checking parse output: {output_path}")
+        
+        # If .parsed.md file doesn't exist => must reprocess
+        if not output_path.exists():
+            logger.info(f"No previous output found for {file_path.name} - will process")
+            return True
+        
+        # Check if input is newer than output
+        try:
+            input_mtime = file_path.stat().st_mtime
+            output_mtime = output_path.stat().st_mtime
+            logger.debug(f"Comparing timestamps for {file_path.name}")
+            
+            # Get formatted timestamps for logging
+            input_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(input_mtime))
+            output_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(output_mtime))
+            
+            if output_mtime < input_mtime:
+                logger.info(f"File {file_path.name} modified ({input_time}) after last processing ({output_time}) - will reprocess")
+                return True
+            else:
+                logger.info(f"File {file_path.name} unchanged since last processing ({output_time}) - skipping")
+                return False
+        except OSError as e:
+            logger.error(f"Error checking file times: {str(e)}")
+            return True
+
         return False
 
     def get_phase_output_dir(self, phase: str) -> Path:

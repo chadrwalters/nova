@@ -65,7 +65,7 @@ class ParsePhase(Phase):
                 return None
             
             # Process file
-            metadata = await handler.process_impl(file_path, output_dir, metadata)
+            metadata = await handler.process_impl(file_path, metadata)
             
             # Update pipeline state and stats
             if metadata is None:
@@ -121,3 +121,8 @@ class ParsePhase(Phase):
         stats[status] += 1
         if handler_name:
             stats['handlers'].add(handler_name)
+
+    def finalize(self):
+        """Finalize the parse phase."""
+        # Nothing to do in finalize for parse phase
+        pass

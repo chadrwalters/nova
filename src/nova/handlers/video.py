@@ -64,14 +64,12 @@ Video processing capabilities will be added in a future update.
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a video file.
         
         Args:
             file_path: Path to file.
-            output_dir: Directory to write output files.
             metadata: Document metadata.
                 
         Returns:
@@ -81,8 +79,12 @@ Video processing capabilities will be added in a future update.
             ValueError: If file cannot be processed.
         """
         try:
-            # Create output path with .parsed.md extension
-            output_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Get output path from output manager
+            output_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
             # Create placeholder markdown
             content = self._create_placeholder_markdown(file_path, output_path)

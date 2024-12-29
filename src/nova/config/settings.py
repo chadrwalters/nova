@@ -1,6 +1,6 @@
 """Configuration settings for Nova."""
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from pydantic import BaseModel
 
@@ -33,6 +33,12 @@ class APIConfig(BaseModel):
     openai: Optional[OpenAIConfig] = None
 
 
+class PipelineConfig(BaseModel):
+    """Pipeline configuration."""
+    
+    phases: List[str] = ["parse", "split"]
+
+
 class NovaConfig(BaseModel):
     """Nova configuration."""
     
@@ -42,6 +48,7 @@ class NovaConfig(BaseModel):
     processing_dir: Path
     cache: CacheConfig
     apis: Optional[APIConfig] = None
+    pipeline: Optional[PipelineConfig] = PipelineConfig()
     
     class Config:
         """Pydantic model configuration."""
