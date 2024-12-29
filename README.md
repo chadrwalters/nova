@@ -106,6 +106,10 @@ Installs Tesseract, libheif, FFmpeg, ImageMagick (and more), plus Python depende
 	•	Duplicate config/nova.template.yaml to config/nova.yaml.
 	•	Update api_key fields if using AI/vision modules.
 	•	Adjust directory paths for input_dir, output_dir, etc.
+	•	Optional environment variables:
+		- NOVA_CONFIG_PATH: Override default config location
+		- NOVA_LOG_LEVEL: Set logging verbosity (DEBUG, INFO, etc.)
+		- OPENAI_API_KEY: Required for AI image analysis
 	3.	Run Nova
 
 ./run_nova.sh
@@ -125,4 +129,17 @@ Processing Entire Directory
 poetry run python3 -m nova.cli --input-dir ~/Documents/NovaDemos --phases parse split
 
 Runs both parse and split phases, generating .parsed.md files and the three consolidated Markdown outputs.
+
+Future Enhancements
+	•	Additional Pipeline Phases:
+		- Publish Phase: Generate documentation sites or PDFs
+		- Index Phase: Create searchable indexes
+		- AI Summary Phase: Generate executive summaries
+	•	Performance Optimizations:
+		- Parallel processing for large files
+		- Improved caching strategies
+	•	Extended Handler Support:
+		- Additional document formats
+		- Enhanced OCR capabilities
+		- Video file processing
 
