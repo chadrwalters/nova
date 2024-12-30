@@ -107,7 +107,11 @@ pipeline:
 ./run_nova.sh
 ```
 
-This will process files from `_NovaInput` through all configured phases.
+This will process files from `_NovaInput` through all configured phases:
+1. **Parse**: Converts input files to intermediate Markdown
+2. **Disassemble**: Processes parsed Markdown into structured sections
+3. **Split**: Organizes content into final document structure
+4. **Finalize**: Resolves links and creates final output
 
 ### Advanced Usage
 ```bash
@@ -142,6 +146,10 @@ _NovaProcessing/
 ├── phases/
 │   ├── parse/
 │   │   └── *.parsed.md
+│   ├── disassemble/
+│   │   ├── *.summary.md
+│   │   ├── *.raw_notes.md
+│   │   └── *.attachments.md
 │   └── split/
 │       ├── Summary.md
 │       ├── Raw Notes.md
@@ -181,10 +189,10 @@ Referenced attachments and their content
 ### Reference Format
 Nova uses a consistent reference system across files:
 
-- **Attachments**: `[ATTACH:TYPE:ID]`
+- **Attachments**: `[ATTACH:TYPE:ID]` or `![ATTACH:TYPE:ID]` for images
   ```markdown
   [ATTACH:PDF:20240118-document-name]
-  [ATTACH:JPG:20240118-screenshot]
+  ![ATTACH:IMAGE:20240118-screenshot]
   ```
 
 - **Notes**: `[NOTE:ID]`
@@ -193,6 +201,27 @@ Nova uses a consistent reference system across files:
   ```
 
 IDs are generated from filenames and include date prefixes when available.
+
+### Phase Processing
+1. **Parse Phase**
+   - Converts raw files to Markdown with metadata
+   - Preserves original content structure
+
+2. **Disassemble Phase**
+   - Processes each parsed Markdown file
+   - Splits content into summary, raw notes, and attachments sections
+   - Converts all links to reference format (e.g., `[ATTACH:TYPE:ID]`)
+   - Handles image links with `!` prefix (e.g., `![ATTACH:IMAGE:ID]`)
+
+3. **Split Phase**
+   - Consolidates disassembled content into final structure
+   - Merges summaries, raw notes, and attachments from all files
+   - Maintains consistent reference format across documents
+
+4. **Finalize Phase**
+   - Resolves all references
+   - Creates final output structure
+   - Validates link integrity
 
 ### Output Structure
 Content is organized into three main files:

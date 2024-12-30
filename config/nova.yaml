@@ -47,5 +47,6 @@ logging:
 pipeline:
   phases:
     - parse
+    - disassemble
     - split
     - finalize 

@@ -1,0 +1,190 @@
+# Disassembly Phase Implementation Plan
+
+## Overview
+Create a new phase that sits between Parse and Split phases to handle the separation of parsed markdown files into Summary and Raw Notes components, while maintaining attachments.
+
+## Technical Notes
+1. Input File Structure:
+   - Files from parse phase (*.parsed.md) contain:
+     ```markdown
+     <summary content>
+     
+     --==RAW NOTES==--  # Optional marker
+     <raw notes content> # Only exists if marker present
+     ```
+   - Only one possible marker in parse output: "--==RAW NOTES==--"
+   - Everything before marker (or entire file if no marker) is summary
+   - Attachments are referenced inline within content
+   - Note: Some handlers (text.py, image.py) output "--==SUMMARY==--" but this is 
+     normalized by parse phase to remove it
+
+2. Phase Dependencies:
+   - Input: Takes files from parse phase
+   - Output: Feeds into split phase
+   - Must maintain compatibility with both phases
+
+## Phase 1: Initial Setup
+1. Create new module:
+   ```
+   src/nova/phases/disassemble.py
+   ```
+   [DONE]
+   - Created DisassemblyPhase class with:
+     - _split_content() for marker-based splitting
+     - process_impl() for file processing
+     - State tracking and statistics
+     - Error handling and logging
+   - Handles single marker: "--==RAW NOTES==--"
+   - Maintains inline attachment references
+
+2. Update pipeline configuration:
+   ```yaml:config/nova.yaml
+   pipeline:
+     phases:
+       - parse
+       - disassemble
+       - split
+       - finalize
+   ```
+   [DONE]
+   - Added disassemble phase to pipeline config
+   - Updated nova.template.yaml to match
+   - Need to test pipeline ordering works
+
+## Phase 2: Core Implementation
+1. Create DisassemblyPhase class with:
+   - Input: Takes files from parse phase (*.parsed.md)
+   - Output: Creates in disassembly directory:
+     - <filename>.summary.md
+     - <filename>.rawnotes.md (if raw notes exist)
+     - Maintains attachment directory structure
+   [DONE - Merged with Phase 1.1]
+
+2. Core functions needed:
+   - split_content(): Splits file at "--==RAW NOTES==--" marker [DONE]
+   - process_file(): Handles individual file processing [DONE]
+   - copy_attachments(): Maintains attachment structure [TODO]
+   - update_metadata(): Tracks new file relationships [DONE]
+
+## Technical Decisions Made:
+1. Attachment Handling:
+   - Attachments remain referenced inline where they appear
+   - No need to move/copy attachments as they're already in place
+   - References maintained in both summary and raw notes sections
+
+2. Metadata Structure:
+   - Using FileMetadata from core.metadata
+   - Tracking both input and output files
+   - Maintaining error state and processing status
+
+3. Edge Cases Handled:
+   - No marker = entire content is summary
+   - Empty sections are allowed
+   - Multiple markers = use first occurrence only
+   - Malformed files tracked in error stats
+
+## Next Steps:
+1. Test the pipeline configuration change [IN_PROGRESS]
+   - Added detailed logging and summary table
+   - Summary tracks:
+     * Summary files: created/empty/failed
+     * Raw notes files: created/empty/failed
+     * Attachments: copied/failed
+     * Total files processed
+   - Enhanced error tracking and reporting
+   - Added attachment directory handling
+   - Testing Process Started:
+     * Running cleanup.sh -a
+     * Running run_nova.sh
+     * Will verify:
+       - Parse → Disassemble → Split flow
+       - File splitting correctness
+       - Attachment handling
+       - Metadata flow
+   [IN_PROGRESS]
+
+2. Add attachment directory handling [DONE]
+   - Copy attachments directory structure
+   - Maintain inline references
+   - Track attachment stats
+   - Added logging for attachment operations
+
+3. Begin Phase 3 (Split Phase Adaptation) [TODO]
+   - Review current split phase implementation
+   - Plan modifications needed
+   - Test compatibility
+
+## Phase 3: Split Phase Adaptation
+1. Modify Split phase to:
+   - Take input from disassembly phase instead of parse phase
+   - Expect already-split files (.summary.md and .rawnotes.md)
+   - Maintain existing attachment handling
+   [TODO]
+
+## Directory Structure
+```
+_NovaProcessing/
+└── phases/
+    ├── parse/
+    │   ├── doc1.parsed.md
+    │   └── attachments/
+    ├── disassemble/
+    │   ├── doc1.summary.md
+    │   ├── doc1.rawnotes.md
+    │   └── attachments/
+    └── split/
+        ├── Summary.md
+        ├── Raw Notes.md
+        ├── Attachments.md
+        └── attachments/
+```
+
+## Implementation Order
+1. Create basic DisassemblyPhase class [TODO]
+2. Implement core file splitting logic [TODO]
+3. Add attachment handling [TODO]
+4. Update metadata tracking [TODO]
+5. Add error handling and logging [TODO]
+6. Modify Split phase to work with new structure [TODO]
+7. Add tests [TODO]
+
+## Testing Strategy
+1. Unit tests for:
+   - Content splitting logic
+   - Metadata updates
+   - Edge cases (no raw notes, empty sections)
+   [TODO]
+
+2. Integration tests for:
+   - Full pipeline flow
+   - Attachment preservation
+   - Metadata consistency
+   [TODO]
+
+## Success Criteria
+1. All parsed MD files correctly split into summary/raw notes [TODO]
+2. Attachments maintained in correct structure [TODO]
+3. Metadata properly tracks all file relationships [TODO]
+4. Split phase works seamlessly with new input format [TODO]
+5. No data loss during processing [TODO]
+6. Clear error handling and logging [TODO]
+
+## Questions to Resolve
+1. How to handle edge cases:
+   - Multiple "--==RAW NOTES==--" markers?
+   - Empty sections?
+   - Malformed input files?
+   [TODO]
+
+2. Metadata structure:
+   - How to track relationships between original/summary/raw notes?
+   - What additional metadata might be useful?
+   [TODO]
+
+## Timeline
+1. Phase 1: 1 day [TODO]
+2. Phase 2: 2-3 days [TODO]
+3. Phase 3: 1-2 days [TODO]
+4. Testing: 1-2 days [TODO]
+
+Total: 5-8 days depending on complexity and issues encountered 

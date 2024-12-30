@@ -25,8 +25,8 @@ class MarkdownHandler(BaseHandler):
         """
         super().__init__(config)
     
-    def _update_image_links(self, content: str) -> str:
-        """Update image links to point to .parsed.md files.
+    def _update_links(self, content: str) -> str:
+        """Update links to use simple reference markers.
         
         Args:
             content: Original markdown content.
@@ -34,25 +34,56 @@ class MarkdownHandler(BaseHandler):
         Returns:
             Updated markdown content.
         """
-        # Match both ![...](path) and [name](path) patterns
+        # First remove any existing HTML comments
+        content = re.sub(r'<!--.*?-->', '', content)
+        
         def replace_link(match):
             full_match = match.group(0)
-            path = match.group(2)
+            is_image = full_match.startswith('!')
+            text = match.group(2)
+            path = match.group(3)
             
-            # Skip if it's already a .parsed.md file
-            if path.endswith('.parsed.md'):
+            # Skip if it's not a file link
+            if path.startswith(('http://', 'https://', '#', '/')):
                 return full_match
                 
-            # Convert the path to point to the parsed markdown file
-            new_path = path + '.parsed.md'
+            # Get file type from extension
+            ext = Path(path).suffix.lower()
+            type_map = {
+                '.pdf': 'PDF',
+                '.doc': 'DOC',
+                '.docx': 'DOC',
+                '.jpg': 'IMAGE',
+                '.jpeg': 'IMAGE',
+                '.png': 'IMAGE',
+                '.heic': 'IMAGE',
+                '.xlsx': 'EXCEL',
+                '.xls': 'EXCEL',
+                '.csv': 'EXCEL',
+                '.txt': 'TXT',
+                '.json': 'JSON',
+                '.html': 'DOC',
+                '.md': 'DOC'
+            }
+            file_type = type_map.get(ext, 'OTHER')
             
-            # Replace the old path with the new one, preserving any metadata
-            return full_match.replace(path, new_path)
+            # Create reference marker
+            filename = Path(path).stem
+            ref = f"[ATTACH:{file_type}:{filename}]"
             
-        # Update both image and link patterns, including those with metadata
-        pattern = r'(!?\[.*?\])\((.*?)\)(?:<!-- \{.*?\} -->)?'
-        return re.sub(pattern, replace_link, content)
-
+            # For images, preserve the ! prefix
+            if is_image:
+                ref = "!" + ref
+            
+            # Return the reference marker
+            return ref
+        
+        # Update all links using the pattern
+        link_pattern = r'(!?\[([^\]]*)\]\(([^)]+)\))'
+        content = re.sub(link_pattern, replace_link, content)
+        
+        return content
+        
     async def process_impl(
         self,
         file_path: Path,
@@ -79,8 +110,8 @@ class MarkdownHandler(BaseHandler):
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Update image links to point to .parsed.md files
-            updated_content = self._update_image_links(content)
+            # Update links to use reference markers
+            updated_content = self._update_links(content)
             
             # Write the updated content
             with open(output_file, 'w', encoding='utf-8') as f:
