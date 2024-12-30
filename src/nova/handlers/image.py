@@ -117,6 +117,47 @@ class ImageHandler(BaseHandler):
         except Exception as e:
             raise ValueError(f"Failed to convert HEIC to JPEG: {e}")
 
+    def _convert_svg(self, file_path: Path, output_path: Path) -> None:
+        """Convert SVG file to JPEG.
+        
+        Args:
+            file_path: Path to SVG file.
+            output_path: Path to output JPEG file.
+            
+        Raises:
+            ValueError: If conversion fails.
+        """
+        try:
+            # Create output directory if it doesn't exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Use ImageMagick to convert SVG to JPEG
+            # -density 300 ensures high quality rendering
+            # -background white ensures transparent backgrounds are white
+            # -flatten combines all layers
+            result = subprocess.run(
+                ["convert", "-density", "300", "-background", "white", "-flatten", str(file_path), str(output_path)],
+                capture_output=True,
+                text=True,
+            )
+            
+            if result.returncode != 0:
+                raise ValueError(f"ImageMagick conversion failed: {result.stderr}")
+            
+            # Verify the output file exists and is readable
+            if not output_path.exists():
+                raise ValueError("Conversion succeeded but output file not found")
+            
+            try:
+                # Verify the output is a valid JPEG
+                with Image.open(output_path) as img:
+                    img.verify()
+            except Exception as e:
+                raise ValueError(f"Converted file is not a valid JPEG: {str(e)}")
+                
+        except Exception as e:
+            raise ValueError(f"Failed to convert SVG to JPEG: {e}")
+
     def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
         """Get relative path from one file to another.
         
@@ -136,44 +177,35 @@ class ImageHandler(BaseHandler):
             return str(to_path).replace("\\", "/")
 
     async def _get_image_context(self, image_path: Path) -> str:
-        """Get image context using OpenAI's vision API.
+        """Get context for image using vision API.
         
         Args:
             image_path: Path to image file.
             
         Returns:
-            Context description from vision API.
-            
-        Raises:
-            ValueError: If the image file is invalid or cannot be processed.
-            openai.RateLimitError: If the API rate limit is exceeded.
-            openai.AuthenticationError: If the API key is invalid.
-            openai.APIError: If there's an error with the OpenAI API.
+            Context string from vision API.
         """
-        # If OpenAI client is not configured, return basic image info
-        if not self.openai_client:
-            try:
-                with Image.open(image_path) as img:
-                    width, height = img.size
-                    mode = img.mode
-                    format = img.format
-                    return f"Image: {width}x{height} pixels, {mode} mode, {format} format"
-            except Exception as e:
-                self.logger.error(f"Failed to get basic image info: {str(e)}")
-                return "No context available - Failed to read image"
-        
+        temp_path = None
         try:
             # If it's a HEIC file, convert to JPEG first
-            temp_path = None
             if image_path.suffix.lower() == '.heic':
-                temp_path = Path(tempfile.mkdtemp()) / f"{image_path.stem}.jpg"
                 try:
+                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
                     self._convert_heic(image_path, temp_path)
                     image_path = temp_path
                 except Exception as e:
                     self.logger.error(f"Failed to convert HEIC to JPEG: {str(e)}")
                     return "No context available - Failed to convert HEIC to JPEG"
-            
+            # If it's an SVG file, convert to JPEG first
+            elif image_path.suffix.lower() == '.svg':
+                try:
+                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
+                    self._convert_svg(image_path, temp_path)
+                    image_path = temp_path
+                except Exception as e:
+                    self.logger.error(f"Failed to convert SVG to JPEG: {str(e)}")
+                    return "No context available - Failed to convert SVG to JPEG"
+
             try:
                 # Read image and convert to base64
                 with open(image_path, "rb") as image_file:
@@ -218,13 +250,9 @@ class ImageHandler(BaseHandler):
                 return "No context available - API error. Please try again later."
                 
             finally:
-                # Clean up temporary file if we created one
+                # Clean up temporary file if it exists
                 if temp_path and temp_path.exists():
-                    try:
-                        temp_path.unlink()
-                        temp_path.parent.rmdir()
-                    except Exception:
-                        pass
+                    temp_path.unlink()
                 
         except Exception as e:
             # Get error message without any potential base64 data
@@ -242,19 +270,28 @@ class ImageHandler(BaseHandler):
             image_path: Path to image file.
             
         Returns:
-            Image type classification.
+            Classification string.
         """
+        temp_path = None
         try:
             # If it's a HEIC file, convert to JPEG first
-            temp_path = None
             if image_path.suffix.lower() == '.heic':
-                temp_path = Path(tempfile.mkdtemp()) / f"{image_path.stem}.jpg"
                 try:
+                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
                     self._convert_heic(image_path, temp_path)
                     image_path = temp_path
                 except Exception as e:
                     self.logger.error(f"Failed to convert HEIC to JPEG: {str(e)}")
                     return "photograph"  # Default to photograph for HEIC files
+            # If it's an SVG file, convert to JPEG first
+            elif image_path.suffix.lower() == '.svg':
+                try:
+                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
+                    self._convert_svg(image_path, temp_path)
+                    image_path = temp_path
+                except Exception as e:
+                    self.logger.error(f"Failed to convert SVG to JPEG: {str(e)}")
+                    return "diagram"  # Default to diagram for SVG files
 
             try:
                 # Open image with PIL
@@ -311,13 +348,9 @@ class ImageHandler(BaseHandler):
                 return "unknown"
 
         finally:
-            # Clean up temporary file if we created one
+            # Clean up temporary file if it exists
             if temp_path and temp_path.exists():
-                try:
-                    temp_path.unlink()
-                    temp_path.parent.rmdir()
-                except Exception:
-                    pass
+                temp_path.unlink()
 
     def _write_markdown(self, markdown_path: Path, title: str, context: str, image_type: str) -> None:
         """Write markdown file for image with context.
