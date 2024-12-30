@@ -1,0 +1,135 @@
+# Nova Development Plan
+
+## Status Overview
+Current Phase: Initial Setup
+Progress: 0%
+Last Updated: 2024-01-18
+
+## Milestones (Ordered by Importance)
+
+### 1. Document Processing Foundation [TODO]
+- [ ] Base handler implementation
+  - [ ] Handler interface
+  - [ ] File type detection
+  - [ ] Metadata extraction
+- [ ] Parse phase implementation
+  - [ ] Document handler (PDF, DOCX)
+  - [ ] Basic text extraction
+  - [ ] Markdown conversion
+- [ ] Initial test suite
+  - [ ] Handler unit tests
+  - [ ] Parse phase tests
+  - [ ] Integration tests
+
+**Testing Checkpoint 1**
+- Run all tests
+- Execute cleanup.sh -a && run_nova.sh
+- Verify document processing
+
+### 2. Content Organization [TODO]
+- [ ] Split phase implementation
+  - [ ] Content section detection
+  - [ ] Reference system
+  - [ ] File organization
+- [ ] Asset management
+  - [ ] Asset extraction
+  - [ ] Directory structure
+  - [ ] Path resolution
+- [ ] Metadata handling
+  - [ ] JSON metadata storage
+  - [ ] Cross-reference system
+
+**Testing Checkpoint 2**
+- Run all tests
+- Execute cleanup.sh -a && run_nova.sh
+- Verify content organization
+
+### 3. Core Infrastructure [TODO]
+- [ ] Project structure and dependencies
+  - [ ] Set up Poetry project structure
+  - [ ] Create requirements.txt
+  - [ ] Set up development environment
+- [ ] Basic pipeline framework
+  - [ ] Core pipeline class
+  - [ ] Phase base classes
+  - [ ] Handler registry
+- [ ] Configuration system
+  - [ ] YAML config loading
+  - [ ] Environment variable handling
+  - [ ] Directory structure setup
+- [ ] Logging and error handling
+  - [ ] Rich console output
+  - [ ] File logging
+  - [ ] Error hierarchy
+
+**Testing Checkpoint 3**
+- Run all tests
+- Execute cleanup.sh -a && run_nova.sh
+- Verify basic pipeline execution
+
+### 4. Advanced Handlers [TODO]
+- [ ] Image handler
+  - [ ] Basic image processing
+  - [ ] OCR integration
+  - [ ] AI description (OpenAI)
+- [ ] Audio handler
+  - [ ] FFmpeg integration
+  - [ ] Transcription support
+- [ ] Archive handler
+  - [ ] ZIP processing
+  - [ ] Nested content
+
+**Testing Checkpoint 4**
+- Run all tests
+- Execute cleanup.sh -a && run_nova.sh
+- Verify all handlers
+
+### 5. Finalization & Polish [TODO]
+- [ ] Finalize phase
+  - [ ] Link resolution
+  - [ ] Asset cleanup
+  - [ ] Final validation
+- [ ] Performance optimization
+  - [ ] Caching system
+  - [ ] Memory management
+  - [ ] Large file handling
+- [ ] Documentation
+  - [ ] API documentation
+  - [ ] User guide
+  - [ ] Architecture docs
+
+**Testing Checkpoint 5**
+- Run all tests
+- Execute cleanup.sh -a && run_nova.sh
+- Full system verification
+
+## Risk Register
+1. Document processing reliability
+2. Content organization complexity
+3. Memory usage with large documents
+4. OpenAI API integration complexity
+5. Cross-platform compatibility
+6. Performance with large datasets
+
+## Technical Decisions Log
+- Date: 2024-01-18 - Initial plan created
+- Date: 2024-01-18 - Reordered milestones by importance, prioritizing core document processing
+
+## Progress Log
+- 2024-01-18: Plan created and reorganized by importance
+
+## Next Actions
+1. Begin document handler implementation
+2. Create base handler interface
+3. Implement basic text extraction
+
+## Notes
+- Each milestone includes a full testing checkpoint
+- Progress updates will be made after each milestone
+- Risk register to be updated as new risks are identified
+- Milestones ordered by importance:
+  1. Document Processing (core functionality)
+  2. Content Organization (essential for output)
+  3. Core Infrastructure (supports everything)
+  4. Advanced Handlers (additional features)
+  5. Finalization & Polish (optimization) 

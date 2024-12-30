@@ -1,6 +1,7 @@
 """Finalize phase module."""
 
 import re
+import shutil
 import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -27,6 +28,7 @@ class FinalizePhase(Phase):
         """
         super().__init__(pipeline)
         self.link_map = None
+        self._copy_attachments_done = False  # Flag to track if attachments have been copied
     
     async def process_impl(
         self,
@@ -60,6 +62,17 @@ class FinalizePhase(Phase):
             # Process the file
             split_dir = self.pipeline.config.processing_dir / "phases" / "split"
             if split_dir.exists():
+                # Copy attachments directory if it hasn't been done yet
+                if not self._copy_attachments_done:
+                    attachments_src = split_dir / "attachments"
+                    if attachments_src.exists():
+                        attachments_dest = self.pipeline.config.output_dir / "attachments"
+                        if attachments_dest.exists():
+                            shutil.rmtree(str(attachments_dest))
+                        shutil.copytree(str(attachments_src), str(attachments_dest))
+                        self.logger.debug(f"Copied attachments from {attachments_src} to {attachments_dest}")
+                    self._copy_attachments_done = True
+                
                 # Get main file name
                 main_file = file_path.name
                 main_file_path = split_dir / main_file
