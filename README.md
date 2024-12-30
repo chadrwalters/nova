@@ -2,9 +2,74 @@
 
 A powerful document processing pipeline that converts various file formats into structured Markdown outputs, with support for AI-powered analysis and rich metadata extraction.
 
-## Overview
+## Requirements
 
-Nova processes your documents through a configurable pipeline, organizing content into structured Markdown files with intelligent section splitting, asset management, and metadata preservation.
+- Python 3.9 or higher
+- Poetry (Python package manager)
+- OpenAI API key (for image analysis features)
+- System dependencies:
+  - Tesseract (OCR)
+  - libheif (HEIC support)
+  - FFmpeg (audio processing)
+  - ImageMagick (image processing)
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/nova.git
+cd nova
+```
+
+2. Install Poetry if you haven't already:
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
+
+3. Run the installation script:
+```bash
+./install.sh
+```
+
+This will:
+- Verify system requirements
+- Create a Python virtual environment
+- Install all Python dependencies via Poetry:
+  - Core: pydantic, PyYAML, rich, pandas, beautifulsoup4, etc.
+  - Image processing: Pillow
+  - Document processing: python-docx, PyPDF2
+  - AI integration: openai
+  - Development: pytest and plugins
+- Set up required directories
+
+## Configuration
+
+1. Create your config file:
+```bash
+cp config/nova.template.yaml config/nova.yaml
+```
+
+2. Configure your settings:
+```yaml
+base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
+input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
+
+# Configure pipeline phases
+pipeline:
+  phases:
+    - parse
+    - split
+    - finalize
+```
+
+3. Required environment variables:
+- `OPENAI_API_KEY`: Required for AI image analysis
+
+4. Optional environment variables:
+- `NOVA_CONFIG_PATH`: Override default config location
+- `NOVA_LOG_LEVEL`: Set logging verbosity (DEBUG, INFO, etc.)
 
 ## Features
 
@@ -34,53 +99,6 @@ Nova processes your documents through a configurable pipeline, organizing conten
 - Detailed logging with configurable levels
 - Color-coded console output
 - Comprehensive error reporting
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/nova.git
-cd nova
-```
-
-2. Run the installation script:
-```bash
-./install.sh
-```
-
-This will install required system dependencies:
-- Tesseract (OCR)
-- libheif (HEIC support)
-- FFmpeg (audio processing)
-- ImageMagick (image processing)
-- Python dependencies via Poetry
-
-## Configuration
-
-1. Create your config file:
-```bash
-cp config/nova.template.yaml config/nova.yaml
-```
-
-2. Configure your settings:
-```yaml
-base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
-input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
-output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
-processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
-
-# Configure pipeline phases
-pipeline:
-  phases:
-    - parse
-    - split
-    - finalize
-```
-
-3. Optional environment variables:
-- `NOVA_CONFIG_PATH`: Override default config location
-- `NOVA_LOG_LEVEL`: Set logging verbosity (DEBUG, INFO, etc.)
-- `OPENAI_API_KEY`: Required for AI image analysis
 
 ## Usage
 

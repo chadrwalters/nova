@@ -121,10 +121,9 @@ setup_environment() {
     # Configure Poetry to create virtual environment in project directory
     poetry config virtualenvs.in-project true
 
-    # Install dependencies and package in development mode
+    # Install dependencies and local package
     log_info "Installing project dependencies..."
-    poetry install --no-root
-    poetry install -E all
+    poetry install
 
     log_success "Virtual environment created and dependencies installed"
 }

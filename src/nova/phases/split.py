@@ -61,9 +61,9 @@ class SplitPhase(Phase):
             'summary': {'processed': 0, 'empty': 0, 'error': 0},
             'raw_notes': {'processed': 0, 'empty': 0, 'error': 0},
             'attachments': {
-                'processed': {'pdf': 0},
-                'empty': {},
-                'error': {}
+                'processed': 0,
+                'empty': 0,
+                'error': 0
             }
         }
 
@@ -394,7 +394,7 @@ class SplitPhase(Phase):
             Markdown content for attachments section
         """
         if not attachments:
-            return "# Attachments\n"
+            return ""
             
         # Group attachments by type
         attachments_by_type = {}
@@ -405,7 +405,7 @@ class SplitPhase(Phase):
             attachments_by_type[attach_type].append(attach)
             
         # Build markdown content
-        content = ["# Attachments"]
+        content = []
         
         # Add each type section
         for attach_type in sorted(attachments_by_type.keys()):
@@ -471,12 +471,8 @@ class SplitPhase(Phase):
         for section, stats in self.section_stats.items():
             if section != 'attachments' and stats['empty'] > 0:
                 self.logger.warning(f"Found {stats['empty']} empty {section} sections")
-            elif section == 'attachments':
-                empty_types = {t: c for t, c in stats['empty'].items() if c > 0}
-                if empty_types:
-                    self.logger.warning("Found empty attachment sections:")
-                    for file_type, count in empty_types.items():
-                        self.logger.warning(f"  - {file_type}: {count}")
+            elif section == 'attachments' and stats['empty'] > 0:
+                self.logger.warning(f"Found {stats['empty']} missing attachments")
 
     def _extract_attachments(self, content: str, date_prefix: str = None) -> List[Dict]:
         """Find all embedded attachments in the main file's markdown links.
