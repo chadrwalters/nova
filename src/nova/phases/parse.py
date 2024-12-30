@@ -1,5 +1,6 @@
 """Parse phase of the Nova pipeline."""
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -35,6 +36,25 @@ class ParsePhase(Phase):
             'reprocessed_files': set(),
             'file_type_stats': {}
         }
+
+    def _save_metadata(self, file_path: Path, metadata: FileMetadata):
+        """Save metadata to a file.
+        
+        Args:
+            file_path: Path to the parsed file
+            metadata: Metadata to save
+        """
+        # Get base name without .parsed.md
+        base_path = file_path.parent / file_path.stem.replace('.parsed', '')
+        metadata_path = base_path.with_suffix('.metadata.json')
+        metadata_dict = metadata.to_dict() if hasattr(metadata, 'to_dict') else metadata.__dict__
+        
+        # Ensure parent directory exists
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write metadata to file
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata_dict, f, indent=2, default=str)
         
     async def process_impl(
         self,
@@ -66,6 +86,18 @@ class ParsePhase(Phase):
             
             # Process file
             metadata = await handler.process_impl(file_path, metadata)
+            
+            # Save metadata file if processing was successful
+            if metadata is not None and not metadata.unchanged:
+                # Create output directory structure
+                relative_path = file_path.relative_to(self.pipeline.config.input_dir)
+                output_path = output_dir / relative_path.parent
+                output_path.mkdir(parents=True, exist_ok=True)
+                
+                # Create parsed file path
+                parsed_file_name = file_path.stem + '.parsed.md'
+                parsed_file_path = output_path / parsed_file_name
+                self._save_metadata(parsed_file_path, metadata)
             
             # Update pipeline state and stats
             if metadata is None:

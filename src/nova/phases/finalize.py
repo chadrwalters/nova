@@ -15,6 +15,7 @@ from nova.ui.navigation import (
     add_tooltips_to_links
 )
 from nova.ui.visualization import LinkVisualizer
+from nova.validation.pipeline_validator import PipelineValidator
 
 
 class FinalizePhase(Phase):
@@ -29,6 +30,7 @@ class FinalizePhase(Phase):
         super().__init__(pipeline)
         self.link_map = None
         self._copy_attachments_done = False  # Flag to track if attachments have been copied
+        self._validation_done = False  # Flag to track if validation has been run
     
     async def process_impl(
         self,
@@ -47,6 +49,20 @@ class FinalizePhase(Phase):
             Metadata about processed file, or None if file was skipped
         """
         try:
+            # Run validation first if not already done
+            if not self._validation_done:
+                validator = PipelineValidator(self.pipeline.config.processing_dir)
+                is_valid = validator.validate()
+                if not is_valid:
+                    error_msg = "Pipeline validation failed. Aborting finalization."
+                    self.logger.error(error_msg)
+                    if metadata:
+                        metadata.add_error("ValidationFailed", error_msg)
+                        metadata.processed = False
+                    return metadata
+                self._validation_done = True
+                self.logger.info("Pipeline validation passed")
+            
             # Initialize metadata if not provided
             if metadata is None:
                 metadata = DocumentMetadata.from_file(

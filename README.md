@@ -123,7 +123,41 @@ This will process files from `_NovaInput` through all configured phases:
 
 # Enable debug logging
 ./run_nova.sh --debug
+
+# Validate pipeline output
+python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
 ```
+
+### Pipeline Validation
+
+Nova includes a comprehensive pipeline validator that ensures the integrity of the processing pipeline output. The validator checks:
+
+1. **Parse Phase**
+   - Presence of `.parsed.md` files for each input
+   - Required metadata files (`.metadata.json`)
+   - Asset directories when referenced in metadata
+
+2. **Disassemble Phase**
+   - Content consistency with parse phase output
+   - Presence of summary and raw notes files
+   - Content structure and formatting
+
+3. **Split Phase**
+   - Consolidated file presence and structure
+   - Content preservation from disassemble phase
+   - Attachment references and organization
+
+The validator can be run at any time to check the processing directory:
+```bash
+python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
+```
+
+The validator will:
+- Check all files in each phase
+- Verify content consistency between phases
+- Validate file structure and organization
+- Report any missing or mismatched content
+- Provide detailed error messages for troubleshooting
 
 ## Directory Structure
 
@@ -222,6 +256,8 @@ IDs are generated from filenames and include date prefixes when available.
    - Resolves all references
    - Creates final output structure
    - Validates link integrity
+   - Runs pipeline validator as final integrity check
+   - Fails if validation errors are found
 
 ### Output Structure
 Content is organized into three main files:

@@ -100,7 +100,7 @@ Nova functions as a dedicated growth partner, cultivating a supportive relations
      * Personal growth areas and barriers with encouragement
 
 ### C. Aggregated Markdown Integration
-Nova processes content through a structured three-file system that maintains distinct but interconnected views of the information:
+Nova processes content through a structured pipeline that transforms input files into three consolidated output files:
 
 1. **Summary File (Summary.md)**
    - High-level overview and key points (30-40% of content)
@@ -132,37 +132,62 @@ Nova processes content through a structured three-file system that maintains dis
 - IDs include date prefixes when available (YYYYMMDD format)
 - Types are standardized (PDF, JPG, PNG, DOC, etc.)
 
-**Content Organization:**
-- Use standard section markers:
-  ```markdown
-  --==SUMMARY==--
-  --==RAW NOTES==--
-  --==ATTACHMENTS==--
-  ```
-- Implement consistent cross-referencing between files
-- Preserve source attribution and context
-- Maintain bi-directional linking between sections
+**Pipeline Processing:**
+1. Parse Phase:
+   - Converts input files to parsed Markdown
+   - Extracts metadata and content
+   - Creates `*.parsed.md` files with metadata headers
+
+2. Disassemble Phase:
+   - Splits parsed content into separate files:
+     * `*.summary.md`: Summary content
+     * `*.rawnotes.md`: Raw notes content
+     * `*.attachments.md`: Attachment content
+   - Preserves all references and links
+
+3. Split Phase:
+   - Consolidates content by type into final files:
+     * `Summary.md`: All summaries
+     * `Raw Notes.md`: All raw notes
+     * `Attachments.md`: All attachments
+   - Maintains reference integrity
+   - Groups attachments by type
+
+4. Finalize Phase:
+   - Validates pipeline output integrity
+   - Ensures all references are valid
+   - Verifies content consistency
+   - Creates final output structure
+
+**Pipeline Validation:**
+- Automated validation at key pipeline points
+- Validates content integrity across phases
+- Ensures reference consistency
+- Verifies file presence and structure
+- Can be run independently via command line
+- Preserves output if validation fails
+
+**Content Preservation:**
+- Validates input/output consistency
+- Tracks content through pipeline phases
+- Verifies section integrity
+- Validates cross-file references
+- Maintains bi-directional linking
+- Reports detailed validation results
 
 **Navigation and Cross-Linking:**
-- Each file contains references to related content in other files
+- Each file contains references to related content
 - Attachments are referenced from both summaries and raw notes
 - Raw notes are linked from summaries
 - Consistent reference format maintains clear relationships
 
-**Content Preservation Rules:**
-- Input and output size validation
-- Content marker tracking
-- Section integrity verification
-- Cross-file reference validation
-- Bi-directional linking preservation
-
 When Nova processes these files:
-- Treat each file's content according to its purpose (summary, details, or attachments)
-- Maintain awareness of cross-file relationships
-- Consider the complete context across all three files
-- Apply appropriate analysis based on file type
-- Continue emotional and professional context analysis while respecting file boundaries
-- Match leadership frameworks and patterns across the complete set
+- Validates content at each pipeline phase
+- Maintains awareness of cross-file relationships
+- Considers the complete context across all files
+- Applies appropriate analysis based on file type
+- Continues emotional and professional context analysis
+- Matches leadership frameworks and patterns across the complete set
 
 ## II. Leadership Framework Integration
 

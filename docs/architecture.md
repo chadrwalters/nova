@@ -151,13 +151,18 @@ _NovaProcessing/
 ```
 
 ### Finalize Phase
-- **Goal**: Create final output with resolved links and cleaned structure
+- **Goal**: Validate pipeline output and create final output with resolved links
 - **Implementation**:
-  1. Validates all cross-references
-  2. Ensures asset paths are correct
-  3. Copies final files to output directory
-  4. Cleans up temporary processing files
-  5. Console shows completion status and any warnings
+  1. Run pipeline validator as initial integrity check
+     - Validates all previous phase outputs
+     - Ensures content consistency across phases
+     - Verifies all references and attachments
+     - Aborts finalization if validation fails
+  2. Validates all cross-references
+  3. Ensures asset paths are correct
+  4. Copies final files to output directory
+  5. Cleans up temporary processing files
+  6. Console shows completion status and any warnings
 
 **Output Structure**:
 ```
@@ -168,6 +173,23 @@ _Nova/
 └── assets/
     └── (final consolidated assets)
 ```
+
+The finalization phase includes validation as its first step to:
+- Catch any issues before modifying the output directory
+- Ensure complete pipeline integrity before finalization
+- Preserve existing output if validation fails
+- Provide early feedback about any problems
+
+This validation can also be run independently via the command line:
+```bash
+python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
+```
+
+This dual approach (automatic + manual) ensures:
+1. Pipeline output is always validated before finalization
+2. Users can verify pipeline state at any time
+3. CI/CD systems can run validation independently
+4. Existing output is preserved if validation fails
 
 ### Console Output
 The pipeline provides rich console feedback:
@@ -366,5 +388,74 @@ Future Enhancements & Roadmap
 	•	Intelligent re-checking so that only changed pages/images are reprocessed.
 	•	Live/Interactive:
 	•	Possible integration with a web-based UI or event-based triggers (like dropping new files into _NovaInput).
+
+## Error Handling & Logging
+
+### Pipeline Validation
+
+The pipeline includes a robust validation system (`PipelineValidator`) that ensures the integrity of each phase's output:
+
+```mermaid
+flowchart TB
+    subgraph "Pipeline Validation"
+        direction TB
+        ParseCheck[Parse Phase Validation] --> DisassembleCheck[Disassemble Phase Validation]
+        DisassembleCheck --> SplitCheck[Split Phase Validation]
+        
+        subgraph "Parse Phase Checks"
+            ParseFiles[Parsed MD Files] --> ParseMeta[Metadata Files]
+            ParseMeta --> ParseAssets[Asset Directories]
+        end
+        
+        subgraph "Disassemble Phase Checks"
+            DisFiles[Disassembled Files] --> DisContent[Content Consistency]
+            DisContent --> DisSections[Section Structure]
+        end
+        
+        subgraph "Split Phase Checks"
+            SplitFiles[Consolidated Files] --> SplitContent[Content Preservation]
+            SplitContent --> SplitRefs[Attachment References]
+        end
+    end
+```
+
+#### Validation Process
+1. **Parse Phase Validation**
+   - Verifies presence of `.parsed.md` files
+   - Checks for required `.metadata.json` files
+   - Validates asset directory structure
+   - Tracks attachments for later validation
+
+2. **Disassemble Phase Validation**
+   - Ensures content matches parse phase output
+   - Validates summary and raw notes files
+   - Checks section markers and formatting
+   - Handles special cases (errors, encoding issues)
+
+3. **Split Phase Validation**
+   - Verifies consolidated file structure
+   - Validates content preservation
+   - Checks attachment references
+   - Ensures section consistency
+
+#### Error Reporting
+The validator provides detailed error messages:
+- File-level validation failures
+- Content mismatches with expected values
+- Missing or malformed sections
+- Reference integrity issues
+
+#### Usage
+```python
+validator = PipelineValidator(processing_dir)
+is_valid = validator.validate()
+```
+
+The validator can be run independently to check pipeline output:
+```bash
+python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
+```
+
+### Error Handling
 
 
