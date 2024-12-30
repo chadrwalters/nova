@@ -15,6 +15,7 @@ from nova.config.manager import ConfigManager
 from nova.core.metadata import FileMetadata
 from nova.phases.base import Phase
 from nova.phases.parse import ParsePhase
+from nova.phases.disassemble import DisassemblyPhase
 from nova.phases.split import SplitPhase
 from nova.phases.finalize import FinalizePhase
 from nova.core.logging import print_summary
@@ -42,6 +43,7 @@ class NovaPipeline:
         # Initialize phases
         self.phases = {
             "parse": ParsePhase(self),
+            "disassemble": DisassemblyPhase(self),
             "split": SplitPhase(self),
             "finalize": FinalizePhase(self)
         }
@@ -69,6 +71,32 @@ class NovaPipeline:
                 'unchanged_files': set(),
                 'reprocessed_files': set(),
                 'file_type_stats': {}
+            }
+        }
+        
+        # Initialize disassemble phase state
+        self.state["disassemble"] = {
+            'successful_files': set(),
+            'failed_files': set(),
+            'skipped_files': set(),
+            'unchanged_files': set(),
+            'reprocessed_files': set(),
+            'stats': {
+                'total_processed': 0,
+                'summary_files': {
+                    'created': 0,
+                    'empty': 0,
+                    'failed': 0
+                },
+                'raw_notes_files': {
+                    'created': 0,
+                    'empty': 0,
+                    'failed': 0
+                },
+                'attachments': {
+                    'copied': 0,
+                    'failed': 0
+                }
             }
         }
         
@@ -150,14 +178,23 @@ class NovaPipeline:
                     for file_path in directory.rglob('*'):
                         if file_path.is_file() and not file_path.name.startswith('.'):
                             files.append(file_path)
-                elif phase == "split":
-                    # For split phase, look in parse phase output directory
+                elif phase == "disassemble":
+                    # For disassemble phase, look in parse phase output directory
                     parse_dir = self.config.processing_dir / "phases" / "parse"
                     if parse_dir.exists():
                         # Only process main files (not in subdirectories)
                         for file_path in parse_dir.glob('*.parsed.md'):
                             if file_path.is_file():
                                 files.append(file_path)
+                elif phase == "split":
+                    # For split phase, look in disassemble phase output directory
+                    disassemble_dir = self.config.processing_dir / "phases" / "disassemble"
+                    if disassemble_dir.exists():
+                        # Process both summary and raw notes files
+                        for pattern in ['*.summary.md', '*.rawnotes.md']:
+                            for file_path in disassemble_dir.glob(pattern):
+                                if file_path.is_file():
+                                    files.append(file_path)
                 elif phase == "finalize":
                     # For finalize phase, look in split directory
                     split_dir = self.config.processing_dir / "phases" / "split"
@@ -424,7 +461,7 @@ class NovaPipeline:
         Returns:
             List of phase names in execution order
         """
-        return ["parse", "split", "finalize"]
+        return ["parse", "disassemble", "split", "finalize"]
 
     async def _process_file(self, phase: Phase, file_path: Path) -> Optional[FileMetadata]:
         """Process a file with a phase.

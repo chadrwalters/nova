@@ -5,8 +5,9 @@
 2. [Core Concept & Goals](#core-concept--goals)
 3. [Phases & Workflow](#phases--workflow)
     1. [Parse Phase](#parse-phase)
-    2. [Split Phase](#split-phase)
-    3. [Further Phases (Future Roadmap)](#further-phases-future-roadmap)
+    2. [Disassemble Phase](#disassemble-phase)
+    3. [Split Phase](#split-phase)
+    4. [Further Phases (Future Roadmap)](#further-phases-future-roadmap)
 4. [Key Components](#key-components)
 5. [Directory & Filesystem Structure](#directory--filesystem-structure)
 6. [Handler Extension Architecture](#handler-extension-architecture)
@@ -31,7 +32,7 @@ Nova’s main goals:
 
 ## Core Concept & Goals
 1. **Phase-Oriented Pipeline**  
-   Nova uses distinct phases (currently *parse* and *split*) to separate the tasks of converting source files into Markdown vs. splitting or reorganizing those Markdown files.
+   Nova uses distinct phases (currently *parse*, *disassemble*, *split*, and *finalize*) to separate the tasks of converting source files into Markdown vs. splitting or reorganizing those Markdown files.
 
 2. **Handler-Based Parsing**  
    Each file type (PDF, DOCX, images, spreadsheets, etc.) is parsed by a specialized *handler*, which extracts text or metadata and then writes a `*.parsed.md` file.  
@@ -47,7 +48,8 @@ Below is a high-level look at how Nova processes content through its phases:
 ```mermaid
 flowchart LR
     InputDir((Input Directory)) -->|Raw Files| PhaseParse
-    PhaseParse -->|*.parsed.md + metadata| PhaseSplit
+    PhaseParse -->|*.parsed.md + metadata| PhaseDisassemble
+    PhaseDisassemble -->|Structured MD Files| PhaseSplit
     PhaseSplit -->|Consolidated MD Files| PhaseFinal
     PhaseFinal -->|Final Output| OutputDir((Output Directory))
 
@@ -56,9 +58,14 @@ flowchart LR
       PhaseParse([ParsePhase<br/>Handlers<br/>Markdown Conversion]) --> ParseOutput[(Parsed Files)]
     end
 
+    subgraph "Disassemble Phase"
+      direction TB
+      PhaseDisassemble([DisassemblePhase<br/>Content Splitting<br/>Link Conversion]) --> DisassembleOutput[(Structured Files)]
+    end
+
     subgraph "Split Phase"
       direction TB
-      PhaseSplit([SplitPhase<br/>Summary/RawNotes/Attachments]) --> SplitOutput[(Consolidated MD Files)]
+      PhaseSplit([SplitPhase<br/>Content Consolidation]) --> SplitOutput[(Consolidated MD Files)]
     end
 
     subgraph "Finalize Phase"
@@ -93,38 +100,55 @@ _NovaProcessing/
         └── ...
 ```
 
-### Split Phase
-- **Goal**: Organize parsed content into logical sections and resolve cross-references
+### Disassemble Phase
+- **Goal**: Process parsed Markdown files into structured sections with consistent reference format
 - **Implementation**:
-  1. Reads all `*.parsed.md` files from parse phase
+  1. Reads each `*.parsed.md` file from parse phase
   2. Processes content markers and sections:
-     - `--==SUMMARY==--`: Content for Summary.md
-     - `--==RAW NOTES==--`: Content for Raw Notes.md
-     - `--==ATTACHMENTS==--`: Content for Attachments.md
-  3. Handles attachments and cross-linking:
-     - Generates unique identifiers for attachments (e.g., `[ATTACH:PDF:20240118-document-name]`)
-     - Groups attachments by type (PDF, JPG, etc.)
-     - Preserves attachment metadata and content
-     - Updates relative paths for images/attachments
-     - Creates consistent link structure between documents
-  4. Console shows consolidation progress and link status
+     - `--==SUMMARY==--`: Content for `<filename>.summary.md`
+     - `--==RAW NOTES==--`: Content for `<filename>.raw_notes.md`
+     - `--==ATTACHMENTS==--`: Content for `<filename>.attachments.md`
+  3. Converts all links to reference format:
+     - Regular links: `[ATTACH:TYPE:ID]`
+     - Image links: `![ATTACH:TYPE:ID]`
+     - Preserves link type based on file extension
+  4. Console shows processing progress and link conversion status
+
+**Output Structure**:
+```
+_NovaProcessing/
+└── phases/
+    └── disassemble/
+        ├── document1.summary.md
+        ├── document1.raw_notes.md
+        ├── document1.attachments.md
+        └── ...
+```
+
+### Split Phase
+- **Goal**: Consolidate disassembled content into final document structure
+- **Implementation**:
+  1. Reads all disassembled files from previous phase
+  2. Merges content by type:
+     - All `*.summary.md` files into `Summary.md`
+     - All `*.raw_notes.md` files into `Raw Notes.md`
+     - All `*.attachments.md` files into `Attachments.md`
+  3. Maintains consistent reference format:
+     - Preserves all `[ATTACH:TYPE:ID]` and `![ATTACH:TYPE:ID]` references
+     - Updates relative paths for assets
+  4. Console shows consolidation progress and merge status
 
 **Output Structure**:
 ```
 _NovaProcessing/
 └── phases/
     └── split/
-        ├── Summary.md         # Contains [ATTACH:type:id] references
-        ├── Raw Notes.md       # Contains [NOTE:id] references
-        ├── Attachments.md     # Contains [ATTACH:type:id] sections with content
+        ├── Summary.md         # Merged summaries with references
+        ├── Raw Notes.md       # Merged notes with references
+        ├── Attachments.md     # Merged attachments with content
         └── assets/
             └── (consolidated attachments)
 ```
-
-**Reference Format**:
-- Attachments: `[ATTACH:TYPE:ID]` (e.g., `[ATTACH:PDF:20240118-document-name]`)
-- Notes: `[NOTE:ID]` (e.g., `[NOTE:20240118-meeting-notes]`)
-- IDs are generated from filenames with date prefixes when available
 
 ### Finalize Phase
 - **Goal**: Create final output with resolved links and cleaned structure

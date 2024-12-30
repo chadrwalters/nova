@@ -27,6 +27,10 @@ class NovaJSONEncoder(json.JSONEncoder):
             return obj.isoformat()
         if isinstance(obj, Path):
             return str(obj)
+        if isinstance(obj, set):
+            return list(obj)
+        if hasattr(obj, 'model_dump'):  # Handle Pydantic models
+            return obj.model_dump()
         return super().default(obj)
 
 

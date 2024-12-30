@@ -1,5 +1,6 @@
 # Nova Document Processor Pipeline Rules
 
+## Plan Management
 - All work must be guided by the .Plan file in docs/.Plan
 - LLM must check .Plan at the start of each interaction
 - After each step, LLM must update .Plan with:
@@ -8,20 +9,41 @@
   - New findings or dependencies
   - Updated risk register
   - Next action items
+
+## Plan Updates
 - Plan updates must maintain:
   - Clear status markers [TODO/IN_PROGRESS/DONE]
   - Precise progress percentage
   - Chronological log of completed items
   - Updated technical decisions
   - Current phase tracking
+
+## Before New Work
 - Before starting new work:
   - Verify current phase in .Plan
   - Check dependencies are met
   - Confirm next action items
   - Update implementation status
+
+## Milestone Completion Requirements
+- At the end of EVERY milestone:
+  1. Run and fix ALL tests until they pass
+  2. Execute cleanup.sh -a && run_nova.sh
+  3. Review console output for errors/warnings
+  4. Examine output files for correctness:
+     - Check file structure
+     - Verify content formatting
+     - Validate links and references
+     - Ensure metadata is correct
+  5. Document any issues found
+  6. Fix ALL issues before moving to next milestone
+  7. Update .Plan with milestone completion
+
+## After Work Completion
 - After completing work:
   - Mark tasks as complete
   - Add completion timestamp
   - Document any issues encountered
   - Update next actions
   - Recalculate progress percentage
+  - Verify milestone requirements if applicable
