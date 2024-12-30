@@ -222,36 +222,66 @@ class SplitPhase(Phase):
                 else:
                     existing_content = attachments_path.read_text()
                 
-                # Group attachments by type
-                attachments_by_type = {}
-                for attach in attachments:
-                    attach_type = attach['type']
-                    if attach_type not in attachments_by_type:
-                        attachments_by_type[attach_type] = []
-                    attachments_by_type[attach_type].append(attach)
+                # Build markdown content for attachments
+                attachments_content = self._build_attachments_markdown(file_path.stem, attachments, file_path)
                 
-                # Update content for each section
-                for attach_type in sorted(attachments_by_type.keys()):
-                    section_header = f"\n## {attach_type} Files\n"
-                    section_start = existing_content.find(section_header)
+                # Update the content, handling existing sections
+                if attachments_content:
+                    # Split existing content into sections
+                    sections = {}
+                    current_section = None
+                    current_content = []
+                    header_found = False
                     
-                    if section_start < 0:
-                        # Section doesn't exist, add it
-                        existing_content += section_header
-                        
-                        # Add attachments to section
-                        for attach in attachments_by_type[attach_type]:
-                            if attach['is_image']:
-                                existing_content += f"- {attach['original']}\n"
-                            else:
-                                link = f"- [{attach['text']}]({attach['url']})"
-                                if attach['metadata']:
-                                    link += f" <!-- {attach['metadata']} -->"
-                                existing_content += f"{link}\n"
-                        existing_content += "\n"  # Add blank line after section
-                
-                # Write the complete content back to file
-                attachments_path.write_text(existing_content)
+                    for line in existing_content.split('\n'):
+                        if line.startswith('# '):
+                            if not header_found:
+                                sections['header'] = line
+                                header_found = True
+                            continue
+                        if line.startswith('## '):
+                            if current_section:
+                                sections[current_section] = '\n'.join(current_content)
+                            current_section = line[3:].strip()  # Remove '## ' prefix
+                            current_content = [line]
+                        elif current_section:
+                            current_content.append(line)
+                    
+                    if current_section:
+                        sections[current_section] = '\n'.join(current_content)
+                    
+                    # Split new content into sections
+                    new_sections = {}
+                    current_section = None
+                    current_content = []
+                    
+                    for line in attachments_content.split('\n'):
+                        if line.startswith('# '):
+                            continue  # Skip headers in new content
+                        if line.startswith('## '):
+                            if current_section:
+                                new_sections[current_section] = '\n'.join(current_content)
+                            current_section = line[3:].strip()  # Remove '## ' prefix
+                            current_content = [line]
+                        elif current_section:
+                            current_content.append(line)
+                    
+                    if current_section:
+                        new_sections[current_section] = '\n'.join(current_content)
+                    
+                    # Merge sections
+                    result = [sections.get('header', '# Attachments')]
+                    
+                    # Add all sections in sorted order
+                    all_section_types = sorted(set(sections.keys()) | set(new_sections.keys()) - {'header'})
+                    for section_type in all_section_types:
+                        if section_type in new_sections:
+                            result.append(new_sections[section_type])
+                        elif section_type in sections:
+                            result.append(sections[section_type])
+                    
+                    # Write the complete content back to file
+                    attachments_path.write_text('\n\n'.join(result).strip() + '\n')
                 
                 self._update_section_stats('attachments', 'processed')
                 metadata.add_output_file(attachments_path)
@@ -567,7 +597,7 @@ class SplitPhase(Phase):
             type_attachments = attachments_by_type[attach_type]
             
             # Add type header once
-            result.append(f"\n## {attach_type} Files")
+            result.append(f"## {attach_type} Files")
             
             for attach in type_attachments:
                 # Use the original markdown format for the link
@@ -578,10 +608,32 @@ class SplitPhase(Phase):
                     if attach['metadata']:
                         link += f" <!-- {attach['metadata']} -->"
                     result.append(link)
+                    
+                    # For text-based files, embed the content
+                    if attach_type in ['TXT', 'JSON', 'CSV', 'MD']:
+                        try:
+                            # Get the full path to the attachment
+                            output_dir = self.pipeline.get_phase_output_dir("split")
+                            attach_path = output_dir / attach['url']
+                            
+                            # Read and embed the content
+                            if attach_path.exists():
+                                content = attach_path.read_text()
+                                # Determine the language for the code block
+                                lang = attach_type.lower()
+                                if lang == 'md':
+                                    lang = 'markdown'
+                                result.append("")  # Add blank line before code block
+                                result.append(f"```{lang}")
+                                result.append(content.rstrip())  # Remove trailing whitespace
+                                result.append("```")
+                                result.append("")  # Add blank line after code block
+                        except Exception as e:
+                            self.logger.warning(f"Failed to embed content for {attach['url']}: {str(e)}")
             
             result.append("")  # Add blank line between sections
-        
-        return "\n".join(result)
+            
+        return '\n'.join(result)
 
     def _get_attachment_type(self, url: str) -> str:
         """Get attachment type from URL.
