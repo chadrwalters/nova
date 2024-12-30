@@ -17,19 +17,22 @@ class SplitPhase(Phase):
     
     # File type to identifier type mapping
     TYPE_MAP = {
+        '.docx': 'DOC',
+        '.doc': 'DOC',
+        '.pdf': 'PDF',
         '.jpg': 'JPG',
         '.jpeg': 'JPG',
+        '.heic': 'JPG',
         '.png': 'PNG',
-        '.pdf': 'PDF',
-        '.doc': 'DOC',
-        '.docx': 'DOC',
+        '.svg': 'DOC',
+        '.html': 'DOC',
         '.txt': 'TXT',
         '.json': 'JSON',
-        '.csv': 'CSV',
         '.xlsx': 'EXCEL',
         '.xls': 'EXCEL',
-        '.html': 'HTML',
-        '.heic': 'IMG'
+        '.csv': 'EXCEL',
+        '.md': 'DOC',
+        '.parsed.md': 'DOC'
     }
     
     attachment_pattern = re.compile(
@@ -60,11 +63,7 @@ class SplitPhase(Phase):
         self.section_stats = {
             'summary': {'processed': 0, 'empty': 0, 'error': 0},
             'raw_notes': {'processed': 0, 'empty': 0, 'error': 0},
-            'attachments': {
-                'processed': 0,
-                'empty': 0,
-                'error': 0
-            }
+            'attachments': {'processed': 0, 'empty': 0, 'error': 0}
         }
 
     async def process_impl(
@@ -133,153 +132,143 @@ class SplitPhase(Phase):
                     handler_version="1.0"
                 )
             
-            # Skip if not a markdown file or if it's in a subdirectory
-            if not str(file_path).endswith('.parsed.md') or len(file_path.parts) > len(file_path.parent.parts) + 1:
-                return None
-            
-            # Read content
+            # Read the file content
+            self.logger.debug(f"Reading content from {file_path}")
             content = file_path.read_text()
             
-            # Split content into sections
-            sections = self._split_content(content)
-            
-            # Skip if no valid sections found
-            if not sections or not any(key in sections for key in ['summary', 'raw_notes', 'attachments']):
-                self.logger.warning(f"No valid sections found in {file_path}")
-                if metadata:
-                    metadata.add_error("SplitPhase", "No valid sections found")
-                    metadata.processed = False
-                    if file_path not in self.pipeline.state["split"]["failed_files"]:
-                        self.pipeline.state["split"]["failed_files"].append(file_path)
-                return None
-            
-            # Create output directory
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Create output files if they don't exist
-            summary_path = output_dir / "Summary.md"
-            raw_notes_path = output_dir / "Raw Notes.md"
-            attachments_path = output_dir / "Attachments.md"
-            
-            # Get file stem for linking
-            file_stem = file_path.stem
-            if file_stem.endswith('.parsed'):
-                file_stem = file_stem[:-7]  # Remove .parsed suffix
-                
-            # Get date prefix from file name if available
+            # Get date prefix from file name
             date_prefix = None
-            if re.match(r'^\d{8}', file_stem):
-                date_prefix = file_stem[:8]
+            if re.match(r'\d{8}', file_path.stem):
+                date_prefix = file_path.stem[:8]
             
-            # Extract attachments and replace references in content
+            # Extract attachments before splitting content
+            self.logger.debug("Extracting attachments")
             attachments = self._extract_attachments(content, date_prefix)
+            self.logger.debug(f"Found {len(attachments)} attachments")
             
-            # Update summary file
-            if 'summary' in sections:
-                summary_content = sections['summary']
+            # Split content into sections
+            self.logger.debug("Splitting content into sections")
+            sections = self._split_content(content)
+            self.logger.debug(f"Found sections: {list(sections.keys())}")
+            
+            # Process summary section
+            summary_content = sections.get('summary', '')
+            if summary_content:
+                self.logger.debug("Processing summary section")
+                # Get the title from the first line if it exists
+                title = file_path.stem
+                if title.endswith('.parsed'):
+                    title = title[:-7]
                 
-                # Replace attachment links with our new reference format
-                for attach in attachments:
-                    old_link = f'![{attach["text"] or ""}]({attach["url"]})'
-                    summary_content = summary_content.replace(old_link, attach['reference'])
-                    
-                    # Also handle regular links
-                    old_link = f'[{attach["text"]}]({attach["url"]})'
-                    summary_content = summary_content.replace(old_link, attach['reference'])
+                # Add title to summary
+                summary_content = f"## {title}\n\n{summary_content}"
                 
-                # Format the summary section
-                summary_content = f"\n## {file_stem}\n\n{summary_content.strip()}\n"
+                # Update links in summary
+                summary_content = self._update_links(summary_content, str(file_path), metadata)
                 
-                # Add link to raw notes at the end
-                summary_content += f"\n---\nRaw Notes: [NOTE:{file_stem}]\n"
+                # Add to summary file
+                summary_path = output_dir / 'Summary.md'
+                if not summary_path.exists():
+                    summary_path.write_text("# Summary\n\n")
+                with open(summary_path, 'a') as f:
+                    f.write(f"\n{summary_content}\n")
+                    f.write(f"\n---\nRaw Notes: [NOTE:{title}]\n")
                 
-                # Check if content already exists
-                existing_content = ""
-                if summary_path.exists():
-                    existing_content = summary_path.read_text()
-                
-                if summary_content not in existing_content:
-                    if not summary_path.exists():
-                        summary_path.write_text("# Summary\n")
-                    with open(summary_path, 'a') as f:
-                        f.write(summary_content)
-                    metadata.add_output_file(summary_path)
-                    self.section_stats['summary']['processed'] += 1
+                self._update_section_stats('summary', 'processed')
+                metadata.add_output_file(summary_path)
             else:
-                self.section_stats['summary']['empty'] += 1
+                self._update_section_stats('summary', 'empty')
             
-            # Update raw notes file
-            if 'raw_notes' in sections:
-                raw_notes = sections['raw_notes']
+            # Process raw notes section
+            raw_notes_content = sections.get('raw_notes', '')
+            if raw_notes_content:
+                self.logger.debug("Processing raw notes section")
+                # Get the title
+                title = file_path.stem
+                if title.endswith('.parsed'):
+                    title = title[:-7]
                 
-                # Replace attachment links with our new reference format
-                for attach in attachments:
-                    old_link = f'![{attach["text"] or ""}]({attach["url"]})'
-                    raw_notes = raw_notes.replace(old_link, attach['reference'])
-                    
-                    # Also handle regular links
-                    old_link = f'[{attach["text"]}]({attach["url"]})'
-                    raw_notes = raw_notes.replace(old_link, attach['reference'])
+                # Add title to raw notes
+                raw_notes_content = f"## [NOTE:{title}]\n\n{raw_notes_content}"
                 
-                # Format the raw notes section
-                raw_notes_content = f"\n## [NOTE:{file_stem}]\n\n{raw_notes.strip()}\n"
+                # Update links in raw notes
+                raw_notes_content = self._update_links(raw_notes_content, str(file_path), metadata)
                 
-                # Check if content already exists
-                existing_content = ""
-                if raw_notes_path.exists():
-                    existing_content = raw_notes_path.read_text()
+                # Add to raw notes file
+                raw_notes_path = output_dir / 'Raw Notes.md'
+                if not raw_notes_path.exists():
+                    raw_notes_path.write_text("# Raw Notes\n\n")
+                with open(raw_notes_path, 'a') as f:
+                    f.write(f"\n{raw_notes_content}\n")
                 
-                if raw_notes_content not in existing_content:
-                    if not raw_notes_path.exists():
-                        raw_notes_path.write_text("# Raw Notes\n")
-                    with open(raw_notes_path, 'a') as f:
-                        f.write(raw_notes_content)
-                    metadata.add_output_file(raw_notes_path)
-                    self.section_stats['raw_notes']['processed'] += 1
+                self._update_section_stats('raw_notes', 'processed')
+                metadata.add_output_file(raw_notes_path)
             else:
-                self.section_stats['raw_notes']['empty'] += 1
+                self._update_section_stats('raw_notes', 'empty')
             
-            # Create attachments directory and copy files
-            attachments_dir = output_dir / "attachments"
-            attachments_dir.mkdir(exist_ok=True)
-            
-            # Copy attachments
-            for attach in attachments:
-                src_path = Path(attach["url"])
-                if src_path.exists():
-                    dst_path = attachments_dir / src_path.name
-                    if not dst_path.exists():
-                        shutil.copy2(src_path, dst_path)
-                        metadata.add_output_file(dst_path)
-                        self.section_stats['attachments']['processed'] += 1
+            # Process attachments
+            if attachments:
+                self.logger.debug("Processing attachments")
+                # Create attachments directory
+                attachments_dir = output_dir / 'attachments'
+                attachments_dir.mkdir(exist_ok=True)
+                
+                # Add to attachments file
+                attachments_path = output_dir / 'Attachments.md'
+                
+                # Initialize or read existing content
+                if not attachments_path.exists():
+                    existing_content = "# Attachments\n\n"
                 else:
-                    self.logger.warning(f"Attachment {src_path} not found")
-                    self.section_stats['attachments']['empty'] += 1
-            
-            # Create attachments section
-            attachments_content = self._create_attachments_section(file_stem, attachments)
-            attachments_path = output_dir / "Attachments.md"
-            if not attachments_path.exists():
-                attachments_path.write_text("# Attachments\n")
-            with open(attachments_path, 'a') as f:
-                f.write(attachments_content)
-            metadata.add_output_file(attachments_path)
-            
-            # Store metadata for later use
-            self.metadata_by_file[file_stem] = metadata
+                    existing_content = attachments_path.read_text()
+                
+                # Group attachments by type
+                attachments_by_type = {}
+                for attach in attachments:
+                    attach_type = attach['type']
+                    if attach_type not in attachments_by_type:
+                        attachments_by_type[attach_type] = []
+                    attachments_by_type[attach_type].append(attach)
+                
+                # Update content for each section
+                for attach_type in sorted(attachments_by_type.keys()):
+                    section_header = f"\n## {attach_type} Files\n"
+                    section_start = existing_content.find(section_header)
+                    
+                    if section_start < 0:
+                        # Section doesn't exist, add it
+                        existing_content += section_header
+                        
+                        # Add attachments to section
+                        for attach in attachments_by_type[attach_type]:
+                            if attach['is_image']:
+                                existing_content += f"- {attach['original']}\n"
+                            else:
+                                link = f"- [{attach['text']}]({attach['url']})"
+                                if attach['metadata']:
+                                    link += f" <!-- {attach['metadata']} -->"
+                                existing_content += f"{link}\n"
+                        existing_content += "\n"  # Add blank line after section
+                
+                # Write the complete content back to file
+                attachments_path.write_text(existing_content)
+                
+                self._update_section_stats('attachments', 'processed')
+                metadata.add_output_file(attachments_path)
+            else:
+                self._update_section_stats('attachments', 'empty')
             
             # Mark as processed
             metadata.processed = True
-            
             return metadata
             
         except Exception as e:
             self.logger.error(f"Failed to process file in split phase: {file_path}")
-            self.logger.error(traceback.format_exc())
+            self.logger.error(f"Error details: {str(e)}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             if metadata:
                 metadata.add_error("SplitPhase", str(e))
                 metadata.processed = False
-                return metadata
             return None
 
     def _update_links(
@@ -288,45 +277,36 @@ class SplitPhase(Phase):
         source_file: str,
         metadata: DocumentMetadata
     ) -> str:
-        """Update links in content.
-        
-        Args:
-            content: Content to update
-            source_file: Source file path
-            metadata: Document metadata
-            
-        Returns:
-            Updated content
-        """
+        """Update links in content, ensuring we don't double-append .parsed.md."""
         def replace_link(match):
-            """Replace a link match with updated link."""
-            title = match.group(1)
-            target = match.group(2)
-            section = None
-            
-            # Check for section reference
-            if '#' in target:
-                target, section = target.split('#', 1)
-            
-            # Create link context
-            link_context = LinkContext(
-                source_file=source_file,
-                target_file=target,
-                target_section=section,
-                link_type=LinkType.OUTGOING,
-                title=title
-            )
-            
-            # Add link to metadata
-            metadata.add_link(link_context)
-            
-            return match.group(0)  # Return original link unchanged
-        
-        # Find and process all markdown links
-        pattern = r'\[([^\]]+)\]\(([^)]+)\)'
-        content = re.sub(pattern, replace_link, content)
-        
-        return content
+            text = match.group("text") or ""
+            url = match.group("url") or ""
+            link_metadata = match.group("metadata")
+            is_image = match.group(0).startswith('!')
+
+            if not url:
+                return match.group(0)
+
+            decoded_url = unquote(url)
+            path_obj = Path(decoded_url)
+
+            # Remove .parsed.md if it exists
+            if str(path_obj).endswith(".parsed.md"):
+                path_obj = path_obj.parent / path_obj.stem[:-7]
+
+            # Build the new link
+            if is_image:
+                # Image syntax
+                return f"![{text}]({path_obj})"
+            else:
+                # Regular link syntax
+                link = f"[{text}]({path_obj})"
+                if link_metadata:
+                    link += f" <!-- {link_metadata} -->"
+                return link
+
+        # Update all links in the content
+        return self.attachment_pattern.sub(replace_link, content)
 
     def _split_content(self, content: str) -> Dict[str, str]:
         """Split content into sections.
@@ -344,42 +324,53 @@ class SplitPhase(Phase):
         raw_notes_start = content.find('--==RAW NOTES==--')
         attachments_start = content.find('--==ATTACHMENTS==--')
         
-        # If no summary marker, treat content before first marker as summary
-        if summary_start < 0:
+        # If no markers found, treat the whole content as summary
+        if summary_start < 0 and raw_notes_start < 0 and attachments_start < 0:
+            # Get all content
+            lines = content.split('\n')
+            # Skip the title line if it exists
+            if lines and lines[0].startswith('# '):
+                lines = lines[1:]
+            # Join the remaining lines
+            sections['summary'] = '\n'.join(lines).strip()
+            return sections
+        
+        # Get summary content
+        if summary_start >= 0:
+            # Get content from after summary marker to next marker or end
+            next_marker = min(
+                (pos for pos in [raw_notes_start, attachments_start] if pos >= 0),
+                default=len(content)
+            )
+            sections['summary'] = content[summary_start + len('--==SUMMARY==--'):next_marker].strip()
+        else:
+            # If no summary marker, get content from start to first marker
             first_marker = min(
                 (pos for pos in [raw_notes_start, attachments_start] if pos >= 0),
                 default=len(content)
             )
-            if first_marker > 0:
-                # Get all content up to the first marker
-                summary_content = content[:first_marker].strip()
-                # Split into lines
-                lines = summary_content.split('\n')
-                # Skip the title line if it exists
-                if lines and lines[0].startswith('# '):
-                    lines = lines[1:]
-                # Join the remaining lines
-                sections['summary'] = '\n'.join(lines).strip()
-        else:
-            # Get summary content
-            summary_content = content[summary_start + len('--==SUMMARY==--'):].strip()
-            if raw_notes_start >= 0:
-                summary_content = content[summary_start + len('--==SUMMARY==--'):raw_notes_start].strip()
-            elif attachments_start >= 0:
-                summary_content = content[summary_start + len('--==SUMMARY==--'):attachments_start].strip()
-            sections['summary'] = summary_content
+            # Get all content up to the first marker
+            summary_content = content[:first_marker].strip()
+            # Split into lines
+            lines = summary_content.split('\n')
+            # Skip the title line if it exists
+            if lines and lines[0].startswith('# '):
+                lines = lines[1:]
+            # Join the remaining lines
+            sections['summary'] = '\n'.join(lines).strip()
         
+        # Get raw notes content
         if raw_notes_start >= 0:
-            # Get raw notes content
-            raw_notes_content = content[raw_notes_start + len('--==RAW NOTES==--'):].strip()
-            if attachments_start >= 0:
-                raw_notes_content = content[raw_notes_start + len('--==RAW NOTES==--'):attachments_start].strip()
-            sections['raw_notes'] = raw_notes_content
-            
+            # Get content from after raw notes marker to next marker or end
+            next_marker = min(
+                (pos for pos in [attachments_start] if pos >= 0 and pos > raw_notes_start),
+                default=len(content)
+            )
+            sections['raw_notes'] = content[raw_notes_start + len('--==RAW NOTES==--'):next_marker].strip()
+        
+        # Get attachments content
         if attachments_start >= 0:
-            # Get attachments content
-            attachments_content = content[attachments_start + len('--==ATTACHMENTS==--'):].strip()
-            sections['attachments'] = attachments_content
+            sections['attachments'] = content[attachments_start + len('--==ATTACHMENTS==--'):].strip()
         
         return sections
 
@@ -438,13 +429,9 @@ class SplitPhase(Phase):
         Args:
             section: Section name
             status: Status to update
-            file_type: Optional file type for attachments
+            file_type: Optional file type
         """
-        if section == 'attachments':
-            if file_type not in self.section_stats[section][status]:
-                self.section_stats[section][status][file_type] = 0
-            self.section_stats[section][status][file_type] += 1
-        else:
+        if section in self.section_stats and status in self.section_stats[section]:
             self.section_stats[section][status] += 1
 
     def finalize(self) -> None:
@@ -475,36 +462,80 @@ class SplitPhase(Phase):
                 self.logger.warning(f"Found {stats['empty']} missing attachments")
 
     def _extract_attachments(self, content: str, date_prefix: str = None) -> List[Dict]:
-        """Find all embedded attachments in the main file's markdown links.
-        
-        Args:
-            content: Content to extract attachments from
-            date_prefix: Optional date prefix for attachment IDs
-            
-        Returns:
-            List of dictionaries with attachment info
+        """
+        Find all embedded attachments in the main file's markdown links, ensuring
+        we don't double-append .parsed.md in attachment paths.
         """
         attachments = []
+        processed_bases = {}
+
+        # Get output directory for attachments
+        output_dir = self.pipeline.get_phase_output_dir("split")
+        attachments_dir = output_dir / "attachments"
+        attachments_dir.mkdir(parents=True, exist_ok=True)
+
         for match in self.attachment_pattern.finditer(content):
             text = match.group("text")
             url = match.group("url")
+            meta_comment = match.group("metadata")
+
+            if not url:
+                continue
+
+            decoded_url = unquote(url)
+            path_obj = Path(decoded_url)
+
+            # Remove .parsed.md if it exists
+            if str(path_obj).endswith(".parsed.md"):
+                path_obj = path_obj.parent / path_obj.stem[:-7]
+
+            # Identify initial attachment type
+            attach_type = self._get_attachment_type(decoded_url)
+
+            # Build the effective path in the input directory:
+            input_dir = Path(self.pipeline.config.input_dir)
             
-            if url.endswith('.parsed.md'):
-                # Get the attachment type from the original file
-                original_path = url[:-10]  # Remove .parsed.md
-                attach_type = self._get_attachment_type(original_path)
-                
-                # Generate unique ID
-                attach_id = self._generate_attachment_id(url, date_prefix)
-                
-                attachments.append({
-                    "url": url,
-                    "text": text,
-                    "type": attach_type,
-                    "id": attach_id,
-                    "reference": self._format_attachment_reference(attach_type, attach_id)
-                })
-        
+            # Try both with and without parent directory
+            input_path = input_dir / path_obj
+            if not input_path.exists():
+                # Try without parent directory
+                input_path = input_dir / path_obj.parent.name / path_obj.name
+                if not input_path.exists():
+                    # Try just the name in the parent directory
+                    input_path = input_dir / path_obj.parent.name / path_obj.stem / path_obj.name
+                    if not input_path.exists():
+                        self.logger.warning(f"Attachment {decoded_url} not found")
+                        continue
+
+            # Make sure we haven't processed the same "stem" repeatedly
+            # (avoid duplicates by base name)
+            base_stem = path_obj.stem  # Use original stem without .parsed
+            if base_stem in processed_bases:
+                self.logger.debug(f"Skipping duplicate reference for base name {base_stem}")
+                continue
+            processed_bases[base_stem] = attach_type
+
+            # Copy the attachment to the split phase's attachments directory, preserving directory structure
+            dest_path = attachments_dir / path_obj.parent.name / path_obj.name
+            try:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(input_path, dest_path)
+                self.logger.debug(f"Copied attachment {input_path} to {dest_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to copy attachment {input_path} to {dest_path}: {str(e)}")
+                continue
+
+            attach_id = self._generate_attachment_id(url, date_prefix)
+            attachments.append({
+                "url": str(dest_path.relative_to(output_dir)),  # Update URL to point to new location
+                "text": text or path_obj.name,
+                "type": attach_type,
+                "id": attach_id,
+                "metadata": meta_comment,
+                "is_image": match.group(0).startswith('!'),
+                "original": match.group(0),
+            })
+
         return attachments
 
     def _build_attachments_markdown(self, main_file: str, attachments: List[Dict], file_path: Path) -> str:
@@ -535,64 +566,50 @@ class SplitPhase(Phase):
         for attach_type in sorted(attachments_by_type.keys()):
             type_attachments = attachments_by_type[attach_type]
             
+            # Add type header once
+            result.append(f"\n## {attach_type} Files")
+            
             for attach in type_attachments:
-                # Add the attachment reference as a header
-                result.append(f"\n## {attach['reference']}\n")
-                
-                # Get the attachment path
-                url = unquote(attach['url'])
-                attachment_path = None
-                
-                if '/' in url:
-                    # If path has directory, look in that directory
-                    dir_name = url.split('/')[0]
-                    dir_path = file_path.parent / dir_name
-                    
-                    # Get the base name without extensions
-                    base_name = Path(url).name
-                    if base_name.endswith('.parsed.md'):
-                        base_name = base_name[:-10]  # Remove .parsed.md
-                    if '.' in base_name:
-                        base_name = base_name[:base_name.rindex('.')]  # Remove file extension
-                    
-                    # Try to find a matching file
-                    for candidate in dir_path.glob('*.parsed.md'):
-                        candidate_base = candidate.stem
-                        if candidate_base.endswith('.parsed'):
-                            candidate_base = candidate_base[:-7]  # Remove .parsed suffix
-                        
-                        # Compare base names (ignoring extensions)
-                        if candidate_base == base_name:
-                            attachment_path = candidate
-                            break
+                # Use the original markdown format for the link
+                if attach['is_image']:
+                    result.append(f"- {attach['original']}")
                 else:
-                    attachment_path = file_path.parent / url
-                
-                # Read and include the actual content of the attachment
-                if attachment_path and attachment_path.exists():
-                    try:
-                        content = attachment_path.read_text()
-                        if content.strip():
-                            # Add metadata if available
-                            if attach.get('text'):
-                                result.append(f"\n### Title\n{attach['text']}\n")
-                            
-                            # Add the actual content
-                            result.append("\n### Content\n")
-                            result.append(content.strip())
-                    except Exception as e:
-                        self.logger.warning(f"Failed to read attachment content from {attachment_path}: {e}")
-                else:
-                    self.logger.warning(f"Attachment not found: {url}")
-                
-                result.append("\n")
+                    link = f"- [{attach['text']}]({attach['url']})"
+                    if attach['metadata']:
+                        link += f" <!-- {attach['metadata']} -->"
+                    result.append(link)
+            
+            result.append("")  # Add blank line between sections
         
-        return "\n".join(result) if result else ""
+        return "\n".join(result)
 
-    def _get_attachment_type(self, file_path: str) -> str:
-        """Get the attachment type identifier from file extension."""
-        ext = Path(file_path).suffix.lower()
-        return self.TYPE_MAP.get(ext, 'DOC')
+    def _get_attachment_type(self, url: str) -> str:
+        """Get attachment type from URL.
+        
+        Args:
+            url: URL to get type from
+            
+        Returns:
+            Attachment type
+        """
+        # Get the file extension
+        path_obj = Path(url)
+        stem = path_obj.stem
+        if stem.endswith('.parsed'):
+            stem = stem[:-7]
+        
+        # Get the extension from the stem
+        for ext in self.TYPE_MAP.keys():
+            if stem.lower().endswith(ext[1:]):  # Remove the leading dot from the extension
+                return self.TYPE_MAP[ext]
+        
+        # If no extension found in stem, try the original extension
+        ext = path_obj.suffix.lower()
+        if ext in self.TYPE_MAP:
+            return self.TYPE_MAP[ext]
+            
+        # Default to DOC type
+        return 'DOC'
         
     def _generate_attachment_id(self, file_path: str, date_prefix: str = None) -> str:
         """Generate a unique attachment identifier."""

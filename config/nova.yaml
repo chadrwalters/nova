@@ -1,15 +1,14 @@
-# Nova Configuration Template
-# Copy this file to nova.yaml and update the values
+# Nova Configuration
 
 # Base Directories
-base_dir: "${HOME}/Documents/Nova"
-input_dir: "${HOME}/Documents/Nova/Input"
-output_dir: "${HOME}/Documents/Nova/Output"
-processing_dir: "${HOME}/Documents/Nova/Processing"
+base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
+input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
+output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
 
 # Cache Configuration
 cache:
-  dir: "${HOME}/Documents/Nova/Cache"
+  dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
   enabled: true
   ttl: 3600  # 1 hour
 
@@ -42,7 +41,7 @@ handlers:
 # Levels: ERROR, WARNING, INFO, DEBUG
 logging:
   level: "ERROR"
-  file: "nova.log"
+  file: "nova.log" 
 
 # Pipeline Configuration
 pipeline:

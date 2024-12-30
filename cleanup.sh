@@ -58,7 +58,7 @@ try:
     
     base_dir = os.path.expandvars(config["base_dir"])
     cache_dir = os.path.expandvars(config["cache"]["dir"])
-    processing_dir = os.path.expandvars(os.path.expanduser("${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"))
+    processing_dir = os.path.expandvars(config["processing_dir"])
     print(f"{base_dir}\n{cache_dir}\n{processing_dir}")
     
 except Exception as e:
@@ -142,7 +142,8 @@ clean_processing() {
     local processing_dir=$(echo "$dirs" | sed -n '3p')
 
     if [ -d "$processing_dir" ]; then
-        rm -rf "${processing_dir:?}"/*
+        # Use find to delete everything in the directory, handling spaces correctly
+        find "$processing_dir" -mindepth 1 -delete
         log_success "Processing directory cleaned"
     else
         log_warning "Processing directory not found"

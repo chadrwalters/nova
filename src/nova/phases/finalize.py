@@ -74,48 +74,12 @@ class FinalizePhase(Phase):
                     # Read the file content
                     content = main_file_path.read_text(encoding='utf-8')
                     
-                    # Create navigation header
-                    header = NavigationHeader(
-                        title=main_file.replace(".md", ""),
-                        file_path=str(main_file_path),
-                        parent_path=str(split_dir)
-                    )
-                    
-                    # Add quick links if available
+                    # Get outgoing links if available
                     outgoing_links = metadata.get_outgoing_links()
-                    if outgoing_links:
-                        # Use most referenced files as quick links
-                        link_counts = {}
-                        for link in outgoing_links:
-                            link_counts[link.target_file] = link_counts.get(link.target_file, 0) + 1
-                        top_links = sorted(outgoing_links, key=lambda l: link_counts[l.target_file], reverse=True)[:5]
-                        header.quick_links = top_links
-                    
-                    # Add navigation elements to content
-                    content = inject_navigation_elements(content, header)
                     
                     # Add tooltips to links
-                    content = add_tooltips_to_links(content, outgoing_links if outgoing_links else [])
-                    
-                    # Add visualization if we have links
                     if outgoing_links:
-                        # Get all related files
-                        related_files = set()
-                        related = self.link_map.get_related_files(str(main_file_path))
-                        related_files.add(str(main_file_path))
-                        related_files.update(related['outgoing'])
-                        related_files.update(related['incoming'])
-                        
-                        # Create visualizer and render graph
-                        visualizer = LinkVisualizer(self.link_map)
-                        graph_html = visualizer.render_graph(related_files)
-                        
-                        # Add graph before the first heading or at the end
-                        if "# " in content:
-                            first_heading = content.index("# ")
-                            content = content[:first_heading] + "\n" + graph_html + "\n" + content[first_heading:]
-                        else:
-                            content += "\n" + graph_html
+                        content = add_tooltips_to_links(content, outgoing_links)
                     
                     # Create output directory if it doesn't exist
                     final_output_path = self.pipeline.config.output_dir / main_file

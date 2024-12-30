@@ -2,21 +2,20 @@
 # Copy this file to nova.yaml and update the values
 
 # Base Directories
-base_dir: "${HOME}/Documents/Nova"
-input_dir: "${HOME}/Documents/Nova/Input"
-output_dir: "${HOME}/Documents/Nova/Output"
-processing_dir: "${HOME}/Documents/Nova/Processing"
+base_dir: "~/Documents/Nova"
+input_dir: "~/Documents/Nova/Input"
+output_dir: "~/Documents/Nova/Output"
 
 # Cache Configuration
 cache:
-  dir: "${HOME}/Documents/Nova/Cache"
+  dir: "~/Documents/Nova/Cache"
   enabled: true
   ttl: 3600  # 1 hour
 
 # API Configuration
 apis:
   openai:
-    api_key: ${OPENAI_API_KEY}
+    api_key: "your-api-key-here"
     model: "gpt-4o"
     max_tokens: 500
     vision_prompt: |
@@ -38,15 +37,6 @@ handlers:
       - svg
 
 # Logging Configuration
-# Can be overridden by NOVA_LOG_LEVEL environment variable
-# Levels: ERROR, WARNING, INFO, DEBUG
 logging:
-  level: "ERROR"
-  file: "nova.log"
-
-# Pipeline Configuration
-pipeline:
-  phases:
-    - parse
-    - split
-    - finalize 
+  level: "INFO"
+  file: "nova.log" 
