@@ -358,12 +358,22 @@ class NovaPipeline:
         else:
             # For all other files, preserve the directory structure
             output_path = phases_dir / phase / rel_path.parent / f"{file_path.stem}.parsed.md"
-            
         logger.debug(f"Checking parse output: {output_path}")
         
         # If .parsed.md file doesn't exist => must reprocess
         if not output_path.exists():
             logger.info(f"No previous output found for {file_path.name} - will process")
+            return True
+        
+        # Check if we're doing a clean run by checking if the phases directory was just created
+        try:
+            phases_dir_mtime = phases_dir.stat().st_mtime
+            current_time = time.time()
+            if current_time - phases_dir_mtime < 60:  # If phases directory was created in the last minute
+                logger.info(f"Clean run detected - will reprocess {file_path.name}")
+                return True
+        except OSError as e:
+            logger.error(f"Error checking phases directory time: {str(e)}")
             return True
         
         # Check if input is newer than output
@@ -385,7 +395,7 @@ class NovaPipeline:
         except OSError as e:
             logger.error(f"Error checking file times: {str(e)}")
             return True
-
+        
         return False
 
     def get_phase_output_dir(self, phase: str) -> Path:

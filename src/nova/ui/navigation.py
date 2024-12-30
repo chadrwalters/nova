@@ -264,19 +264,33 @@ def inject_navigation_elements(content: str, header: NavigationHeader) -> str:
     renderer = NavigationRenderer()
     nav_header = renderer.render_header(header)
     
+    # Extract the main content without any existing navigation elements
+    main_content = content
+    if "<style>" in content:
+        style_end = content.find("</style>")
+        if style_end != -1:
+            main_content = content[style_end + 8:].strip()
+    
+    if '<div class="nova-nav-header">' in main_content:
+        nav_end = main_content.find('</div>', main_content.find('<div class="nova-nav-header">'))
+        if nav_end != -1:
+            main_content = main_content[nav_end + 6:].strip()
+    
     # Add CSS styles if not already present
     if "<style>" not in content:
-        content = f"<style>{NavigationRenderer.CSS_STYLES}</style>\n{content}"
+        content = f"<style>{NavigationRenderer.CSS_STYLES}</style>\n"
+    else:
+        content = ""
     
     # Add navigation header after any frontmatter
-    if content.startswith("---"):
+    if main_content.startswith("---"):
         # Find end of frontmatter
-        end = content.find("---", 3)
+        end = main_content.find("---", 3)
         if end != -1:
-            return f"{content[:end+3]}\n{nav_header}\n{content[end+3:]}"
+            return f"{content}{main_content[:end+3]}\n{nav_header}\n{main_content[end+3:]}"
     
     # No frontmatter, just add at start
-    return f"{nav_header}\n{content}"
+    return f"{content}{nav_header}\n{main_content}"
 
 
 def add_tooltips_to_links(content: str, links: List[LinkContext], paths: Dict[str, NavigationPath] = None) -> str:
