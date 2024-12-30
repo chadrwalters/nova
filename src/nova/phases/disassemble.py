@@ -224,12 +224,13 @@ class DisassemblyPhase(Phase):
             # Handle summary content
             stats = self.pipeline.state['disassemble']['stats']['summary_files']
             if summary_content.strip():
-                summary_path.write_text(summary_content, encoding='utf-8')
                 stats['created'] += 1
-                logger.debug(f"Created summary file: {summary_path}")
             else:
                 stats['empty'] += 1
                 logger.warning(f"Empty summary content for {file_path}")
+            # Always write the summary file
+            summary_path.write_text(summary_content, encoding='utf-8')
+            logger.debug(f"Created summary file: {summary_path}")
 
             # Handle raw notes content
             stats = self.pipeline.state['disassemble']['stats']['raw_notes_files']
