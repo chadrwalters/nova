@@ -248,4 +248,15 @@ class ConfigManager:
     @property
     def pipeline(self) -> PipelineConfig:
         """Get pipeline configuration."""
-        return self.config.pipeline 
+        return self.config.pipeline
+        
+    def __str__(self) -> str:
+        """Get string representation of config manager."""
+        return str(self.config)
+        
+    def __fspath__(self) -> str:
+        """Return the file system path representation.
+        
+        This makes ConfigManager compatible with os.PathLike.
+        """
+        return str(self.input_dir) 
