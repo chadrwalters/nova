@@ -134,8 +134,12 @@ class NovaPipeline:
             self.error_messages[phase] = {}
         self.error_messages[phase][file_path] = error_msg
 
-    async def process_directory(self, directory: Path, phases: List[str] = None) -> None:
+    async def process_directory(self, directory: Union[str, Path], phases: List[str] = None) -> None:
         """Process all files in directory through specified phases."""
+        # Convert directory to Path if it's a string
+        if isinstance(directory, str):
+            directory = Path(directory)
+            
         if not directory.exists():
             raise ValueError(f"Directory does not exist: {directory}")
             

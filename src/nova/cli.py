@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import List, Optional
 
@@ -101,13 +102,13 @@ async def main(args: Optional[List[str]] = None) -> int:
         pipeline = NovaPipeline(config=config)
         
         # Get input directory
-        input_dir = parsed_args.input_dir or config.input_dir
+        input_dir = parsed_args.input_dir if parsed_args.input_dir else config.input_dir
         if not input_dir:
             logger.error("No input directory specified")
             return 1
         
         # Get output directory
-        output_dir = parsed_args.output_dir or config.output_dir
+        output_dir = parsed_args.output_dir if parsed_args.output_dir else config.output_dir
         if not output_dir:
             logger.error("No output directory specified")
             return 1
@@ -124,7 +125,9 @@ async def main(args: Optional[List[str]] = None) -> int:
         return 0
         
     except Exception as e:
-        logger.error(f"Pipeline failed: {str(e)}", exc_info=True)
+        logger.error(f"Pipeline failed: {str(e)}")
+        if parsed_args.debug:
+            logger.error(traceback.format_exc())
         return 1
 
 
