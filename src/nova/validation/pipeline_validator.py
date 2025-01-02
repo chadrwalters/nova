@@ -299,12 +299,10 @@ class PipelineValidator:
                                     next_section = len(attachments_content)
                                 # Get the section content
                                 section_content = attachments_content[section_start:next_section].strip()
-                                # Check that the section has a summary and raw notes, unless it's an error case
+                                # Check for error cases
                                 if "Error processing" not in content and "Warning: Encoding Issue" not in content and "<html" not in content:
-                                    if "--==SUMMARY==--" not in section_content:
-                                        self.errors.append(f"Missing summary section for attachment {attachment_id} in consolidated Attachments.md")
-                                    if "--==RAW NOTES==--" not in section_content:
-                                        self.errors.append(f"Missing raw notes section for attachment {attachment_id} in consolidated Attachments.md")
+                                    # No need to check for RAW NOTES marker anymore
+                                    pass
                             break
                             
                     if not found_ref:

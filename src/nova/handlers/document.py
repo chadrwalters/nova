@@ -146,10 +146,9 @@ class DocumentHandler(BaseHandler):
         
         # Add summary section
         summary = f"Document containing {len(sections)} sections."
-        parts.append("--==SUMMARY==--\n" + summary + "\n")
+        parts.append(summary + "\n")
         
-        # Add raw notes section
-        parts.append("--==RAW NOTES==--\n")
+        # Add sections
         for section in sections:
             parts.append(section.to_markdown())
         
