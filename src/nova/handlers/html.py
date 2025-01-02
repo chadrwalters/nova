@@ -75,13 +75,23 @@ class HTMLHandler(BaseHandler):
             # Process content
             content = await self._process_content(file_path)
             
-            # Write markdown file
-            was_written = self._write_markdown(output_path, file_path.stem, file_path, content)
-            
             # Update metadata
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
             metadata.processed = True
+            
+            # Write markdown using MarkdownWriter
+            markdown_content = self.markdown_writer.write_document(
+                title=metadata.title,
+                content=content,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
+            )
+            
+            # Write the file
+            was_written = self._safe_write_file(output_path, markdown_content)
+            
             metadata.unchanged = not was_written
             metadata.add_output_file(output_path)
             

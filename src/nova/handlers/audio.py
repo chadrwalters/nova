@@ -1,26 +1,19 @@
 """Audio handler for Nova document processor."""
-import hashlib
-import json
 import os
-import shutil
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional
 
 from nova.config.manager import ConfigManager
-from nova.handlers.base import DocumentMetadata, BaseHandler
+from nova.handlers.base import BaseHandler
+from nova.models.document import DocumentMetadata
 
 
 class AudioHandler(BaseHandler):
     """Handler for audio files."""
     
-    name = "audio_handler"
+    name = "audio"
     version = "0.1.0"
-    file_types = [
-        "mp3", "wav", "m4a", "ogg", "flac",
-        "aac", "wma", "aiff", "alac",
-    ]
+    file_types = ["mp3", "wav", "m4a", "aac", "ogg", "flac"]
     
     def __init__(self, config: ConfigManager) -> None:
         """Initialize audio handler.
@@ -29,50 +22,26 @@ class AudioHandler(BaseHandler):
             config: Nova configuration manager.
         """
         super().__init__(config)
-        self.config = config
     
-    def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
-        """Get relative path from one file to another.
+    def _create_audio_content(self, file_path: Path) -> str:
+        """Create markdown content for audio file.
         
         Args:
-            from_path: Path to start from.
-            to_path: Path to end at.
-            
-        Returns:
-            Relative path from from_path to to_path.
-        """
-        # Get relative path from markdown file to original file
-        try:
-            rel_path = os.path.relpath(to_path, from_path.parent)
-            return rel_path.replace("\\", "/")  # Normalize path separators
-        except ValueError:
-            # If paths are on different drives, use absolute path
-            return str(to_path).replace("\\", "/")
-    
-    def _create_placeholder_markdown(
-        self,
-        audio_path: Path,
-        output_path: Path,
-    ) -> str:
-        """Create placeholder markdown file for audio.
-        
-        Args:
-            audio_path: Path to audio file.
-            output_path: Path to output markdown file.
+            file_path: Path to audio file.
             
         Returns:
             Markdown content.
         """
-        return f"""# Audio: {audio_path.stem}
+        return f"""## Audio Information
 
-TODO: Implement audio transcription and generate detailed description.
+- **File**: {file_path.name}
+- **Type**: {file_path.suffix.lstrip('.')}
+- **Size**: {os.path.getsize(file_path) / (1024*1024):.2f} MB
 
-## Audio Information
-- Format: {audio_path.suffix.lstrip('.')}
+## Notes
 
-## Placeholder Description
-This is a placeholder markdown file for the audio. The actual audio transcription and description generation will be implemented in a future update.
-"""
+This is an audio file. The content cannot be played directly in markdown.
+Please use an appropriate audio player to listen to this file."""
     
     async def process_impl(
         self,
@@ -86,7 +55,7 @@ This is a placeholder markdown file for the audio. The actual audio transcriptio
             metadata: Document metadata.
                 
         Returns:
-            Document metadata, or None if file is ignored.
+            Document metadata.
             
         Raises:
             ValueError: If file cannot be processed.
@@ -99,21 +68,33 @@ This is a placeholder markdown file for the audio. The actual audio transcriptio
                 ".parsed.md"
             )
             
-            # Create placeholder markdown
-            content = self._create_placeholder_markdown(file_path, output_path)
-            
-            # Write markdown content
-            self._safe_write_file(output_path, content)
+            # Create audio content
+            content = self._create_audio_content(file_path)
             
             # Update metadata
-            metadata.processed = True
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['markdown_path'] = str(output_path)
+            metadata.processed = True
             
+            # Write markdown using MarkdownWriter
+            markdown_content = self.markdown_writer.write_document(
+                title=metadata.title,
+                content=content,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
+            )
+            
+            # Write the file
+            self._safe_write_file(output_path, markdown_content)
+            
+            metadata.add_output_file(output_path)
             return metadata
             
         except Exception as e:
-            metadata.add_error("AudioHandler", str(e))
-            metadata.processed = False
-            return None 
+            self.logger.error(f"Failed to process audio file: {file_path}")
+            self.logger.error(str(e))
+            if metadata:
+                metadata.add_error("AudioHandler", str(e))
+                metadata.processed = False
+            return metadata 

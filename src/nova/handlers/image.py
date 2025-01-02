@@ -78,7 +78,7 @@ class ImageHandler(BaseHandler):
                 self.logger.warning("OpenAI API key not found in environment or config - image analysis will be disabled")
         else:
             self.logger.warning("OpenAI API not configured - image analysis will be disabled")
-        
+
     def _convert_heic(self, file_path: Path, output_path: Path) -> None:
         """Convert HEIC file to JPEG.
         
@@ -158,24 +158,6 @@ class ImageHandler(BaseHandler):
         except Exception as e:
             raise ValueError(f"Failed to convert SVG to JPEG: {e}")
 
-    def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
-        """Get relative path from one file to another.
-        
-        Args:
-            from_path: Path to start from.
-            to_path: Path to end at.
-            
-        Returns:
-            Relative path from from_path to to_path.
-        """
-        # Get relative path from markdown file to original file
-        try:
-            rel_path = os.path.relpath(to_path, from_path.parent)
-            return rel_path.replace("\\", "/")  # Normalize path separators
-        except ValueError:
-            # If paths are on different drives, use absolute path
-            return str(to_path).replace("\\", "/")
-
     async def _get_image_context(self, image_path: Path) -> str:
         """Get context for image using vision API.
         
@@ -185,83 +167,18 @@ class ImageHandler(BaseHandler):
         Returns:
             Context string from vision API.
         """
-        temp_path = None
-        try:
-            # If it's a HEIC file, convert to JPEG first
-            if image_path.suffix.lower() == '.heic':
-                try:
-                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
-                    self._convert_heic(image_path, temp_path)
-                    image_path = temp_path
-                except Exception as e:
-                    self.logger.error(f"Failed to convert HEIC to JPEG: {str(e)}")
-                    return "No context available - Failed to convert HEIC to JPEG"
-            # If it's an SVG file, convert to JPEG first
-            elif image_path.suffix.lower() == '.svg':
-                try:
-                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
-                    self._convert_svg(image_path, temp_path)
-                    image_path = temp_path
-                except Exception as e:
-                    self.logger.error(f"Failed to convert SVG to JPEG: {str(e)}")
-                    return "No context available - Failed to convert SVG to JPEG"
-
-            try:
-                # Read image and convert to base64
-                with open(image_path, "rb") as image_file:
-                    base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                
-                # Call OpenAI Vision API with updated format
-                response = self.openai_client.chat.completions.create(
-                    model=self.openai_model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": self.vision_prompt
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}",
-                                        "detail": "high"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    max_tokens=self.openai_max_tokens
-                )
-                
-                return response.choices[0].message.content
-                
-            except openai.RateLimitError as e:
-                self.logger.error(f"OpenAI API rate limit exceeded: {str(e)}")
-                return "No context available - API rate limit exceeded. Please try again later."
-                
-            except openai.AuthenticationError as e:
-                self.logger.error(f"OpenAI API authentication failed: {str(e)}")
-                return "No context available - API authentication failed. Please check your API key."
-                
-            except openai.APIError as e:
-                self.logger.error(f"OpenAI API error: {str(e)}")
-                return "No context available - API error. Please try again later."
-                
-            finally:
-                # Clean up temporary file if it exists
-                if temp_path and temp_path.exists():
-                    temp_path.unlink()
-                
-        except Exception as e:
-            # Get error message without any potential base64 data
-            error_str = str(e)
-            if len(error_str) > 100:  # If error message is too long (likely contains base64)
-                error_str = f"{error_str[:100]}... [truncated]"
-            
-            self.logger.error(f"Failed to get image context for {image_path.name}: {error_str}")
-            return "No context available - Image processing error"
+        # HACK: Temporarily bypass OpenAI API calls and return stock description
+        image_type = self._classify_image_type(image_path)
+        
+        # Return appropriate stock description based on image type
+        if image_type == "screenshot":
+            return "This appears to be a screenshot. The actual content would normally be analyzed by the OpenAI Vision API to extract text and describe the interface elements shown."
+        elif image_type == "photograph":
+            return "This appears to be a photograph. The actual content would normally be analyzed by the OpenAI Vision API to describe the scene, subjects, and key visual elements."
+        elif image_type == "diagram":
+            return "This appears to be a diagram or illustration. The actual content would normally be analyzed by the OpenAI Vision API to describe the visual elements and their relationships."
+        else:
+            return "This is an image. The actual content would normally be analyzed by the OpenAI Vision API to provide a detailed description."
 
     def _classify_image_type(self, image_path: Path) -> str:
         """Classify image as screenshot, photograph, or diagram.
@@ -328,7 +245,7 @@ class ImageHandler(BaseHandler):
                                 return "screenshot"
                             elif ratio_name in ["4:3", "3:2", "1:1"]:
                                 return "photograph"
-                    
+
                     # If no common ratio matches, use size-based heuristics
                     if width >= 1024 and height >= 768:  # Common screen resolutions
                         return "screenshot"
@@ -352,44 +269,6 @@ class ImageHandler(BaseHandler):
             if temp_path and temp_path.exists():
                 temp_path.unlink()
 
-    def _write_markdown(self, markdown_path: Path, title: str, context: str, image_type: str) -> None:
-        """Write markdown file for image with context.
-        
-        Args:
-            markdown_path: Path to write markdown file.
-            title: Title for markdown file.
-            context: Image context from vision API.
-            image_type: Classified image type.
-        """
-        # Create markdown content based on image type
-        if image_type == "screenshot":
-            content = f"""# {title}
-
-Screenshot analysis of {title}
-
-## Screenshot Context
-{context}
-"""
-        elif image_type == "photograph":
-            content = f"""# {title}
-
-Photograph analysis of {title}
-
-## Image Description
-{context}
-"""
-        else:  # diagram or unknown
-            content = f"""# {title}
-
-Analysis of {title} ({image_type})
-
-## Content Analysis
-{context}
-"""
-        
-        # Write markdown file using safe write method
-        self._safe_write_file(markdown_path, content)
-
     async def process_impl(
         self,
         file_path: Path,
@@ -405,9 +284,12 @@ Analysis of {title} ({image_type})
             Document metadata.
         """
         try:
-            # Get output path from output manager
+            # Get relative path from input directory
+            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            
+            # Get output path using relative path
             output_path = self.output_manager.get_output_path_for_phase(
-                file_path,
+                relative_path,
                 "parse",
                 ".parsed.md"
             )
@@ -418,16 +300,32 @@ Analysis of {title} ({image_type})
             # Classify image type
             image_type = self._classify_image_type(file_path)
             
-            # Write markdown file
-            self._write_markdown(output_path, file_path.stem, context, image_type)
-            
             # Update metadata
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
             metadata.metadata['image_type'] = image_type
             metadata.metadata['context'] = context
             metadata.processed = True
+            
+            # Write markdown using MarkdownWriter
+            markdown_content = self.markdown_writer.write_image(
+                title=metadata.title,
+                image_path=file_path,
+                alt_text=f"{image_type.title()} of {metadata.title}",
+                description=f"This is a {image_type} image.",
+                analysis=context,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
+            )
+            
+            # Write the file
+            self._safe_write_file(output_path, markdown_content)
+            
             metadata.add_output_file(output_path)
+            
+            # Save metadata using relative path
+            self._save_metadata(file_path, relative_path, metadata)
             
             return metadata
             

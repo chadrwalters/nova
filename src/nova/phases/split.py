@@ -85,58 +85,83 @@ class SplitPhase(Phase):
         # Get the base name without .summary.md or .rawnotes.md
         base_name = file_path.stem.rsplit('.', 1)[0]
         
-        # Check for attachments directory
+        # Function to process attachments from a directory
+        def process_directory(dir_path: Path, relative_path: str = ""):
+            if dir_path.exists() and dir_path.is_dir():
+                # Process all markdown files in this directory
+                for attachment_path in dir_path.glob('*.md'):
+                    if attachment_path.is_file():
+                        # Create reference with directory path included
+                        full_name = str(Path(relative_path) / attachment_path.stem)
+                        ref = self._make_reference(full_name)
+                        if ref in seen_refs:
+                            continue
+                        seen_refs.add(ref)
+                        
+                        # Get content for context
+                        try:
+                            content = attachment_path.read_text(encoding='utf-8')
+                        except Exception:
+                            content = ""
+                        
+                        # Build attachment info
+                        attachment = {
+                            "reference": ref,
+                            "text": attachment_path.stem,
+                            "path": str(attachment_path),
+                            "type": self._get_file_type(str(attachment_path)),
+                            "section": "attachments",
+                            "context": content[:500],  # First 500 chars as context
+                            "is_image": False,  # All attachments are markdown now
+                            "directory": relative_path  # Store directory path
+                        }
+                        attachments.append(attachment)
+                
+                # Process subdirectories
+                for subdir in dir_path.iterdir():
+                    if subdir.is_dir():
+                        new_relative_path = str(Path(relative_path) / subdir.name)
+                        process_directory(subdir, new_relative_path)
+        
+        # Check for attachments in base directory
         attachments_dir = file_path.parent / base_name
-        if attachments_dir.exists() and attachments_dir.is_dir():
-            for attachment_path in attachments_dir.glob('*.md'):
-                if attachment_path.is_file():
-                    # Create reference
-                    ref = self._make_reference(attachment_path)
-                    if ref in seen_refs:
-                        continue
-                    seen_refs.add(ref)
-                    
-                    # Get content for context
-                    try:
-                        content = attachment_path.read_text(encoding='utf-8')
-                    except Exception:
-                        content = ""
-                    
-                    # Build attachment info
-                    attachment = {
-                        "reference": ref,
-                        "text": attachment_path.stem,
-                        "path": str(attachment_path),
-                        "type": self._get_file_type(str(attachment_path)),
-                        "section": "attachments",
-                        "context": content[:500],  # First 500 chars as context
-                        "is_image": False  # All attachments are markdown now
-                    }
-                    attachments.append(attachment)
-                    
+        process_directory(attachments_dir, base_name)
+        
+        # Also check for attachments in parent directory (for subdirectory files)
+        if len(file_path.parent.parts) > 1:
+            parent_attachments_dir = file_path.parent
+            process_directory(parent_attachments_dir, str(parent_attachments_dir.relative_to(file_path.parent.parent)))
+        
         return attachments
         
     def _build_attachments_markdown(self, attachments: List[Dict]) -> str:
         """Build markdown content for attachments file."""
         content = ["# Attachments\n"]
         
-        # Group attachments by type
-        by_type = defaultdict(list)
+        # Group attachments by directory first, then by type
+        by_directory = defaultdict(lambda: defaultdict(list))
         for attachment in attachments:
-            by_type[attachment['type']].append(attachment)
+            directory = attachment.get('directory', '')
+            file_type = attachment['type']
+            by_directory[directory][file_type].append(attachment)
             
-        # Build sections for each type
-        for file_type in sorted(by_type.keys()):
-            content.append(f"\n## {file_type} Files\n")
+        # Build sections for each directory
+        for directory in sorted(by_directory.keys()):
+            if directory:
+                content.append(f"\n## Directory: {directory}\n")
             
-            # Add each attachment
-            for attachment in sorted(by_type[file_type], key=lambda x: x['text']):
-                content.append(f"\n### {attachment['reference']}")
-                if attachment['text']:
-                    content.append(f"\n**{attachment['text']}**")
-                if attachment['context']:
-                    content.append(f"\n{attachment['context'].strip()}")
-                content.append("\n")
+            # Build sections for each type within the directory
+            for file_type in sorted(by_directory[directory].keys()):
+                content.append(f"\n### {file_type} Files\n")
+                
+                # Add each attachment
+                for attachment in sorted(by_directory[directory][file_type], key=lambda x: x['text']):
+                    content.append(f"\n#### {attachment['reference']}")
+                    if attachment['text']:
+                        content.append(f"\n**{attachment['text']}**")
+                    if attachment['context']:
+                        content.append(f"\n{attachment['context'].strip()}")
+                    content.append("\n")
                 
         return "\n".join(content)
 

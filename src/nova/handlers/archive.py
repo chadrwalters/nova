@@ -1,23 +1,19 @@
 """Archive handler for Nova document processor."""
-import hashlib
-import json
 import os
-import shutil
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional
 
 from nova.config.manager import ConfigManager
-from nova.handlers.base import DocumentMetadata, BaseHandler
+from nova.handlers.base import BaseHandler
+from nova.models.document import DocumentMetadata
 
 
 class ArchiveHandler(BaseHandler):
     """Handler for archive files."""
     
-    name = "archive_handler"
+    name = "archive"
     version = "0.1.0"
-    file_types = ["zip"]
+    file_types = ["zip", "tar", "gz", "bz2", "7z", "rar"]
     
     def __init__(self, config: ConfigManager) -> None:
         """Initialize archive handler.
@@ -26,92 +22,76 @@ class ArchiveHandler(BaseHandler):
             config: Nova configuration manager.
         """
         super().__init__(config)
-        self.config = config
     
-    def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
-        """Get relative path from one file to another.
+    def _create_archive_content(self, file_path: Path) -> str:
+        """Create markdown content for archive file.
         
         Args:
-            from_path: Path to start from.
-            to_path: Path to end at.
-            
-        Returns:
-            Relative path from from_path to to_path.
-        """
-        # Get relative path from markdown file to original file
-        try:
-            rel_path = os.path.relpath(to_path, from_path.parent)
-            return rel_path.replace("\\", "/")  # Normalize path separators
-        except ValueError:
-            # If paths are on different drives, use absolute path
-            return str(to_path).replace("\\", "/")
-    
-    def _create_placeholder_markdown(
-        self,
-        archive_path: Path,
-        output_path: Path,
-    ) -> str:
-        """Create placeholder markdown file for archive.
-        
-        Args:
-            archive_path: Path to archive file.
-            output_path: Path to output markdown file.
+            file_path: Path to archive file.
             
         Returns:
             Markdown content.
         """
-        # Get relative path from markdown to original
-        rel_path = self._get_relative_path(output_path, archive_path)
-        
-        return f"""# Archive: {archive_path.stem}
+        return f"""## Archive Information
 
-TODO: Implement archive extraction and processing.
+- **File**: {file_path.name}
+- **Type**: {file_path.suffix.lstrip('.')}
+- **Size**: {os.path.getsize(file_path) / (1024*1024):.2f} MB
 
-## Archive Information
-- Original File: [{archive_path.name}]({rel_path})
-- Format: {archive_path.suffix.lstrip('.')}
+## Notes
 
-## Placeholder Description
-This is a placeholder markdown file for the archive. The actual archive extraction and processing will be implemented in a future update.
-"""
+This is an archive file. The contents cannot be displayed directly in markdown.
+Please use an appropriate archive tool to extract and view the contents."""
     
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an archive file.
         
         Args:
             file_path: Path to file.
-            output_dir: Output directory.
             metadata: Document metadata.
                 
         Returns:
-            Document metadata, or None if file is ignored.
+            Document metadata.
             
         Raises:
             ValueError: If file cannot be processed.
         """
         try:
-            # Create output file
-            output_path = output_dir / f"{file_path.stem}.md"
+            # Get output path from output manager
+            output_path = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".parsed.md"
+            )
             
-            # Create placeholder markdown
-            content = self._create_placeholder_markdown(file_path, output_path)
-            
-            # Write markdown content
-            self._safe_write_file(output_path, content)
+            # Create archive content
+            content = self._create_archive_content(file_path)
             
             # Update metadata
-            metadata.processed = True
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['markdown_path'] = str(output_path)
+            metadata.processed = True
             
+            # Write markdown using MarkdownWriter
+            self.markdown_writer.write_document(
+                title=metadata.title,
+                content=content,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
+            )
+            
+            metadata.add_output_file(output_path)
             return metadata
             
         except Exception as e:
-            metadata.add_error("ArchiveHandler", str(e))
+            self.logger.error(f"Failed to process archive file: {file_path}")
+            self.logger.error(str(e))
+            if metadata:
+                metadata.add_error("ArchiveHandler", str(e))
+                metadata.processed = False
             return metadata 

@@ -44,13 +44,15 @@ class ParsePhase(Phase):
             file_path: Path to the parsed file
             metadata: Metadata to save
         """
-        # Get base name without .parsed.md
-        base_path = file_path.parent / file_path.stem.replace('.parsed', '')
-        metadata_path = base_path.with_suffix('.metadata.json')
-        metadata_dict = metadata.to_dict() if hasattr(metadata, 'to_dict') else metadata.__dict__
+        # Get metadata file path using output manager
+        metadata_path = self.pipeline.output_manager.get_output_path_for_phase(
+            file_path,
+            "parse",
+            ".metadata.json"
+        )
         
-        # Ensure parent directory exists
-        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        # Convert metadata to dictionary
+        metadata_dict = metadata.to_dict() if hasattr(metadata, 'to_dict') else metadata.__dict__
         
         # Write metadata to file
         with open(metadata_path, 'w', encoding='utf-8') as f:

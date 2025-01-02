@@ -19,6 +19,7 @@ from nova.phases.disassemble import DisassemblyPhase
 from nova.phases.split import SplitPhase
 from nova.phases.finalize import FinalizePhase
 from nova.core.logging import print_summary
+from nova.utils.output_manager import OutputManager
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -35,6 +36,9 @@ class NovaPipeline:
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.console = Console()
+        
+        # Initialize output manager
+        self.output_manager = OutputManager(config)
         
         # Initialize empty state
         self.state = {}
@@ -186,8 +190,8 @@ class NovaPipeline:
                     # For disassemble phase, look in parse phase output directory
                     parse_dir = self.config.processing_dir / "phases" / "parse"
                     if parse_dir.exists():
-                        # Only process main files (not in subdirectories)
-                        for file_path in parse_dir.glob('*.parsed.md'):
+                        # Process all parsed files, including those in subdirectories
+                        for file_path in parse_dir.rglob('*.parsed.md'):
                             if file_path.is_file():
                                 files.append(file_path)
                 elif phase == "split":
@@ -196,7 +200,7 @@ class NovaPipeline:
                     if disassemble_dir.exists():
                         # Process both summary and raw notes files
                         for pattern in ['*.summary.md', '*.rawnotes.md']:
-                            for file_path in disassemble_dir.glob(pattern):
+                            for file_path in disassemble_dir.rglob(pattern):
                                 if file_path.is_file():
                                     files.append(file_path)
                 elif phase == "finalize":
@@ -207,10 +211,10 @@ class NovaPipeline:
                         # Look for all main files in subdirectories
                         main_files = ["Summary.md", "Raw Notes.md", "Attachments.md"]
                         for file_name in main_files:
-                            file_path = split_dir / file_name
-                            if file_path.is_file():
-                                self.debug(f"Found file to finalize: {file_path}")
-                                files.append(file_path)
+                            for file_path in split_dir.rglob(file_name):
+                                if file_path.is_file():
+                                    self.debug(f"Found file to finalize: {file_path}")
+                                    files.append(file_path)
                     else:
                         self.debug(f"Split directory does not exist: {split_dir}")
                 

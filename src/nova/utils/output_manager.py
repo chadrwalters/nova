@@ -29,7 +29,7 @@ class OutputManager:
         """Get output path for a file in a specific phase.
         
         Args:
-            input_file: Input file path
+            input_file: Input file path (can be absolute or relative)
             phase_name: Name of the phase (e.g. "parse", "split")
             extension: File extension to use for output
             
@@ -38,24 +38,47 @@ class OutputManager:
         """
         input_file = Path(input_file)
         
-        # Get path relative to input directory
-        try:
-            relative_path = input_file.relative_to(self.config.input_dir)
-        except ValueError:
-            # If not under input_dir, use filename only
-            relative_path = Path(input_file.name)
-            
+        # If input_file is already relative, use it directly
+        if not input_file.is_absolute():
+            relative_path = input_file
+        else:
+            # Get path relative to input directory
+            try:
+                relative_path = input_file.relative_to(self.config.input_dir)
+            except ValueError:
+                relative_path = Path(input_file.name)
+        
         # Build output path under phase directory
         output_base = self.config.processing_dir / "phases" / phase_name
         
-        if input_file.is_dir():
-            # For directories, create a directory with same name
-            output_path = output_base / relative_path
-        else:
-            # For files, replace extension
-            new_filename = f"{relative_path.stem}{extension}"
-            output_path = output_base / relative_path.parent / new_filename
+        # For metadata files, preserve the directory structure but use only the stem
+        if extension == ".metadata.json":
+            # Remove any .parsed suffix from the stem
+            stem = relative_path.stem
+            if stem.endswith('.parsed'):
+                stem = stem[:-7]
             
+            # If the input file is in a subdirectory, place metadata in that subdirectory
+            if len(relative_path.parts) > 1:
+                # Use the parent directory and stem with metadata extension
+                output_path = output_base / relative_path.parent / f"{stem}.metadata.json"
+            else:
+                # For files in root, just use the stem with metadata extension
+                output_path = output_base / f"{stem}.metadata.json"
+        else:
+            # For non-metadata files, use the standard path construction
+            # Remove any existing .parsed or .metadata suffix before adding the new extension
+            stem = relative_path.stem
+            while True:
+                if stem.endswith('.parsed'):
+                    stem = stem[:-7]  # Remove '.parsed' suffix
+                elif stem.endswith('.metadata'):
+                    stem = stem[:-9]  # Remove '.metadata' suffix
+                else:
+                    break
+            new_filename = f"{stem}{extension}"
+            output_path = output_base / relative_path.parent / new_filename
+        
         # Ensure parent directories exist
         output_path.parent.mkdir(parents=True, exist_ok=True)
         return output_path
