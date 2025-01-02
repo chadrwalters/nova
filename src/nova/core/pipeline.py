@@ -183,8 +183,15 @@ class NovaPipeline:
                 files = []
                 if phase == "parse":
                     # For parse phase, look in input directory
-                    for file_path in directory.rglob('*'):
+                    input_dir = Path(self.config.input_dir)
+                    if not input_dir.exists():
+                        raise ValueError(f"Input directory does not exist: {input_dir}")
+                    if not input_dir.is_dir():
+                        raise ValueError(f"Not a directory: {input_dir}")
+                    self.debug(f"Looking for files to parse in: {input_dir}")
+                    for file_path in input_dir.rglob('*'):
                         if file_path.is_file() and not file_path.name.startswith('.'):
+                            self.debug(f"Found file to parse: {file_path}")
                             files.append(file_path)
                 elif phase == "disassemble":
                     # For disassemble phase, look in parse phase output directory

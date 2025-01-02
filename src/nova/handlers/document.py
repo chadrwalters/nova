@@ -76,64 +76,33 @@ class DocumentHandler(BaseHandler):
         """Process a document file.
         
         Args:
-            file_path: Path to document file
-            metadata: Document metadata
+            file_path: Path to document file.
+            metadata: Document metadata.
             
         Returns:
-            Updated metadata, or None if processing failed
-            
-        Raises:
-            ProcessingError: If document processing fails
+            Document metadata.
         """
         try:
             # Get relative path from input directory
             relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
             
             # Get output path using relative path
-            markdown_path = self.output_manager.get_output_path_for_phase(
+            output_path = self.output_manager.get_output_path_for_phase(
                 relative_path,
                 "parse",
                 ".parsed.md"
             )
             
-            # Extract content based on file type
-            sections = []
+            # Extract text from document
+            text = await self._process_content(file_path)
             
-            if file_path.suffix.lower() == '.pdf':
-                sections = await self._process_pdf(file_path)
-            elif file_path.suffix.lower() in ['.doc', '.docx']:
-                sections = await self._process_word(file_path)
-            elif file_path.suffix.lower() in ['.rtf', '.odt']:
-                sections = await self._process_rtf_odt(file_path)
-            elif file_path.suffix.lower() == '.pptx':
-                sections = await self._process_powerpoint(file_path)
-            else:
-                raise ProcessingError(f"Unsupported file type: {file_path.suffix}")
-            
-            # Generate content using sections
-            content_parts = []
-            
-            # Add summary
-            content_parts.append(f"Document containing {len(sections)} sections.\n")
-            
-            # Add sections using MarkdownWriter
-            for section in sections:
-                content_parts.append(
-                    self.markdown_writer.write_section(
-                        title=section.title,
-                        content=section.content,
-                        level=section.level
-                    )
-                )
-            
-            # Combine all content
-            content = "\n".join(content_parts)
+            # Format content with code block
+            content = f"Document content from {file_path.name}\n\n```\n{text}\n```"
             
             # Update metadata
             metadata.title = file_path.stem
-            metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['section_count'] = len(sections)
             metadata.processed = True
+            metadata['text'] = text
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
@@ -141,14 +110,13 @@ class DocumentHandler(BaseHandler):
                 content=content,
                 metadata=metadata.metadata,
                 file_path=file_path,
-                output_path=markdown_path
+                output_path=output_path
             )
             
             # Write the file
-            with open(markdown_path, 'w', encoding='utf-8') as f:
-                f.write(markdown_content)
+            self._safe_write_file(output_path, markdown_content)
             
-            metadata.add_output_file(markdown_path)
+            metadata.add_output_file(output_path)
             
             # Save metadata using relative path
             self._save_metadata(file_path, relative_path, metadata)
@@ -156,7 +124,11 @@ class DocumentHandler(BaseHandler):
             return metadata
             
         except Exception as e:
-            raise ProcessingError(f"Failed to process document {file_path}: {str(e)}") from e
+            error_msg = f"Failed to process document {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            metadata.add_error(self.name, error_msg)
+            metadata.processed = False
+            return metadata
     
     async def _process_pdf(self, file_path: Path) -> List[DocumentSection]:
         """Process PDF file.
@@ -418,3 +390,81 @@ class DocumentHandler(BaseHandler):
             
         except Exception as e:
             raise ProcessingError(f"Failed to process PowerPoint: {str(e)}") from e 
+    
+    async def _process_content(self, file_path: Path) -> str:
+        """Process document content.
+        
+        Args:
+            file_path: Path to document file.
+            
+        Returns:
+            Extracted text content.
+            
+        Raises:
+            ProcessingError: If document processing fails.
+        """
+        try:
+            # Read document file
+            text = await self._read_document(file_path)
+            
+            # Return extracted text
+            return text
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to process document {file_path}: {str(e)}") from e
+            
+    async def _read_document(self, file_path: Path) -> str:
+        """Read document file.
+        
+        Args:
+            file_path: Path to document file.
+            
+        Returns:
+            Document text content.
+            
+        Raises:
+            ProcessingError: If document reading fails.
+        """
+        try:
+            # Get file extension
+            ext = file_path.suffix.lower()
+            
+            # Extract text based on file type
+            if ext == '.pdf':
+                # Use PyPDF2 for PDFs
+                with open(file_path, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    text = '\n\n'.join(page.extract_text() for page in reader.pages)
+                    
+            elif ext in ['.doc', '.docx']:
+                # Use python-docx for Word documents
+                doc = docx.Document(file_path)
+                text = '\n\n'.join(paragraph.text for paragraph in doc.paragraphs)
+                
+            elif ext in ['.rtf', '.odt']:
+                # Use pandoc for RTF/ODT
+                text = pypandoc.convert_file(
+                    str(file_path),
+                    'plain',
+                    format=ext.lstrip('.')
+                )
+                
+            elif ext == '.pptx':
+                # Use python-pptx for PowerPoint
+                prs = Presentation(file_path)
+                slides_text = []
+                for slide in prs.slides:
+                    slide_text = []
+                    for shape in slide.shapes:
+                        if shape.has_text_frame:
+                            slide_text.append(shape.text)
+                    slides_text.append('\n'.join(slide_text))
+                text = '\n\n'.join(slides_text)
+                
+            else:
+                raise ProcessingError(f"Unsupported file type: {ext}")
+            
+            return text
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to read file {file_path}: {str(e)}") from e 

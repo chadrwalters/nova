@@ -50,7 +50,8 @@ class TextHandler(BaseHandler):
             )
             
             # Read text file
-            text = await self._process_content(file_path)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                text = f.read()
             
             # Format content with code block
             content = f"Text content from {file_path.stem}\n\n```\n{text}\n```"
