@@ -27,16 +27,6 @@ class ParsePhase(Phase):
         super().__init__(pipeline)
         self.handler_registry = HandlerRegistry(pipeline.config)
         
-        # Initialize state
-        self.pipeline.state['parse'] = {
-            'successful_files': set(),
-            'failed_files': set(),
-            'skipped_files': set(),
-            'unchanged_files': set(),
-            'reprocessed_files': set(),
-            'file_type_stats': {}
-        }
-        
         # Set up debug logging
         self.logger.setLevel(logging.DEBUG)
 
@@ -68,13 +58,32 @@ class ParsePhase(Phase):
             self.logger.error(f"Failed to save metadata for {file_path}: {str(e)}")
             raise
 
+    def _track_attachment(self, file_path: Path, parent_dir: str) -> None:
+        """Track an attachment in the pipeline state.
+        
+        Args:
+            file_path: Path to the attachment file
+            parent_dir: Parent directory name
+        """
+        if parent_dir not in self.pipeline.state['parse']['attachments']:
+            self.pipeline.state['parse']['attachments'][parent_dir] = []
+            
+        # Create attachment info
+        attachment = {
+            'path': str(file_path),
+            'id': file_path.name,
+            'content': None  # Content will be read in split phase
+        }
+        
+        self.pipeline.state['parse']['attachments'][parent_dir].append(attachment)
+
     async def process_impl(
         self,
         file_path: Path,
         output_dir: Path,
         metadata: Optional[FileMetadata] = None
     ) -> Optional[FileMetadata]:
-        """Process a file through the parse phase.
+        """Process a file in the parse phase.
         
         Args:
             file_path: Path to file to process
@@ -82,28 +91,39 @@ class ParsePhase(Phase):
             metadata: Optional metadata from previous phase
             
         Returns:
-            Document metadata if successful, None otherwise
+            Metadata about processed file, or None if file was skipped
         """
         try:
-            self.logger.debug(f"Starting to process file: {file_path}")
-            
-            # Initialize metadata if not provided
-            if metadata is None:
-                metadata = FileMetadata(file_path)
-                self.logger.debug(f"Created new metadata for {file_path}")
-            
             # Get handler for file
             handler = self.handler_registry.get_handler(file_path)
             if handler is None:
-                self.logger.warning(f"No handler found for file type: {file_path.suffix}")
+                self.logger.warning(f"No handler found for {file_path}")
                 self.pipeline.state['parse']['skipped_files'].add(file_path)
                 self._update_file_stats(file_path, 'skipped')
                 return None
+                
+            # Check if this is an attachment (file in a subdirectory)
+            if len(file_path.relative_to(self.pipeline.config.input_dir).parts) > 1:
+                parent_dir = file_path.parent.name
+                self._track_attachment(file_path, parent_dir)
+                
+            # Initialize metadata if not provided
+            if metadata is None:
+                metadata = FileMetadata.from_file(
+                    file_path=file_path,
+                    handler_name=handler.name,
+                    handler_version=handler.version
+                )
             
-            self.logger.debug(f"Using handler {handler.name} for {file_path}")
-            
-            # Process file
-            metadata = await handler.process_impl(file_path, output_dir, metadata)
+            # Process file with handler
+            try:
+                metadata = await handler.process_impl(file_path, metadata)
+            except Exception as e:
+                self.logger.error(f"Handler failed to process {file_path}: {str(e)}")
+                if metadata:
+                    metadata.add_error(handler.name, str(e))
+                    metadata.processed = False
+                return metadata
             
             # Update pipeline state and stats
             if metadata is None:

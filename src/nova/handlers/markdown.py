@@ -89,22 +89,27 @@ class MarkdownHandler(BaseHandler):
     async def process_impl(
         self,
         file_path: Path,
-        output_dir: Path,
-        metadata: Optional[DocumentMetadata] = None,
+        metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a markdown file.
         
         Args:
             file_path: Path to markdown file.
-            output_dir: Directory to write output files to.
-            metadata: Optional document metadata.
+            metadata: Document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Create output path
-            output_path = output_dir / f"{file_path.stem}.parsed.md"
+            # Get relative path from input directory
+            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            
+            # Get output path using relative path
+            output_path = self.output_manager.get_output_path_for_phase(
+                relative_path,
+                "parse",
+                ".parsed.md"
+            )
             
             # Read the file content
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -114,8 +119,6 @@ class MarkdownHandler(BaseHandler):
             updated_content = self._update_links(content)
             
             # Update metadata
-            if metadata is None:
-                metadata = DocumentMetadata(title=file_path.stem)
             metadata.title = file_path.stem
             metadata.processed = True
             
@@ -128,7 +131,9 @@ class MarkdownHandler(BaseHandler):
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
                 content=updated_content,
-                metadata=metadata.metadata
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
             )
             
             self.logger.debug(f"Generated markdown content length: {len(markdown_content)}")
@@ -144,9 +149,8 @@ class MarkdownHandler(BaseHandler):
             
             metadata.add_output_file(output_path)
             
-            # Save metadata
-            metadata_path = output_dir / f"{file_path.stem}.metadata.json"
-            metadata.save(metadata_path)
+            # Save metadata using relative path
+            self._save_metadata(file_path, relative_path, metadata)
             
             return metadata
             

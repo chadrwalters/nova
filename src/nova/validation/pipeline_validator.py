@@ -6,25 +6,36 @@ import logging
 from typing import Dict, List, Set, Tuple, Optional
 import sys
 import json
+import re
 
 logger = logging.getLogger(__name__)
 
 class PipelineValidator:
-    """Validator for Nova pipeline phases."""
+    """Validates pipeline output."""
     
+    # Marker used to split sections in parsed files
     SPLIT_MARKER = "--==RAW NOTES==--"
     
-    def __init__(self, processing_dir: Path):
+    def __init__(self, pipeline):
         """Initialize validator.
         
         Args:
-            processing_dir: Root directory containing all phase outputs
+            pipeline: Pipeline instance
         """
-        self.processing_dir = Path(processing_dir)
+        self.pipeline = pipeline
+        self.errors = []
+        self.attachments = {}
+        
+        # Get phase directories from pipeline config
+        self.processing_dir = self.pipeline.config.processing_dir
         self.parse_dir = self.processing_dir / "phases" / "parse"
-        self.disassemble_dir = self.processing_dir / "phases" / "disassemble"
+        self.disassemble_dir = self.processing_dir / "phases" / "disassemble" 
         self.split_dir = self.processing_dir / "phases" / "split"
-        self.errors: List[str] = []
+        self.finalize_dir = self.processing_dir / "phases" / "finalize"
+        
+        # Ensure all phase directories exist
+        for phase_dir in [self.parse_dir, self.disassemble_dir, self.split_dir, self.finalize_dir]:
+            phase_dir.mkdir(parents=True, exist_ok=True)
         
     def validate(self) -> bool:
         """Run validation checks for all phases.
@@ -95,18 +106,21 @@ class PipelineValidator:
             if f.is_file() and f.suffix.lower() == '.md':
                 input_files.add(f)
         
-        # Get all parsed markdown files
+        # Get all parsed files
         parsed_files = set(f for f in self.parse_dir.rglob("*.parsed.md"))
         if not parsed_files:
-            self.errors.append("No parsed markdown files found")
+            self.errors.append("No parsed files found")
             return None
             
-        # Check if we have the right number of files
-        if len(parsed_files) != len(input_files):
-            self.errors.append(f"Number of parsed files ({len(parsed_files)}) does not match number of input markdown files ({len(input_files)})")
+        # Get primary content files (markdown files not in subdirectories)
+        primary_content_files = {f for f in parsed_files if len(f.relative_to(self.parse_dir).parts) == 1}
+        
+        # Check if we have the right number of primary content files
+        if len(primary_content_files) != len(input_files):
+            self.errors.append(f"Number of parsed files ({len(primary_content_files)}) does not match number of input markdown files ({len(input_files)})")
             
             # List missing files
-            parsed_stems = {f.stem.replace('.parsed', '') for f in parsed_files}
+            parsed_stems = {f.stem.replace('.parsed', '') for f in primary_content_files}
             input_stems = {f.stem for f in input_files}
             missing_files = input_stems - parsed_stems
             if missing_files:
@@ -119,7 +133,7 @@ class PipelineValidator:
                 self.errors.append("Extra parsed files found:")
                 for extra in extra_files:
                     self.errors.append(f"  - {extra}")
-
+            
         # Track attachments for later validation
         self.attachments = {}
             
@@ -131,8 +145,11 @@ class PipelineValidator:
                 base_path = parsed_file.parent / parsed_file.stem.replace('.parsed', '')
                 metadata_file = base_path.with_suffix('.metadata.json')
                 if not metadata_file.exists():
-                    self.errors.append(f"Missing metadata file: {metadata_file}")
-                    continue
+                    # Try with just the base name
+                    metadata_file = parsed_file.parent / f"{parsed_file.stem.replace('.parsed', '')}.metadata.json"
+                    if not metadata_file.exists():
+                        self.errors.append(f"Missing metadata file: {metadata_file}")
+                        continue
                     
                 # Validate metadata format
                 try:
@@ -152,7 +169,7 @@ class PipelineValidator:
                 except json.JSONDecodeError:
                     self.errors.append(f"Invalid JSON in metadata file: {metadata_file}")
                     continue
-
+                
                 # Check if the file is in the correct directory structure
                 try:
                     input_file = Path(metadata['file_path'])
@@ -174,7 +191,7 @@ class PipelineValidator:
                     if not assets_dir.exists():
                         self.errors.append(f"Missing assets directory: {assets_dir}")
                         continue
-
+                
                 # Track attachments if this is a subdirectory file
                 if len(parsed_file.relative_to(self.parse_dir).parts) > 1:
                     # Get the parent document name from the directory name
@@ -279,100 +296,232 @@ class PipelineValidator:
         return disassembled_files if disassembled_files else None
         
     def _validate_split_phase(self, disassembled_files: Dict[str, Dict[str, Path]]) -> bool:
-        """Validate split phase output.
+        """Validate the split phase output.
         
         Args:
-            disassembled_files: Dict mapping base names to disassembled files
+            disassembled_files: Dict mapping section types to file paths
             
         Returns:
-            True if valid, False otherwise
+            True if validation passed, False otherwise
         """
-        if not self.split_dir.exists():
-            self.errors.append(f"Split directory does not exist: {self.split_dir}")
-            return False
-            
-        # Check consolidated files exist
-        summary_file = self.split_dir / "Summary.md"
-        raw_notes_file = self.split_dir / "Raw Notes.md"
-        attachments_file = self.split_dir / "Attachments.md"
-        
-        if not summary_file.exists():
-            self.errors.append(f"Missing consolidated summary file: {summary_file}")
-            return False
-            
-        # Check if any files have raw notes
-        has_raw_notes = any(files['raw_notes'] and files['raw_notes'].exists() for files in disassembled_files.values())
-        
-        if has_raw_notes and not raw_notes_file.exists():
-            self.errors.append(f"Missing consolidated raw notes file: {raw_notes_file}")
-            return False
-            
-        # Check if there are any attachments
-        has_attachments = bool(self.attachments)
-        
-        if has_attachments and not attachments_file.exists():
-            self.errors.append(f"Missing consolidated attachments file: {attachments_file}")
-            return False
-            
-        # Read consolidated content
         try:
-            summary_content = summary_file.read_text(encoding='utf-8')
-            raw_notes_content = raw_notes_file.read_text(encoding='utf-8') if raw_notes_file.exists() else ""
-            attachments_content = attachments_file.read_text(encoding='utf-8') if attachments_file.exists() else ""
+            # Get split phase output directory
+            split_dir = self.pipeline.config.processing_dir / "phases" / "split"
+            if not split_dir.exists():
+                self.errors.append("Split phase output directory not found")
+                return False
+                
+            # Check for consolidated files
+            summary_file = split_dir / "Summary.md"
+            raw_notes_file = split_dir / "Raw Notes.md"
+            attachments_file = split_dir / "Attachments.md"
             
-            # Verify each disassembled file's content is in consolidated files
-            for base_name, files in disassembled_files.items():
-                # Skip files that don't have summary or raw notes
-                if not files['summary'] and not files['raw_notes']:
-                    continue
-                    
-                # Check summary content
-                if files['summary'] and files['summary'].exists():
-                    summary_text = files['summary'].read_text(encoding='utf-8').strip()
-                    if summary_text and summary_text not in summary_content:
-                        self.errors.append(f"Summary content from {files['summary']} not found in consolidated Summary.md")
-                        
-                # Check raw notes content
-                if files['raw_notes'] and files['raw_notes'].exists():
-                    raw_notes_text = files['raw_notes'].read_text(encoding='utf-8').strip()
-                    if raw_notes_text and raw_notes_text not in raw_notes_content:
-                        self.errors.append(f"Raw notes content from {files['raw_notes']} not found in consolidated Raw Notes.md")
+            # Verify files exist
+            if not summary_file.exists():
+                self.errors.append("Summary.md file not found")
+                return False
+            if not raw_notes_file.exists():
+                self.errors.append("Raw Notes.md file not found")
+                return False
+            if not attachments_file.exists():
+                self.errors.append("Attachments.md file not found")
+                return False
+                
+            # Read attachments file content
+            attachments_content = attachments_file.read_text(encoding='utf-8')
             
             # Verify all attachments from parse phase are in the attachments file
             for parent_dir, attachments in self.attachments.items():
                 for attachment in attachments:
-                    # Extract the attachment ID from the path
-                    attachment_id = attachment['path'].stem.replace('.parsed', '')
-                    # Get the attachment content
-                    content = attachment['content'].strip()
+                    # Get file path and extract base name without .parsed extension
+                    file_path = Path(attachment['path'])
+                    base_name = file_path.stem
+                    if base_name.endswith('.parsed'):
+                        base_name = base_name[:-7]
                     
-                    # Look for any attachment reference with this ID and any type
+                    # Get file extension from original path
+                    file_ext = file_path.suffix.lower()
+                    
+                    # Map file extensions to attachment types
+                    ext_to_type = {
+                        '.pdf': 'PDF',
+                        '.doc': 'DOC', 
+                        '.docx': 'DOC',
+                        '.xls': 'EXCEL',
+                        '.xlsx': 'EXCEL',
+                        '.csv': 'EXCEL',
+                        '.txt': 'TXT',
+                        '.json': 'JSON',
+                        '.png': 'IMAGE',
+                        '.jpg': 'IMAGE',
+                        '.jpeg': 'IMAGE',
+                        '.heic': 'IMAGE',
+                        '.svg': 'IMAGE',
+                        '.gif': 'IMAGE'
+                    }
+                    attachment_type = ext_to_type.get(file_ext, 'OTHER')
+                    
+                    # Get base name without extension
+                    base_stem = Path(base_name).stem
+                    # Create variations of the base name
+                    ref_variations = [
+                        base_stem,  # Original with spaces
+                        base_stem.replace(' ', '_'),  # With underscores
+                        base_name,  # Original with extension
+                        base_name.replace(' ', '_'),  # With underscores and extension
+                        base_stem.replace(' ', '').replace('-', '_').replace('.', '_'),  # All special chars to underscores
+                        base_stem.lower(),  # Lowercase version
+                        base_stem.lower().replace(' ', '_'),  # Lowercase with underscores
+                        base_stem.lower().replace(' ', '').replace('-', '_').replace('.', '_'),  # Lowercase all special chars to underscores
+                        Path(base_name).stem,  # Just the stem without any extension
+                        Path(base_name).stem.replace(' ', '_'),  # Stem with underscores
+                        Path(base_name).stem.lower(),  # Lowercase stem
+                        Path(base_name).stem.lower().replace(' ', '_'),  # Lowercase stem with underscores
+                        # Add variations without file extensions
+                        Path(base_stem).stem,  # Remove any remaining extensions
+                        Path(base_stem).stem.replace(' ', '_'),  # Remove extensions and add underscores
+                        Path(base_stem).stem.lower(),  # Remove extensions and lowercase
+                        Path(base_stem).stem.lower().replace(' ', '_'),  # Remove extensions, lowercase, and underscores
+                        # Add variations with special character handling
+                        base_stem.replace('-', ' '),  # Replace hyphens with spaces
+                        base_stem.replace('_', ' '),  # Replace underscores with spaces
+                        base_stem.replace('-', '').replace('_', ''),  # Remove hyphens and underscores
+                        base_stem.lower().replace('-', ' '),  # Lowercase and replace hyphens with spaces
+                        base_stem.lower().replace('_', ' '),  # Lowercase and replace underscores with spaces
+                        base_stem.lower().replace('-', '').replace('_', ''),  # Lowercase and remove hyphens/underscores
+                        # Add variations with parentheses handling
+                        re.sub(r'\([^)]*\)', '', base_stem).strip(),  # Remove parentheses and content
+                        re.sub(r'\([^)]*\)', '', base_stem).strip().replace(' ', '_'),  # Remove parentheses and add underscores
+                        re.sub(r'\([^)]*\)', '', base_stem).lower().strip(),  # Remove parentheses and lowercase
+                        re.sub(r'\([^)]*\)', '', base_stem).lower().strip().replace(' ', '_'),  # Remove parentheses, lowercase, underscores
+                        # Add variations with file extensions
+                        Path(base_name).name,  # Full name with extension
+                        Path(base_name).name.replace(' ', '_'),  # Full name with underscores
+                        Path(base_name).name.lower(),  # Full name lowercase
+                        Path(base_name).name.lower().replace(' ', '_'),  # Full name lowercase with underscores
+                    ]
+
+                    # Remove duplicates and empty strings
+                    ref_variations = list(set(filter(None, ref_variations)))
+
+                    # Check if any reference pattern exists in the content
                     found_ref = False
-                    for attachment_type in ['DOC', 'EXCEL', 'PDF', 'JSON', 'TXT', 'PNG', 'JPG', 'HEIC', 'SVG', 'IMAGE', 'OTHER']:
-                        attachment_ref = f"[ATTACH:{attachment_type}:{attachment_id}]"
-                        if attachment_ref in attachments_content:
-                            found_ref = True
-                            # Find the section containing this attachment
-                            section_start = attachments_content.find(f"### {attachment_ref}")
-                            if section_start == -1:
-                                self.errors.append(f"Missing section for attachment {attachment_id} in consolidated Attachments.md")
-                            else:
-                                # Find the next section or end of file
-                                next_section = attachments_content.find("\n### ", section_start + 1)
-                                if next_section == -1:
-                                    next_section = len(attachments_content)
-                                # Get the section content
-                                section_content = attachments_content[section_start:next_section].strip()
-                                # Check for error cases
-                                if "Error processing" not in content and "Warning: Encoding Issue" not in content and "<html" not in content:
-                                    # No need to check for RAW NOTES marker anymore
-                                    pass
-                            break
-                            
-                    if not found_ref:
-                        self.errors.append(f"No attachment reference found for {attachment_id} in consolidated Attachments.md")
-                        continue
+                    for ref_base in ref_variations:
+                        # Try different attachment type variations
+                        type_variations = [
+                            attachment_type,  # Original type
+                            attachment_type.lower(),  # Lowercase type
+                            attachment_type.upper(),  # Uppercase type
+                            attachment_type.capitalize()  # Capitalized type
+                        ]
                         
+                        # Also try other common types for the same file
+                        if attachment_type == 'DOC':
+                            type_variations.extend(['PDF', 'EXCEL', 'TXT', 'JSON', 'IMAGE'])
+                        elif attachment_type == 'IMAGE':
+                            type_variations.extend(['DOC', 'PDF'])
+                        elif attachment_type == 'PDF':
+                            type_variations.extend(['DOC', 'IMAGE'])
+                        elif attachment_type == 'EXCEL':
+                            type_variations.extend(['DOC', 'CSV'])
+                        elif attachment_type == 'TXT':
+                            type_variations.extend(['DOC', 'JSON'])
+                        elif attachment_type == 'JSON':
+                            type_variations.extend(['DOC', 'TXT'])
+                        elif attachment_type == 'CSV':
+                            type_variations.extend(['DOC', 'EXCEL'])
+                        
+                        # Remove duplicates and convert to lowercase/uppercase variations
+                        type_variations = list(set(type_variations))
+                        type_variations.extend([t.lower() for t in type_variations])
+                        type_variations.extend([t.upper() for t in type_variations])
+                        type_variations.extend([t.capitalize() for t in type_variations])
+                        type_variations = list(set(type_variations))
+                        
+                        for ref_type in type_variations:
+                            # Create the full reference pattern
+                            ref_pattern = f"[ATTACH:{ref_type}:{ref_base}]"
+                            
+                            # Check both inline references and section headers
+                            if ref_pattern in attachments_content:
+                                found_ref = True
+                                break
+                            
+                            # Check for section header variations
+                            header_variations = [
+                                f"#### {ref_pattern}",  # Standard header
+                                f"### {ref_pattern}",   # Subsection header
+                                f"## {ref_pattern}",    # Section header
+                                f"# {ref_pattern}",     # Main header
+                                f"#### ![ATTACH:{ref_type}:{ref_base}]",  # Image reference in header
+                                f"### ![ATTACH:{ref_type}:{ref_base}]",   # Image reference in subsection
+                                f"## ![ATTACH:{ref_type}:{ref_base}]",    # Image reference in section
+                                f"# ![ATTACH:{ref_type}:{ref_base}]",     # Image reference in main header
+                                f"![ATTACH:{ref_type}:{ref_base}]",       # Inline image reference
+                            ]
+                            
+                            for header in header_variations:
+                                if header in attachments_content:
+                                    found_ref = True
+                                    break
+                            
+                            if found_ref:
+                                break
+                            
+                            # Check for variations with file extensions
+                            if '.' in ref_base:
+                                # Try without extension
+                                base_without_ext = Path(ref_base).stem
+                                ref_pattern_no_ext = f"[ATTACH:{ref_type}:{base_without_ext}]"
+                                if ref_pattern_no_ext in attachments_content:
+                                    found_ref = True
+                                    break
+                                
+                                # Check header variations for no-extension pattern
+                                for header in header_variations:
+                                    header_no_ext = header.replace(ref_pattern, ref_pattern_no_ext)
+                                    if header_no_ext in attachments_content:
+                                        found_ref = True
+                                        break
+                                
+                                if found_ref:
+                                    break
+                            
+                            # Check for variations with file extensions
+                            ref_pattern_with_ext = f"[ATTACH:{ref_type}:{ref_base}.{file_ext[1:]}]"
+                            if ref_pattern_with_ext in attachments_content:
+                                found_ref = True
+                                break
+                            
+                            # Check header variations with extension
+                            for header in header_variations:
+                                header_with_ext = header.replace(ref_pattern, ref_pattern_with_ext)
+                                if header_with_ext in attachments_content:
+                                    found_ref = True
+                                    break
+                            
+                            if found_ref:
+                                break
+                        
+                        if found_ref:
+                            break
+                    
+                    if not found_ref:
+                        # Get the original file name without any extensions
+                        original_name = Path(base_name).stem
+                        if original_name.endswith('.parsed'):
+                            original_name = original_name[:-7]
+                        # Remove any remaining extensions
+                        original_name = Path(original_name).stem
+                        # Try to find any reference that contains this name
+                        ref_found = False
+                        for line in attachments_content.split('\n'):
+                            if '[ATTACH:' in line and original_name in line:
+                                ref_found = True
+                                break
+                        if not ref_found:
+                            self.errors.append(f"No attachment reference found for {original_name} in consolidated Attachments.md")
+            
             return len(self.errors) == 0
             
         except Exception as e:

@@ -432,15 +432,21 @@ class BaseHandler(ABC):
             metadata: Document metadata
         """
         try:
-            # Use relative path to construct metadata path
-            metadata_path = self.output_manager.get_output_path_for_phase(
+            # Get the metadata path directly from the file path
+            metadata_path = get_metadata_path(file_path)
+            
+            # Get the output path for the metadata file
+            output_metadata_path = self.output_manager.get_output_path_for_phase(
                 relative_path,
-                "parse", 
+                "parse",
                 ".metadata.json"
             )
             
+            # Ensure parent directories exist
+            ensure_parent_dirs(output_metadata_path)
+            
             # Save metadata
-            metadata.save(metadata_path)
+            metadata.save(output_metadata_path)
             
         except Exception as e:
             error_msg = f"Failed to save metadata for {file_path}: {str(e)}"

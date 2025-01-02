@@ -23,6 +23,7 @@ import logging
 from dataclasses import dataclass
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from datetime import datetime
 
 from ..models.document import DocumentMetadata
 from .base import BaseHandler, ProcessingError, ValidationError
@@ -99,10 +100,19 @@ class DocumentHandler(BaseHandler):
             # Format content with code block
             content = f"Document content from {file_path.name}\n\n```\n{text}\n```"
             
+            # Initialize metadata if needed
+            if metadata.metadata is None:
+                metadata.metadata = {}
+            
             # Update metadata
-            metadata.title = file_path.stem
+            metadata.title = file_path.name  # Use full file name instead of just stem
             metadata.processed = True
-            metadata['text'] = text
+            metadata.metadata.update({
+                'text': text,
+                'source_file': str(file_path),
+                'file_type': file_path.suffix.lstrip('.').upper(),
+                'date': datetime.now().strftime('%Y-%m-%d')
+            })
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
@@ -118,7 +128,7 @@ class DocumentHandler(BaseHandler):
             
             metadata.add_output_file(output_path)
             
-            # Save metadata using relative path
+            # Save metadata using base handler method
             self._save_metadata(file_path, relative_path, metadata)
             
             return metadata
@@ -126,8 +136,9 @@ class DocumentHandler(BaseHandler):
         except Exception as e:
             error_msg = f"Failed to process document {file_path}: {str(e)}"
             self.logger.error(error_msg)
-            metadata.add_error(self.name, error_msg)
-            metadata.processed = False
+            if metadata:
+                metadata.add_error(self.name, error_msg)
+                metadata.processed = False
             return metadata
     
     async def _process_pdf(self, file_path: Path) -> List[DocumentSection]:
