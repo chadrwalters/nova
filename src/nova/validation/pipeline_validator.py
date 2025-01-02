@@ -79,11 +79,39 @@ class PipelineValidator:
             self.errors.append(f"Parse directory does not exist: {self.parse_dir}")
             return None
             
+        # Get all input files
+        input_dir = Path(self.processing_dir).parent / "_NovaInput"
+        if not input_dir.exists():
+            self.errors.append(f"Input directory does not exist: {input_dir}")
+            return None
+            
+        # Get all input files (excluding hidden files)
+        input_files = set(f for f in input_dir.rglob("*") if f.is_file() and not f.name.startswith('.'))
+        
         # Get all parsed markdown files
         parsed_files = set(f for f in self.parse_dir.rglob("*.parsed.md"))
         if not parsed_files:
             self.errors.append("No parsed markdown files found")
             return None
+            
+        # Check if we have the right number of files
+        if len(parsed_files) != len(input_files):
+            self.errors.append(f"Number of parsed files ({len(parsed_files)}) does not match number of input files ({len(input_files)})")
+            
+            # List missing files
+            parsed_stems = {f.stem.replace('.parsed', '') for f in parsed_files}
+            input_stems = {f.stem for f in input_files}
+            missing_files = input_stems - parsed_stems
+            if missing_files:
+                self.errors.append("Missing parsed files for:")
+                for missing in missing_files:
+                    self.errors.append(f"  - {missing}")
+            
+            extra_files = parsed_stems - input_stems
+            if extra_files:
+                self.errors.append("Extra parsed files found:")
+                for extra in extra_files:
+                    self.errors.append(f"  - {extra}")
             
         # Track attachments for later validation
         self.attachments = {}
@@ -106,8 +134,31 @@ class PipelineValidator:
                     if not isinstance(metadata, dict):
                         self.errors.append(f"Invalid metadata format in {metadata_file}")
                         continue
+                        
+                    # Check if the metadata has the required fields
+                    required_fields = ['file_path', 'handler_name', 'handler_version', 'processed']
+                    missing_fields = [f for f in required_fields if f not in metadata]
+                    if missing_fields:
+                        self.errors.append(f"Missing required fields in {metadata_file}: {', '.join(missing_fields)}")
+                        continue
+                        
                 except json.JSONDecodeError:
                     self.errors.append(f"Invalid JSON in metadata file: {metadata_file}")
+                    continue
+                    
+                # Check if the file is in the correct directory structure
+                try:
+                    input_file = Path(metadata['file_path'])
+                    expected_rel_path = input_file.relative_to(input_dir)
+                    actual_rel_path = parsed_file.relative_to(self.parse_dir)
+                    
+                    # The paths should match except for the .parsed.md extension
+                    expected_path = self.parse_dir / expected_rel_path.parent / f"{expected_rel_path.stem}.parsed.md"
+                    if parsed_file != expected_path:
+                        self.errors.append(f"File {parsed_file} is in the wrong location. Should be at {expected_path}")
+                        continue
+                except ValueError:
+                    self.errors.append(f"File {parsed_file} is not in the correct directory structure")
                     continue
                     
                 # Check if assets directory exists if referenced in metadata
@@ -242,19 +293,25 @@ class PipelineValidator:
             self.errors.append(f"Missing consolidated summary file: {summary_file}")
             return False
             
-        if not raw_notes_file.exists():
+        # Check if any files have raw notes
+        has_raw_notes = any(files['raw_notes'] and files['raw_notes'].exists() for files in disassembled_files.values())
+        
+        if has_raw_notes and not raw_notes_file.exists():
             self.errors.append(f"Missing consolidated raw notes file: {raw_notes_file}")
             return False
             
-        if not attachments_file.exists():
+        # Check if there are any attachments
+        has_attachments = bool(self.attachments)
+        
+        if has_attachments and not attachments_file.exists():
             self.errors.append(f"Missing consolidated attachments file: {attachments_file}")
             return False
             
         # Read consolidated content
         try:
             summary_content = summary_file.read_text(encoding='utf-8')
-            raw_notes_content = raw_notes_file.read_text(encoding='utf-8')
-            attachments_content = attachments_file.read_text(encoding='utf-8')
+            raw_notes_content = raw_notes_file.read_text(encoding='utf-8') if raw_notes_file.exists() else ""
+            attachments_content = attachments_file.read_text(encoding='utf-8') if attachments_file.exists() else ""
             
             # Verify each disassembled file's content is in consolidated files
             for base_name, files in disassembled_files.items():

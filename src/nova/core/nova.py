@@ -32,6 +32,7 @@ class Nova:
         self.config = ConfigManager(config_path, create_dirs)
         self.logger = self._setup_logger()
         self.pipeline = NovaPipeline(config=self.config)
+        self.output_manager = self.pipeline.output_manager
     
     def _setup_logger(self) -> logging.Logger:
         """Set up logging for Nova system.
@@ -79,13 +80,15 @@ class Nova:
             output_dir: Output directory.
         """
         try:
-            # Get relative path from input dir to maintain directory structure
-            rel_path = Path(metadata['file_path']).relative_to(self.config.input_dir)
-            metadata_dir = output_dir / rel_path.parent
-            metadata_dir.mkdir(parents=True, exist_ok=True)
+            # Get metadata file path using OutputManager
+            file_path = Path(metadata['file_path'])
+            metadata_file = self.output_manager.get_output_path_for_phase(
+                file_path,
+                "parse",
+                ".metadata.json"
+            )
             
             # Save metadata
-            metadata_file = metadata_dir / f"{rel_path.stem}_metadata.json"
             with open(metadata_file, "w", encoding='utf-8') as f:
                 json.dump(metadata, f, indent=2, default=str)
                 

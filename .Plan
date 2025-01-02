@@ -1,0 +1,99 @@
+# Nova Refactoring Plan
+Target: Implement new-architecture.md design
+Status: IN PROGRESS (65%)
+Current Focus: Reference Management & Path Handling
+
+## COMPLETED ✅
+1. Markdown Generation System
+   - ✅ MarkdownWriter implementation
+   - ✅ Template system
+   - ✅ Consistent output format
+   - ✅ Metadata handling
+
+2. Path Handling
+   - ✅ Path utilities module
+   - ✅ Special character support
+   - ✅ Subdirectory support
+   - ✅ Unicode/Cyrillic support
+   - ✅ Path normalization
+
+3. Initial Reference Management
+   - ✅ Core ReferenceManager implementation
+   - ✅ Basic reference extraction
+   - ✅ File type detection
+   - ✅ Date extraction
+   - ✅ Section tracking
+
+## IN PROGRESS 🚧
+Current Phase: Reference Management & Path Integration (90% complete)
+
+1. Reference Validation (In Progress)
+   - Working on: Path resolution relative to base directory
+   - Next: Support for relative paths
+   - Next: Circular reference detection
+   - Next: Reference chain validation
+
+2. Reference Features (Pending)
+   - Bulk updates
+   - Reference renaming
+   - Section movement
+   - Type conversion
+
+3. Error Handling (Pending)
+   - Structured error types
+   - Error categorization
+   - Recovery suggestions
+
+## REMAINING MAJOR MILESTONES 📋
+
+1. Logging System (March 28)
+   - LoggingManager implementation
+   - Standardized formats
+   - Error handling integration
+   Status: Not Started
+   Blocker: Current phase completion
+
+2. Image Processing (April 4)
+   - ImageConverter class
+   - HEIC/SVG support
+   - Vision API integration
+   Status: Not Started
+   Dependencies: Logging system
+
+3. Pipeline Optimization (April 11)
+   - ReprocessingManager
+   - Performance improvements
+   - Caching system
+   Status: Not Started
+   Dependencies: Image processing
+
+## CURRENT FOCUS 🎯
+1. Complete reference validation system
+2. Implement reference management features
+3. Integrate error handling
+4. Update remaining handlers
+
+## SUCCESS CRITERIA
+- [ ] All test files process successfully
+- [ ] All references resolve correctly
+- [ ] Performance targets met (5s processing time)
+- [ ] Code coverage > 90%
+- [ ] Matches new-architecture.md specifications
+
+## IMMEDIATE NEXT STEPS
+1. Finish reference path resolution
+2. Implement circular reference detection
+3. Add reference chain validation
+4. Begin error handling integration
+
+## RISKS & MITIGATION
+1. Reference Management: MEDIUM RISK
+   - ✅ Reference tracking done
+   - ✅ Basic validation done
+   - ⏳ Update mechanism in progress
+   - ⏳ Cleanup functionality pending
+   - ⏳ Resolution strategy pending
+
+2. Performance: MEDIUM RISK
+   - Will address in Pipeline Optimization phase
+   - Currently monitoring for issues

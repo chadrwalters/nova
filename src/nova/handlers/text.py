@@ -1,14 +1,8 @@
 """Text file handler."""
 
-import csv
-import io
 import os
-import re
-import chardet
 from pathlib import Path
 from typing import Dict, List, Optional, Union
-
-import pandas as pd
 
 from ..models.document import DocumentMetadata
 from .base import BaseHandler
@@ -20,7 +14,7 @@ class TextHandler(BaseHandler):
     
     name = "text"
     version = "0.1.0"
-    file_types = ["txt", "json", "xml"]
+    file_types = ["txt", "log", "env", "json", "yaml", "yml", "ini", "conf", "cfg"]
     
     def __init__(self, config: ConfigManager) -> None:
         """Initialize text handler.
@@ -29,47 +23,6 @@ class TextHandler(BaseHandler):
             config: Nova configuration manager.
         """
         super().__init__(config)
-    
-    async def _process_content(self, file_path: Path) -> str:
-        """Process text file content.
-        
-        Args:
-            file_path: Path to file.
-            
-        Returns:
-            Processed content.
-            
-        Raises:
-            UnicodeDecodeError: If file contains invalid UTF-8.
-        """
-        # Read file content
-        with open(file_path, 'rb') as f:
-            raw_content = f.read()
-            
-        # Try to decode as UTF-8
-        try:
-            content = raw_content.decode('utf-8')
-        except UnicodeDecodeError:
-            # Try to detect encoding
-            detected = chardet.detect(raw_content)
-            if detected['encoding'] is None:
-                raise UnicodeDecodeError(
-                    'utf-8', raw_content, 0, len(raw_content),
-                    'File contains invalid or binary data'
-                )
-            content = raw_content.decode(detected['encoding'])
-        
-        # Split into lines and remove trailing whitespace
-        lines = [line.rstrip() for line in content.splitlines()]
-        
-        # Remove empty lines at start and end
-        while lines and not lines[0].strip():
-            lines.pop(0)
-        while lines and not lines[-1].strip():
-            lines.pop()
-        
-        # Join lines back together
-        return "\n".join(lines) 
     
     async def process_impl(
         self,
@@ -86,9 +39,12 @@ class TextHandler(BaseHandler):
             Document metadata.
         """
         try:
-            # Get output path from output manager
-            markdown_path = self.output_manager.get_output_path_for_phase(
-                file_path,
+            # Get relative path from input directory
+            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            
+            # Get output path using relative path
+            output_path = self.output_manager.get_output_path_for_phase(
+                relative_path,
                 "parse",
                 ".parsed.md"
             )
@@ -96,23 +52,30 @@ class TextHandler(BaseHandler):
             # Read text file
             text = await self._process_content(file_path)
             
-            # Write markdown file with text content
-            content = f"""# {file_path.stem}
-
-Text content from {file_path.stem}
-
-```
-{text}
-```
-"""
-            # Write with UTF-8 encoding and replace any invalid characters
-            self._safe_write_file(markdown_path, content, encoding='utf-8')
+            # Format content with code block
+            content = f"Text content from {file_path.stem}\n\n```\n{text}\n```"
             
             # Update metadata
             metadata.title = file_path.stem
             metadata.processed = True
             metadata.metadata['text'] = text
-            metadata.output_files.add(markdown_path)
+            
+            # Write markdown using MarkdownWriter
+            markdown_content = self.markdown_writer.write_document(
+                title=metadata.title,
+                content=content,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
+            )
+            
+            # Write the file
+            self._safe_write_file(output_path, markdown_content)
+            
+            metadata.add_output_file(output_path)
+            
+            # Save metadata using relative path
+            self._save_metadata(file_path, relative_path, metadata)
             
             return metadata
             
@@ -121,4 +84,4 @@ Text content from {file_path.stem}
             self.logger.error(error_msg)
             metadata.add_error(self.name, error_msg)
             metadata.processed = False
-            return None 
+            return metadata 

@@ -191,3 +191,11 @@ class DocumentMetadata:
             List of validation error messages
         """
         return self.links.validate_links()
+    
+    def to_json(self) -> str:
+        """Convert metadata to JSON string.
+        
+        Returns:
+            JSON string representation of metadata.
+        """
+        return json.dumps(self.to_dict(), cls=NovaJSONEncoder, indent=2)

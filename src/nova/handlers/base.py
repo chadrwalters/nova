@@ -17,7 +17,15 @@ from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
 from ..cache.manager import CacheManager
 from ..utils.output_manager import OutputManager
-from nova.utils.file_utils import safe_write_file
+from ..core.markdown import MarkdownWriter
+from ..utils.file_utils import safe_write_file
+from ..utils.path_utils import (
+    get_safe_path,
+    get_metadata_path,
+    get_markdown_path,
+    ensure_parent_dirs,
+    get_relative_path
+)
 
 
 class HandlerError(Exception):
@@ -50,11 +58,7 @@ class ProcessingResult:
     status: ProcessingStatus
     metadata: Optional[DocumentMetadata]
     error: Optional[str] = None
-    warnings: List[str] = None
 
-    def __post_init__(self):
-        if self.warnings is None:
-            self.warnings = []
 
 class BaseHandler(ABC):
     """Base class for document handlers.
@@ -72,6 +76,7 @@ class BaseHandler(ABC):
         cache_manager (CacheManager): Cache manager
         output_manager (OutputManager): Output manager
         logger (logging.Logger): Logger instance
+        markdown_writer (MarkdownWriter): Markdown generation utility
     """
     
     name: str
@@ -89,6 +94,7 @@ class BaseHandler(ABC):
         self.cache_manager = CacheManager(config)
         self.output_manager = OutputManager(config)
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
+        self.markdown_writer = MarkdownWriter()
         self._processing_status = ProcessingStatus.NOT_STARTED
     
     def validate_file(self, file_path: Path) -> None:
@@ -132,22 +138,8 @@ class BaseHandler(ABC):
         if file_path is None:
             return ""
             
-        try:
-            # Convert to Path object if string
-            if isinstance(file_path, str):
-                file_path = Path(file_path)
-                
-            # Get absolute path
-            file_path = file_path.absolute()
-            
-            # Convert to string and handle Windows encoding
-            path_str = str(file_path)
-            return path_str.encode('cp1252', errors='replace').decode('cp1252')
-            
-        except Exception:
-            # If all else fails, use ASCII with replacement
-            return str(file_path).encode('ascii', errors='replace').decode('ascii')
-                
+        return str(get_safe_path(file_path))
+
     def _safe_read_file(self, file_path: Path, mode='r', encoding=None) -> Union[str, bytes]:
         """Safely read a file with proper encoding detection.
         
@@ -163,8 +155,8 @@ class BaseHandler(ABC):
             ProcessingError: If file cannot be read
         """
         try:
-            # Ensure we have an absolute path
-            file_path = file_path.absolute()
+            # Get safe path
+            file_path = get_safe_path(file_path)
             
             if 'b' in mode:
                 # Binary mode - return raw bytes
@@ -196,7 +188,7 @@ class BaseHandler(ABC):
                 
         except Exception as e:
             raise ProcessingError(f"Failed to read file {self._get_safe_path_str(file_path)}: {str(e)}") from e
-            
+
     def _safe_write_file(self, file_path: Path, content: str, encoding: str = 'utf-8') -> bool:
         """Write content to file only if it has changed.
         
@@ -208,6 +200,9 @@ class BaseHandler(ABC):
         Returns:
             True if file was written, False if unchanged.
         """
+        # Get safe path and ensure parent dirs exist
+        file_path = get_safe_path(file_path)
+        ensure_parent_dirs(file_path)
         return safe_write_file(file_path, content, encoding)
 
     def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
@@ -220,13 +215,7 @@ class BaseHandler(ABC):
         Returns:
             Relative path from from_path to to_path.
         """
-        # Get relative path from markdown file to original file
-        try:
-            rel_path = os.path.relpath(to_path, from_path.parent)
-            return rel_path.replace("\\", "/")  # Normalize path separators
-        except ValueError:
-            # If paths are on different drives, use absolute path
-            return str(to_path).replace("\\", "/")
+        return get_relative_path(from_path, to_path)
 
     def _write_markdown(self, markdown_path: Path, title: str, file_path: Path, content: str, **kwargs) -> bool:
         """Write markdown content to file.
@@ -242,23 +231,29 @@ class BaseHandler(ABC):
             True if file was written, False if unchanged
         """
         try:
-            # Get relative path from markdown to original
-            rel_path = self._get_relative_path(markdown_path, file_path)
+            # Get safe output path with .parsed.md extension
+            output_path = get_markdown_path(file_path, "parse")
             
-            markdown_content = f"""# {title}
-
-## Content
-
-{content}
-
-[Original File: {file_path.name}]({rel_path})
-"""
+            # Ensure parent directories exist
+            ensure_parent_dirs(output_path)
             
-            return self._safe_write_file(markdown_path, markdown_content)
+            # Get relative path from markdown file to original file
+            rel_path = self._get_relative_path(output_path, file_path)
+            
+            # Generate markdown content
+            markdown_content = self.markdown_writer.write_document(
+                title=title,
+                content=content,
+                source_path=rel_path,
+                **kwargs
+            )
+            
+            # Write file
+            return self._safe_write_file(output_path, markdown_content)
             
         except Exception as e:
-            self.logger.error(f"Failed to write markdown for {file_path}: {str(e)}")
-            raise
+            self.logger.error(f"Failed to write markdown file: {str(e)}")
+            return False
 
     async def _process_content(self, file_path: Path) -> str:
         """Process file content.
@@ -307,7 +302,7 @@ class BaseHandler(ABC):
             
         for key, value in kwargs.items():
             setattr(self.metadata, key, value)
-    
+
     async def process(
         self,
         file_path: Path,
@@ -371,7 +366,7 @@ class BaseHandler(ABC):
                     metadata=metadata,
                     error=str(e)
                 )
-                
+
         except Exception as e:
             self.logger.error(f"Unexpected error processing {file_path}: {str(e)}")
             return ProcessingResult(
@@ -400,12 +395,12 @@ class BaseHandler(ABC):
             metadata: Document metadata
             
         Returns:
-            Updated metadata, or None if processing failed
+            Updated metadata if successful, None otherwise
         """
-        raise NotImplementedError()
-
-    def supports_file(self, file_path: Union[str, Path]) -> bool:
-        """Check if handler supports given file.
+        pass
+    
+    def supports_file(self, file_path: Path) -> bool:
+        """Check if handler supports file type.
         
         Args:
             file_path: Path to file
@@ -413,7 +408,26 @@ class BaseHandler(ABC):
         Returns:
             True if file type is supported
         """
-        if isinstance(file_path, str):
-            file_path = Path(file_path)
-            
-        return file_path.suffix.lower().lstrip('.') in self.file_types 
+        return file_path.suffix.lstrip('.').lower() in self.file_types 
+
+    def _save_metadata(self, input_file: Path, relative_path: Path, metadata: DocumentMetadata) -> None:
+        """Save metadata to file.
+        
+        Args:
+            input_file: Original input file path
+            relative_path: Relative path from input directory
+            metadata: Document metadata
+        """
+        # Remove any .parsed suffix from the relative path
+        if relative_path.stem.endswith('.parsed'):
+            relative_path = relative_path.with_stem(relative_path.stem[:-7])
+        
+        # Get output path for metadata file using relative path
+        metadata_path = self.output_manager.get_output_path_for_phase(
+            relative_path,  # Use the relative path without .parsed suffix
+            "parse",
+            ".metadata.json"
+        )
+        
+        # Write metadata
+        self._safe_write_file(metadata_path, metadata.to_json()) 

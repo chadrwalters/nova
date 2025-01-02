@@ -41,11 +41,6 @@ class DocumentSection:
         if self.metadata is None:
             self.metadata = {}
 
-    def to_markdown(self) -> str:
-        """Convert section to markdown."""
-        header = "#" * self.level
-        return f"{header} {self.title}\n\n{self.content}\n"
-
 
 class DocumentHandler(BaseHandler):
     """Handler for document files.
@@ -80,9 +75,6 @@ class DocumentHandler(BaseHandler):
     ) -> Optional[DocumentMetadata]:
         """Process a document file.
         
-        Extracts text and structure from document files and converts
-        to Markdown format.
-        
         Args:
             file_path: Path to document file
             metadata: Document metadata
@@ -94,9 +86,12 @@ class DocumentHandler(BaseHandler):
             ProcessingError: If document processing fails
         """
         try:
-            # Get output path
+            # Get relative path from input directory
+            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            
+            # Get output path using relative path
             markdown_path = self.output_manager.get_output_path_for_phase(
-                file_path,
+                relative_path,
                 "parse",
                 ".parsed.md"
             )
@@ -115,44 +110,53 @@ class DocumentHandler(BaseHandler):
             else:
                 raise ProcessingError(f"Unsupported file type: {file_path.suffix}")
             
-            # Convert sections to markdown
-            content = self._sections_to_markdown(sections)
+            # Generate content using sections
+            content_parts = []
             
-            # Write markdown file
-            self._safe_write_file(markdown_path, content)
+            # Add summary
+            content_parts.append(f"Document containing {len(sections)} sections.\n")
+            
+            # Add sections using MarkdownWriter
+            for section in sections:
+                content_parts.append(
+                    self.markdown_writer.write_section(
+                        title=section.title,
+                        content=section.content,
+                        level=section.level
+                    )
+                )
+            
+            # Combine all content
+            content = "\n".join(content_parts)
             
             # Update metadata
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
             metadata.metadata['section_count'] = len(sections)
             metadata.processed = True
+            
+            # Write markdown using MarkdownWriter
+            markdown_content = self.markdown_writer.write_document(
+                title=metadata.title,
+                content=content,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=markdown_path
+            )
+            
+            # Write the file
+            with open(markdown_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_content)
+            
             metadata.add_output_file(markdown_path)
+            
+            # Save metadata using relative path
+            self._save_metadata(file_path, relative_path, metadata)
             
             return metadata
             
         except Exception as e:
             raise ProcessingError(f"Failed to process document {file_path}: {str(e)}") from e
-    
-    def _sections_to_markdown(self, sections: List[DocumentSection]) -> str:
-        """Convert sections to markdown format.
-        
-        Args:
-            sections: List of document sections
-            
-        Returns:
-            Markdown content
-        """
-        parts = []
-        
-        # Add summary section
-        summary = f"Document containing {len(sections)} sections."
-        parts.append(summary + "\n")
-        
-        # Add sections
-        for section in sections:
-            parts.append(section.to_markdown())
-        
-        return "\n".join(parts)
     
     async def _process_pdf(self, file_path: Path) -> List[DocumentSection]:
         """Process PDF file.

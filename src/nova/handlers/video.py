@@ -7,15 +7,13 @@ from nova.config.manager import ConfigManager
 from nova.handlers.base import BaseHandler
 from nova.models.document import DocumentMetadata
 
+
 class VideoHandler(BaseHandler):
     """Handler for video files."""
     
-    name = "video_handler"
+    name = "video"
     version = "0.1.0"
-    file_types = [
-        "mov", "mp4", "avi", "mkv", "wmv",
-        "flv", "webm", "m4v", "mpeg", "mpg"
-    ]
+    file_types = ["mp4", "mov", "avi", "mkv", "webm"]
     
     def __init__(self, config: ConfigManager) -> None:
         """Initialize video handler.
@@ -24,43 +22,27 @@ class VideoHandler(BaseHandler):
             config: Nova configuration manager.
         """
         super().__init__(config)
-        self.config = config
     
-    def _create_placeholder_markdown(
-        self,
-        video_path: Path,
-        output_path: Path,
-    ) -> str:
-        """Create placeholder markdown file for video.
+    def _create_video_content(self, file_path: Path) -> str:
+        """Create markdown content for video file.
         
         Args:
-            video_path: Path to video file.
-            output_path: Path to output markdown file.
+            file_path: Path to video file.
             
         Returns:
             Markdown content.
         """
-        # Get relative path from markdown to video
-        rel_path = self._get_relative_path(output_path, video_path)
-        
-        return f"""# Video: {video_path.stem}
+        return f"""## Video Information
 
-## Note
-This video file has been detected but not processed.
-Video processing capabilities will be added in a future update.
+- **File**: {file_path.name}
+- **Type**: {file_path.suffix.lstrip('.')}
+- **Size**: {os.path.getsize(file_path) / (1024*1024):.2f} MB
 
-## Video Information
-- Filename: {video_path.name}
-- Format: {video_path.suffix.lstrip('.')}
-- Location: [{rel_path}]({rel_path})
+## Notes
 
-## Future Enhancements
-- Video transcoding
-- Thumbnail generation
-- Scene detection
-- Audio transcription
-- Metadata extraction (duration, resolution, codec)"""
-
+This is a video file. The content cannot be displayed directly in markdown.
+Please use an appropriate video player to view this file."""
+    
     async def process_impl(
         self,
         file_path: Path,
@@ -86,23 +68,24 @@ Video processing capabilities will be added in a future update.
                 ".parsed.md"
             )
             
-            # Create placeholder markdown
-            content = self._create_placeholder_markdown(file_path, output_path)
-            
-            # Write markdown content
-            self._safe_write_file(output_path, content)
-            
-            # Initialize metadata if not provided
-            if metadata is None:
-                metadata = DocumentMetadata(file_path)
+            # Create video content
+            content = self._create_video_content(file_path)
             
             # Update metadata
-            metadata.processed = True
             metadata.title = file_path.stem
             metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['markdown_path'] = str(output_path)
-            metadata.add_output_file(output_path)
+            metadata.processed = True
             
+            # Write markdown using MarkdownWriter
+            self.markdown_writer.write_document(
+                title=metadata.title,
+                content=content,
+                metadata=metadata.metadata,
+                file_path=file_path,
+                output_path=output_path
+            )
+            
+            metadata.add_output_file(output_path)
             return metadata
             
         except Exception as e:
@@ -111,5 +94,4 @@ Video processing capabilities will be added in a future update.
             if metadata:
                 metadata.add_error("VideoHandler", str(e))
                 metadata.processed = False
-                return metadata
-            return None 
+            return metadata 
