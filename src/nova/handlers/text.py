@@ -99,10 +99,8 @@ class TextHandler(BaseHandler):
             # Write markdown file with text content
             content = f"""# {file_path.stem}
 
---==SUMMARY==--
 Text content from {file_path.stem}
 
---==RAW NOTES==--
 ```
 {text}
 ```

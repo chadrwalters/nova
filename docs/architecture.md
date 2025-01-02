@@ -104,10 +104,10 @@ _NovaProcessing/
 - **Goal**: Process parsed Markdown files into structured sections with consistent reference format
 - **Implementation**:
   1. Reads each `*.parsed.md` file from parse phase
-  2. Processes content markers and sections:
-     - `--==SUMMARY==--`: Content for `<filename>.summary.md`
-     - `--==RAW NOTES==--`: Content for `<filename>.raw_notes.md`
-     - `--==ATTACHMENTS==--`: Content for `<filename>.attachments.md`
+  2. Processes content structure:
+     - Content above `--==RAW NOTES==--` marker is treated as summary
+     - Content below `--==RAW NOTES==--` marker is treated as raw notes
+     - If no marker exists, entire content is treated as summary
   3. Converts all links to reference format:
      - Regular links: `[ATTACH:TYPE:ID]`
      - Image links: `![ATTACH:TYPE:ID]`
