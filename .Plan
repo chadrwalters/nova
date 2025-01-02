@@ -1,31 +1,29 @@
 # Nova Refactoring Plan (Updated)
 
 **Target**: Continue implementing the design per new-architecture.md  
-**Overall Status**: IN PROGRESS (65%)  
-**Immediate Priority**: Get the Pipeline (Parse → Disassemble → Split → Finalize) passing successfully with correct references and file handling.
+**Overall Status**: IN PROGRESS (70%)  
+**Immediate Priority**: Get the Pipeline (Parse → Disassemble → Split → Finalize) passing with simplified reference handling.
 
 ---
 
 ## CURRENT STATUS & ALIGNMENT
 
-We are transitioning from the old architecture.md approach to the new new-architecture.md design. However, the current pipeline is failing for multiple reasons:
+We are transitioning from the old architecture.md approach to the new new-architecture.md design. The pipeline is being simplified to handle references more effectively:
 
-1. Reference Manager Errors
-   - Missing attribute "max_chain_depth" causing tests to fail.
-   - Wrong or incomplete reference-update logic (e.g., references not pointing to expected files).
-   - Circular or broken references that are either incorrectly detected or not being updated properly.
+1. Reference Handling (Simplified)
+   - Using simple reference markers with type indicators (e.g., [ATTACH:IMG:marker123])
+   - No complex path resolution or chain depth tracking
+   - Focus on unique markers that can be easily looked up
 
 2. Missing Parsed Files & Metadata Issues
-   - The finalization step reports that only 9 files are parsed out of 26 total input files (leads to validation failure).
-   - Files that failed due to “No such file or directory” or partial path issues need either:
-     - A robust handling strategy (graceful skip, partial parse, or fallback).
-     - Fixing directory lookups or ignoring certain file types if required.
+   - The finalization step reports that only 9 files are parsed out of 26 total input files (leads to validation failure)
+   - Files that failed due to "No such file or directory" or partial path issues need either:
+     - A robust handling strategy (graceful skip, partial parse, or fallback)
+     - Fixing directory lookups or ignoring certain file types if required
 
 3. Pipeline Phase Validation
-   - The pipeline tries to finalize with incomplete or erroneous parse & disassemble outputs.
-   - We need more robust checks that fail early if parse or disassembly is incomplete.
-
-Because of these issues, the immediate focus is to get the pipeline stable from Parse to Finalize while we continue migrating to the new architecture.
+   - The pipeline tries to finalize with incomplete or erroneous parse & disassemble outputs
+   - We need more robust checks that fail early if parse or disassembly is incomplete
 
 ---
 
@@ -43,89 +41,79 @@ Because of these issues, the immediate focus is to get the pipeline stable from 
   - MarkdownHandler: 7 md
   - SpreadsheetHandler: 2 xlsx, 1 csv
   - HTMLHandler: 1 html
-✓ Added validation to ensure metadata is properly saved for each successfully parsed file
-✓ Added detailed logging of skipped/failed files with reasons
-✓ Implemented retry logic for files that fail due to temporary issues
-
-Results:
-• Total Files: 26
-• Successfully Processed: 17
-• Unchanged: 9 (previously processed PDFs and DOCXs)
-• Failed: 0
-• Skipped: 0
-• Duration: 0.82s
+✓ Added validation to ensure metadata is properly saved
+✓ Added detailed logging of skipped/failed files
+✓ Implemented retry logic for temporary failures
 
 1.2. Disassemble Phase Fixes  
-• Verify the references from parse step carry over properly.  
-• Confirm that disassembly metadata files exist for each successfully parsed file.  
-• Where disassembly is not applicable (e.g., images, JSON files), unify logic: either skip or create partial placeholders.
+• Verify reference markers are created and tracked properly
+• Confirm that disassembly metadata exists for each parsed file
+• Where disassembly is not applicable, use consistent skip logic
 
 1.3. Split Phase Fixes  
-• Validate that split only occurs on those files needing it (e.g., large Markdown or PDF metadata).  
-• Maintain reference integrity: if references changed or new references created, continue to track them.  
-• Handle attachments and subdocuments consistently.
+• Validate that split only occurs on files needing it
+• Maintain reference marker integrity during consolidation
+• Handle attachments consistently with new reference approach
 
 1.4. Finalize Phase Fixes  
-• Add robust checks for “parsed file count == input file count” or “skipped file count” logic.  
-• Pass correct references to the ReferenceManager, ensuring no missing “max_chain_depth” attribute.  
-• Resolve incomplete or broken references:  
-  - Implement or define a default max_chain_depth in the ReferenceManager.  
-  - Adjust tests for correct new paths (e.g., old.md → new.md).  
-• If references must be updated or renamed, ensure they do not fail with “reference [x] not found”.
+• Add robust checks for parsed file counts
+• Verify all reference markers exist and are valid
+• Clean up any temporary processing files
 
 ### 2. Reference Management & Validation
 
-2.1. Define max_chain_depth  
-• Add max_chain_depth to ReferenceManager with a suitable default (e.g., 10).  
-• Update all test fixtures to reflect the presence of max_chain_depth so that they pass.
+2.1. Simplified Reference System
+• Use [ATTACH:TYPE:MARKER] format consistently
+• Remove complex path resolution logic
+• Update tests to reflect simpler reference handling
 
-2.2. Update Mechanism & Circular Checks  
-• Confirm that rename logic, bulk update, and section-move functionality line up with the intended new architecture.  
-• Fix any “Cannot rename: reference [ATTACH:x] not found” errors by verifying that references are loaded and validated properly.  
-• Consolidate or refine the circular-reference detection logic (some tests expect “Circular reference detected”).
+2.2. Reference Validation
+• Check that all reference markers are unique
+• Verify referenced content exists
+• Remove circular reference checks (no longer needed)
 
-2.3. Cleanup & Resolution Strategy  
-• Decide how we handle references for files that remain unparseable or have no output.  
-• Implement final pass to remove or mark invalid references (cleanup functionality).  
+2.3. Cleanup Strategy
+• Remove invalid reference markers
+• Log any missing references for review
+• Keep reference validation simple and fast
 
 ### 3. Longer-Term / Post-Fix Roadmap
 
 3.1. Performance & Pipeline Optimization  
-• After the above stabilization, measure performance.  
-• Optimize for large volumes or large attachments.
+• After stabilization, measure performance
+• Optimize for large volumes or attachments
 
 3.2. Full new-architecture.md Adoption  
-• Migrate all old references from architecture.md to new-architecture.md where relevant.  
-• Align final directory structure, pipeline steps, and error handling with the new design.  
+• Complete migration to simplified reference system
+• Align directory structure and pipeline steps
 
 3.3. Additional Feature Enhancements  
-• Expand test coverage for complex reference scenarios (external links, embedded references, etc.).  
-• Introduce better logging and user feedback.  
+• Expand test coverage for reference scenarios
+• Improve logging and user feedback
 
 ---
 
 ## RISKS & MITIGATION (UPDATED)
 
-1. Reference Management Failures  
-   • Risk: Breaking references mid-pipeline.  
-   • Mitigation: Validate references incrementally after each phase, define and consistently use max_chain_depth, and unify rename/update logic.
+1. Reference Management
+   • Risk: Duplicate or invalid markers
+   • Mitigation: Use consistent marker generation, validate uniqueness
 
-2. Missing / Incomplete Files  
-   • Risk: Continued mismatch in finalization counts.  
-   • Mitigation: Provide explicit reasons for skipping or failing a file. Ensure parse-phase logic sets correct states.
+2. Missing / Incomplete Files
+   • Risk: Continued mismatch in finalization counts
+   • Mitigation: Better file tracking and skip logic
 
-3. Implementation Complexity  
-   • Risk: Overloading this partial fix with new features.  
-   • Mitigation: Focus on immediate pipeline fixes first. Defer expansions or architectural rewrites if they hinder stabilization.
+3. Implementation Complexity
+   • Risk: Over-engineering the solution
+   • Mitigation: Keep reference system simple and focused
 
 ---
 
 ## NEXT STEPS
 
-• Immediately add max_chain_depth to ReferenceManager to fix unit tests.  
-• Identify cause of missing parsed metadata files (likely path or naming mismatch).  
-• Adjust parse-phase code to either skip unparseable files or correct the path references.  
-• Re-run pipeline after each fix (parse → disassemble → split → finalize) to confirm stability.  
-• Then proceed with finalizing the new architecture blueprint as time permits.
+• Update all handlers to use simplified reference format
+• Fix parse phase file counting and validation
+• Re-run pipeline to verify stability
+• Then complete the new architecture implementation
 
 **End of Updated Plan**

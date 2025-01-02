@@ -123,7 +123,7 @@ setup_environment() {
 
     # Install dependencies and local package
     log_info "Installing project dependencies..."
-    poetry install
+    poetry install --with dev
 
     log_success "Virtual environment created and dependencies installed"
 }
@@ -183,15 +183,14 @@ validate_installation() {
     log_info "Validating installation..."
 
     # Run a simple test
-    if poetry run python3 -c "import nova; print('Nova package found')" &> /dev/null; then
-        log_success "Nova package is installed correctly"
-    else
+    if ! poetry run python3 -c "import nova; print('Nova package found')" 2>&1; then
         log_error "Nova package installation validation failed"
         exit 1
     fi
+    log_success "Nova package is installed correctly"
 
     # Validate configuration
-    if ! poetry run python3 -c "from nova.config.manager import ConfigManager; ConfigManager()"; then
+    if ! poetry run python3 -c "from nova.config.manager import ConfigManager; ConfigManager()" 2>&1; then
         log_error "Configuration validation failed"
         exit 1
     fi

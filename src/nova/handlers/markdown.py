@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Union
 from ..models.document import DocumentMetadata
 from .base import BaseHandler
 from ..config.manager import ConfigManager
+from ..core.markdown.writer import MarkdownWriter
 
 
 class MarkdownHandler(BaseHandler):
@@ -24,6 +25,7 @@ class MarkdownHandler(BaseHandler):
             config: Nova configuration manager.
         """
         super().__init__(config)
+        self.markdown_writer = MarkdownWriter()
     
     def _update_links(self, content: str) -> str:
         """Update links to use simple reference markers.
@@ -87,27 +89,22 @@ class MarkdownHandler(BaseHandler):
     async def process_impl(
         self,
         file_path: Path,
-        metadata: DocumentMetadata,
+        output_dir: Path,
+        metadata: Optional[DocumentMetadata] = None,
     ) -> Optional[DocumentMetadata]:
         """Process a markdown file.
         
         Args:
             file_path: Path to markdown file.
-            metadata: Document metadata.
+            output_dir: Directory to write output files to.
+            metadata: Optional document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Get relative path from input directory
-            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
-            
-            # Get output path using relative path
-            output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,
-                "parse",
-                ".parsed.md"
-            )
+            # Create output path
+            output_path = output_dir / f"{file_path.stem}.parsed.md"
             
             # Read the file content
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -117,31 +114,46 @@ class MarkdownHandler(BaseHandler):
             updated_content = self._update_links(content)
             
             # Update metadata
+            if metadata is None:
+                metadata = DocumentMetadata(title=file_path.stem)
             metadata.title = file_path.stem
             metadata.processed = True
             
             # Write markdown using MarkdownWriter
+            self.logger.debug(f"Writing markdown content to {output_path}")
+            self.logger.debug(f"Title: {metadata.title}")
+            self.logger.debug(f"Content length: {len(updated_content)}")
+            self.logger.debug(f"Metadata: {metadata.metadata}")
+            
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
                 content=updated_content,
-                metadata=metadata.metadata,
-                file_path=file_path,
-                output_path=output_path
+                metadata=metadata.metadata
             )
             
+            self.logger.debug(f"Generated markdown content length: {len(markdown_content)}")
+            
             # Write the file
-            self._safe_write_file(output_path, markdown_content)
+            try:
+                self.logger.debug(f"Writing markdown file to {output_path}")
+                self._safe_write_file(output_path, markdown_content)
+                self.logger.debug("Successfully wrote markdown file")
+            except Exception as e:
+                self.logger.error(f"Failed to write markdown file: {str(e)}")
+                raise
             
             metadata.add_output_file(output_path)
             
-            # Save metadata using relative path
-            self._save_metadata(file_path, relative_path, metadata)
+            # Save metadata
+            metadata_path = output_dir / f"{file_path.stem}.metadata.json"
+            metadata.save(metadata_path)
             
             return metadata
             
         except Exception as e:
             error_msg = f"Failed to process markdown file {file_path}: {str(e)}"
             self.logger.error(error_msg)
-            metadata.add_error(self.name, error_msg)
-            metadata.processed = False
+            if metadata:
+                metadata.add_error(self.name, error_msg)
+                metadata.processed = False
             return metadata 

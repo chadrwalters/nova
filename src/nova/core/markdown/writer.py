@@ -4,7 +4,9 @@ MarkdownWriter class for generating consistent Markdown output across all handle
 from typing import Dict, Any, Optional
 from pathlib import Path
 import os
+import logging
 
+logger = logging.getLogger(__name__)
 
 class MarkdownWriter:
     """Central class for generating consistent Markdown output."""
@@ -21,6 +23,7 @@ class MarkdownWriter:
             template_dir = Path(__file__).parent / "templates"
         self.template_dir = template_dir
         self._template_cache: Dict[str, str] = {}
+        self.logger = logging.getLogger(__name__)
     
     def write_section(self, title: str, content: str, level: int = 1) -> str:
         """Write a Markdown section with title and content.
@@ -122,41 +125,42 @@ class MarkdownWriter:
             FileNotFoundError: If template doesn't exist
             KeyError: If required template variables are missing
         """
+        self.logger.debug(f"Loading template: {template_name}")
         template = self._load_template(template_name)
         try:
+            self.logger.debug(f"Template variables: {kwargs}")
             return template.format(**kwargs)
         except KeyError as e:
+            self.logger.error(f"Missing required template variable: {e}")
             raise KeyError(f"Missing required template variable: {e}")
     
-    def write_document(self, title: str, content: str, metadata: Dict[str, Any],
-                      file_path: Path, output_path: Path) -> str:
-        """Write a document using the base template.
+    def write_document(
+        self,
+        title: str,
+        content: str,
+        metadata: Dict[str, Any],
+        file_path: Optional[Path] = None,
+        output_path: Optional[Path] = None
+    ) -> str:
+        """Write a complete Markdown document.
         
         Args:
             title: Document title
             content: Document content
             metadata: Document metadata
-            file_path: Original file path
-            output_path: Output file path
+            file_path: Optional source file path
+            output_path: Optional output file path
             
         Returns:
-            Formatted Markdown content
+            Complete Markdown document
         """
-        # Get relative path from output to original
-        try:
-            relative_path = os.path.relpath(file_path, output_path.parent)
-            relative_path = relative_path.replace("\\", "/")  # Normalize separators
-        except ValueError:
-            relative_path = str(file_path).replace("\\", "/")
+        # Write metadata section
+        doc = self.write_metadata(metadata)
         
-        return self.write_from_template(
-            "base",
-            title=title,
-            content=content,
-            metadata=self.write_metadata(metadata),
-            filename=file_path.name,
-            relative_path=relative_path
-        )
+        # Write title and content
+        doc += self.write_section(title, content)
+        
+        return doc
     
     def write_image(self, title: str, image_path: Path, alt_text: str,
                    description: str, analysis: str, metadata: Dict[str, Any],
@@ -176,24 +180,15 @@ class MarkdownWriter:
         Returns:
             Formatted Markdown content
         """
-        # Get relative paths
-        try:
-            relative_path = os.path.relpath(file_path, output_path.parent)
-            image_relative_path = os.path.relpath(image_path, output_path.parent)
-            relative_path = relative_path.replace("\\", "/")
-            image_relative_path = image_relative_path.replace("\\", "/")
-        except ValueError:
-            relative_path = str(file_path).replace("\\", "/")
-            image_relative_path = str(image_path).replace("\\", "/")
+        # Create reference marker for the image
+        image_marker = f"![ATTACH:IMAGE:{image_path.stem}]"
         
         return self.write_from_template(
             "image",
             title=title,
-            image_path=image_relative_path,
+            image_marker=image_marker,
             alt_text=alt_text,
             description=description,
             analysis=analysis,
-            metadata=self.write_metadata(metadata),
-            filename=file_path.name,
-            relative_path=relative_path
+            metadata=self.write_metadata(metadata)
         ) 

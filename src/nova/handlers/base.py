@@ -200,10 +200,19 @@ class BaseHandler(ABC):
         Returns:
             True if file was written, False if unchanged.
         """
-        # Get safe path and ensure parent dirs exist
-        file_path = get_safe_path(file_path)
-        ensure_parent_dirs(file_path)
-        return safe_write_file(file_path, content, encoding)
+        self.logger.debug(f"Writing file: {file_path}")
+        self.logger.debug(f"Content length: {len(content)}")
+        
+        try:
+            result = safe_write_file(file_path, content, encoding)
+            if result:
+                self.logger.debug("Successfully wrote file")
+            else:
+                self.logger.debug("File unchanged, skipped writing")
+            return result
+        except Exception as e:
+            self.logger.error(f"Failed to write file: {str(e)}")
+            raise
 
     def _get_relative_path(self, from_path: Path, to_path: Path) -> str:
         """Get relative path from one file to another.
@@ -244,8 +253,7 @@ class BaseHandler(ABC):
             markdown_content = self.markdown_writer.write_document(
                 title=title,
                 content=content,
-                source_path=rel_path,
-                **kwargs
+                metadata=kwargs
             )
             
             # Write file

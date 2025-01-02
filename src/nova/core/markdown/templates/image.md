@@ -3,13 +3,10 @@
 # {title}
 
 ## Image
-![{alt_text}]({image_path})
+{image_marker}
 
 ## Description
 {description}
 
 ## Analysis
-{analysis}
-
-## Source
-[Original File: {filename}]({relative_path}) 
+{analysis} 

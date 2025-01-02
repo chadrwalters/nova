@@ -190,8 +190,13 @@ class NovaPipeline:
                         raise ValueError(f"Not a directory: {input_dir}")
                     self.debug(f"Looking for files to parse in: {input_dir}")
                     for file_path in input_dir.rglob('*'):
-                        if file_path.is_file() and not file_path.name.startswith('.'):
-                            self.debug(f"Found file to parse: {file_path}")
+                        # Skip hidden files and directories
+                        if any(part.startswith('.') for part in file_path.parts):
+                            self.debug(f"Skipping hidden file/directory: {file_path}")
+                            continue
+                        # Only include regular files with .md extension
+                        if file_path.is_file() and file_path.suffix.lower() == '.md':
+                            self.debug(f"Found markdown file to parse: {file_path}")
                             files.append(file_path)
                 elif phase == "disassemble":
                     # For disassemble phase, look in parse phase output directory

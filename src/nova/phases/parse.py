@@ -103,20 +103,7 @@ class ParsePhase(Phase):
             self.logger.debug(f"Using handler {handler.name} for {file_path}")
             
             # Process file
-            metadata = await handler.process_impl(file_path, metadata)
-            
-            # Save metadata file if processing was successful
-            if metadata is not None and not metadata.unchanged:
-                # Create output directory structure
-                relative_path = file_path.relative_to(self.pipeline.config.input_dir)
-                output_path = output_dir / relative_path.parent
-                output_path.mkdir(parents=True, exist_ok=True)
-                
-                # Create parsed file path
-                parsed_file_name = file_path.stem + '.parsed.md'
-                parsed_file_path = output_path / parsed_file_name
-                self._save_metadata(parsed_file_path, metadata)
-                self.logger.debug(f"Created parsed file: {parsed_file_path}")
+            metadata = await handler.process_impl(file_path, output_dir, metadata)
             
             # Update pipeline state and stats
             if metadata is None:
