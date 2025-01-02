@@ -134,8 +134,13 @@ def get_metadata_path(file_path: Path) -> Path:
     # Get safe path first
     safe_path = get_safe_path(file_path)
     
+    # Get the stem without any existing extensions
+    stem = safe_path.stem
+    if '.' in stem:
+        stem = stem.rsplit('.', 1)[0]
+    
     # Add .metadata.json extension
-    return safe_path.with_suffix('.metadata.json')
+    return safe_path.parent / f"{stem}.metadata.json"
 
 
 def get_markdown_path(file_path: Path, phase: str) -> Path:

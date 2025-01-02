@@ -41,7 +41,63 @@ class NovaPipeline:
         self.output_manager = OutputManager(config)
         
         # Initialize empty state
-        self.state = {}
+        self.state = {
+            'parse': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {},
+                'attachments': {}  # Track attachments by parent directory
+            },
+            'disassemble': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {},
+                'attachments': {},  # Track attachments by parent directory
+                'stats': {
+                    'total_processed': 0,
+                    'summary_files': {
+                        'created': 0,
+                        'empty': 0,
+                        'failed': 0
+                    },
+                    'raw_notes_files': {
+                        'created': 0,
+                        'empty': 0,
+                        'failed': 0
+                    },
+                    'attachments': {
+                        'copied': 0,
+                        'failed': 0
+                    }
+                }
+            },
+            'split': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {},
+                'section_stats': {},
+                'summary_sections': 0,
+                'raw_notes_sections': 0,
+                'attachments': 0
+            },
+            'finalize': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {}
+            }
+        }
         self.error_messages = {}  # Store error messages by file path
         
         # Initialize phases
@@ -68,7 +124,54 @@ class NovaPipeline:
         """Reset pipeline state."""
         # Initialize standard state for parse phase
         self.state = {
-            "parse": {
+            'parse': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {},
+                'attachments': {}  # Track attachments by parent directory
+            },
+            'disassemble': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {},
+                'attachments': {},  # Track attachments by parent directory
+                'stats': {
+                    'total_processed': 0,
+                    'summary_files': {
+                        'created': 0,
+                        'empty': 0,
+                        'failed': 0
+                    },
+                    'raw_notes_files': {
+                        'created': 0,
+                        'empty': 0,
+                        'failed': 0
+                    },
+                    'attachments': {
+                        'copied': 0,
+                        'failed': 0
+                    }
+                }
+            },
+            'split': {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {},
+                'section_stats': {},
+                'summary_sections': 0,
+                'raw_notes_sections': 0,
+                'attachments': 0
+            },
+            'finalize': {
                 'successful_files': set(),
                 'failed_files': set(),
                 'skipped_files': set(),
@@ -76,53 +179,6 @@ class NovaPipeline:
                 'reprocessed_files': set(),
                 'file_type_stats': {}
             }
-        }
-        
-        # Initialize disassemble phase state
-        self.state["disassemble"] = {
-            'successful_files': set(),
-            'failed_files': set(),
-            'skipped_files': set(),
-            'unchanged_files': set(),
-            'reprocessed_files': set(),
-            'stats': {
-                'total_processed': 0,
-                'summary_files': {
-                    'created': 0,
-                    'empty': 0,
-                    'failed': 0
-                },
-                'raw_notes_files': {
-                    'created': 0,
-                    'empty': 0,
-                    'failed': 0
-                },
-                'attachments': {
-                    'copied': 0,
-                    'failed': 0
-                }
-            }
-        }
-        
-        # Initialize custom state for split phase
-        self.state["split"] = {
-            'summary_sections': 0,
-            'raw_notes_sections': 0,
-            'attachments': 0,
-            'skipped_files': set(),
-            'failed_files': set(),
-            'successful_files': set(),  # Keep this for pipeline compatibility
-            'unchanged_files': set(),   # Keep this for pipeline compatibility
-            'reprocessed_files': set()  # Keep this for pipeline compatibility
-        }
-        
-        # Initialize finalize phase state
-        self.state["finalize"] = {
-            'successful_files': set(),
-            'failed_files': set(),
-            'skipped_files': set(),
-            'unchanged_files': set(),
-            'reprocessed_files': set()
         }
         
     def _add_failed_file(self, phase: str, file_path: Path, error_msg: str) -> None:
@@ -194,27 +250,26 @@ class NovaPipeline:
                         if any(part.startswith('.') for part in file_path.parts):
                             self.debug(f"Skipping hidden file/directory: {file_path}")
                             continue
-                        # Only include regular files with .md extension
-                        if file_path.is_file() and file_path.suffix.lower() == '.md':
-                            self.debug(f"Found markdown file to parse: {file_path}")
+                        # Include all regular files (not just .md)
+                        if file_path.is_file():
+                            self.debug(f"Found file to parse: {file_path}")
                             files.append(file_path)
                 elif phase == "disassemble":
                     # For disassemble phase, look in parse phase output directory
                     parse_dir = self.config.processing_dir / "phases" / "parse"
                     if parse_dir.exists():
-                        # Process all parsed files, including those in subdirectories
-                        for file_path in parse_dir.rglob('*.parsed.md'):
+                        # Process all files from parse phase
+                        for file_path in parse_dir.rglob('*'):
                             if file_path.is_file():
                                 files.append(file_path)
                 elif phase == "split":
                     # For split phase, look in disassemble phase output directory
                     disassemble_dir = self.config.processing_dir / "phases" / "disassemble"
                     if disassemble_dir.exists():
-                        # Process both summary and raw notes files
-                        for pattern in ['*.summary.md', '*.rawnotes.md']:
-                            for file_path in disassemble_dir.rglob(pattern):
-                                if file_path.is_file():
-                                    files.append(file_path)
+                        # Process all files from disassemble phase
+                        for file_path in disassemble_dir.rglob('*'):
+                            if file_path.is_file():
+                                files.append(file_path)
                 elif phase == "finalize":
                     # For finalize phase, look in split directory
                     split_dir = self.config.processing_dir / "phases" / "split"
@@ -229,9 +284,11 @@ class NovaPipeline:
                                     files.append(file_path)
                     else:
                         self.debug(f"Split directory does not exist: {split_dir}")
-                
-                # Store the actual file count for this phase
-                phase_file_counts[phase] = len(files)
+                        
+                # Update total count for progress bar
+                total_files = len(files)
+                self.debug(f"Found {total_files} files to process in {phase} phase")
+                phase_file_counts[phase] = total_files
                 
                 if not files:
                     if phase == "finalize":

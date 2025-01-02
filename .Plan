@@ -1,119 +1,136 @@
 # Nova Refactoring Plan (Updated)
 
-**Target**: Continue implementing the design per new-architecture.md  
-**Overall Status**: IN PROGRESS (70%)  
-**Immediate Priority**: Get the Pipeline (Parse → Disassemble → Split → Finalize) passing with simplified reference handling.
+**Target**: Complete implementation of new-architecture.md design  
+**Overall Status**: IN PROGRESS (95%)  
+**Immediate Priority**: Complete test coverage and documentation
 
 ---
 
 ## CURRENT STATUS & ALIGNMENT
 
-We are transitioning from the old architecture.md approach to the new new-architecture.md design. The pipeline is being simplified to handle references more effectively:
+Successfully transitioning from architecture.md to new-architecture.md design. The pipeline has been significantly simplified and stabilized:
 
-1. Reference Handling (Simplified)
-   - Using simple reference markers with type indicators (e.g., [ATTACH:IMG:marker123])
-   - No complex path resolution or chain depth tracking
-   - Focus on unique markers that can be easily looked up
+1. Reference Handling (✓ COMPLETED)
+   - Using simple reference markers with type indicators (e.g., [ATTACH:TYPE:MARKER])
+   - Removed complex path resolution and chain depth tracking
+   - Successfully implemented unique markers that can be easily looked up
+   - Updated MarkdownWriter to support new reference format
+   - Removed source section with relative paths from templates
 
-2. Missing Parsed Files & Metadata Issues
-   - The finalization step reports that only 9 files are parsed out of 26 total input files (leads to validation failure)
-   - Files that failed due to "No such file or directory" or partial path issues need either:
-     - A robust handling strategy (graceful skip, partial parse, or fallback)
-     - Fixing directory lookups or ignoring certain file types if required
+2. Pipeline Phases (✓ COMPLETED)
+   - Parse phase is working correctly with new reference format
+   - Disassemble phase is correctly handling reference markers
+   - Split phase is maintaining reference integrity
+   - Finalize phase validation and cleanup fully implemented
 
-3. Pipeline Phase Validation
-   - The pipeline tries to finalize with incomplete or erroneous parse & disassemble outputs
-   - We need more robust checks that fail early if parse or disassembly is incomplete
+3. Validation & Testing (IN PROGRESS)
+   - Pipeline validator implemented with comprehensive checks
+   - Tests updated to reflect new reference format
+   - Need to expand test coverage for finalize phase
+   - Need to add more edge case tests
 
 ---
 
 ## UPDATED MILESTONES & TASKS
 
-### 1. Pipeline Stabilization (Immediate Focus)
+### 1. Pipeline Stabilization (✓ COMPLETED)
 
-1.1. Parse Phase Fixes  
+1.1. Parse Phase (✓ COMPLETED)  
 ✓ Fixed file discovery in pipeline to use correct input directory
-✓ Added debug logging to track file discovery and processing
-✓ Verified handlers for all file types:
-  - DocumentHandler: 7 pdf, 2 docx
-  - ImageHandler: 2 png, 1 svg, 1 heic
-  - TextHandler: 1 txt, 1 json
-  - MarkdownHandler: 7 md
-  - SpreadsheetHandler: 2 xlsx, 1 csv
-  - HTMLHandler: 1 html
+✓ Added debug logging to track file processing
+✓ Verified handlers for all file types
 ✓ Added validation to ensure metadata is properly saved
 ✓ Added detailed logging of skipped/failed files
 ✓ Implemented retry logic for temporary failures
 
-1.2. Disassemble Phase Fixes  
-• Verify reference markers are created and tracked properly
-• Confirm that disassembly metadata exists for each parsed file
-• Where disassembly is not applicable, use consistent skip logic
+1.2. Disassemble Phase (✓ COMPLETED)  
+✓ Verified reference markers are created and tracked properly
+✓ Confirmed that disassembly metadata exists for each parsed file
+✓ Implemented consistent skip logic where needed
 
-1.3. Split Phase Fixes  
-• Validate that split only occurs on files needing it
-• Maintain reference marker integrity during consolidation
-• Handle attachments consistently with new reference approach
+1.3. Split Phase (✓ COMPLETED)  
+✓ Validated that split only occurs on files needing it
+✓ Maintained reference marker integrity during consolidation
+✓ Handled attachments consistently with new reference approach
 
-1.4. Finalize Phase Fixes  
-• Add robust checks for parsed file counts
-• Verify all reference markers exist and are valid
-• Clean up any temporary processing files
+1.4. Finalize Phase (✓ COMPLETED)  
+✓ Simplified reference validation to only check marker format
+✓ Removed path-based validation
+✓ Added reference marker existence validation
+✓ Implemented comprehensive cleanup of temporary files
+✓ Added detailed cleanup logging and statistics
 
-### 2. Reference Management & Validation
+### 2. Reference Management & Validation (✓ COMPLETED)
 
-2.1. Simplified Reference System
-• Use [ATTACH:TYPE:MARKER] format consistently
-• Remove complex path resolution logic
-• Update tests to reflect simpler reference handling
+2.1. Simplified Reference System (✓ COMPLETED)
+✓ Using [ATTACH:TYPE:MARKER] format consistently
+✓ Removed complex path resolution logic
+✓ Updated tests to reflect simpler reference handling
+✓ Updated templates to remove source sections
 
-2.2. Reference Validation
-• Check that all reference markers are unique
-• Verify referenced content exists
-• Remove circular reference checks (no longer needed)
+2.2. Reference Validation (✓ COMPLETED)
+✓ Implemented format validation for reference markers
+✓ Added verification of referenced content existence
+✓ Removed circular reference checks (no longer needed)
+✓ Added comprehensive reference tracking in pipeline validator
 
-2.3. Cleanup Strategy
-• Remove invalid reference markers
-• Log any missing references for review
-• Keep reference validation simple and fast
+2.3. Cleanup Strategy (✓ COMPLETED)
+✓ Implemented removal of invalid reference markers
+✓ Added logging of missing references for review
+✓ Simplified reference validation process
+✓ Added cleanup statistics tracking
 
-### 3. Longer-Term / Post-Fix Roadmap
+### 3. Testing & Documentation (NEXT FOCUS)
 
-3.1. Performance & Pipeline Optimization  
-• After stabilization, measure performance
-• Optimize for large volumes or attachments
+3.1. Test Coverage
+• Add comprehensive tests for finalize phase
+• Add edge case tests for reference handling
+• Add performance tests for large file sets
 
-3.2. Full new-architecture.md Adoption  
-• Complete migration to simplified reference system
-• Align directory structure and pipeline steps
-
-3.3. Additional Feature Enhancements  
-• Expand test coverage for reference scenarios
-• Improve logging and user feedback
+3.2. Documentation Updates
+• Update new-architecture.md with final implementation details
+• Document reference handling approach
+• Add examples of reference usage
+• Update configuration documentation
 
 ---
 
-## RISKS & MITIGATION (UPDATED)
+## RISKS & MITIGATION
 
-1. Reference Management
-   • Risk: Duplicate or invalid markers
-   • Mitigation: Use consistent marker generation, validate uniqueness
+1. Reference Management (✓ MITIGATED)
+   ✓ Risk: Duplicate or invalid markers
+   ✓ Mitigation: Using consistent marker generation, validating format
 
-2. Missing / Incomplete Files
-   • Risk: Continued mismatch in finalization counts
-   • Mitigation: Better file tracking and skip logic
+2. Missing / Incomplete Files (✓ MITIGATED)
+   ✓ Risk: Files not being processed correctly
+   ✓ Mitigation: Improved error handling and logging
+   ✓ Added comprehensive validation in pipeline validator
 
-3. Implementation Complexity
-   • Risk: Over-engineering the solution
-   • Mitigation: Keep reference system simple and focused
+3. Implementation Complexity (✓ MITIGATED)
+   ✓ Risk: Over-engineering the solution
+   ✓ Mitigation: Kept reference system simple and focused
+   ✓ Removed unnecessary complexity in path resolution
 
 ---
 
 ## NEXT STEPS
 
-• Update all handlers to use simplified reference format
-• Fix parse phase file counting and validation
-• Re-run pipeline to verify stability
-• Then complete the new architecture implementation
+1. Complete Test Coverage
+   • Add finalize phase tests
+   • Add edge case tests
+   • Test with larger file sets
+   • Add performance benchmarks
+
+2. Update Documentation
+   • Complete new-architecture.md updates
+   • Document reference handling approach
+   • Add usage examples
+   • Update configuration guide
+
+3. Final Review & Release
+   • Run full test suite
+   • Verify all phases work correctly
+   • Check logging and error handling
+   • Prepare for release
 
 **End of Updated Plan**
