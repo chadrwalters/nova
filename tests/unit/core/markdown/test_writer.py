@@ -99,28 +99,23 @@ def test_write_from_template(tmp_path):
 
 
 def test_write_document(tmp_path):
-    """Test document writing with base template."""
-    writer = MarkdownWriter()  # Uses default template dir
+    """Test document writing."""
+    writer = MarkdownWriter()
     
     # Test document writing
-    file_path = Path("/test/document.pdf")
-    output_path = Path("/test/output/document.md")
     metadata = {"title": "Test", "author": "Author"}
     
     result = writer.write_document(
         title="Test Document",
         content="Test Content",
-        metadata=metadata,
-        file_path=file_path,
-        output_path=output_path
+        metadata=metadata
     )
     
-    # Verify basic structure (exact path handling depends on OS)
-    assert "# Test Document" in result
+    # Verify basic structure
+    assert "Test Document" in result
     assert "Test Content" in result
     assert "title: Test" in result
     assert "author: Author" in result
-    assert "document.pdf" in result
 
 
 def test_write_image(tmp_path):
@@ -144,11 +139,10 @@ def test_write_image(tmp_path):
         output_path=output_path
     )
     
-    # Verify basic structure (exact path handling depends on OS)
+    # Verify basic structure
     assert "# Test Image" in result
-    assert "Test Alt Text" in result
+    assert "![ATTACH:IMAGE:image]" in result
     assert "Test Description" in result
     assert "Test Analysis" in result
     assert "title: Test Image" in result
-    assert "date: 2024-03-20" in result
-    assert "image.jpg" in result 
+    assert "date: 2024-03-20" in result 

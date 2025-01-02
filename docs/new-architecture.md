@@ -28,7 +28,7 @@ Central class for generating consistent Markdown output:
 class MarkdownWriter:
     def write_section(self, title: str, content: str, level: int = 1) -> str
     def write_metadata(self, metadata: Dict[str, Any]) -> str
-    def write_reference(self, ref_type: str, target: str, label: str) -> str
+    def write_reference(self, ref_type: str, marker: str) -> str
 ```
 
 ### ImageConverter
@@ -78,16 +78,16 @@ graph LR
 2. **Disassemble Phase**
    - Splits content into sections
    - Generates summary/notes/attachments
-   - Maintains reference integrity
+   - Creates reference markers for cross-document links
 
 3. **Split Phase**
    - Consolidates content by type
-   - Manages cross-references
+   - Maintains reference markers
    - Creates final structure
 
 4. **Finalize Phase**
    - Validates output integrity
-   - Resolves all references
+   - Verifies reference markers exist
    - Generates final output
 
 ## Directory Structure
@@ -196,7 +196,7 @@ class ConfigurationError(NovaError): pass
 class PipelineValidator:
     def validate_phase(self, phase: str) -> bool
     def validate_output(self) -> bool
-    def get_validation_report(self) -> Dict[str, Any]
+    def validate_references(self) -> bool
 ```
 
 ## Testing & Validation

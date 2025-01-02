@@ -85,8 +85,15 @@ class PipelineValidator:
             self.errors.append(f"Input directory does not exist: {input_dir}")
             return None
             
-        # Get all input files (excluding hidden files)
-        input_files = set(f for f in input_dir.rglob("*") if f.is_file() and not f.name.startswith('.'))
+        # Get all input markdown files (excluding hidden files and directories without .md files)
+        input_files = set()
+        for f in input_dir.rglob("*"):
+            # Skip hidden files and directories
+            if any(part.startswith('.') for part in f.parts):
+                continue
+            # Only include .md files
+            if f.is_file() and f.suffix.lower() == '.md':
+                input_files.add(f)
         
         # Get all parsed markdown files
         parsed_files = set(f for f in self.parse_dir.rglob("*.parsed.md"))
@@ -96,7 +103,7 @@ class PipelineValidator:
             
         # Check if we have the right number of files
         if len(parsed_files) != len(input_files):
-            self.errors.append(f"Number of parsed files ({len(parsed_files)}) does not match number of input files ({len(input_files)})")
+            self.errors.append(f"Number of parsed files ({len(parsed_files)}) does not match number of input markdown files ({len(input_files)})")
             
             # List missing files
             parsed_stems = {f.stem.replace('.parsed', '') for f in parsed_files}
@@ -112,7 +119,7 @@ class PipelineValidator:
                 self.errors.append("Extra parsed files found:")
                 for extra in extra_files:
                     self.errors.append(f"  - {extra}")
-            
+
         # Track attachments for later validation
         self.attachments = {}
             
@@ -145,7 +152,7 @@ class PipelineValidator:
                 except json.JSONDecodeError:
                     self.errors.append(f"Invalid JSON in metadata file: {metadata_file}")
                     continue
-                    
+
                 # Check if the file is in the correct directory structure
                 try:
                     input_file = Path(metadata['file_path'])
@@ -167,7 +174,7 @@ class PipelineValidator:
                     if not assets_dir.exists():
                         self.errors.append(f"Missing assets directory: {assets_dir}")
                         continue
-                
+
                 # Track attachments if this is a subdirectory file
                 if len(parsed_file.relative_to(self.parse_dir).parts) > 1:
                     # Get the parent document name from the directory name

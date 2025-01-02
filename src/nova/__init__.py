@@ -1,6 +1,6 @@
 """Nova document processing library."""
 
-__version__ = "0.1.0"
+__version__ = "3.0.0"
 
 from nova.core.nova import Nova
 from nova.config.manager import ConfigManager
