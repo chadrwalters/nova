@@ -410,24 +410,31 @@ class BaseHandler(ABC):
         """
         return file_path.suffix.lstrip('.').lower() in self.file_types 
 
-    def _save_metadata(self, input_file: Path, relative_path: Path, metadata: DocumentMetadata) -> None:
-        """Save metadata to file.
+    def _save_metadata(
+        self,
+        file_path: Path,
+        relative_path: Path,
+        metadata: DocumentMetadata
+    ) -> None:
+        """Save document metadata.
         
         Args:
-            input_file: Original input file path
+            file_path: Original file path
             relative_path: Relative path from input directory
             metadata: Document metadata
         """
-        # Remove any .parsed suffix from the relative path
-        if relative_path.stem.endswith('.parsed'):
-            relative_path = relative_path.with_stem(relative_path.stem[:-7])
-        
-        # Get output path for metadata file using relative path
-        metadata_path = self.output_manager.get_output_path_for_phase(
-            relative_path,  # Use the relative path without .parsed suffix
-            "parse",
-            ".metadata.json"
-        )
-        
-        # Write metadata
-        self._safe_write_file(metadata_path, metadata.to_json()) 
+        try:
+            # Use relative path to construct metadata path
+            metadata_path = self.output_manager.get_output_path_for_phase(
+                relative_path,
+                "parse", 
+                ".metadata.json"
+            )
+            
+            # Save metadata
+            metadata.save(metadata_path)
+            
+        except Exception as e:
+            error_msg = f"Failed to save metadata for {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            metadata.add_error(self.name, error_msg) 
