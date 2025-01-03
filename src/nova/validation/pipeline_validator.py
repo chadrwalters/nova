@@ -77,6 +77,7 @@ class PipelineValidator:
             logger.error("Validation errors:")
             for error in self.errors:
                 logger.error(f"  - {error}")
+            all_valid = False
                 
         return all_valid
         

@@ -21,7 +21,7 @@ apis:
       Focus on what makes this image relevant in a note-taking context.
 
 logging:
-  level: ${NOVA_LOG_LEVEL:-INFO}  # Default to INFO if not set
+  level: INFO  # Default to INFO if not set
   file_level: DEBUG
   console_level: INFO
   log_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaLogs"
@@ -45,7 +45,7 @@ logging:
 
 # Debug Configuration
 debug:
-  enabled: ${NOVA_DEBUG:-false}  # Can be enabled via environment variable
+  enabled: false  # Can be enabled via environment variable
   phase_flags:  # Enable debug for specific phases
     parse: false
     disassemble: false

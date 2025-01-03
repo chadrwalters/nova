@@ -1,17 +1,15 @@
-"""Split phase of the Nova pipeline."""
+"""Split phase implementation."""
+
 import logging
-import os
-import shutil
+import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 from collections import defaultdict
 
 from nova.config.manager import ConfigManager
-from nova.handlers.registry import HandlerRegistry
-from nova.phases.base import Phase
 from nova.core.metadata import FileMetadata, DocumentMetadata
-from nova.models.links import LinkContext, LinkType
-from nova.utils.file_utils import safe_write_file
+from nova.phases.base import Phase
+from nova.handlers.registry import HandlerRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +36,10 @@ class SplitPhase(Phase):
     }
     
     def __init__(self, config: ConfigManager, pipeline=None):
-        """Initialize the split phase.
-        
-        Args:
-            config: Configuration manager
-            pipeline: Optional pipeline instance
-        """
-        super().__init__(config, pipeline)
+        """Initialize the split phase."""
+        super().__init__("split", config, pipeline)
         self.handler_registry = HandlerRegistry(config)
+        self.stats = defaultdict(lambda: {"processed": 0, "skipped": 0, "errors": 0})
         
         # Set up debug logging
         self.logger.setLevel(logging.DEBUG)

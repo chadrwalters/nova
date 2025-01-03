@@ -46,38 +46,38 @@ class OutputManager:
             try:
                 relative_path = input_file.relative_to(self.config.input_dir)
             except ValueError:
+                # If the file is not under input_dir, use its name only
                 relative_path = Path(input_file.name)
         
         # Build output path under phase directory
         output_base = self.config.processing_dir / "phases" / phase_name
         
-        # For metadata files, preserve the directory structure but use only the stem
-        if extension == ".metadata.json":
-            # Remove any .parsed suffix from the stem
-            stem = relative_path.stem
+        # Get the parent directory structure from the relative path
+        # Preserve spaces in directory names
+        parent_dirs = relative_path.parent
+        
+        # Remove any existing .parsed or .metadata suffix from the stem
+        # Preserve spaces in the filename
+        stem = relative_path.stem
+        while True:
             if stem.endswith('.parsed'):
-                stem = stem[:-7]
-            
-            # If the input file is in a subdirectory, place metadata in that subdirectory
-            if len(relative_path.parts) > 1:
-                # Use the parent directory and stem with metadata extension
-                output_path = output_base / relative_path.parent / f"{stem}.metadata.json"
+                stem = stem[:-7]  # Remove '.parsed' suffix
+            elif stem.endswith('.metadata'):
+                stem = stem[:-9]  # Remove '.metadata' suffix
             else:
-                # For files in root, just use the stem with metadata extension
-                output_path = output_base / f"{stem}.metadata.json"
+                break
+        
+        # Construct the output path preserving directory structure and spaces
+        if parent_dirs != Path('.'):
+            # File is in a subdirectory, preserve the structure
+            output_path = output_base
+            for part in parent_dirs.parts:
+                # Keep spaces in directory names
+                output_path = output_path / part
+            output_path = output_path / f"{stem}{extension}"
         else:
-            # For non-metadata files, use the standard path construction
-            # Remove any existing .parsed or .metadata suffix before adding the new extension
-            stem = relative_path.stem
-            while True:
-                if stem.endswith('.parsed'):
-                    stem = stem[:-7]  # Remove '.parsed' suffix
-                elif stem.endswith('.metadata'):
-                    stem = stem[:-9]  # Remove '.metadata' suffix
-                else:
-                    break
-            new_filename = f"{stem}{extension}"
-            output_path = output_base / relative_path.parent / new_filename
+            # File is in root directory
+            output_path = output_base / f"{stem}{extension}"
         
         # Ensure parent directories exist
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -66,7 +66,7 @@ class ImageHandler(BaseHandler):
             
             if api_key and api_key != "None":  # Only initialize if api_key is not None or "None"
                 self.openai_client = openai.OpenAI(api_key=api_key)
-                self.openai_model = "gpt-4o"  # Update to use gpt-4o model
+                self.openai_model = "gpt-4o"  # Update to use correct model name
                 self.openai_max_tokens = getattr(openai_config, 'max_tokens', 500)
                 self.vision_prompt = getattr(openai_config, 'vision_prompt', (
                     "Please analyze this image and provide a detailed description. "
@@ -167,18 +167,69 @@ class ImageHandler(BaseHandler):
         Returns:
             Context string from vision API.
         """
-        # HACK: Temporarily bypass OpenAI API calls and return stock description
-        image_type = self._classify_image_type(image_path)
-        
-        # Return appropriate stock description based on image type
-        if image_type == "screenshot":
-            return "This appears to be a screenshot. The actual content would normally be analyzed by the OpenAI Vision API to extract text and describe the interface elements shown."
-        elif image_type == "photograph":
-            return "This appears to be a photograph. The actual content would normally be analyzed by the OpenAI Vision API to describe the scene, subjects, and key visual elements."
-        elif image_type == "diagram":
-            return "This appears to be a diagram or illustration. The actual content would normally be analyzed by the OpenAI Vision API to describe the visual elements and their relationships."
-        else:
-            return "This is an image. The actual content would normally be analyzed by the OpenAI Vision API to provide a detailed description."
+        if not self.openai_client:
+            # If OpenAI is not configured, return basic classification
+            image_type = self._classify_image_type(image_path)
+            return f"This appears to be a {image_type}. OpenAI Vision API is not configured for detailed analysis."
+
+        try:
+            # Convert HEIC/SVG to JPEG if needed
+            temp_path = None
+            process_path = image_path
+            
+            if image_path.suffix.lower() == '.heic':
+                temp_path = Path(tempfile.mktemp(suffix='.jpg'))
+                self._convert_heic(image_path, temp_path)
+                process_path = temp_path
+            elif image_path.suffix.lower() == '.svg':
+                temp_path = Path(tempfile.mktemp(suffix='.jpg'))
+                self._convert_svg(image_path, temp_path)
+                process_path = temp_path
+
+            try:
+                # Read image file as bytes
+                with open(process_path, "rb") as image_file:
+                    image_data = image_file.read()
+                    
+                # Encode image as base64
+                base64_image = base64.b64encode(image_data).decode('utf-8')
+                
+                # Create vision API request
+                response = self.openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": self.vision_prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=self.openai_max_tokens
+                )
+                
+                # Extract and return the response text
+                if response.choices and response.choices[0].message.content:
+                    return response.choices[0].message.content.strip()
+                else:
+                    raise ValueError("No response content from Vision API")
+
+            finally:
+                # Clean up temporary file if it exists
+                if temp_path and temp_path.exists():
+                    temp_path.unlink()
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to get image context from Vision API: {str(e)}")
+            # Fallback to basic classification
+            image_type = self._classify_image_type(image_path)
+            return f"Failed to analyze image with Vision API. This appears to be a {image_type}."
 
     def _classify_image_type(self, image_path: Path) -> str:
         """Classify image as screenshot, photograph, or diagram.
@@ -287,9 +338,9 @@ class ImageHandler(BaseHandler):
             # Get relative path from input directory
             relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
             
-            # Get output path using relative path
+            # Get output path using relative path - preserve directory structure
             output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,
+                relative_path,  # Use relative path to preserve structure
                 "parse",
                 ".parsed.md"
             )
@@ -318,6 +369,9 @@ class ImageHandler(BaseHandler):
                 file_path=file_path,
                 output_path=output_path
             )
+            
+            # Ensure parent directories exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Write the file
             self._safe_write_file(output_path, markdown_content)

@@ -42,3 +42,12 @@
   - Update next actions
   - Recalculate progress percentage
   - Verify milestone requirements if applicable
+
+## Package Management
+- NEVER use pip for package management
+- Always use Poetry for dependency management and package installation
+- All package additions or removals must be done through Poetry commands
+
+## Clean Run Instructions
+- Whenever a clean run is requested, execute: ./cleanup.sh -a && ./run_nova.sh
+- This applies to all clean run requests, regardless of context

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 import shutil
 from bs4 import BeautifulSoup
+import os
 
 from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
@@ -65,9 +66,12 @@ class HTMLHandler(BaseHandler):
             ValueError: If file cannot be processed.
         """
         try:
-            # Get output path from output manager
+            # Get relative path from input directory
+            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            
+            # Get output path from output manager using relative path
             output_path = self.output_manager.get_output_path_for_phase(
-                file_path,
+                relative_path,  # Use relative path to preserve directory structure
                 "parse",
                 ".parsed.md"
             )
@@ -89,11 +93,17 @@ class HTMLHandler(BaseHandler):
                 output_path=output_path
             )
             
+            # Ensure parent directories exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
             # Write the file
             was_written = self._safe_write_file(output_path, markdown_content)
             
             metadata.unchanged = not was_written
             metadata.add_output_file(output_path)
+            
+            # Save metadata using relative path
+            self._save_metadata(file_path, relative_path, metadata)
             
             return metadata
             

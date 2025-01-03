@@ -13,13 +13,15 @@ logger = logging.getLogger(__name__)
 class Phase:
     """Base class for pipeline phases."""
     
-    def __init__(self, config: ConfigManager, pipeline=None):
+    def __init__(self, name: str, config: ConfigManager, pipeline=None):
         """Initialize phase.
         
         Args:
+            name: Phase name
             config: Configuration manager
             pipeline: Optional pipeline instance
         """
+        self.name = name
         self.config = config
         self.pipeline = pipeline
         self.lock = asyncio.Lock()
