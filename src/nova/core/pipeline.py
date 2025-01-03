@@ -162,8 +162,9 @@ class NovaPipeline:
             
             # Create progress display
             self.progress = Progress(
-                TextColumn("[bold blue]{task.description}"),
+                TextColumn("[bold blue]{task.description:>12}"),
                 BarColumn(bar_width=None),
+                TextColumn("[progress.percentage]{task.completed}/{task.total}"),
                 TaskProgressColumn(),
                 expand=True
             )

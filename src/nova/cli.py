@@ -6,6 +6,7 @@ import sys
 import traceback
 from pathlib import Path
 from typing import List, Optional
+import os
 
 from nova.config.manager import ConfigManager
 from nova.config.settings import LoggingConfig
@@ -22,10 +23,13 @@ def configure_logging(debug: bool = False, no_color: bool = False) -> None:
         debug: Whether to enable debug logging.
         no_color: Whether to disable colored output.
     """
+    # Get log level from environment variable or fallback to debug/warning
+    log_level = os.getenv("NOVA_LOG_LEVEL", "DEBUG" if debug else "WARNING")
+    
     # Create basic logging config
     config = LoggingConfig(
-        level="DEBUG" if debug else "WARNING",
-        console_level="DEBUG" if debug else "WARNING",
+        level=log_level,
+        console_level=log_level,
         format="%(asctime)s [%(levelname)s] %(message)s",
         date_format="%Y-%m-%d %H:%M:%S",
         handlers=["console"]
@@ -38,19 +42,19 @@ def configure_logging(debug: bool = False, no_color: bool = False) -> None:
     # Configure root logger
     root = logging.getLogger()
     root.addHandler(handler)
-    root.setLevel(logging.DEBUG if debug else logging.WARNING)
+    root.setLevel(getattr(logging, log_level))
     
     # Configure nova logger (using module-level logger)
     nova_logger = logging.getLogger("nova")
-    nova_logger.setLevel(logging.DEBUG if debug else logging.WARNING)
+    nova_logger.setLevel(getattr(logging, log_level))
     
     # Configure specific loggers to reduce verbosity
     for logger_name in logging.root.manager.loggerDict:
         if logger_name.startswith('nova'):
             current_logger = logging.getLogger(logger_name)
-            current_logger.setLevel(logging.DEBUG if debug else logging.WARNING)
+            current_logger.setLevel(getattr(logging, log_level))
             # Only show file skipping messages in debug mode
-            if not debug and 'unchanged since last processing' in str(current_logger.handlers):
+            if log_level != "DEBUG" and 'unchanged since last processing' in str(current_logger.handlers):
                 current_logger.handlers = []
 
 
