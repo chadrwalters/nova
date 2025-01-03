@@ -110,13 +110,14 @@ def get_safe_path(path: Union[str, Path], make_relative_to: Optional[Path] = Non
         if part == path.drive or part == '/':
             parts.append(part)
         else:
-            # For directory names (not the last part), replace spaces with underscores
-            if part != path.name:
-                part = part.replace(' ', '_')
-            # For the filename, sanitize it
+            # For the filename (last part), sanitize it but preserve spaces
+            if part == path.name:
+                # Only sanitize special characters, not spaces
+                sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f!@#$%^{}\[\]]', '_', part)
+                parts.append(sanitized)
             else:
-                part = sanitize_filename(part)
-            parts.append(part)
+                # For directory names, preserve them as is
+                parts.append(part)
             
     # Reconstruct path
     return Path(*parts)

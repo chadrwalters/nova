@@ -1,280 +1,135 @@
-# Nova Document Processing System
+# Nova Document Processing Pipeline
 
-A powerful document processing pipeline that converts various file formats into structured Markdown outputs, with support for AI-powered analysis and rich metadata extraction.
+A Python-based document processing pipeline for transforming various document formats into structured markdown with metadata.
 
-## Requirements
+## Overview
 
-- Python 3.9 or higher
-- Poetry (Python package manager)
-- OpenAI API key (for image analysis features)
-- System dependencies:
-  - Tesseract (OCR)
-  - libheif (HEIC support)
-  - FFmpeg (audio processing)
-  - ImageMagick (image processing)
+Nova processes documents through multiple phases:
+1. Parse - Convert documents to markdown format
+2. Disassemble - Split content into summary and notes
+3. Split - Organize content into structured sections
+4. Finalize - Generate final output with metadata
 
 ## Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/nova.git
-cd nova
+# Install with pip
+pip install -r requirements.txt
+
+# Or with poetry
+poetry install
 ```
-
-2. Install Poetry if you haven't already:
-```bash
-curl -sSL https://install.python-poetry.org | python3 -
-```
-
-3. Run the installation script:
-```bash
-./install.sh
-```
-
-This will:
-- Verify system requirements
-- Create a Python virtual environment
-- Install all Python dependencies via Poetry:
-  - Core: pydantic, PyYAML, rich, pandas, beautifulsoup4, etc.
-  - Image processing: Pillow
-  - Document processing: python-docx, PyPDF2
-  - AI integration: openai
-  - Development: pytest and plugins
-- Set up required directories
-
-## Configuration
-
-1. Create your config file:
-```bash
-cp config/nova.template.yaml config/nova.yaml
-```
-
-2. Configure your settings:
-```yaml
-base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
-input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
-output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
-processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
-
-# Configure pipeline phases
-pipeline:
-  phases:
-    - parse
-    - split
-    - finalize
-```
-
-3. Required environment variables:
-- `OPENAI_API_KEY`: Required for AI image analysis
-
-4. Optional environment variables:
-- `NOVA_CONFIG_PATH`: Override default config location
-- `NOVA_LOG_LEVEL`: Set logging verbosity (DEBUG, INFO, etc.)
-
-## Features
-
-### 🔄 Phase-Based Pipeline
-- **Parse Phase**: Converts documents to intermediate Markdown with metadata
-- **Split Phase**: Organizes content into structured sections
-- **Finalize Phase**: Creates clean output with resolved links
-- Extensible architecture - easily add new phases
-
-### 📄 Format Support
-- **Documents**: PDF, DOCX, RTF
-- **Images**: JPEG, PNG, HEIC (with AI descriptions)
-- **Audio**: MP3, WAV
-- **Data**: XLSX, CSV
-- **Web**: HTML
-- **Archives**: ZIP (with nested content)
-
-### 🧠 Intelligent Processing
-- AI-powered image analysis and descriptions
-- Smart section detection and organization
-- Automatic link resolution
-- Asset deduplication
-- Rich metadata extraction
-
-### 📊 Progress & Logging
-- Real-time progress tracking
-- Detailed logging with configurable levels
-- Color-coded console output
-- Comprehensive error reporting
 
 ## Usage
 
-### Basic Usage
+```python
+from nova import Pipeline
+
+pipeline = Pipeline()
+pipeline.process("path/to/document")
+```
+
+## Development
+
+### Prerequisites
+
+- Python 3.8+
+- Poetry (recommended) or pip
+- pytest for testing
+
+### Setting Up Development Environment
+
 ```bash
-./run_nova.sh
+# Clone the repository
+git clone https://github.com/yourusername/nova.git
+cd nova
+
+# Install dependencies with poetry
+poetry install
+
+# Or with pip
+pip install -r requirements.txt
 ```
 
-This will process files from `_NovaInput` through all configured phases:
-1. **Parse**: Converts input files to intermediate Markdown
-2. **Disassemble**: Processes parsed Markdown into structured sections
-3. **Split**: Organizes content into final document structure
-4. **Finalize**: Resolves links and creates final output
+## Testing
 
-### Advanced Usage
+The test suite uses pytest and includes unit tests, integration tests, and fixtures for testing various components of the pipeline.
+
+### Running Tests
+
 ```bash
-# Process specific phases
-./run_nova.sh --phases parse split
+# Run all tests (without OpenAI API calls)
+pytest
 
-# Process a single file
-./run_nova.sh --input-dir ~/Documents/file.pdf
+# Run specific test file
+pytest tests/unit/test_handlers.py
 
-# Enable debug logging
-./run_nova.sh --debug
-
-# Validate pipeline output
-python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
+# Run tests with coverage report
+pytest --cov=nova tests/
 ```
 
-### Pipeline Validation
+### OpenAI API Testing
 
-Nova includes a comprehensive pipeline validator that ensures the integrity of the processing pipeline output. The validator checks:
+By default, all tests use mock responses for OpenAI API calls. To run tests with actual API calls:
 
-1. **Parse Phase**
-   - Presence of `.parsed.md` files for each input
-   - Required metadata files (`.metadata.json`)
-   - Asset directories when referenced in metadata
-
-2. **Disassemble Phase**
-   - Content consistency with parse phase output
-   - Presence of summary and raw notes files
-   - Content structure and formatting
-
-3. **Split Phase**
-   - Consolidated file presence and structure
-   - Content preservation from disassemble phase
-   - Attachment references and organization
-
-The validator can be run at any time to check the processing directory:
 ```bash
-python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
+# Set your OpenAI API key
+export OPENAI_API_KEY=your_api_key_here
+
+# Run tests with actual API calls
+pytest --openai-api
+
+# Run specific tests with API calls
+pytest --openai-api tests/unit/test_handlers.py
 ```
 
-The validator will:
-- Check all files in each phase
-- Verify content consistency between phases
-- Validate file structure and organization
-- Report any missing or mismatched content
-- Provide detailed error messages for troubleshooting
+### Test Structure
 
-## Directory Structure
-
-### Input
-Place your files in the configured input directory:
 ```
-_NovaInput/
-├── Documents/
-│   └── report.pdf
-├── Images/
-│   └── diagram.png
-└── Data/
-    └── spreadsheet.xlsx
+tests/
+├── integration/
+│   └── test_nova_pipeline.py    # End-to-end pipeline tests
+└── unit/
+    ├── test_core.py            # Core functionality tests
+    ├── test_handlers.py        # Document handler tests
+    ├── test_phase_parse.py     # Parse phase tests
+    ├── test_phase_disassemble.py  # Disassembly phase tests
+    ├── test_phase_split.py     # Split phase tests
+    ├── test_phase_finalize.py  # Finalize phase tests
+    ├── test_config_manager.py  # Configuration tests
+    └── test_utils_path.py      # Path utility tests
 ```
 
-### Processing
-Files are processed through phases:
-```
-_NovaProcessing/
-├── phases/
-│   ├── parse/
-│   │   └── *.parsed.md
-│   ├── disassemble/
-│   │   ├── *.summary.md
-│   │   ├── *.raw_notes.md
-│   │   └── *.attachments.md
-│   └── split/
-│       ├── Summary.md
-│       ├── Raw Notes.md
-│       └── Attachments.md
-└── cache/
-```
+### Test Resources
 
-### Output
-Final output is organized as:
-```
-_Nova/
-├── Summary.md
-├── Raw Notes.md
-├── Attachments.md
-└── assets/
-    ├── images/
-    ├── documents/
-    └── other/
-```
+Test resources are included in the `tests/resources/` directory:
+- `markdown/` - Sample markdown files
+- `documents/` - Test PDF files
+- `images/` - Test image files
 
-## Content Organization
+### Testing Guidelines
 
-Nova uses special markers and reference formats to organize content:
+1. **Mock by Default**: Tests use mock responses for external services by default
+2. **API Testing**: Use `--openai-api` flag to test with actual API calls
+3. **Test Resources**: Use provided test files in `tests/resources/`
+4. **Async Testing**: Use pytest-asyncio for async function testing
+5. **State Management**: Use provided fixtures for test state management
 
-### Section Markers
-```markdown
---==SUMMARY==--
-High-level summary content
+### Coverage Goals
 
---==RAW NOTES==--
-Detailed content and notes
+- Minimum coverage target: 80%
+- Focus on critical paths and error cases
+- Include both success and failure scenarios
 
---==ATTACHMENTS==--
-Referenced attachments and their content
-```
+## Contributing
 
-### Reference Format
-Nova uses a consistent reference system across files:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests (`pytest`)
+5. Submit a pull request
 
-- **Attachments**: `[ATTACH:TYPE:ID]` or `![ATTACH:TYPE:ID]` for images
-  ```markdown
-  [ATTACH:PDF:20240118-document-name]
-  ![ATTACH:IMAGE:20240118-screenshot]
-  ```
+## License
 
-- **Notes**: `[NOTE:ID]`
-  ```markdown
-  [NOTE:20240118-meeting-notes]
-  ```
-
-IDs are generated from filenames and include date prefixes when available.
-
-### Phase Processing
-1. **Parse Phase**
-   - Converts raw files to Markdown with metadata
-   - Preserves original content structure
-
-2. **Disassemble Phase**
-   - Processes each parsed Markdown file
-   - Splits content into summary, raw notes, and attachments sections
-   - Converts all links to reference format (e.g., `[ATTACH:TYPE:ID]`)
-   - Handles image links with `!` prefix (e.g., `![ATTACH:IMAGE:ID]`)
-
-3. **Split Phase**
-   - Consolidates disassembled content into final structure
-   - Merges summaries, raw notes, and attachments from all files
-   - Maintains consistent reference format across documents
-
-4. **Finalize Phase**
-   - Resolves all references
-   - Creates final output structure
-   - Validates link integrity
-   - Runs pipeline validator as final integrity check
-   - Fails if validation errors are found
-
-### Output Structure
-Content is organized into three main files:
-
-1. **Summary.md**
-   - High-level summaries
-   - References to attachments using `[ATTACH:type:id]`
-   - Links to raw notes
-
-2. **Raw Notes.md**
-   - Detailed notes organized by `[NOTE:id]` sections
-   - References to attachments
-   - Original content structure preserved
-
-3. **Attachments.md**
-   - Attachments grouped by type
-   - Each attachment has its own `[ATTACH:type:id]` section
-   - Preserves metadata and content from source files
 
 

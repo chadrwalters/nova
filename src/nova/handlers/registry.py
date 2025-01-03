@@ -59,26 +59,49 @@ class HandlerRegistry:
         Returns:
             Handler for file type, or None if no handler found.
         """
-        file_path = Path(file_path)
-        
-        # Skip ignored files
-        if file_path.name in self.IGNORED_FILES:
-            return None
-        
         try:
+            file_path = Path(file_path)
+            self.logger.debug(f"Getting handler for file: {file_path}")
+            self.logger.debug(f"File exists: {file_path.exists()}")
+            self.logger.debug(f"File is file: {file_path.is_file()}")
+            
+            # Skip ignored files
+            if file_path.name in self.IGNORED_FILES:
+                self.logger.debug(f"Skipping ignored file: {file_path.name}")
+                return None
+            
             # Try to get file type normally
             file_type = file_path.suffix.lstrip('.').lower()
+            self.logger.debug(f"Looking for handler for file type: {file_type}")
+            self.logger.debug(f"Available handlers: {list(self.handlers.keys())}")
+            self.logger.debug(f"File path: {file_path}")
+            self.logger.debug(f"File suffix: {file_path.suffix}")
+            self.logger.debug(f"File type: {file_type}")
+            self.logger.debug(f"File name: {file_path.name}")
+            self.logger.debug(f"File stem: {file_path.stem}")
+            
+            # Get handler for file type
+            handler = self.handlers.get(file_type)
+            if handler is None:
+                self.logger.debug(f"No handler found for file type: {file_type}")
+            else:
+                self.logger.debug(f"Found handler {handler.name} for file type: {file_type}")
+            return handler
+            
         except UnicodeError:
             # If that fails, try to handle paths with non-UTF-8 characters
             try:
                 # Convert path to string with replacement of invalid chars
                 file_str = str(file_path).encode('utf-8', errors='replace').decode('utf-8')
                 file_type = Path(file_str).suffix.lstrip('.').lower()
+                self.logger.debug(f"Looking for handler for file type (after unicode handling): {file_type}")
+                return self.handlers.get(file_type)
             except Exception as e:
                 self.logger.error(f"Failed to get file type from path: {str(e)}")
                 return None
-        
-        return self.handlers.get(file_type) 
+        except Exception as e:
+            self.logger.error(f"Failed to get handler for file: {str(e)}")
+            return None
 
     async def process_file(
         self,
@@ -96,7 +119,19 @@ class HandlerRegistry:
             Document metadata, or None if file is ignored or processing fails.
         """
         try:
-            file_path = Path(file_path)
+            # Log initial file path info
+            self.logger.debug(f"process_file called with file_path: {file_path} (type: {type(file_path)})")
+            
+            # Convert to Path if needed
+            if isinstance(file_path, str):
+                self.logger.debug(f"Converting file_path from str to Path")
+                file_path = Path(file_path)
+            
+            self.logger.debug(f"File path after conversion: {file_path}")
+            self.logger.debug(f"File exists: {file_path.exists()}")
+            self.logger.debug(f"File is file: {file_path.is_file()}")
+            self.logger.debug(f"File suffix: {file_path.suffix}")
+            self.logger.debug(f"File name: {file_path.name}")
             
             # Skip ignored files without creating metadata
             if file_path.name in self.IGNORED_FILES:
@@ -104,10 +139,13 @@ class HandlerRegistry:
                 return None
             
             # Get handler for file
+            self.logger.debug(f"Looking up handler for file type: {file_path.suffix}")
             handler = self.get_handler(file_path)
+            self.logger.debug(f"Handler lookup result: {handler.name if handler else None}")
             
             if handler is None:
                 # Create metadata for unsupported files
+                self.logger.debug(f"No handler found, creating error metadata")
                 metadata = DocumentMetadata.from_file(
                     file_path=file_path,
                     handler_name="registry",
@@ -120,13 +158,26 @@ class HandlerRegistry:
             self.logger.info(f"Using {handler.name} handler for file: {file_path}")
             
             # Process file
-            return await handler.process(
-                file_path,
-                output_dir=output_dir,
-            )
+            try:
+                result = await handler.process(
+                    file_path,
+                    output_dir=output_dir,
+                )
+                self.logger.debug(f"Handler process result: {result}")
+                return result
+            except Exception as e:
+                self.logger.exception(f"Handler {handler.name} failed to process file: {file_path}")
+                metadata = DocumentMetadata.from_file(
+                    file_path=file_path,
+                    handler_name=handler.name,
+                    handler_version=handler.version,
+                )
+                metadata.processed = False
+                metadata.add_error(handler.name, str(e))
+                return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
+            self.logger.exception(f"Failed to process file {file_path}: {str(e)}")
             metadata = DocumentMetadata.from_file(
                 file_path=file_path,
                 handler_name="registry",

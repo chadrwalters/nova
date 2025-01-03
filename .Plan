@@ -1,0 +1,221 @@
+# Nova Test Implementation Plan
+Last Updated: 2024-01-03
+Status: [IN_PROGRESS]
+Progress: 95%
+
+## Overview
+This plan outlines the implementation of a comprehensive test suite for the Nova document processing pipeline. The test suite will be organized into unit and integration tests, covering core functionality, handlers, and pipeline phases.
+
+## Risk Register
+- [MEDIUM] Time required to create appropriate mock test files
+- [LOW] Potential conflicts with existing test configurations
+- [LOW] Integration test complexity with async operations
+
+## Technical Decisions
+1. Using pytest with pytest-asyncio for async testing
+2. Implementing filesystem mocks using pytest's tmp_path
+3. Following AAA (Arrange, Act, Assert) pattern for test structure
+4. Targeting 80% initial coverage
+5. OpenAI API testing strategy:
+   - Mock API calls by default
+   - Use --openai-api flag to enable real API calls
+   - Provide mock responses via fixtures
+   - Separate test cases for mocked and real API calls
+
+## Implementation Phases
+
+### Phase 1: Initial Test Structure Setup [DONE]
+- [x] Create test directory structure
+  ```
+  tests/
+  ├── integration/
+  │   └── test_nova_pipeline.py
+  └── unit/
+      ├── test_core.py
+      ├── test_handlers.py
+      ├── test_phase_parse.py
+      ├── test_phase_disassemble.py
+      ├── test_phase_split.py
+      ├── test_phase_finalize.py
+      ├── test_config_manager.py
+      └── test_utils_path.py
+  ```
+- [x] Create tests/conftest.py with common fixtures
+- [x] Set up mock file system fixtures
+- [x] Configure test state management
+
+### Phase 2: Core Module Tests [DONE]
+- [x] Create test file structure
+  - [x] test_core.py
+  - [x] test_config_manager.py
+  - [x] test_utils_path.py
+- [x] Implement test_core.py
+  - [x] TestMetricsTrackerBasics
+    - [x] test_record_operation_duration
+    - [x] test_update_time_statistics
+    - [x] test_concurrent_operations
+    - [x] test_metrics_summary
+  - [x] TestFileMetadataSaveAndLoad
+    - [x] test_save_metadata
+    - [x] test_load_metadata_from_file
+    - [x] test_metadata_error_handling
+    - [x] test_metadata_output_files
+  - [x] TestNovaLoggerConfiguration
+    - [x] test_logger_levels
+    - [x] test_handler_configuration
+    - [x] test_nova_log_record_fields
+- [x] Implement test_config_manager.py
+  - [x] TestConfigManagerBasics
+    - [x] test_load_default_config
+    - [x] test_load_custom_config
+  - [x] TestConfigManagerValidation
+    - [x] test_required_fields
+    - [x] test_field_types
+  - [x] TestConfigManagerPaths
+    - [x] test_expand_variables
+    - [x] test_create_directories
+- [x] Implement test_utils_path.py
+  - [x] TestSanitizeFilename
+    - [x] test_remove_invalid_chars
+    - [x] test_cyrillic_to_latin
+  - [x] TestRelativePath
+    - [x] test_same_directory
+    - [x] test_different_directory
+    - [x] test_nested_directories
+  - [x] TestPathNormalization
+    - [x] test_normalize_separators
+    - [x] test_resolve_dots
+  - [x] TestMetadataPath
+    - [x] test_metadata_path_generation
+  - [x] TestMarkdownPath
+    - [x] test_markdown_path_generation
+
+### Phase 3: Handler Tests [DONE]
+- [x] Create test file structure
+  - [x] test_handlers.py with placeholder classes
+- [x] Implement test_handlers.py
+  - [x] TestMarkdownHandlerBasic
+    - [x] test_update_links
+    - [x] test_parsed_md_output
+    - [x] test_metadata_update
+  - [x] TestDocumentHandlerPDFExtraction
+    - [x] test_pdf_text_extraction
+    - [x] test_pdf_metadata_update
+    - [x] test_pdf_error_handling
+  - [x] TestImageHandlerHeicConversion
+    - [x] test_heic_conversion
+    - [x] test_jpeg_passthrough
+    - [x] test_image_analysis_placeholder
+    - [x] test_error_handling
+- [x] Create mock test files
+  - [x] Sample markdown files
+  - [x] Small test PDF
+  - [x] Test images
+
+### Phase 4: Phase Tests [DONE]
+- [x] Create test file structure
+  - [x] test_phase_parse.py
+  - [x] test_phase_disassemble.py
+  - [x] test_phase_split.py
+  - [x] test_phase_finalize.py
+- [x] Implement phase test files
+  - [x] ParsePhase tests
+    - [x] test_parse_markdown
+    - [x] test_parse_pdf
+    - [x] test_parse_image
+    - [x] test_parse_multiple_files
+    - [x] test_error_handling
+  - [x] DisassemblyPhase tests
+    - [x] test_basic_disassembly
+    - [x] test_no_explicit_sections
+    - [x] test_multiple_summary_sections
+    - [x] test_code_block_preservation
+    - [x] test_metadata_updates
+  - [x] SplitPhase tests
+    - [x] test_basic_section_splitting
+    - [x] test_nested_sections
+    - [x] test_code_block_handling
+    - [x] test_list_preservation
+    - [x] test_metadata_tracking
+  - [x] FinalizePhase tests
+    - [x] test_basic_finalization
+    - [x] test_attachment_handling
+    - [x] test_metadata_consolidation
+    - [x] test_table_of_contents
+    - [x] test_error_handling
+
+### Phase 5: Integration Tests [DONE]
+- [x] Implement test_nova_pipeline.py
+  - [x] TestPipelineEndToEndMarkdown
+    - [x] test_markdown_end_to_end
+    - [x] test_pipeline_with_all_formats
+    - [x] test_pipeline_handles_unsupported_file
+    - [x] test_pipeline_with_ai_analysis
+    - [x] test_pipeline_state_tracking
+
+### Phase 6: Test Resources [DONE]
+- [x] Create test resources directory structure
+  ```
+  tests/resources/
+  ├── markdown/
+  │   ├── simple.md
+  │   └── with_images.md
+  ├── documents/
+  │   ├── sample.pdf
+  │   └── create_test_pdf.py
+  └── images/
+      ├── test.jpg
+      ├── test.png
+      └── create_test_image.py
+  ```
+- [x] Create minimal test files
+- [x] Document test resource usage
+
+### Phase 7: CI Setup [TODO]
+- [ ] Configure pytest.ini
+- [ ] Add test commands to pyproject.toml
+- [ ] Set up coverage reporting
+
+## Implementation Guidelines
+
+### Test Style Guidelines
+- Use async/await for async tests
+- Follow AAA pattern (Arrange, Act, Assert)
+- Use descriptive test names
+- Add docstrings explaining test purpose
+
+### Mocking Strategy
+- Use pytest-mock for function/method mocking
+- Create filesystem mocks using tmp_path
+- Mock external APIs and file operations
+
+### Coverage Goals
+- Aim for 80% coverage initially
+- Focus on critical paths
+- Include error cases
+
+### Resource Management
+- Use small test files
+- Clean up temporary files
+- Mock large operations
+
+## Progress Log
+2024-01-03: Initial plan created
+2024-01-03: Created test directory structure, conftest.py, and initial test files
+2024-01-03: Completed Phase 1 - Added pipeline state management and enhanced test fixtures
+2024-01-03: Created all unit test files with placeholder classes and docstrings
+2024-01-03: Implemented MetricsTracker tests with full coverage of core functionality
+2024-01-03: Implemented FileMetadata tests covering save/load, error handling, and output files
+2024-01-03: Implemented NovaLogger tests covering configuration, handlers, and log record fields
+2024-01-03: Created test resources directory with markdown, documents, and images
+2024-01-03: Implemented ConfigManager tests covering loading, validation, and path handling
+2024-01-03: Implemented path utility tests covering sanitization, relative paths, and normalization
+2024-01-03: Implemented handler tests for markdown, PDF, and image processing
+2024-01-03: Implemented all phase tests (Parse, Disassemble, Split, Finalize)
+2024-01-03: Added OpenAI API testing strategy with mock responses and optional real API calls
+2024-01-03: Implemented integration tests with end-to-end pipeline testing and AI analysis support
+
+## Next Actions
+1. Set up CI configuration with pytest.ini and coverage reporting
+2. Review and document test coverage results
+3. Update remaining handlers to use OpenAI API testing strategy 

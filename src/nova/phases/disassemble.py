@@ -25,7 +25,7 @@ class DisassemblyPhase(Phase):
             config: Configuration manager
             pipeline: Optional pipeline instance
         """
-        super().__init__(config, pipeline)
+        super().__init__("disassemble", config, pipeline)
         self.handler_registry = HandlerRegistry(config)
         
         # Set up debug logging

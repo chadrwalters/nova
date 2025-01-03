@@ -218,49 +218,58 @@ class ProgressTracker:
             if error_message:
                 file_progress.error_message = error_message
                 
-    def print_summary(self) -> None:
+    async def print_summary(self) -> None:
         """Print processing summary."""
-        # Stop progress display
-        self.progress.stop()
+        # Get phase stats
+        phase_stats = []
+        all_successful = True
+        
+        for phase_name, phase_state in self.phases.items():
+            total = len(phase_state.files)
+            completed = len([f for f in phase_state.files.values() if f.status == FileStatus.COMPLETED])
+            failed = len([f for f in phase_state.files.values() if f.status == FileStatus.FAILED])
+            skipped = len([f for f in phase_state.files.values() if f.status == FileStatus.SKIPPED])
+            
+            # Calculate progress percentage
+            progress = (completed / total * 100) if total > 0 else 0
+            
+            phase_stats.append({
+                'phase': phase_name.upper(),
+                'total': total,
+                'completed': completed,
+                'failed': failed,
+                'skipped': skipped,
+                'progress': f"{progress:.1f}%"
+            })
+            
+            # Check for failures
+            if failed > 0:
+                all_successful = False
         
         # Create summary table
         table = Table(title="Processing Summary")
         table.add_column("Phase", style="cyan")
-        table.add_column("Total", justify="right")
+        table.add_column("Total", justify="right", style="green")
         table.add_column("Completed", justify="right", style="green")
         table.add_column("Failed", justify="right", style="red")
         table.add_column("Skipped", justify="right", style="yellow")
-        table.add_column("Progress", justify="right")
+        table.add_column("Progress", justify="right", style="green")
         
-        # Add phase statistics
-        for phase_name, phase in self.phases.items():
+        for stats in phase_stats:
             table.add_row(
-                phase_name.upper(),
-                str(phase.total_files),
-                str(phase.completed_files),
-                str(phase.failed_files),
-                str(phase.skipped_files),
-                f"{phase.progress_percentage:.1f}%"
+                stats['phase'],
+                str(stats['total']),
+                str(stats['completed']),
+                str(stats['failed']),
+                str(stats['skipped']),
+                stats['progress']
             )
-            
-        # Print summary table
-        self.console.print()
-        self.console.print(table)
         
-        # Print failed files
-        failed_files = [f for f in self.files.values() if f.status == ProcessingStatus.FAILED]
-        if failed_files:
-            self.console.print()
-            self.console.print(Panel("[red]Failed Files", title="Errors"))
-            for file in failed_files:
-                self.console.print(f"[red]• {file.path}")
-                if file.error_message:
-                    self.console.print(f"  Error: {file.error_message}")
-                self.console.print()
+        # Log summary
+        logger = logging.getLogger("nova.summary")
+        logger.info("\n" + str(table))
         
-        # Print final status
-        total_failed = len(failed_files)
-        if total_failed == 0:
-            self.console.print("\n[green]All files processed successfully!")
+        if all_successful:
+            logger.info("All files processed successfully!")
         else:
-            self.console.print(f"\n[red]Processing completed with {total_failed} failures.") 
+            logger.warning("Some files failed to process. Check the logs for details.") 

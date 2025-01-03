@@ -9,6 +9,7 @@ import traceback
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+from rich.table import Table
 
 from nova.config.manager import ConfigManager
 from nova.config.settings import PipelineConfig
@@ -66,7 +67,7 @@ class NovaPipeline:
             message: Message to print
         """
         if os.getenv('NOVA_LOG_LEVEL', '').upper() == 'DEBUG':
-            self.console.print(f"[dim][DEBUG][/dim] {message}")
+            self.logger.debug(message)
             
     def reset_state(self) -> None:
         """Reset pipeline state."""
@@ -84,210 +85,181 @@ class NovaPipeline:
         if phase not in self.error_messages:
             self.error_messages[phase] = {}
         self.error_messages[phase][file_path] = error_msg
-
+        
     async def process_directory(self, directory: Union[str, Path], phases: List[str] = None) -> None:
         """Process all files in a directory.
         
         Args:
             directory: Directory to process
-            phases: List of phases to run (default: all phases)
+            phases: Optional list of phases to run. If None, runs all phases.
         """
-        directory = Path(directory)
-        if not directory.exists():
-            raise FileNotFoundError(f"Directory not found: {directory}")
+        try:
+            # Convert directory to Path
+            directory = Path(directory)
             
-        # Get phases from config if not specified
-        if phases is None:
-            phases = self.config.pipeline.phases
+            # Get phases to run
+            if phases is None:
+                phases = self.config.pipeline.phases
+                
+            # Track phase durations
+            phase_durations = {}
             
-        # Track phase durations
-        phase_durations = {}
-        
-        # Process each phase
-        for phase in phases:
-            try:
-                # Get phase instance
-                phase_instance = self.get_phase_instance(phase)
-                if not phase_instance:
-                    self.logger.error(f"Invalid phase: {phase}")
-                    continue
-                
-                # Get files to process
-                files = []
-                if phase == "parse":
-                    # For parse phase, look in input directory
-                    for file_path in directory.rglob('*'):
-                        if file_path.is_file():
-                            files.append(file_path)
-                elif phase == "disassemble":
-                    # For disassemble phase, look in parse phase output directory
-                    parse_dir = self.config.processing_dir / "phases" / "parse"
-                    if parse_dir.exists():
-                        for file_path in parse_dir.rglob('*.parsed.md'):
-                            if file_path.is_file():
-                                files.append(file_path)
-                elif phase == "split":
-                    # For split phase, look in disassemble phase output directory
-                    disassemble_dir = self.config.processing_dir / "phases" / "disassemble"
-                    if disassemble_dir.exists():
-                        for file_path in disassemble_dir.rglob('*'):
-                            if file_path.is_file():
-                                files.append(file_path)
-                elif phase == "finalize":
-                    # For finalize phase, look in split directory
-                    split_dir = self.config.processing_dir / "phases" / "split"
-                    if split_dir.exists():
-                        main_files = ["Summary.md", "Raw Notes.md", "Attachments.md"]
-                        for file_name in main_files:
-                            file_path = split_dir / file_name
-                            if file_path.is_file():
-                                files.append(file_path)
-                
-                # Start phase tracking
-                await self.progress_tracker.add_phase(phase, len(files))
-                phase_start_time = time.time()
-                
-                if not files:
-                    self.logger.info(f"No files found for {phase} phase")
-                    continue
-                
-                # Process each file
-                for file_path in files:
-                    # Start file tracking
-                    await self.progress_tracker.start_file(file_path)
-                    await self.progress_tracker.start_phase(phase, file_path)
-                    
-                    try:
-                        # Check if file needs reprocessing
-                        if phase != "finalize":
-                            needs_reprocess = await self.needs_reprocessing(file_path, phase)
-                            if not needs_reprocess:
-                                self.debug(f"File unchanged: {file_path}")
-                                self.state[phase]['unchanged_files'].add(file_path)
-                                await self.progress_tracker.complete_phase(phase, file_path)
-                                await self.progress_tracker.complete_file(file_path)
-                                continue
-                            else:
-                                self.debug(f"File needs reprocessing: {file_path}")
-                                self.state[phase]['reprocessed_files'].add(file_path)
-                        
-                        # Process file
-                        output_dir = self.get_phase_output_dir(phase)
-                        output_dir.mkdir(parents=True, exist_ok=True)
-                        
-                        metadata = await phase_instance.process_file(file_path, output_dir)
-                        if metadata:
-                            self.state[phase]['successful_files'].add(file_path)
-                            await self.progress_tracker.complete_phase(phase, file_path)
-                        else:
-                            self.state[phase]['failed_files'].add(file_path)
-                            await self.progress_tracker.fail_phase(phase, file_path)
-                        
-                        await self.progress_tracker.complete_file(file_path)
-                        
-                    except Exception as e:
-                        self.logger.error(f"Failed to process {file_path}: {str(e)}")
-                        self.logger.error(traceback.format_exc())
-                        self._add_failed_file(phase, file_path, str(e))
-                        await self.progress_tracker.fail_phase(phase, file_path)
-                        await self.progress_tracker.fail_file(file_path)
-                
-                # Finalize phase
+            # Process each phase
+            for phase_name in phases:
                 try:
-                    phase_instance.finalize()
+                    # Get phase instance
+                    phase_instance = self.get_phase_instance(phase_name)
+                    if not phase_instance:
+                        self.logger.error(f"Phase not found: {phase_name}")
+                        continue
+                        
+                    # Initialize phase state
+                    self._init_phase_state(phase_name)
+                    
+                    # Track validation status for finalize phase
+                    validation_passed = True
+                    
+                    # Get files to process based on phase
+                    files = []
+                    if phase_name == "parse":
+                        # For parse phase, look in input directory
+                        for file_path in directory.rglob('*'):
+                            if file_path.is_file():
+                                # Skip hidden files and directories
+                                if not any(part.startswith('.') for part in file_path.parts):
+                                    files.append(file_path)
+                    elif phase_name == "disassemble":
+                        # For disassemble phase, look in parse phase output directory
+                        parse_dir = self.config.processing_dir / "phases" / "parse"
+                        if parse_dir.exists():
+                            for file_path in parse_dir.rglob('*.parsed.md'):
+                                if file_path.is_file():
+                                    files.append(file_path)
+                    elif phase_name == "split":
+                        # For split phase, look in disassemble phase output directory
+                        disassemble_dir = self.config.processing_dir / "phases" / "disassemble"
+                        if disassemble_dir.exists():
+                            for file_path in disassemble_dir.rglob('*.summary.md'):
+                                if file_path.is_file():
+                                    files.append(file_path)
+                    elif phase_name == "finalize":
+                        # For finalize phase, look in split directory
+                        split_dir = self.config.processing_dir / "phases" / "split"
+                        if split_dir.exists():
+                            main_files = ["Summary.md", "Raw Notes.md", "Attachments.md"]
+                            for file_name in main_files:
+                                file_path = split_dir / file_name
+                                if file_path.is_file():
+                                    files.append(file_path)
+                    
+                    # Start phase tracking
+                    await self.progress_tracker.add_phase(phase_name, len(files))
+                    phase_start_time = time.time()
+                    
+                    if not files:
+                        self.logger.info(f"No files found for {phase_name} phase")
+                        continue
+                    
+                    # Process each file
+                    for file_path in files:
+                        # Start file tracking
+                        await self.progress_tracker.start_file(file_path)
+                        await self.progress_tracker.start_phase(phase_name, file_path)
+                        
+                        try:
+                            # Check if file needs reprocessing
+                            if phase_name != "finalize":
+                                needs_reprocess = await self.needs_reprocessing(file_path, phase_name)
+                                if not needs_reprocess:
+                                    self.debug(f"File unchanged: {file_path}")
+                                    self.state[phase_name]['unchanged_files'].add(file_path)
+                                    await self.progress_tracker.complete_phase(phase_name, file_path)
+                                    await self.progress_tracker.complete_file(file_path)
+                                    continue
+                                else:
+                                    self.debug(f"File needs reprocessing: {file_path}")
+                                    self.state[phase_name]['reprocessed_files'].add(file_path)
+                            
+                            # Process file
+                            output_dir = self.get_phase_output_dir(phase_name)
+                            output_dir.mkdir(parents=True, exist_ok=True)
+                            
+                            metadata = await phase_instance.process_file(file_path, output_dir)
+                            if metadata:
+                                self.state[phase_name]['successful_files'].add(file_path)
+                                await self.progress_tracker.complete_phase(phase_name, file_path)
+                            else:
+                                self.state[phase_name]['failed_files'].add(file_path)
+                                await self.progress_tracker.fail_phase(phase_name, file_path)
+                            
+                            await self.progress_tracker.complete_file(file_path)
+                            
+                        except Exception as e:
+                            self.logger.error(f"Failed to process {file_path} in {phase_name} phase: {str(e)}")
+                            self.logger.error(traceback.format_exc())
+                            self._add_failed_file(phase_name, file_path, str(e))
+                            await self.progress_tracker.fail_phase(phase_name, file_path)
+                            await self.progress_tracker.fail_file(file_path)
+                    
+                    # Finalize phase
+                    try:
+                        phase_instance.finalize()
+                    except Exception as e:
+                        self.logger.error(f"Error in {phase_name} finalize: {str(e)}")
+                        self.logger.error(traceback.format_exc())
+                        # Add error to phase state
+                        self._add_failed_file(phase_name, Path("finalize"), str(e))
+                        # Update progress tracker
+                        await self.progress_tracker.fail_phase(phase_name, Path("finalize"), str(e))
+                        # Mark validation as failed
+                        validation_passed = False
+                    
+                    # Store phase duration
+                    phase_durations[phase_name] = time.time() - phase_start_time
+                    
                 except Exception as e:
-                    self.logger.error(f"Error in {phase} finalize: {str(e)}")
-                    self.logger.error(traceback.format_exc())
-                
-                # Store phase duration
-                phase_durations[phase] = time.time() - phase_start_time
-                
-            except Exception as e:
-                self.logger.error(f"Error in {phase} phase: {str(e)}")
-                continue
+                    self.logger.error(f"Error in {phase_name} phase: {str(e)}")
+                    continue
+            
+            # Print final summary
+            await self.progress_tracker.print_summary()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process directory {directory}: {str(e)}")
+            self.logger.error(traceback.format_exc())
         
-        # Print final summary
-        self.progress_tracker.print_summary()
-
     async def needs_reprocessing(self, file_path: Path, phase: str) -> bool:
-        """Return True if file needs reprocessing.
-        Only the parse phase checks for actual changes - other phases always process.
+        """Check if a file needs to be reprocessed.
+        
+        Args:
+            file_path: Path to file to check
+            phase: Phase to check for
+            
+        Returns:
+            True if file needs reprocessing, False otherwise
         """
-        # Skip .DS_Store files
-        if file_path.name == ".DS_Store":
-            return False
-            
-        # Split and finalize phases always process
-        if phase != "parse":
+        # Always reprocess in finalize phase
+        if phase == "finalize":
             return True
             
-        processing_dir = self.config.processing_dir
-        phases_dir = Path(processing_dir) / "phases"
-        logger.debug(f"Checking if {file_path} needs reprocessing in {processing_dir}")
-
-        # Get relative path from input directory
-        input_dir = Path(self.config.input_dir)
-        try:
-            rel_path = file_path.relative_to(input_dir)
-        except ValueError:
-            logger.error(f"File {file_path} is not under input directory {input_dir}")
-            return True
-
-        # If the user's input file or directory isn't valid, assume we need reprocessing
-        if not file_path.exists():
-            logger.info(f"Input file {file_path} doesn't exist - will process when it appears")
-            return True
-
-        # For markdown files in the root directory, look in the root output directory
-        if file_path.suffix.lower() == '.md' and len(rel_path.parts) == 1:
-            output_path = phases_dir / phase / f"{file_path.stem}.parsed.md"
-        else:
-            # For all other files, preserve the directory structure
-            output_path = phases_dir / phase / rel_path.parent / f"{file_path.stem}.parsed.md"
-        logger.debug(f"Checking parse output: {output_path}")
+        # Get output file path
+        output_dir = self.get_phase_output_dir(phase)
+        output_file = output_dir / file_path.name
         
-        # If .parsed.md file doesn't exist => must reprocess
-        if not output_path.exists():
-            logger.info(f"No previous output found for {file_path.name} - will process")
+        # If output doesn't exist, needs reprocessing
+        if not output_file.exists():
             return True
-        
-        # Check if we're doing a clean run by checking if the phases directory was just created
-        try:
-            phases_dir_mtime = phases_dir.stat().st_mtime
-            current_time = time.time()
-            if current_time - phases_dir_mtime < 60:  # If phases directory was created in the last minute
-                logger.info(f"Clean run detected - will reprocess {file_path.name}")
-                return True
-        except OSError as e:
-            logger.error(f"Error checking phases directory time: {str(e)}")
-            return True
-        
+            
         # Check if input is newer than output
-        try:
-            input_mtime = file_path.stat().st_mtime
-            output_mtime = output_path.stat().st_mtime
-            logger.debug(f"Comparing timestamps for {file_path.name}")
-            
-            # Get formatted timestamps for logging
-            input_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(input_mtime))
-            output_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(output_mtime))
-            
-            if output_mtime < input_mtime:
-                logger.info(f"File {file_path.name} modified ({input_time}) after last processing ({output_time}) - will reprocess")
-                return True
-            else:
-                logger.info(f"File {file_path.name} unchanged since last processing ({output_time}) - skipping")
-                return False
-        except OSError as e:
-            logger.error(f"Error checking file times: {str(e)}")
-            return True
+        input_mtime = file_path.stat().st_mtime
+        output_mtime = output_file.stat().st_mtime
         
-        return False
-
+        return input_mtime > output_mtime
+        
     def get_phase_output_dir(self, phase: str) -> Path:
         """Get the output directory for a phase."""
         return self.config.processing_dir / "phases" / phase
-
+        
     def get_phase_instance(self, phase_name: str) -> Optional[Phase]:
         """Get phase instance by name.
         
@@ -308,7 +280,7 @@ class NovaPipeline:
         if phase_class:
             return phase_class(self.config, self)
         return None
-
+        
     def get_phases(self) -> List[str]:
         """Get list of available phases in order.
         
@@ -316,30 +288,7 @@ class NovaPipeline:
             List of phase names in execution order
         """
         return ["parse", "disassemble", "split", "finalize"]
-
-    async def _process_file(self, phase: Phase, file_path: Path) -> Optional[FileMetadata]:
-        """Process a file with a phase.
         
-        Args:
-            phase: Phase to process file with.
-            file_path: Path to file to process.
-            
-        Returns:
-            Document metadata if successful, None otherwise.
-        """
-        try:
-            # Get output directory for phase
-            output_dir = self.get_phase_output_dir(phase.name)
-            
-            # Process file
-            metadata = await phase.process(file_path, output_dir)
-            
-            return metadata
-            
-        except Exception as e:
-            logger.error(f"Failed to process {file_path} with {phase.name}: {str(e)}")
-            return None 
-
     async def process_files(self, files: List[Path]) -> None:
         """Process a list of files through all phases.
         
@@ -368,7 +317,7 @@ class NovaPipeline:
                 
                 try:
                     # Process file
-                    await phase.process(file_path, output_dir)
+                    await phase.process_file(file_path, output_dir)
                 except Exception as e:
                     logger.error(f"Failed to process {file_path} in {phase_name} phase: {e}")
                     logger.error(traceback.format_exc())
@@ -379,8 +328,59 @@ class NovaPipeline:
             except Exception as e:
                 logger.error(f"Failed to finalize {phase_name} phase: {e}")
                 logger.error(traceback.format_exc())
+                
+        # Print final summary
+        await self.progress_tracker.print_summary()
+
+    def _init_phase_state(self, phase_name: str) -> None:
+        """Initialize state for a phase.
+        
+        Args:
+            phase_name: Name of the phase
+        """
+        if phase_name not in self.state:
+            self.state[phase_name] = {
+                'successful_files': set(),
+                'failed_files': set(),
+                'skipped_files': set(),
+                'unchanged_files': set(),
+                'reprocessed_files': set(),
+                'file_type_stats': {}
+            } 
+
+    async def process_phase(self, phase_name: str) -> bool:
+        """Process a single phase.
+        
+        Args:
+            phase_name: Name of phase to process
             
-            # Print phase summary
-            duration = time.time() - start_time
-            phase.print_summary()
-            logger.info(f"{phase_name} phase completed in {duration:.2f}s") 
+        Returns:
+            Whether phase completed successfully
+        """
+        phase = self.phases[phase_name]
+        total_files = len(phase.get_input_files())
+        processed = 0
+        
+        try:
+            # Initialize phase state
+            self._init_phase_state(phase_name)
+            
+            # Process each file
+            for file_path in phase.get_input_files():
+                try:
+                    await phase.process_file(file_path)
+                    processed += 1
+                except Exception as e:
+                    self.logger.error(f"Error processing {file_path} in {phase_name}: {str(e)}")
+                    self.error_messages[phase_name][file_path] = str(e)
+                    continue
+            
+            # Finalize phase
+            await phase.finalize()
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error in {phase_name} phase: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return False 

@@ -432,10 +432,7 @@ class BaseHandler(ABC):
             metadata: Document metadata
         """
         try:
-            # Get the metadata path directly from the file path
-            metadata_path = get_metadata_path(file_path)
-            
-            # Get the output path for the metadata file
+            # Get the output path for the metadata file preserving directory structure
             output_metadata_path = self.output_manager.get_output_path_for_phase(
                 relative_path,
                 "parse",
@@ -443,7 +440,7 @@ class BaseHandler(ABC):
             )
             
             # Ensure parent directories exist
-            ensure_parent_dirs(output_metadata_path)
+            output_metadata_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Save metadata
             metadata.save(output_metadata_path)

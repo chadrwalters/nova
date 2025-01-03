@@ -84,15 +84,18 @@ class DocumentHandler(BaseHandler):
             Document metadata.
         """
         try:
-            # Get relative path from input directory
+            # Get relative path from input directory while preserving directory structure
             relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
             
-            # Get output path using relative path
+            # Get output path preserving directory structure
             output_path = self.output_manager.get_output_path_for_phase(
                 relative_path,
                 "parse",
                 ".parsed.md"
             )
+            
+            # Create parent directories if they don't exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Extract text from document
             text = await self._process_content(file_path)
@@ -128,7 +131,7 @@ class DocumentHandler(BaseHandler):
             
             metadata.add_output_file(output_path)
             
-            # Save metadata using base handler method
+            # Save metadata using relative path
             self._save_metadata(file_path, relative_path, metadata)
             
             return metadata

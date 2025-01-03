@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Union
 import tempfile
 import shutil
 import traceback
+import os
 
 from nova.config.manager import ConfigManager
 from nova.core.pipeline import NovaPipeline

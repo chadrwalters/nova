@@ -111,7 +111,35 @@ class LoggingManager:
         """
         self.config = config
         self._setup_logging()
-    
+        
+    def get_logger(self, name: str) -> logging.Logger:
+        """Get a logger with the given name.
+        
+        Args:
+            name: Logger name
+            
+        Returns:
+            Logger instance
+        """
+        logger = logging.getLogger(name)
+        
+        # Set base level from config
+        logger.setLevel(self.config.level)
+        
+        # Apply phase-specific level if applicable
+        for phase, level in self.config.phase_levels.items():
+            if phase in name:
+                logger.setLevel(level)
+                break
+        
+        # Apply handler-specific level if applicable
+        for handler_name, level in self.config.handler_levels.items():
+            if handler_name in name:
+                logger.setLevel(level)
+                break
+        
+        return logger
+        
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
         # Register NovaLogger as the logger class
@@ -137,7 +165,7 @@ class LoggingManager:
                 markup=True,
                 rich_tracebacks=True,
                 tracebacks_show_locals=True,
-                level=self.config.console_level
+                level=self.config.console_level.upper()
             )
             console_handler.setFormatter(formatter)
             handlers.append(console_handler)
@@ -146,12 +174,12 @@ class LoggingManager:
             log_file = Path(os.path.expanduser(self.config.log_dir)) / f"nova_{datetime.now():%Y%m%d}.log"
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(formatter)
-            file_handler.setLevel(self.config.file_level)
+            file_handler.setLevel(self.config.file_level.upper())
             handlers.append(file_handler)
         
         # Configure root logger
         root = logging.getLogger()
-        root.setLevel(self.config.level)
+        root.setLevel(self.config.level.upper())
         
         # Remove existing handlers
         root.handlers = []
@@ -166,18 +194,18 @@ class LoggingManager:
                 logger = logging.getLogger(logger_name)
                 
                 # Set base level
-                logger.setLevel(self.config.level)
+                logger.setLevel(self.config.level.upper())
                 
                 # Apply phase-specific level if applicable
                 for phase, level in self.config.phase_levels.items():
                     if phase in logger_name:
-                        logger.setLevel(level)
+                        logger.setLevel(level.upper())
                         break
                 
                 # Apply handler-specific level if applicable
                 for handler_name, level in self.config.handler_levels.items():
                     if handler_name in logger_name:
-                        logger.setLevel(level)
+                        logger.setLevel(level.upper())
                         break
                 
                 # Remove existing handlers
@@ -186,17 +214,9 @@ class LoggingManager:
                 # Add our handlers
                 for handler in handlers:
                     logger.addHandler(handler)
-    
-    def get_logger(self, name: str) -> NovaLogger:
-        """Get a logger with the given name.
-        
-        Args:
-            name: Logger name
-            
-        Returns:
-            Configured logger
-        """
-        return logging.getLogger(name)
+                    
+                # Don't propagate to avoid duplicate messages
+                logger.propagate = False
 
 
 # Keep existing utility functions
@@ -221,6 +241,8 @@ def print_summary(
     failures: list
 ) -> None:
     """Print processing summary."""
+    logger = logging.getLogger("nova.summary")
+    
     # Create summary table
     table = Table(title="Processing Summary")
     table.add_column("Metric", style="cyan")
@@ -235,14 +257,13 @@ def print_summary(
     table.add_row("Reprocessed", str(len(reprocessed)))
     table.add_row("Duration", f"{duration:.2f}s")
     
-    # Print table
-    console.print(table)
+    # Log table
+    logger.info("\n" + str(table))
     
-    # Print failures if any
+    # Log failures if any
     if failures:
-        console.print("\nFailed Files:", style="red")
-        console.print("━" * 80)
+        failure_msg = "\nFailed Files:\n" + "━" * 80 + "\n"
         for file_path, error_msg in failures:
-            console.print(f"• {Path(file_path).name}", style="red")
-            console.print(f"  Error: {error_msg}", style="yellow")
-            console.print() 
+            failure_msg += f"• {Path(file_path).name}\n"
+            failure_msg += f"  Error: {error_msg}\n\n"
+        logger.error(failure_msg) 
