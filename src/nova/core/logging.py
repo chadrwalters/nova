@@ -43,16 +43,14 @@ class NovaLogger(logging.Logger):
 
 
 class NovaFormatter(logging.Formatter):
-    """Custom formatter for Nova logs."""
+    """Nova-specific log formatter with rich text support."""
     
-    def __init__(self, config: LoggingConfig):
-        """Initialize formatter with configuration."""
-        super().__init__(
-            fmt=config.format,
-            datefmt=config.date_format,
-        )
+    def __init__(self, config):
+        """Initialize formatter with config."""
+        super().__init__()
         self.config = config
-    
+        self.datefmt = config.date_format
+        
     def format(self, record: NovaLogRecord) -> str:
         """Format log record with phase and timing info."""
         # Format timestamp
@@ -62,84 +60,58 @@ class NovaFormatter(logging.Formatter):
         message = record.getMessage()
         message = message.encode("utf-8", errors="replace").decode("utf-8")
         
+        # Format level with color
+        level_colors = {
+            'DEBUG': '[dim]',
+            'INFO': '[white]',
+            'WARNING': '[yellow]',
+            'ERROR': '[red]',
+            'CRITICAL': '[red bold]'
+        }
+        level_color = level_colors.get(record.levelname, '')
+        level_str = f"{level_color}[{record.levelname}][/]"
+        
         # Build context information if enabled
         context_info = ""
         if self.config.include_context:
             # Add phase info if available
             if hasattr(record, 'phase') and record.phase:
-                context_info += f"[{record.phase}] "
+                context_info += f"[cyan][{record.phase}][/cyan] "
             
             # Add handler info if available
             if hasattr(record, 'handler') and record.handler:
-                context_info += f"({record.handler}) "
+                context_info += f"[blue]({record.handler})[/blue] "
             
             # Add file info if available
             if hasattr(record, 'file_path') and record.file_path:
-                context_info += f"<{record.file_path}> "
+                context_info += f"[dim]<{record.file_path}>[/dim] "
             
             # Add timing info if available
             if hasattr(record, 'duration') and record.duration is not None:
-                context_info += f"({record.duration:.2f}s) "
+                context_info += f"[yellow]({record.duration:.2f}s)[/yellow] "
             
             # Add progress info if available
             if hasattr(record, 'progress') and record.progress:
-                context_info += f"[{record.progress}] "
-            
-            # Add any additional context
-            if hasattr(record, 'context') and record.context:
-                context_info += " ".join(f"{k}={v}" for k, v in record.context.items())
+                context_info += f"[green][{record.progress}][/green] "
         
         # Build final message
-        parts = [
-            record.asctime,
-            record.levelname,
-            context_info,
-            message
-        ]
+        if record.exc_info:
+            if not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+            message = f"{message}\n{record.exc_text}"
         
-        return " ".join(p for p in parts if p)
+        # Return formatted message
+        return f"{record.asctime} {level_str} {context_info}{message}"
 
 
 class LoggingManager:
-    """Manages logging configuration and setup."""
+    """Manage logging configuration."""
     
-    def __init__(self, config: LoggingConfig):
-        """Initialize logging manager.
-        
-        Args:
-            config: Logging configuration
-        """
+    def __init__(self, config):
+        """Initialize logging manager."""
         self.config = config
         self._setup_logging()
-        
-    def get_logger(self, name: str) -> logging.Logger:
-        """Get a logger with the given name.
-        
-        Args:
-            name: Logger name
-            
-        Returns:
-            Logger instance
-        """
-        logger = logging.getLogger(name)
-        
-        # Set base level from config
-        logger.setLevel(self.config.level)
-        
-        # Apply phase-specific level if applicable
-        for phase, level in self.config.phase_levels.items():
-            if phase in name:
-                logger.setLevel(level)
-                break
-        
-        # Apply handler-specific level if applicable
-        for handler_name, level in self.config.handler_levels.items():
-            if handler_name in name:
-                logger.setLevel(level)
-                break
-        
-        return logger
-        
+    
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
         # Register NovaLogger as the logger class
@@ -159,13 +131,19 @@ class LoggingManager:
         if "console" in self.config.handlers:
             console_handler = RichHandler(
                 console=console,
-                show_time=True,
-                show_path=True,
+                show_time=False,  # We'll handle this in our formatter
+                show_path=False,  # We'll handle this in our formatter
                 enable_link_path=True,
                 markup=True,
                 rich_tracebacks=True,
                 tracebacks_show_locals=True,
-                level=self.config.console_level.upper()
+                tracebacks_width=100,
+                tracebacks_extra_lines=3,
+                tracebacks_theme='monokai',
+                level=self.config.console_level.upper(),
+                show_level=False,  # We'll handle this in our formatter
+                omit_repeated_times=True,
+                log_time_format="[%X]"
             )
             console_handler.setFormatter(formatter)
             handlers.append(console_handler)
@@ -179,7 +157,7 @@ class LoggingManager:
         
         # Configure root logger
         root = logging.getLogger()
-        root.setLevel(self.config.level.upper())
+        root.setLevel(logging.WARNING)  # Set root logger to WARNING by default
         
         # Remove existing handlers
         root.handlers = []
@@ -193,8 +171,11 @@ class LoggingManager:
             if logger_name.startswith('nova'):
                 logger = logging.getLogger(logger_name)
                 
-                # Set base level
-                logger.setLevel(self.config.level.upper())
+                # Set base level from config
+                if 'summary' in logger_name:
+                    logger.setLevel(logging.WARNING)  # Force summary logger to WARNING
+                else:
+                    logger.setLevel(self.config.level.upper())
                 
                 # Apply phase-specific level if applicable
                 for phase, level in self.config.phase_levels.items():
@@ -214,7 +195,7 @@ class LoggingManager:
                 # Add our handlers
                 for handler in handlers:
                     logger.addHandler(handler)
-                    
+                
                 # Don't propagate to avoid duplicate messages
                 logger.propagate = False
 
