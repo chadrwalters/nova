@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 from rich.panel import Panel
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,9 @@ class PhaseProgress:
     completed_file_paths: Set[Path] = field(default_factory=set)
     failed_file_paths: Set[Path] = field(default_factory=set)
     skipped_file_paths: Set[Path] = field(default_factory=set)
+    files: Dict[Path, 'FileProgress'] = field(default_factory=dict)
     task_id: Optional[int] = None
+    duration: Optional[float] = None
     
     @property
     def remaining_files(self) -> int:
@@ -71,38 +74,86 @@ class ProgressTracker:
         self.files: Dict[Path, FileProgress] = {}
         self.lock = asyncio.Lock()
         
-        # Initialize rich progress display
+        # Initialize rich progress display with better formatting
         self.progress = Progress(
             SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
+            TextColumn("[bold cyan]{task.description:>12}[/]"),
+            BarColumn(bar_width=40, style="cyan", complete_style="green"),
             TaskProgressColumn(),
-            console=self.console
+            TextColumn("[dim]{task.completed}/{task.total}[/]"),
+            console=self.console,
+            expand=False,
+            transient=False,  # Make progress display persistent
+            refresh_per_second=2  # Increase refresh rate slightly
         )
         self.progress.start()
         
     async def add_phase(self, phase_name: str, total_files: int) -> None:
-        """Add a new phase to track.
-        
-        Args:
-            phase_name: Name of the phase
-            total_files: Total number of files to process
-        """
+        """Add a new phase to track."""
         async with self.lock:
-            # Create phase progress
             phase = PhaseProgress(
                 name=phase_name,
                 total_files=total_files
             )
             
-            # Add progress bar
+            # Add progress bar with better formatting
             phase.task_id = self.progress.add_task(
-                f"[cyan]{phase_name.upper()}",
-                total=total_files
+                phase_name.upper(),
+                total=total_files,
+                start=True,
+                visible=True  # Ensure phase is visible
             )
             
             self.phases[phase_name] = phase
+    
+    async def update_progress(self, phase_name: str, file_path: Path, status: ProcessingStatus, error: Optional[str] = None) -> None:
+        """Update progress for a file."""
+        async with self.lock:
+            phase = self.phases[phase_name]
             
+            # Update counts based on status
+            if status == ProcessingStatus.COMPLETED:
+                phase.completed_files += 1
+                phase.completed_file_paths.add(file_path)
+                if file_path in phase.files_in_progress:
+                    phase.files_in_progress.remove(file_path)
+            elif status == ProcessingStatus.FAILED:
+                phase.failed_files += 1
+                phase.failed_file_paths.add(file_path)
+                if file_path in phase.files_in_progress:
+                    phase.files_in_progress.remove(file_path)
+                if error:
+                    logger.error(f"Failed to process {file_path.name}: {error}")
+            elif status == ProcessingStatus.SKIPPED:
+                phase.skipped_files += 1
+                phase.skipped_file_paths.add(file_path)
+            elif status == ProcessingStatus.IN_PROGRESS:
+                phase.files_in_progress.add(file_path)
+            
+            # Update progress bar
+            completed = phase.completed_files + phase.failed_files + phase.skipped_files
+            self.progress.update(
+                phase.task_id,
+                completed=completed,
+                description=f"{phase_name.upper():>12}",
+                visible=True  # Ensure phase remains visible
+            )
+    
+    def start_phase(self, phase_name: str) -> None:
+        """Start timing a phase."""
+        if phase_name in self.phases:
+            phase = self.phases[phase_name]
+            phase.start_time = time.time()
+            logger.debug(f"[cyan]Starting {phase_name.upper()} phase[/]")
+    
+    def end_phase(self, phase_name: str) -> None:
+        """End timing a phase and update duration."""
+        if phase_name in self.phases:
+            phase = self.phases[phase_name]
+            if phase.start_time is not None:
+                phase.duration = time.time() - phase.start_time
+                logger.debug(f"[cyan]Completed {phase_name.upper()} phase[/] in {phase.duration:.1f}s")
+    
     async def start_file(self, file_path: Path) -> None:
         """Start tracking a file.
         
@@ -220,56 +271,73 @@ class ProgressTracker:
                 
     async def print_summary(self) -> None:
         """Print processing summary."""
-        # Get phase stats
-        phase_stats = []
-        all_successful = True
-        
-        for phase_name, phase_state in self.phases.items():
-            total = len(phase_state.files)
-            completed = len([f for f in phase_state.files.values() if f.status == FileStatus.COMPLETED])
-            failed = len([f for f in phase_state.files.values() if f.status == FileStatus.FAILED])
-            skipped = len([f for f in phase_state.files.values() if f.status == FileStatus.SKIPPED])
-            
-            # Calculate progress percentage
-            progress = (completed / total * 100) if total > 0 else 0
-            
-            phase_stats.append({
-                'phase': phase_name.upper(),
-                'total': total,
-                'completed': completed,
-                'failed': failed,
-                'skipped': skipped,
-                'progress': f"{progress:.1f}%"
-            })
-            
-            # Check for failures
-            if failed > 0:
-                all_successful = False
+        # Stop the progress display before showing summary
+        self.progress.stop()
         
         # Create summary table
         table = Table(title="Processing Summary")
         table.add_column("Phase", style="cyan")
-        table.add_column("Total", justify="right", style="green")
+        table.add_column("Total", justify="right")
         table.add_column("Completed", justify="right", style="green")
         table.add_column("Failed", justify="right", style="red")
         table.add_column("Skipped", justify="right", style="yellow")
-        table.add_column("Progress", justify="right", style="green")
+        table.add_column("Progress", justify="right")
+        table.add_column("Duration", justify="right")
         
-        for stats in phase_stats:
+        all_successful = True
+        total_files = 0
+        total_completed = 0
+        total_failed = 0
+        total_skipped = 0
+        total_duration = 0.0
+        
+        for phase_name, phase_state in self.phases.items():
+            completed = phase_state.completed_files
+            failed = phase_state.failed_files
+            skipped = phase_state.skipped_files
+            duration = phase_state.duration or 0.0
+            
+            # Calculate progress percentage
+            progress = phase_state.progress_percentage
+            
             table.add_row(
-                stats['phase'],
-                str(stats['total']),
-                str(stats['completed']),
-                str(stats['failed']),
-                str(stats['skipped']),
-                stats['progress']
+                phase_name.upper(),
+                str(phase_state.total_files),
+                str(completed),
+                str(failed),
+                str(skipped),
+                f"{progress:.1f}%",
+                f"{duration:.1f}s"
             )
+            
+            total_files += phase_state.total_files
+            total_completed += completed
+            total_failed += failed
+            total_skipped += skipped
+            total_duration += duration
+            
+            if failed > 0:
+                all_successful = False
         
-        # Log summary
-        logger = logging.getLogger("nova.summary")
-        logger.info("\n" + str(table))
+        # Add totals row
+        total_progress = (total_completed + total_failed + total_skipped) / total_files * 100 if total_files > 0 else 0
+        table.add_row(
+            "TOTAL",
+            str(total_files),
+            str(total_completed),
+            str(total_failed),
+            str(total_skipped),
+            f"{total_progress:.1f}%",
+            f"{total_duration:.1f}s",
+            style="bold"
+        )
         
-        if all_successful:
-            logger.info("All files processed successfully!")
+        # Only show summary if there are failures or if debug logging is enabled
+        if total_failed > 0:
+            logger.warning("\n" + str(table))
+            logger.error("\nFailed Files:")
+            for phase_state in self.phases.values():
+                for file_path in phase_state.failed_file_paths:
+                    logger.error(f"  • {file_path}")
         else:
-            logger.warning("Some files failed to process. Check the logs for details.") 
+            logger.debug("\n" + str(table)) 

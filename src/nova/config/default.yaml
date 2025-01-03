@@ -23,23 +23,23 @@ apis:
 logging:
   level: INFO  # Default to INFO if not set
   file_level: DEBUG
-  console_level: INFO
+  console_level: WARNING
   log_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaLogs"
   format: "%(asctime)s [%(levelname)s] %(message)s"
   date_format: "%Y-%m-%d %H:%M:%S"
   handlers: ["console", "file"]
   phase_levels:
-    parse: INFO
-    disassemble: INFO
-    split: INFO
-    finalize: INFO
+    parse: WARNING
+    disassemble: WARNING
+    split: WARNING
+    finalize: WARNING
   handler_levels:
-    document: INFO
-    image: INFO
-    markdown: INFO
-    text: INFO
-    spreadsheet: INFO
-    html: INFO
+    document: WARNING
+    image: WARNING
+    markdown: WARNING
+    text: WARNING
+    spreadsheet: WARNING
+    html: WARNING
   structured: true
   include_context: true
 

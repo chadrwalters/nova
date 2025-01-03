@@ -2,6 +2,7 @@
 import logging
 import os
 import shutil
+import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 from rich.table import Table
@@ -19,17 +20,9 @@ class DisassemblyPhase(Phase):
     """Phase that splits parsed markdown files into summary and raw notes components."""
     
     def __init__(self, config: ConfigManager, pipeline=None):
-        """Initialize the disassembly phase.
-        
-        Args:
-            config: Configuration manager
-            pipeline: Optional pipeline instance
-        """
+        """Initialize the disassembly phase."""
         super().__init__("disassemble", config, pipeline)
         self.handler_registry = HandlerRegistry(config)
-        
-        # Set up debug logging
-        self.logger.setLevel(logging.DEBUG)
         
         # Initialize state
         if 'disassemble' not in self.pipeline.state:
@@ -67,6 +60,17 @@ class DisassemblyPhase(Phase):
                     'failed': 0
                 }
             }
+        else:
+            # Ensure all required stats keys exist
+            stats = state['stats']
+            if 'total_processed' not in stats:
+                stats['total_processed'] = 0
+            if 'summary_files' not in stats:
+                stats['summary_files'] = {'created': 0, 'empty': 0, 'failed': 0}
+            if 'raw_notes_files' not in stats:
+                stats['raw_notes_files'] = {'created': 0, 'empty': 0, 'failed': 0}
+            if 'attachments' not in stats:
+                stats['attachments'] = {'copied': 0, 'failed': 0}
         
     def _copy_attachments(self, src_dir: Path, dest_dir: Path, base_name: str) -> None:
         """Copy attachments directory if it exists.
@@ -150,7 +154,7 @@ class DisassemblyPhase(Phase):
                             })
                 
                 self.pipeline.state['disassemble']['stats']['attachments']['copied'] += 1
-                logger.info(f"Copied attachments from {attachments_dir}")
+                logger.debug(f"Copied attachments from {attachments_dir}")
             except Exception as e:
                 self.pipeline.state['disassemble']['stats']['attachments']['failed'] += 1
                 logger.error(f"Failed to copy attachments: {str(e)}")
@@ -266,14 +270,16 @@ class DisassemblyPhase(Phase):
             str(stats['total_processed'])
         )
         
-        console.print(table)
-        
-        # Log any failed files
-        failed_files = self.pipeline.state['disassemble']['failed_files']
-        if failed_files:
-            logger.warning(f"Failed to process {len(failed_files)} files:")
-            for file_path in failed_files:
+        # Only show table if there are failures
+        if len(self.pipeline.state['disassemble']['failed_files']) > 0:
+            logger.warning("\n" + str(table))
+            # Log failed files
+            logger.warning(f"Failed to process {len(self.pipeline.state['disassemble']['failed_files'])} files:")
+            for file_path in self.pipeline.state['disassemble']['failed_files']:
                 logger.warning(f"  - {file_path}")
+        else:
+            # Don't log the table at all if there are no failures
+            pass
 
     def _split_content(self, content: str) -> Tuple[str, Optional[str]]:
         """Split content into summary and raw notes if marker exists.
@@ -368,9 +374,77 @@ class DisassemblyPhase(Phase):
             self.pipeline.state['disassemble']['failed_files'].add(file_path)
             if metadata:
                 metadata.add_error("DisassemblyPhase", str(e))
+            # Update failed stats
+            self.pipeline.state['disassemble']['stats']['summary_files']['failed'] += 1
+            self.pipeline.state['disassemble']['stats']['raw_notes_files']['failed'] += 1
             return metadata
 
     def finalize(self):
         """Finalize the disassembly phase."""
         self._print_summary()
-        logger.info("Disassembly phase complete") 
+        logger.debug("Disassembly phase complete") 
+
+    async def process_file(self, file_path: Path, output_dir: Path) -> Optional[FileMetadata]:
+        """Process a file through the disassembly phase.
+        
+        Args:
+            file_path: Path to file to process
+            output_dir: Output directory
+            
+        Returns:
+            Updated metadata if successful, None if failed
+        """
+        try:
+            # Skip non-parsed markdown files
+            if not str(file_path).endswith('.parsed.md'):
+                return None
+                
+            # Initialize metadata
+            metadata = FileMetadata.from_file(
+                file_path=file_path,
+                handler_name="disassemble",
+                handler_version="1.0"
+            )
+                
+            # Read content
+            content = file_path.read_text(encoding='utf-8')
+            
+            # Split content into summary and raw notes
+            summary_content, raw_notes_content = self._split_content(content)
+            
+            # Get base name without .parsed.md extension
+            base_name = file_path.stem.replace('.parsed', '')
+            
+            # Write summary file
+            if summary_content:
+                summary_file = output_dir / f"{base_name}.summary.md"
+                summary_file.write_text(summary_content, encoding='utf-8')
+                metadata.add_output_file(summary_file)
+                self.pipeline.state['disassemble']['stats']['summary_files']['created'] += 1
+            else:
+                self.pipeline.state['disassemble']['stats']['summary_files']['empty'] += 1
+                
+            # Write raw notes file if it exists
+            if raw_notes_content:
+                raw_notes_file = output_dir / f"{base_name}.rawnotes.md"
+                raw_notes_file.write_text(raw_notes_content, encoding='utf-8')
+                metadata.add_output_file(raw_notes_file)
+                self.pipeline.state['disassemble']['stats']['raw_notes_files']['created'] += 1
+            else:
+                self.pipeline.state['disassemble']['stats']['raw_notes_files']['empty'] += 1
+                
+            # Copy attachments if they exist
+            self._copy_attachments(file_path.parent, output_dir, base_name)
+            
+            # Update pipeline state
+            self.pipeline.state['disassemble']['successful_files'].add(file_path)
+            self.pipeline.state['disassemble']['stats']['total_processed'] += 1
+            
+            metadata.processed = True
+            return metadata
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self.pipeline.state['disassemble']['failed_files'].add(file_path)
+            return None 

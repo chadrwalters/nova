@@ -41,9 +41,6 @@ class SplitPhase(Phase):
         self.handler_registry = HandlerRegistry(config)
         self.stats = defaultdict(lambda: {"processed": 0, "skipped": 0, "errors": 0})
         
-        # Set up debug logging
-        self.logger.setLevel(logging.DEBUG)
-        
         self.section_stats = {
             'summary': {'processed': 0, 'empty': 0, 'error': 0},
             'raw_notes': {'processed': 0, 'empty': 0, 'error': 0},
@@ -336,25 +333,18 @@ class SplitPhase(Phase):
             attachments_path.parent.mkdir(parents=True, exist_ok=True)
             # Write attachments file
             attachments_file = self._write_attachments_file(self._all_attachments, attachments_path.parent)
-            if attachments_file and attachments_file.exists():
-                self.logger.info(f"Successfully wrote attachments file: {attachments_file}")
-        
-        # Add section stats to pipeline state
-        self.pipeline.state['split']['section_stats'] = self.section_stats
-        self.logger.info("Split phase completed")
-        self.logger.info(f"Section stats: {self.section_stats}")
         
         # Log any failed files
         failed_files = self.pipeline.state['split']['failed_files']
         if failed_files:
-            self.logger.warning(f"Failed to process {len(failed_files)} files:")
+            logger.warning(f"Failed to process {len(failed_files)} files:")
             for file_path in failed_files:
-                self.logger.warning(f"  - {file_path}")
+                logger.warning(f"  - {file_path}")
         
-        # Log empty sections
+        # Log empty sections only as warnings
         for section, stats in self.section_stats.items():
             if stats['empty'] > 0:
-                self.logger.warning(f"Found {stats['empty']} empty {section} sections")
+                logger.warning(f"Found {stats['empty']} empty {section} sections")
 
     def _write_attachments_file(self, attachments: Dict[str, List[Dict]], output_dir: Path) -> Optional[Path]:
         """Write consolidated attachments file.

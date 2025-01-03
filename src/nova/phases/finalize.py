@@ -8,6 +8,8 @@ from typing import Optional
 from nova.core.metadata import FileMetadata
 from nova.phases.base import Phase
 from nova.validation.pipeline_validator import PipelineValidator
+from rich.table import Table
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +55,6 @@ class FinalizePhase(Phase):
             
     def finalize(self) -> None:
         """Run pipeline validation and cleanup."""
-        logger.info("Running pipeline validation...")
-        
         # Run validation
         validation_passed = self.validator.validate()
         if not validation_passed:
@@ -62,7 +62,6 @@ class FinalizePhase(Phase):
             return
             
         # Copy attachments
-        logger.info("Copying attachments...")
         split_dir = self.config.processing_dir / "phases" / "split"
         if split_dir.exists():
             for file_name in ["Summary.md", "Raw Notes.md", "Attachments.md"]:
@@ -70,23 +69,4 @@ class FinalizePhase(Phase):
                 if src.exists():
                     dst = self.config.output_dir / file_name
                     shutil.copy2(src, dst)
-                    logger.debug(f"Copied {src} to {dst}")
-                    
-        # Print summary
-        logger.info("\n=== Finalize Phase Summary ===")
-        
-        # Report validation status
-        if not validation_passed:
-            logger.warning("Pipeline validation: FAILED")
-        else:
-            logger.info("Pipeline validation: PASSED")
-            
-        # Report attachments copying
-        logger.info("Attachments copying: COMPLETED")
-
-        # Report cleanup stats
-        logger.info("\nCleanup Statistics:")
-        logger.info(f"- Temporary files removed: 0")
-        logger.info(f"- Directories removed: 0")
-        
-        logger.info("\nFinalize phase completed successfully!") 
+                    logger.info(f"Copied {src} to {dst}") 
