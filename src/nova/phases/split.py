@@ -1,17 +1,19 @@
-"""Split phase module."""
-
+"""Split phase of the Nova pipeline."""
+import logging
 import os
-import re
-import traceback
-from pathlib import Path
-from typing import Dict, List, Optional, Set
 import shutil
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple, Union
 from collections import defaultdict
 
+from nova.config.manager import ConfigManager
+from nova.handlers.registry import HandlerRegistry
 from nova.phases.base import Phase
-from nova.models.document import DocumentMetadata
+from nova.core.metadata import FileMetadata, DocumentMetadata
 from nova.models.links import LinkContext, LinkType
 from nova.utils.file_utils import safe_write_file
+
+logger = logging.getLogger(__name__)
 
 class SplitPhase(Phase):
     """Split phase of the document processing pipeline."""
@@ -35,8 +37,19 @@ class SplitPhase(Phase):
         '.md': 'DOC'
     }
     
-    def __init__(self, pipeline):
-        super().__init__(pipeline)
+    def __init__(self, config: ConfigManager, pipeline=None):
+        """Initialize the split phase.
+        
+        Args:
+            config: Configuration manager
+            pipeline: Optional pipeline instance
+        """
+        super().__init__(config, pipeline)
+        self.handler_registry = HandlerRegistry(config)
+        
+        # Set up debug logging
+        self.logger.setLevel(logging.DEBUG)
+        
         self.section_stats = {
             'summary': {'processed': 0, 'empty': 0, 'error': 0},
             'raw_notes': {'processed': 0, 'empty': 0, 'error': 0},

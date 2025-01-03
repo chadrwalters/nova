@@ -1,76 +1,77 @@
-"""Base phase module."""
-
-from pathlib import Path
-from typing import Optional
+"""Base phase implementation."""
+import asyncio
 import logging
-import shutil
-import traceback
+from pathlib import Path
+from typing import Dict, Optional, Set, Union
 
-from nova.models.document import DocumentMetadata
-from nova.utils.file_utils import safe_write_file
+from nova.config.manager import ConfigManager
+from nova.core.metadata import FileMetadata
+
+logger = logging.getLogger(__name__)
+
 
 class Phase:
     """Base class for pipeline phases."""
     
-    def __init__(self, pipeline):
+    def __init__(self, config: ConfigManager, pipeline=None):
         """Initialize phase.
         
         Args:
-            pipeline: Pipeline instance this phase belongs to
+            config: Configuration manager
+            pipeline: Optional pipeline instance
         """
+        self.config = config
         self.pipeline = pipeline
-        # Use the actual class's module name for logging
+        self.lock = asyncio.Lock()
+        self.processed_files: Set[Path] = set()
+        self.failed_files: Dict[Path, str] = {}
         self.logger = logging.getLogger(self.__class__.__module__)
         
-    async def process_file(
-        self,
-        file_path: Path,
-        output_dir: Path,
-        metadata: Optional[DocumentMetadata] = None
-    ) -> Optional[DocumentMetadata]:
-        """Process a file.
+    async def process_file(self, file_path: Union[str, Path], output_dir: Union[str, Path]) -> Optional[FileMetadata]:
+        """Process a single file.
         
         Args:
             file_path: Path to file to process
             output_dir: Directory to write output files to
-            metadata: Optional metadata from previous phase
             
         Returns:
-            Metadata about processed file, or None if file was skipped
+            Optional metadata about processed file
         """
+        file_path = Path(file_path)
+        output_dir = Path(output_dir)
+        
         try:
-            # Initialize metadata if not provided
-            if metadata is None:
-                metadata = DocumentMetadata.from_file(
-                    file_path=file_path,
-                    handler_name=self.__class__.__name__,
-                    handler_version="1.0"
-                )
+            # Skip if already processed
+            if file_path in self.processed_files:
+                self.logger.debug(f"Skipping already processed file: {file_path}")
+                return None
             
-            # Process the file
-            metadata = await self.process_impl(file_path, output_dir, metadata)
-            if metadata:
-                return metadata
-            return None
+            # Process file
+            metadata = await self.process_impl(file_path, output_dir)
+            
+            # Mark as processed
+            self.processed_files.add(file_path)
+            
+            return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process file: {file_path}")
-            self.logger.error(traceback.format_exc())
-            if metadata:
-                metadata.add_error(self.__class__.__name__, str(e))
-                metadata.processed = False
-                return metadata
-            return None
-
-    def _safe_write_file(self, file_path: Path, content: str, encoding: str = 'utf-8') -> bool:
-        """Write content to file only if it has changed.
+            # Log error and add to failed files
+            self.logger.error(f"Failed to process {file_path}: {str(e)}")
+            self.failed_files[file_path] = str(e)
+            raise
+            
+    async def process_impl(self, file_path: Path, output_dir: Path) -> Optional[FileMetadata]:
+        """Process implementation to be overridden by subclasses.
         
         Args:
-            file_path: Path to file.
-            content: Content to write.
-            encoding: File encoding.
+            file_path: Path to file to process
+            output_dir: Directory to write output files to
             
         Returns:
-            True if file was written, False if unchanged.
+            Optional metadata about processed file
         """
-        return safe_write_file(file_path, content, encoding) 
+        raise NotImplementedError("Subclasses must implement process_impl")
+        
+    def finalize(self) -> None:
+        """Finalize phase processing."""
+        pass 

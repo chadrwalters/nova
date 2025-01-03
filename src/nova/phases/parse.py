@@ -18,14 +18,15 @@ logger = logging.getLogger(__name__)
 class ParsePhase(Phase):
     """Phase that parses input files into a common format."""
     
-    def __init__(self, pipeline):
+    def __init__(self, config: ConfigManager, pipeline=None):
         """Initialize the parse phase.
         
         Args:
-            pipeline: Pipeline instance
+            config: Configuration manager
+            pipeline: Optional pipeline instance
         """
-        super().__init__(pipeline)
-        self.handler_registry = HandlerRegistry(pipeline.config)
+        super().__init__(config, pipeline)
+        self.handler_registry = HandlerRegistry(config)
         
         # Set up debug logging
         self.logger.setLevel(logging.DEBUG)

@@ -1,14 +1,14 @@
-"""Disassembly phase module."""
-
-from pathlib import Path
-import shutil
+"""Disassembly phase of the Nova pipeline."""
 import logging
-from typing import Optional, Tuple, Dict
-from rich.console import Console
+import os
+import shutil
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple, Union
 from rich.table import Table
-import re
-import traceback
+from rich.console import Console
 
+from nova.config.manager import ConfigManager
+from nova.handlers.registry import HandlerRegistry
 from nova.phases.base import Phase
 from nova.core.metadata import FileMetadata
 
@@ -18,15 +18,39 @@ console = Console()
 class DisassemblyPhase(Phase):
     """Phase that splits parsed markdown files into summary and raw notes components."""
     
-    def __init__(self, pipeline):
-        """Initialize the disassembly phase."""
-        super().__init__(pipeline)
+    def __init__(self, config: ConfigManager, pipeline=None):
+        """Initialize the disassembly phase.
+        
+        Args:
+            config: Configuration manager
+            pipeline: Optional pipeline instance
+        """
+        super().__init__(config, pipeline)
+        self.handler_registry = HandlerRegistry(config)
+        
+        # Set up debug logging
+        self.logger.setLevel(logging.DEBUG)
         
         # Initialize state
-        self.pipeline.state['disassemble'] = {
-            'successful_files': set(),
-            'failed_files': set(),
-            'stats': {
+        if 'disassemble' not in self.pipeline.state:
+            self.pipeline.state['disassemble'] = {}
+            
+        # Update state with required keys
+        state = self.pipeline.state['disassemble']
+        if 'successful_files' not in state:
+            state['successful_files'] = set()
+        if 'failed_files' not in state:
+            state['failed_files'] = set()
+        if 'skipped_files' not in state:
+            state['skipped_files'] = set()
+        if 'unchanged_files' not in state:
+            state['unchanged_files'] = set()
+        if 'reprocessed_files' not in state:
+            state['reprocessed_files'] = set()
+        if 'attachments' not in state:
+            state['attachments'] = {}
+        if 'stats' not in state:
+            state['stats'] = {
                 'total_processed': 0,
                 'summary_files': {
                     'created': 0,
@@ -43,7 +67,6 @@ class DisassemblyPhase(Phase):
                     'failed': 0
                 }
             }
-        }
         
     def _copy_attachments(self, src_dir: Path, dest_dir: Path, base_name: str) -> None:
         """Copy attachments directory if it exists.

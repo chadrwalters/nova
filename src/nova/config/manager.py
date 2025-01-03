@@ -117,6 +117,10 @@ class ConfigManager:
             # Ensure required sections exist
             if 'cache' not in config_dict:
                 config_dict['cache'] = {}
+                
+            # Ensure pipeline config exists
+            if 'pipeline' not in config_dict:
+                config_dict['pipeline'] = {}
             
             # Expand environment variables and user paths
             if 'base_dir' in config_dict:
@@ -164,7 +168,14 @@ class ConfigManager:
             
             config_dict['cache'] = cache_config
             
-            return NovaConfig(**config_dict)
+            # Create config object
+            config = NovaConfig(**config_dict)
+            
+            # Initialize pipeline state
+            if config.pipeline is None:
+                config.pipeline = PipelineConfig()
+            
+            return config
             
         except FileNotFoundError:
             raise FileNotFoundError(f"Configuration file not found: {self.config_path}")

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from nova.config.manager import ConfigManager
+from nova.config.settings import LoggingConfig
 from nova.core.logging import NovaFormatter, create_progress_bar, print_summary
 from nova.core.pipeline import NovaPipeline
 
@@ -21,9 +22,18 @@ def configure_logging(debug: bool = False, no_color: bool = False) -> None:
         debug: Whether to enable debug logging.
         no_color: Whether to disable colored output.
     """
+    # Create basic logging config
+    config = LoggingConfig(
+        level="DEBUG" if debug else "WARNING",
+        console_level="DEBUG" if debug else "WARNING",
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        date_format="%Y-%m-%d %H:%M:%S",
+        handlers=["console"]
+    )
+    
     # Create handler with custom formatter
     handler = logging.StreamHandler()
-    handler.setFormatter(NovaFormatter())
+    handler.setFormatter(NovaFormatter(config))
     
     # Configure root logger
     root = logging.getLogger()
@@ -99,6 +109,8 @@ async def main(args: Optional[List[str]] = None) -> int:
         config = ConfigManager(parsed_args.config)
         
         # Create pipeline
+        if config.pipeline is None:
+            config.pipeline = PipelineConfig()
         pipeline = NovaPipeline(config=config)
         
         # Get input directory

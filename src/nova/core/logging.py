@@ -1,36 +1,60 @@
 """Nova logging configuration."""
 import logging
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, List
 from pathlib import Path
+import os
+from datetime import datetime
 
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from ..config.settings import LoggingConfig
+
 console = Console()
+
+
+class NovaLogRecord(logging.LogRecord):
+    """Extended LogRecord with Nova-specific fields."""
+    
+    def __init__(self, *args, **kwargs):
+        """Initialize log record with Nova-specific fields."""
+        super().__init__(*args, **kwargs)
+        self.phase = None
+        self.handler = None
+        self.duration = None
+        self.context = {}
+        self.file_path = None
+        self.progress = None
+
+
+class NovaLogger(logging.Logger):
+    """Extended Logger with Nova-specific methods."""
+    
+    def makeRecord(self, name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None):
+        """Create a NovaLogRecord instead of LogRecord."""
+        record = NovaLogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
+        if extra:
+            for key, value in extra.items():
+                setattr(record, key, value)
+        return record
 
 
 class NovaFormatter(logging.Formatter):
     """Custom formatter for Nova logs."""
     
-    def __init__(self):
-        """Initialize formatter with default format."""
+    def __init__(self, config: LoggingConfig):
+        """Initialize formatter with configuration."""
         super().__init__(
-            fmt="%(asctime)s [%(levelname)s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+            fmt=config.format,
+            datefmt=config.date_format,
         )
+        self.config = config
     
-    def format(self, record: logging.LogRecord) -> str:
-        """Format log record with phase and timing info.
-        
-        Args:
-            record: Log record to format.
-            
-        Returns:
-            Formatted log message.
-        """
+    def format(self, record: NovaLogRecord) -> str:
+        """Format log record with phase and timing info."""
         # Format timestamp
         record.asctime = self.formatTime(record, self.datefmt)
         
@@ -38,38 +62,146 @@ class NovaFormatter(logging.Formatter):
         message = record.getMessage()
         message = message.encode("utf-8", errors="replace").decode("utf-8")
         
-        # Get phase info if available
-        phase = getattr(record, "phase", "")
-        phase_info = f"[{phase}] " if phase else ""
+        # Build context information if enabled
+        context_info = ""
+        if self.config.include_context:
+            # Add phase info if available
+            if hasattr(record, 'phase') and record.phase:
+                context_info += f"[{record.phase}] "
+            
+            # Add handler info if available
+            if hasattr(record, 'handler') and record.handler:
+                context_info += f"({record.handler}) "
+            
+            # Add file info if available
+            if hasattr(record, 'file_path') and record.file_path:
+                context_info += f"<{record.file_path}> "
+            
+            # Add timing info if available
+            if hasattr(record, 'duration') and record.duration is not None:
+                context_info += f"({record.duration:.2f}s) "
+            
+            # Add progress info if available
+            if hasattr(record, 'progress') and record.progress:
+                context_info += f"[{record.progress}] "
+            
+            # Add any additional context
+            if hasattr(record, 'context') and record.context:
+                context_info += " ".join(f"{k}={v}" for k, v in record.context.items())
         
-        # Get timing info if available
-        duration = getattr(record, "duration", None)
-        timing_info = f" ({duration:.2f}s)" if duration else ""
-        
-        # Get progress info if available
-        progress = getattr(record, "progress", "")
-        progress_info = f" [{progress}]" if progress else ""
-        
-        # Build message parts
+        # Build final message
         parts = [
-            f"{record.asctime}",
-            f"{record.levelname:8}",
-            phase_info,
-            message,
-            timing_info,
-            progress_info,
+            record.asctime,
+            record.levelname,
+            context_info,
+            message
         ]
         
-        # Filter out empty parts and join
         return " ".join(p for p in parts if p)
 
 
-def create_progress_bar() -> Progress:
-    """Create a progress bar for tracking file processing.
+class LoggingManager:
+    """Manages logging configuration and setup."""
     
-    Returns:
-        Progress bar instance.
-    """
+    def __init__(self, config: LoggingConfig):
+        """Initialize logging manager.
+        
+        Args:
+            config: Logging configuration
+        """
+        self.config = config
+        self._setup_logging()
+    
+    def _setup_logging(self) -> None:
+        """Set up logging configuration."""
+        # Register NovaLogger as the logger class
+        logging.setLoggerClass(NovaLogger)
+        
+        # Create log directory if needed
+        if self.config.log_dir:
+            log_dir = Path(os.path.expanduser(self.config.log_dir))
+            log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create formatters
+        formatter = NovaFormatter(self.config)
+        
+        # Configure handlers
+        handlers = []
+        
+        if "console" in self.config.handlers:
+            console_handler = RichHandler(
+                console=console,
+                show_time=True,
+                show_path=True,
+                enable_link_path=True,
+                markup=True,
+                rich_tracebacks=True,
+                tracebacks_show_locals=True,
+                level=self.config.console_level
+            )
+            console_handler.setFormatter(formatter)
+            handlers.append(console_handler)
+        
+        if "file" in self.config.handlers and self.config.log_dir:
+            log_file = Path(os.path.expanduser(self.config.log_dir)) / f"nova_{datetime.now():%Y%m%d}.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            file_handler.setLevel(self.config.file_level)
+            handlers.append(file_handler)
+        
+        # Configure root logger
+        root = logging.getLogger()
+        root.setLevel(self.config.level)
+        
+        # Remove existing handlers
+        root.handlers = []
+        
+        # Add our handlers
+        for handler in handlers:
+            root.addHandler(handler)
+        
+        # Configure nova loggers
+        for logger_name in logging.root.manager.loggerDict:
+            if logger_name.startswith('nova'):
+                logger = logging.getLogger(logger_name)
+                
+                # Set base level
+                logger.setLevel(self.config.level)
+                
+                # Apply phase-specific level if applicable
+                for phase, level in self.config.phase_levels.items():
+                    if phase in logger_name:
+                        logger.setLevel(level)
+                        break
+                
+                # Apply handler-specific level if applicable
+                for handler_name, level in self.config.handler_levels.items():
+                    if handler_name in logger_name:
+                        logger.setLevel(level)
+                        break
+                
+                # Remove existing handlers
+                logger.handlers = []
+                
+                # Add our handlers
+                for handler in handlers:
+                    logger.addHandler(handler)
+    
+    def get_logger(self, name: str) -> NovaLogger:
+        """Get a logger with the given name.
+        
+        Args:
+            name: Logger name
+            
+        Returns:
+            Configured logger
+        """
+        return logging.getLogger(name)
+
+
+# Keep existing utility functions
+def create_progress_bar() -> Progress:
+    """Create a progress bar for tracking file processing."""
     return Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -88,39 +220,29 @@ def print_summary(
     reprocessed: list,
     failures: list
 ) -> None:
-    """Print processing summary.
+    """Print processing summary."""
+    # Create summary table
+    table = Table(title="Processing Summary")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right", style="green")
     
-    Args:
-        total_files: Total number of files processed
-        successful: Number of successfully processed files
-        failed: Number of failed files
-        skipped: Number of skipped files
-        duration: Processing duration in seconds
-        unchanged: List of unchanged files
-        reprocessed: List of reprocessed files
-        failures: List of (file_path, error_message) tuples
-    """
-    # Print existing summary table
-    print("\n   Processing Summary")
-    print("┏━━━━━━━━━━━━━┳━━━━━━━━┓")
-    print("┃ Metric      ┃  Value ┃")
-    print("┡━━━━━━━━━━━━━╇━━━━━━━━┩")
-    print(f"│ Total Files │ {total_files:>6d} │")
-    print(f"│ Successful  │ {successful:>6d} │")
-    print(f"│ Failed      │ {failed:>6d} │")
-    print(f"│ Skipped     │ {skipped:>6d} │")
-    print(f"│ Unchanged   │ {len(unchanged):>6d} │")
-    print(f"│ Reprocessed │ {len(reprocessed):>6d} │")
-    print(f"│ Duration    │ {duration:>6.2f}s │")
-    print("└─────────────┴────────┘")
-
-    # Add failure details if there are any failures
+    # Add rows
+    table.add_row("Total Files", str(total_files))
+    table.add_row("Successful", str(successful))
+    table.add_row("Failed", str(failed))
+    table.add_row("Skipped", str(skipped))
+    table.add_row("Unchanged", str(len(unchanged)))
+    table.add_row("Reprocessed", str(len(reprocessed)))
+    table.add_row("Duration", f"{duration:.2f}s")
+    
+    # Print table
+    console.print(table)
+    
+    # Print failures if any
     if failures:
-        print("\nFailed Files:")
-        print("━" * 80)
+        console.print("\nFailed Files:", style="red")
+        console.print("━" * 80)
         for file_path, error_msg in failures:
-            # Get just the filename from the path
-            filename = Path(file_path).name
-            print(f"• {filename}")
-            print(f"  Error: {error_msg}")
-            print() 
+            console.print(f"• {Path(file_path).name}", style="red")
+            console.print(f"  Error: {error_msg}", style="yellow")
+            console.print() 
