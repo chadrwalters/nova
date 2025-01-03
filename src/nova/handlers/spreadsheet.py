@@ -100,14 +100,20 @@ class SpreadsheetHandler(BaseHandler):
             metadata.metadata['original_path'] = str(file_path)
             metadata.processed = True
             
-            # Write markdown using MarkdownWriter
-            self.markdown_writer.write_document(
+            # Write markdown using MarkdownWriter and get the content
+            markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
                 content=content,
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path
             )
+            
+            # Create parent directory if it doesn't exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write the markdown content to the output file
+            output_path.write_text(markdown_content, encoding='utf-8')
             
             metadata.add_output_file(output_path)
             return metadata
