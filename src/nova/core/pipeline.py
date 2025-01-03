@@ -138,8 +138,10 @@ class NovaPipeline:
                     'successful_files': set(), 
                     'failed_files': set(), 
                     'skipped_files': set(),
+                    '_file_errors': {},
                     'stats': {
                         'total_processed': 0,
+                        'total_sections': 0,
                         'summary_files': {
                             'created': 0,
                             'empty': 0,
@@ -377,8 +379,8 @@ class NovaPipeline:
         # Disassemble phase stats
         if 'disassemble' in self.state:
             disassemble_state = self.state['disassemble']
-            total_sections = sum(len(sections) for sections in disassemble_state.get('sections', {}).values())
-            total_attachments = sum(len(attachments) for attachments in disassemble_state.get('attachments', {}).values())
+            total_sections = disassemble_state.get('stats', {}).get('total_sections', 0)
+            total_attachments = disassemble_state.get('stats', {}).get('total_attachments', 0)
             
             # Create disassemble stats table
             disassemble_table = Table(show_header=True, header_style="bold cyan", title="Disassemble Results", box=None)
