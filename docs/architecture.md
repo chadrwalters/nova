@@ -1,461 +1,271 @@
-# Nova System Architecture
+# Nova Architecture
+
+This document describes the overall architecture of the Nova system. It explains how the system is organized (directories, modules, classes) and how key components—such as phases, handlers, and Markdown generation—interact with each other. It also covers how to add new phases or extend Nova with new file handlers. The purpose is to ensure that both human developers and large language models (LLMs) can fully understand the flow of control, data, and the constraints in this system.
+
+---
 
 ## Table of Contents
-1. [Overview](#overview)
-2. [Core Concept & Goals](#core-concept--goals)
-3. [Phases & Workflow](#phases--workflow)
-    1. [Parse Phase](#parse-phase)
-    2. [Disassemble Phase](#disassemble-phase)
-    3. [Split Phase](#split-phase)
-    4. [Further Phases (Future Roadmap)](#further-phases-future-roadmap)
-4. [Key Components](#key-components)
-5. [Directory & Filesystem Structure](#directory--filesystem-structure)
-6. [Handler Extension Architecture](#handler-extension-architecture)
-7. [Error Handling & Logging](#error-handling--logging)
-8. [Data Flow & Caching](#data-flow--caching)
-9. [Configuration & Environment Setup](#configuration--environment-setup)
-10. [Security & Performance Considerations](#security--performance-considerations)
-11. [Testing & CI](#testing--ci)
-12. [Future Enhancements & Roadmap](#future-enhancements--roadmap)
+1. [High-Level Overview](#high-level-overview)
+2. [System Layout](#system-layout)
+3. [Phases & Pipeline](#phases--pipeline)
+   - [Adding a New Phase](#adding-a-new-phase)
+   - [Phase Implementation Rules](#phase-implementation-rules)
+4. [Handlers & File Processing](#handlers--file-processing)
+   - [Adding a New Handler](#adding-a-new-handler)
+   - [Handler Responsibilities](#handler-responsibilities)
+5. [Markdown Generation](#markdown-generation)
+6. [Configuration Management](#configuration-management)
+7. [Metadata & References](#metadata--references)
+8. [Logging & Debugging](#logging--debugging)
+9. [Utility Modules](#utility-modules)
+10. [Extending or Customizing Nova](#extending-or-customizing-nova)
 
 ---
 
-## Overview
-Nova is a document-processing pipeline designed to handle various input file types (e.g., PDF, DOCX, images, text, spreadsheets, HTML) and produce interlinked, consolidated Markdown outputs. The system is organized around a **phase-based** architecture, each phase handling a specific concern such as parsing raw inputs or splitting and organizing the processed content.
+## 1. High-Level Overview
 
-Nova’s main goals:
-1. **Convert** arbitrary file formats into standardized Markdown representations.
-2. **Aggregate** relevant content from these files into structured summary documents.
-3. **Enhance** the output with additional context (metadata, image analysis, etc.).
+Nova is a system for taking various input files (documents, images, archives, spreadsheets, etc.) and running them through multiple *phases* of processing (Parse, Disassemble, Split, Finalize, etc.). The final output typically includes structured Markdown (`.parsed.md`, `Summary.md`, `Attachments.md`, etc.) along with metadata (`.metadata.json`). The goal is to provide a flexible pipeline that can be extended with new phases or new file handlers while maintaining consistent output.
 
----
-
-## Core Concept & Goals
-1. **Phase-Oriented Pipeline**  
-   Nova uses distinct phases (currently *parse*, *disassemble*, *split*, and *finalize*) to separate the tasks of converting source files into Markdown vs. splitting or reorganizing those Markdown files.
-
-2. **Handler-Based Parsing**  
-   Each file type (PDF, DOCX, images, spreadsheets, etc.) is parsed by a specialized *handler*, which extracts text or metadata and then writes a `*.parsed.md` file.  
-
-3. **Configurable & Extensible**  
-   Handlers, phases, and other features are all made modular so that new file types, additional phases, or advanced AI-based analyses can be integrated with minimal disruption.
+A typical run might:
+1. Read a directory of input files.
+2. For each file, the **Parse** phase creates normalized Markdown (`.parsed.md`).
+3. **Disassemble** takes those `.parsed.md` files, splitting them into summary vs. raw notes.
+4. **Split** aggregates or organizes them further (e.g., into consolidated `Summary.md`, `Raw Notes.md`, or `Attachments.md`).
+5. **Finalize** may do link validation, attachments copying, or final housekeeping tasks.
 
 ---
 
-## Phases & Workflow
-Below is a high-level look at how Nova processes content through its phases:
+## 2. System Layout
 
-```mermaid
-flowchart LR
-    InputDir((Input Directory)) -->|Raw Files| PhaseParse
-    PhaseParse -->|*.parsed.md + metadata| PhaseDisassemble
-    PhaseDisassemble -->|Structured MD Files| PhaseSplit
-    PhaseSplit -->|Consolidated MD Files| PhaseFinal
-    PhaseFinal -->|Final Output| OutputDir((Output Directory))
+Below is a general outline of the `src/nova` folder:
 
-    subgraph "Parse Phase"
-      direction TB
-      PhaseParse([ParsePhase<br/>Handlers<br/>Markdown Conversion]) --> ParseOutput[(Parsed Files)]
-    end
+- **config/**  
+  Manages loading and validating the system’s YAML config files (e.g. `default.yaml`). Exposes `ConfigManager`.
 
-    subgraph "Disassemble Phase"
-      direction TB
-      PhaseDisassemble([DisassemblePhase<br/>Content Splitting<br/>Link Conversion]) --> DisassembleOutput[(Structured Files)]
-    end
+- **core/**  
+  - **markdown/**: Houses the `MarkdownWriter` class and templates (`base.md`, `image.md`) for generating consistent Markdown.  
+  - **logging.py**: Defines `NovaLogger`, `NovaFormatter`, and `LoggingManager`, centralizing logging setup.  
+  - **metadata.py**, **serialization.py**, **reference_manager.py**, etc.: Core classes and utilities around storing metadata, referencing attachments, and so on.  
+  - **pipeline.py**: The main `NovaPipeline` orchestration that runs the phases in order and tracks state.  
+  - **progress.py**: Tracks progress across phases and files.
 
-    subgraph "Split Phase"
-      direction TB
-      PhaseSplit([SplitPhase<br/>Content Consolidation]) --> SplitOutput[(Consolidated MD Files)]
-    end
+- **handlers/**  
+  Each file in `handlers/` processes a specific file type (e.g. `image.py`, `document.py`, `archive.py`).  
+  `HandlerRegistry` maps file extensions to the correct handler.
 
-    subgraph "Finalize Phase"
-      direction TB
-      PhaseFinal([FinalizePhase<br/>Link Resolution<br/>Cleanup]) --> FinalOutput[(Final Files)]
-    end
-```
+- **phases/**  
+  Each sub-phase logic is in its own file: `parse.py`, `disassemble.py`, `split.py`, `finalize.py`.  
+  A base class `base.py` gives common scaffolding for phase classes.
 
-### Parse Phase
-- **Goal**: Convert each input file into a `*.parsed.md` file with metadata
-- **Implementation**:
-  1. Pipeline enumerates files in input directory
-  2. HandlerRegistry matches file extensions to appropriate handlers
-  3. Handler processes file and generates:
-     - `<filename>.parsed.md`: Main content with metadata header
-     - `<filename>.metadata.json`: Extended metadata (if applicable)
-     - `<filename>.assets/`: Directory for extracted images/attachments
-  4. Console output shows progress bar and handler status
-  5. Errors are logged with file paths and handler details
+- **models/**  
+  Contains `document.py`, `links.py`, `link_map.py`, `metadata.py`, etc. These define pydantic models (e.g. `LinkContext`, `LinkRelationshipMap`), data classes, and typed structures for references and link states.
 
-**Output Structure**:
-```
-_NovaProcessing/
-└── phases/
-    └── parse/
-        ├── document1.parsed.md
-        ├── document1.metadata.json
-        ├── document1.assets/
-        │   └── extracted_image1.png
-        ├── image1.parsed.md
-        ├── image1.metadata.json
-        └── ...
-```
+- **processor/**  
+  Additional specialized code for advanced processing steps (like `markdown_processor.py`).
 
-### Disassemble Phase
-- **Goal**: Process parsed Markdown files into structured sections with consistent reference format
-- **Implementation**:
-  1. Reads each `*.parsed.md` file from parse phase
-  2. Processes content structure:
-     - Content above `--==RAW NOTES==--` marker is treated as summary
-     - Content below `--==RAW NOTES==--` marker is treated as raw notes
-     - If no marker exists, entire content is treated as summary
-  3. Converts all links to reference format:
-     - Regular links: `[ATTACH:TYPE:ID]`
-     - Image links: `![ATTACH:TYPE:ID]`
-     - Preserves link type based on file extension
-  4. Console shows processing progress and link conversion status
+- **ui/**  
+  - `visualization.py`: Link graph visualization (uses D3.js).  
+  - `navigation.py`: Renders navigation elements in HTML.  
+  - `progress.py`: Enhanced progress display with `rich`.
 
-**Output Structure**:
-```
-_NovaProcessing/
-└── phases/
-    └── disassemble/
-        ├── document1.summary.md
-        ├── document1.raw_notes.md
-        ├── document1.attachments.md
-        └── ...
-```
+- **utils/**  
+  Reusable functions and classes that are not core but used across the codebase (`file_utils.py`, `output_manager.py`, `path_utils.py`, etc.).
 
-### Split Phase
-- **Goal**: Consolidate disassembled content into final document structure
-- **Implementation**:
-  1. Reads all disassembled files from previous phase
-  2. Merges content by type:
-     - All `*.summary.md` files into `Summary.md`
-     - All `*.raw_notes.md` files into `Raw Notes.md`
-     - All `*.attachments.md` files into `Attachments.md`
-  3. Maintains consistent reference format:
-     - Preserves all `[ATTACH:TYPE:ID]` and `![ATTACH:TYPE:ID]` references
-     - Updates relative paths for assets
-  4. Console shows consolidation progress and merge status
+- **cli.py**  
+  The command-line entry point that sets up arguments, logging, and calls `NovaPipeline`.
 
-**Output Structure**:
-```
-_NovaProcessing/
-└── phases/
-    └── split/
-        ├── Summary.md         # Merged summaries with references
-        ├── Raw Notes.md       # Merged notes with references
-        ├── Attachments.md     # Merged attachments with content
-        └── assets/
-            └── (consolidated attachments)
-```
+---
 
-### Finalize Phase
-- **Goal**: Validate pipeline output and create final output with resolved links
-- **Implementation**:
-  1. Run pipeline validator as initial integrity check
-     - Validates all previous phase outputs
-     - Ensures content consistency across phases
-     - Verifies all references and attachments
-     - Aborts finalization if validation fails
-  2. Validates all cross-references
-  3. Ensures asset paths are correct
-  4. Copies final files to output directory
-  5. Cleans up temporary processing files
-  6. Console shows completion status and any warnings
+## 3. Phases & Pipeline
 
-**Output Structure**:
-```
-_Nova/
-├── Summary.md
-├── Raw Notes.md
-├── Attachments.md
-└── assets/
-    └── (final consolidated assets)
-```
+### The `NovaPipeline` Class
 
-The finalization phase includes validation as its first step to:
-- Catch any issues before modifying the output directory
-- Ensure complete pipeline integrity before finalization
-- Preserve existing output if validation fails
-- Provide early feedback about any problems
+`core/pipeline.py` defines a `NovaPipeline` that:
+- Is constructed with a `ConfigManager`.
+- Has an internal dictionary of phases, e.g. `{"parse": ParsePhase(...), "disassemble": DisassemblyPhase(...), ...}`.
+- Calls `process_directory()` to run the pipeline across all files in the input directory.
+- For each phase, it gathers the relevant files (e.g. for parse, it uses the original input dir; for disassemble, it uses the parse output dir, etc.) and calls `phase.process_file(file_path, output_dir)`.
+- Maintains global pipeline state in `self.state[phase_name]`.
 
-This validation can also be run independently via the command line:
-```bash
-python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
-```
+**Key points**  
+- Each phase can read or write to `self.state[phase]`, allowing high-level tracking of `successful_files`, `failed_files`, etc.  
+- The pipeline also checks timestamps in `needs_reprocessing()` (for parse) to skip or reprocess files.
 
-This dual approach (automatic + manual) ensures:
-1. Pipeline output is always validated before finalization
-2. Users can verify pipeline state at any time
-3. CI/CD systems can run validation independently
-4. Existing output is preserved if validation fails
+#### Phase Execution Flow
 
-### Console Output
-The pipeline provides rich console feedback:
-- Progress bars for each phase
-- File processing status with handler information
-- Warning/error messages in color-coded format
-- Summary statistics (files processed, errors, timing)
-- Detailed logging for debugging (when verbose mode enabled)
+1. **Parse** phase enumerates all input files and calls `ParsePhase.process_file()`.  
+2. **Disassemble** reads parse-phase output (`*.parsed.md`) and splits them into `.summary.md` / `.rawnotes.md`.  
+3. **Split** further consolidates and creates `Summary.md`, `Raw Notes.md`, `Attachments.md`.  
+4. **Finalize** might do link validation, copy attachments, or anything that needs a final pass.
 
-### Requirements
-- Python 3.9+
-- Rich library for console output
-- Specific handler requirements:
-  - Document Handler: python-docx, PyPDF2
-  - Image Handler: Pillow, libheif, Tesseract (for OCR)
-  - Audio Handler: ffmpeg-python
-  - Archive Handler: python-magic
-- Environment variables:
-  - `OPENAI_API_KEY`: For AI-powered image analysis
-  - `NOVA_CONFIG_PATH`: Optional custom config location
-  - `NOVA_LOG_LEVEL`: Control logging verbosity
+### Adding a New Phase
 
-### Known Constraints & Performance Considerations
-- File Size Limits:
-  - PDFs: Recommended max 100MB per file
-  - Images: Recommended max 20MB per image
-  - Memory usage scales with file size
-- Performance Bottlenecks:
-  - OCR processing is CPU-intensive
-  - AI image analysis requires API calls
-  - Large archives may need significant temp storage
-- Caching Behavior:
-  - OCR results are cached to prevent reprocessing
-  - AI analysis results are cached with 1-hour TTL
-  - Cache can be cleared manually if needed
+1. **Create a new file** in `nova/phases/` (e.g. `myphase.py`).  
+2. **Inherit** from `Phase`:  
 
-Further Phases (Future Roadmap)
+class MyPhase(Phase):
+async def process_impl(self, file_path: Path, output_dir: Path, metadata=None):
+# Implement your logic
 
-Nova is designed to allow additional phases to be appended as the pipeline grows. Examples might include:
-	•	Phase: Publish
-Generate a final distribution package or upload to a documentation site.
-	•	Phase: Index
-Produce cross-referenced indexes or tables for easy searching.
-	•	Phase: AI Summaries
-Summarize Raw Notes.md using advanced AI models for short, bullet-point briefs.
+3. **Register** it in `NovaPipeline` by adding to `self.phases` in the constructor or in `get_phase_instance()`:
 
-Key Components
+self.phases[“myphase”] = MyPhase(config, self)
 
-Pipeline Runner (run_nova.sh / nova.core.pipeline.NovaPipeline)
-	•	Single Entry Point for configuring, instantiating, and running the pipeline from the command line.
-	•	Coordinates the phases, loads config, handles logging.
+4. **Include** it in your config’s `pipeline.phases` list (or override phases at runtime) so it runs in the correct order.
 
-Directory Structure
-	1.	_NovaProcessing/
-Temporary working area for parsed intermediate files, final consolidated MD, and attachments.
-	2.	_NovaInput/
-Location for raw input files to be processed.
-	3.	_Nova/
-Final output directory for Summary.md, Raw Notes.md, and Attachments.md.
+### Phase Implementation Rules
 
-Handlers
-	•	Overview: Each handler focuses on one file type and knows how to convert that type to Markdown. Examples:
-	•	DocumentHandler: PDF, DOCX
-	•	ImageHandler: JPG, PNG, HEIC
-	•	TextHandler: plain text, JSON, XML
-	•	SpreadsheetHandler: CSV, XLSX
-	•	Registry: HandlerRegistry automatically picks the right handler based on file extension.
+- Each phase has a `process_impl(file_path, output_dir, metadata=...)` coroutine that returns updated metadata or `None`.
+- **File Discovery**: Typically each phase looks for specific file patterns from the previous phase’s output. For example, `disassemble` looks in `parse_dir/*.parsed.md`.
+- **Output**: The phase decides what to write (e.g., `.summary.md`, `.rawnotes.md`, `.md`, `.metadata.json`) and updates the pipeline’s `self.state["myphase"]` sets for success/failure/unchanged.
+- **Finalize** can run a final `phase.finalize()` to do any summary, cleanup, or logs.
 
-Configuration
-	•	nova.config
-Manages YAML config files, environment variables, caching directories, and file paths.
+---
 
-Directory & Filesystem Structure
+## 4. Handlers & File Processing
 
-The root project folder typically looks like this (simplified):
+Handlers are specialized classes in `nova/handlers/` that parse and convert specific file types into a standardized output. For instance:
 
-nova
-├── docs/
-│   └── architecture.md     # This file 
-├── src/
-│   └── nova/
-│       ├── phases/
-│       │   ├── parse.py    # Parse Phase
-│       │   ├── split.py    # Split Phase
-│       │   └── base.py
-│       ├── handlers/       # All file-type handlers
-│       ├── config/         # Configuration management
-│       ├── core/           # Core pipeline, logging, metadata, metrics
-│       ├── models/         # Pydantic or dataclass-based metadata models
-│       └── utils/          # Utility functions 
-├── tests/
-│   └── integration/        # Integration tests for each phase
-└── ...
+- `DocumentHandler`: `.docx`, `.pdf`, `.odt`  
+- `ImageHandler`: `.jpg`, `.svg`, `.heic`, etc.  
+- `SpreadsheetHandler`: `.xlsx`, `.csv`  
+- `MarkdownHandler`: `.md`  
+- `AudioHandler`: `.mp3`, `.wav`  
+- `VideoHandler`: `.mp4`, `.mov`  
 
-Key Subfolders:
-	•	src/nova/phases/: Phase classes (ParsePhase, SplitPhase) implementing the pipeline steps.
-	•	src/nova/handlers/: Specialized classes for each file type.
-	•	src/nova/models/: Data structures for metadata, including DocumentMetadata.
-	•	src/nova/config/: Config loading, environment setup, and caching parameters.
-	•	tests/: Unit and integration tests covering handlers, phases, and system-level tests.
+The `HandlerRegistry` in `registry.py`:
+- Maintains a dictionary of `file_type -> handler_instance`.
+- Looks up the appropriate handler based on a file’s extension.
+- If no handler is found, the file is marked as “skipped” or “unsupported.”
 
-Handler Extension Architecture
+Within the **Parse** phase:
+1. For each file, we do `handler = handler_registry.get_handler(file_path)`  
+2. `handler.process_impl(file_path, metadata)` returns updated DocumentMetadata.
 
-Handlers manage “reading -> extracting -> converting” data for a file type. Each inherits from BaseHandler:
-	1.	Registration: HandlerRegistry maps file extensions to handlers.
-	2.	Processing:
-	•	process(...) is invoked with a Path, an output_dir, and a DocumentMetadata.
-	•	Handler extracts content, writes a *.parsed.md, and updates metadata.processed = True.
-	3.	Fallback: If a file extension isn’t recognized, a default or error path is used, adding a note that no handler was found.
+### Adding a New Handler
 
-A UML-ish representation:
+1. **Create** a new file in `nova/handlers/` (e.g. `ppt_handler.py`).  
+2. **Subclass** `BaseHandler`, specify:
 
-classDiagram
-    class BaseHandler {
-        <<abstract>>
-        +process(file_path, output_dir, metadata) -> DocumentMetadata?
-        +process_impl() -> DocumentMetadata? (override)
-        #_safe_read_file()
-        #_safe_write_file()
-    }
-    class DocumentHandler {
-        +process_impl() -> DocumentMetadata?
-        -_extract_pdf_text()
-        -_extract_docx_text()
-    }
-    class ImageHandler {
-        +process_impl() -> DocumentMetadata?
-        -_get_image_context()
-        -_classify_image_type()
-        -_write_markdown()
-    }
-    BaseHandler <|-- DocumentHandler
-    BaseHandler <|-- ImageHandler
+class PptHandler(BaseHandler):
+name = “ppt”
+version = “0.1.0”
+file_types = [“ppt”]  # or anything else
 
-Error Handling & Logging
-	•	Central Exceptions: nova.core.errors defines NovaError, ProcessingError, etc.
-	•	Per-Phase & Per-Handler: Each handler or phase can add errors to a DocumentMetadata record with add_error().
-	•	Logging:
-	•	Rich / Python Logging used for console output, debug logs, and file logs.
-	•	Nova logs to nova.log in the base_dir/logs folder with separate console output for immediate feedback.
+3. **Implement** `process_impl(self, file_path, metadata)`. Usually:
+   - Read the file (or call specialized libs).
+   - Produce `.parsed.md`.
+   - Populate `metadata`.
+   - Possibly do partial conversions or add attachments.  
+4. **Register** it in `HandlerRegistry` (the `_register_default_handlers()` method) or dynamically so the system knows to use it for `.ppt`.
 
-Data Flow & Caching
-	•	Data Flow:
-	1.	Input: Raw files placed in _NovaInput.
-	2.	Parse: Writes *.parsed.md into _NovaProcessing/phases/parse/<relative-subfolders>.
-	3.	Split: Reads those *.parsed.md files, appending text to Summary.md, Raw Notes.md, and listing references in Attachments.md under _NovaProcessing/phases/split/.
-	•	Cache:
-	•	nova.cache.manager.CacheManager can store partial results (especially for heavy operations like AI-based image analysis) in _NovaCache.
-	•	The pipeline checks if cached results are valid or if input files are newer than the cached output.
+### Handler Responsibilities
 
-Configuration & Environment Setup
+- **Validate** the file if needed (some do a `validate_file()` internally).  
+- **Read** the file’s contents and convert to a standard textual form if possible (like `.parsed.md` or code blocks).  
+- Use the **unified Markdown** approach via `MarkdownWriter` to generate `.parsed.md`.  
+- **Save** updated metadata (`.metadata.json`) referencing the handler name, version, and output files.
 
-Nova’s configuration:
-	1.	nova.yaml: main config file in config/.
-	2.	Environment Variables:
-	•	OPENAI_API_KEY needed for ImageHandler AI features.
-	•	NOVA_CONFIG_PATH can override the default config path.
-	3.	Auto-Generation: Scripts like install.sh or set_env.sh create .env files or directories if missing.
+---
 
-Sample:
+## 5. Markdown Generation
 
-base_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
-input_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
-output_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
-processing_dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaProcessing"
+Nova uses a single **MarkdownWriter** (in `core/markdown/writer.py`) to ensure consistent `.parsed.md` content:
+- `write_document(title, content, metadata, file_path, output_path)` is the typical entry point to produce a full Markdown file from templates.
+- **Templates**:
+  - `base.md` for standard doc structure
+  - `image.md` for image-specific structure
+- Handlers call `markdown_writer.write_document(...)` or `markdown_writer.write_image(...)`. This eliminates ad-hoc string building in each handler.
+- **Benefits**:  
+  - Central location to tweak heading styles, front matter, or reference syntax.  
+  - Minimizes duplication across different handlers.
 
-cache:
-  dir: "${HOME}/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
-  enabled: true
-  ttl: 3600
+---
 
-Security & Performance Considerations
-	1.	Security:
-	•	Paths are sanitized to prevent directory traversal.
-	•	Handlers do not execute untrusted code or macros from user documents.
-	•	OpenAI calls require API keys stored securely in environment variables.
-	2.	Performance:
-	•	Large PDFs or image files can be memory-intensive. Handlers may handle them in streaming or partial ways in the future.
-	•	Caching is used for repeated AI calls on the same images.
-	•	Phase-based structure allows partial or incremental reprocessing if only certain files changed.
+## 6. Configuration Management
 
-Testing & CI
-	•	Test Layout:
-	•	tests/unit/: Unit tests for handlers and utilities.
-	•	tests/integration/: End-to-end tests ensuring parse and split phases produce correct *.parsed.md and consolidated outputs.
-	•	tests/performance/: (Optional) checks speed or memory usage for large inputs.
-	•	Automated:
-	•	run_tests.sh uses pytest with pytest.ini or pyproject.toml for configurations.
+- The **ConfigManager** in `nova/config/manager.py` loads `default.yaml` (or an override path).  
+- The loaded config is stored in a `NovaConfig` pydantic model with sub-sections like `cache`, `logging`, `pipeline`, `debug`, etc.  
+- `Nova` or `NovaPipeline` references `config.pipeline.phases` to decide which phases to run.  
+- The logging config portion is used by `LoggingManager` to set up console/file loggers.
 
-Future Enhancements & Roadmap
-	•	Additional Phases: “Publish” or “Index” to further structure or upload results.
-	•	Improved AI Integrations:
-	•	Expand ImageHandler to handle bounding boxes, advanced classification, or OCR layouts.
-	•	Add advanced text summarization handlers for large documents.
-	•	Granular Caching:
-	•	Intelligent re-checking so that only changed pages/images are reprocessed.
-	•	Live/Interactive:
-	•	Possible integration with a web-based UI or event-based triggers (like dropping new files into _NovaInput).
+**Highlights**:
+- You can set environment variables (e.g. `NOVA_LOG_LEVEL=DEBUG`) to override part of the config dynamically.  
+- Paths in the config are typically expanded and validated, ensuring they exist if `create_dirs=True`.
 
-## Error Handling & Logging
+---
 
-### Pipeline Validation
+## 7. Metadata & References
 
-The pipeline includes a robust validation system (`PipelineValidator`) that ensures the integrity of each phase's output:
+**FileMetadata / DocumentMetadata**:
+- Each file or document that passes through the pipeline has associated metadata (e.g. `metadata['file_path']`, `output_files`, `errors` array).
+- The metadata is often saved to `.metadata.json` in the same subdirectory as the `.parsed.md`.
 
-```mermaid
-flowchart TB
-    subgraph "Pipeline Validation"
-        direction TB
-        ParseCheck[Parse Phase Validation] --> DisassembleCheck[Disassemble Phase Validation]
-        DisassembleCheck --> SplitCheck[Split Phase Validation]
-        
-        subgraph "Parse Phase Checks"
-            ParseFiles[Parsed MD Files] --> ParseMeta[Metadata Files]
-            ParseMeta --> ParseAssets[Asset Directories]
-        end
-        
-        subgraph "Disassemble Phase Checks"
-            DisFiles[Disassembled Files] --> DisContent[Content Consistency]
-            DisContent --> DisSections[Section Structure]
-        end
-        
-        subgraph "Split Phase Checks"
-            SplitFiles[Consolidated Files] --> SplitContent[Content Preservation]
-            SplitContent --> SplitRefs[Attachment References]
-        end
-    end
-```
+**ReferenceManager** (in `core/reference_manager.py`):
+- Used to track references in Markdown text, e.g. `[ATTACH:IMAGE:foo]`, `[NOTE:bar]`, etc.
+- `extract_references(content, source_file)` can find these references for subsequent link validation or attachment embedding.
 
-#### Validation Process
-1. **Parse Phase Validation**
-   - Verifies presence of `.parsed.md` files
-   - Checks for required `.metadata.json` files
-   - Validates asset directory structure
-   - Tracks attachments for later validation
+**LinkRelationshipMap**:
+- Handles cross-file linking with `direct_relationships`, `reverse_relationships`, `navigation_paths`, etc.
+- The `Finalize` phase or visualization modules can produce link graphs to show broken references or highlight “bidirectional” link usage.
 
-2. **Disassemble Phase Validation**
-   - Ensures content matches parse phase output
-   - Validates summary and raw notes files
-   - Checks section markers and formatting
-   - Handles special cases (errors, encoding issues)
+---
 
-3. **Split Phase Validation**
-   - Verifies consolidated file structure
-   - Validates content preservation
-   - Checks attachment references
-   - Ensures section consistency
+## 8. Logging & Debugging
 
-#### Error Reporting
-The validator provides detailed error messages:
-- File-level validation failures
-- Content mismatches with expected values
-- Missing or malformed sections
-- Reference integrity issues
+### Logging
 
-#### Usage
-```python
-validator = PipelineValidator(processing_dir)
-is_valid = validator.validate()
-```
+- Implemented in `core/logging.py`:  
+  - `NovaLogger` extends Python’s `logging.Logger` with fields like `.phase`, `.handler`, etc.  
+  - `LoggingManager` sets up console and file handlers, using `NovaFormatter` for a uniform log format.
+- The code references these logs from every major piece (phases, handlers, pipeline). This ensures logs are consistent across modules.
 
-The validator can be run independently to check pipeline output:
-```bash
-python3 src/nova/validation/pipeline_validator.py /path/to/processing/dir
-```
+### Debugging
 
-### Error Handling
+- Optional advanced debugging can be enabled in config (`debug.enabled: true`).  
+- A `DebugManager` can track extra details like memory usage, pipeline state snapshots, or break on error if `break_on_error` is set.  
+- Phase states (`self.state`) can be dumped to JSON for later analysis if `dump_state` is enabled.
 
+---
 
+## 9. Utility Modules
+
+**utils/output_manager.py**:
+- The `OutputManager` helps unify how we construct output paths for each phase. For example, `.parsed.md` or `.metadata.json` with the same relative structure as input.  
+- Example usage:  
+
+output_path = self.output_manager.get_output_path_for_phase(
+file_path,
+“parse”,
+“.parsed.md”
+)
+
+**utils/file_utils.py**:
+- Has a `safe_write_file()` function that only overwrites a file if content changes. This helps avoid rewriting timestamps unnecessarily.
+
+**utils/path_utils.py**:
+- Functions to sanitize filenames (e.g. removing special characters), get relative paths, or build `.metadata.json` filenames consistently.
+
+---
+
+## 10. Extending or Customizing Nova
+
+1. **New Phases**: Create a `MyPhase` class extending `Phase`, override `process_impl()`, register it, and add it to `config.pipeline.phases`.  
+2. **New Handlers**: Create `MyHandler`, specify file extensions, implement `process_impl()`, and register in `HandlerRegistry`.  
+3. **Additional Markdown Templates**: If you need specialized formatting, add `.md` files under `core/markdown/templates`. Then call `markdown_writer.write_from_template("mytemplate", **kwargs)`.  
+4. **Link or UI Enhancements**: If you want custom link visualizations, see `ui/visualization.py` for D3-based graph creation or `navigation.py` for nav headers.  
+5. **Logging**: Modify or expand `logging` config in `default.yaml` to add new log levels, separate files, or structured logging fields.  
+6. **Reference Management**: If new reference types are needed (`[VIDEO:...], [SHEET:...]`), update `ReferenceManager` to handle them and revise phases or `Finalize` logic to validate them.
+
+---
+
+## Conclusion
+
+With the revised architecture, Nova has:
+- A consistent pipeline that organizes the entire flow from raw input to final outputs.
+- A single point of logging configuration (eliminating multiple ad hoc logger settings).
+- Centralized, consistent Markdown generation.
+- A flexible approach for adding new phases or handlers.
+- Strong references/metadata management to keep track of attachments, links, and sections.
+
+This structure should make the system easier to maintain and expand as new features, file types, or phases are introduced.
