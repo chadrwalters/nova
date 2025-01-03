@@ -29,6 +29,26 @@ pipeline = Pipeline()
 pipeline.process("path/to/document")
 ```
 
+## Configuration
+
+### Logging
+
+Nova uses environment variables for logging configuration:
+
+```bash
+# Set logging level (ERROR, WARNING, INFO, DEBUG)
+export NOVA_LOG_LEVEL=DEBUG
+
+# Run the pipeline with debug logging
+./run_nova.sh
+```
+
+The logging level controls what information is displayed in the console:
+- ERROR: Only show errors
+- WARNING: Show warnings and errors
+- INFO: Show informational messages, warnings, and errors
+- DEBUG: Show all debug information, informational messages, warnings, and errors
+
 ## Development
 
 ### Prerequisites
