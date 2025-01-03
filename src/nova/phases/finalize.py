@@ -1,20 +1,17 @@
-"""Finalize phase module."""
-
+"""Finalize phase of the Nova pipeline."""
+import logging
+import os
 import re
 import shutil
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-import logging
+from typing import Dict, List, Optional, Set, Union
 
+from nova.config.manager import ConfigManager
+from nova.handlers.registry import HandlerRegistry
 from nova.phases.base import Phase
-from nova.models.document import DocumentMetadata
+from nova.core.metadata import FileMetadata, DocumentMetadata
 from nova.models.links import LinkContext, LinkType
-from nova.ui.navigation import (
-    NavigationHeader,
-    inject_navigation_elements,
-    add_tooltips_to_links
-)
 from nova.ui.visualization import LinkVisualizer
 from nova.validation.pipeline_validator import PipelineValidator
 
@@ -23,13 +20,18 @@ logger = logging.getLogger(__name__)
 class FinalizePhase(Phase):
     """Finalize phase of the document processing pipeline."""
     
-    def __init__(self, pipeline):
-        """Initialize finalize phase.
+    def __init__(self, config: ConfigManager, pipeline=None):
+        """Initialize the finalize phase.
         
         Args:
-            pipeline: Pipeline instance
+            config: Configuration manager
+            pipeline: Optional pipeline instance
         """
-        super().__init__(pipeline)
+        super().__init__(config, pipeline)
+        self.handler_registry = HandlerRegistry(config)
+        
+        # Set up debug logging
+        self.logger.setLevel(logging.DEBUG)
         self.link_map = None
         self._copy_attachments_done = False  # Flag to track if attachments have been copied
         self._validation_done = False  # Flag to track if validation has been run
@@ -42,72 +44,11 @@ class FinalizePhase(Phase):
     def _cleanup_processing_files(self) -> None:
         """Clean up temporary processing files.
         
-        This removes all files in the processing directory after they have been
-        successfully copied to the output directory.
+        This method is now a no-op as cleanup is handled by the cleanup script.
         """
-        try:
-            # Only clean up if validation has passed and there are no errors
-            if not self._validation_done:
-                self.logger.info("Skipping cleanup - validation not completed")
-                return
-                
-            processing_dir = self.pipeline.config.processing_dir
-            if not processing_dir.exists():
-                self.logger.info("Processing directory does not exist - nothing to clean up")
-                return
-
-            self.logger.info("Starting cleanup of processing directory...")
-            
-            # First remove all temporary files
-            for phase_dir in ['parse', 'disassemble', 'split']:
-                phase_path = processing_dir / 'phases' / phase_dir
-                if phase_path.exists():
-                    self.logger.debug(f"Cleaning up {phase_dir} phase directory...")
-                    try:
-                        # Remove all files in the phase directory
-                        for file_path in phase_path.rglob('*'):
-                            if file_path.is_file():
-                                try:
-                                    file_path.unlink()
-                                    self._cleanup_stats['temp_files_removed'] += 1
-                                    self.logger.debug(f"Removed temporary file: {file_path}")
-                                except Exception as e:
-                                    error_msg = f"Failed to remove {file_path}: {str(e)}"
-                                    self.logger.warning(error_msg)
-                                    self._cleanup_stats['failed_removals'].append(error_msg)
-                        
-                        # Remove the phase directory
-                        shutil.rmtree(str(phase_path))
-                        self._cleanup_stats['temp_dirs_removed'] += 1
-                        self.logger.debug(f"Removed phase directory: {phase_path}")
-                    except Exception as e:
-                        error_msg = f"Failed to clean up {phase_dir} phase directory: {str(e)}"
-                        self.logger.warning(error_msg)
-                        self._cleanup_stats['failed_removals'].append(error_msg)
-            
-            # Finally remove the processing directory itself
-            try:
-                shutil.rmtree(str(processing_dir))
-                self._cleanup_stats['temp_dirs_removed'] += 1
-                self.logger.info("Successfully removed processing directory")
-            except Exception as e:
-                error_msg = f"Failed to remove processing directory: {str(e)}"
-                self.logger.warning(error_msg)
-                self._cleanup_stats['failed_removals'].append(error_msg)
-            
-            # Log cleanup summary
-            self.logger.info("Cleanup completed:")
-            self.logger.info(f"- Temporary files removed: {self._cleanup_stats['temp_files_removed']}")
-            self.logger.info(f"- Directories removed: {self._cleanup_stats['temp_dirs_removed']}")
-            if self._cleanup_stats['failed_removals']:
-                self.logger.warning("Failed removals:")
-                for error in self._cleanup_stats['failed_removals']:
-                    self.logger.warning(f"  - {error}")
-                    
-        except Exception as e:
-            self.logger.error(f"Failed to clean up processing directory: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            self._cleanup_stats['failed_removals'].append(str(e))
+        # Skip cleanup - this is now handled by the cleanup script
+        self.logger.info("Processing directory cleanup skipped - use cleanup.sh to clean processing files")
+        return
 
     async def process_impl(
         self,

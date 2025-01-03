@@ -12,6 +12,7 @@ import traceback
 from nova.config.manager import ConfigManager
 from nova.core.pipeline import NovaPipeline
 from nova.core.metadata import FileMetadata
+from nova.core.logging import LoggingManager
 
 
 class Nova:
@@ -30,47 +31,22 @@ class Nova:
             create_dirs: Whether to create configured directories if they don't exist.
         """
         self.config = ConfigManager(config_path, create_dirs)
-        self.logger = self._setup_logger()
+        
+        # Initialize logging
+        self.logging_manager = LoggingManager(self.config.config.logging)
+        self.logger = self.logging_manager.get_logger("nova")
+        
+        # Initialize pipeline
         self.pipeline = NovaPipeline(config=self.config)
         self.output_manager = self.pipeline.output_manager
-    
-    def _setup_logger(self) -> logging.Logger:
-        """Set up logging for Nova system.
         
-        Returns:
-            Configured logger instance.
-        """
-        logger = logging.getLogger("nova")
-        logger.setLevel(logging.INFO)
-        
-        # Create console handler
-        console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
-        
-        # Create file handler
-        log_dir = self.config.base_dir / "logs"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"nova_{datetime.now():%Y%m%d}.log"
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        
-        # Create formatters
-        console_formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(message)s"
-        )
-        file_formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        
-        # Add formatters to handlers
-        console.setFormatter(console_formatter)
-        file_handler.setFormatter(file_formatter)
-        
-        # Add handlers to logger
-        logger.addHandler(console)
-        logger.addHandler(file_handler)
-        
-        return logger
+        self.logger.info("Nova system initialized", extra={
+            'context': {
+                'config_path': str(config_path) if config_path else 'default',
+                'input_dir': str(self.config.input_dir),
+                'output_dir': str(self.config.output_dir)
+            }
+        })
     
     def _save_metadata(self, metadata: Dict, output_dir: Path) -> None:
         """Save metadata to file.

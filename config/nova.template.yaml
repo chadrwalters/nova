@@ -38,11 +38,62 @@ handlers:
       - svg
 
 # Logging Configuration
-# Can be overridden by NOVA_LOG_LEVEL environment variable
-# Levels: ERROR, WARNING, INFO, DEBUG
 logging:
-  level: "ERROR"
-  file: "nova.log"
+  # Main log level (can be overridden by NOVA_LOG_LEVEL environment variable)
+  level: ${NOVA_LOG_LEVEL:-ERROR}  # Default to ERROR if not set
+  file_level: DEBUG  # Level for file logging
+  console_level: ERROR  # Level for console output
+  log_dir: "${HOME}/Documents/Nova/Logs"
+  format: "%(asctime)s [%(levelname)s] %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  handlers: ["console", "file"]  # Available: console, file
+  
+  # Per-phase logging levels
+  phase_levels:
+    parse: INFO
+    disassemble: INFO
+    split: INFO
+    finalize: INFO
+  
+  # Per-handler logging levels
+  handler_levels:
+    document: INFO
+    image: INFO
+    markdown: INFO
+    text: INFO
+    spreadsheet: INFO
+    html: INFO
+  
+  # Logging features
+  structured: true  # Enable structured logging
+  include_context: true  # Include phase, timing, etc. in logs
+
+# Debug Configuration
+debug:
+  enabled: ${NOVA_DEBUG:-false}  # Enable via NOVA_DEBUG environment variable
+  
+  # Enable debug for specific phases
+  phase_flags:
+    parse: false
+    disassemble: false
+    split: false
+    finalize: false
+  
+  # Debug features
+  state_logging: false  # Log pipeline state changes
+  extra_validation: false  # Perform additional state validation
+  performance_tracking: false  # Track operation timing
+  memory_tracking: false  # Track memory usage
+  
+  # File tracing
+  trace_files: []  # List of file patterns to trace in detail (e.g. ["*.md", "important/*.pdf"])
+  
+  # Error handling
+  break_on_error: false  # Stop processing on errors
+  
+  # State dumping
+  dump_state: false  # Write state snapshots to disk
+  dump_dir: "${HOME}/Documents/Nova/Debug"  # Directory for debug output
 
 # Pipeline Configuration
 pipeline:

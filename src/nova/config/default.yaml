@@ -18,4 +18,44 @@ apis:
       Please analyze this image and provide a detailed description.
       If it's a screenshot, extract any visible text.
       If it's a photograph, describe the scene and key elements.
-      Focus on what makes this image relevant in a note-taking context. 
+      Focus on what makes this image relevant in a note-taking context.
+
+logging:
+  level: ${NOVA_LOG_LEVEL:-INFO}  # Default to INFO if not set
+  file_level: DEBUG
+  console_level: INFO
+  log_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaLogs"
+  format: "%(asctime)s [%(levelname)s] %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  handlers: ["console", "file"]
+  phase_levels:
+    parse: INFO
+    disassemble: INFO
+    split: INFO
+    finalize: INFO
+  handler_levels:
+    document: INFO
+    image: INFO
+    markdown: INFO
+    text: INFO
+    spreadsheet: INFO
+    html: INFO
+  structured: true
+  include_context: true
+
+# Debug Configuration
+debug:
+  enabled: ${NOVA_DEBUG:-false}  # Can be enabled via environment variable
+  phase_flags:  # Enable debug for specific phases
+    parse: false
+    disassemble: false
+    split: false
+    finalize: false
+  state_logging: false  # Log pipeline state changes
+  extra_validation: false  # Perform additional state validation
+  performance_tracking: false  # Track operation timing
+  memory_tracking: false  # Track memory usage
+  trace_files: []  # List of file patterns to trace in detail
+  break_on_error: false  # Stop processing on errors
+  dump_state: false  # Write state snapshots to disk
+  dump_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaDebug" 
