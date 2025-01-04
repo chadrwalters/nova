@@ -44,12 +44,51 @@ apis:
 
 ### Document Processing
 
-The system processes documents through multiple phases:
+The system processes documents through multiple phases, each with specific responsibilities and boundaries:
 
-1. Parse - Convert documents to markdown
-2. Disassemble - Split into summary and notes
-3. Split - Organize into sections
-4. Finalize - Generate output with metadata
+#### 1. Parse Phase
+**Responsibility**: Convert input documents from various formats into standardized markdown
+- **Input Location**: `input_dir` (User's input directory)
+- **Input Files**: Any supported document type (PDF, DOCX, MD, Images, etc.)
+- **Output Location**: `processing_dir/phases/parse`
+- **Output Files**: `{filename}.parsed.md` for each input file
+- **State Management**: Tracks processed files, errors, and file type statistics
+
+#### 2. Disassemble Phase
+**Responsibility**: Split parsed markdown files into summary and raw notes sections
+- **Input Location**: `processing_dir/phases/parse`
+- **Input Files**: `*.parsed.md` files from Parse Phase
+- **Output Location**: `processing_dir/phases/disassemble`
+- **Output Files**: 
+  - `{filename}.summary.md`: Contains content before the `--==RAW NOTES==--` marker
+  - `{filename}.rawnotes.md`: Contains content after the marker
+- **State Management**: Tracks split statistics and section counts
+
+#### 3. Split Phase
+**Responsibility**: Organize and consolidate disassembled files into core document structure
+- **Input Location**: `processing_dir/phases/disassemble`
+- **Input Files**: 
+  - `*.summary.md` files
+  - `*.rawnotes.md` files
+  - Any attachments referenced in the content
+- **Output Location**: `processing_dir/phases/split`
+- **Output Files**:
+  - `Summary.md`: Consolidated summary content
+  - `Raw Notes.md`: Consolidated raw notes
+  - `Attachments.md`: Organized attachment references and metadata
+- **State Management**: Tracks file consolidation and attachment organization
+
+#### 4. Finalize Phase
+**Responsibility**: Generate final output with complete metadata and structure
+- **Input Location**: `processing_dir/phases/split`
+- **Input Files**: The three core files (Summary, Raw Notes, Attachments)
+- **Output Location**: `output_dir`
+- **Output Files**: 
+  - Final document structure with metadata
+  - Table of contents
+  - Cross-referenced attachments
+  - Metadata files
+- **State Management**: Tracks output generation and metadata completion
 
 ### Document Handlers
 

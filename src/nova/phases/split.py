@@ -256,15 +256,23 @@ class SplitPhase(Phase):
                         }
                         attachments[parent_dir].append(attachment)
             
-            # Write consolidated files
+            # Write or append to consolidated files
             if summary_sections:
                 summary_file = output_subdir / "Summary.md"
-                summary_file.write_text('\n\n'.join(summary_sections), encoding='utf-8')
+                # Read existing content if file exists
+                existing_content = summary_file.read_text(encoding='utf-8') if summary_file.exists() else ""
+                # Append new content with a separator
+                full_content = existing_content + ("\n\n" if existing_content else "") + '\n\n'.join(summary_sections)
+                summary_file.write_text(full_content, encoding='utf-8')
                 metadata.add_output_file(summary_file)
             
             if raw_notes_sections:
                 raw_notes_file = output_subdir / "Raw Notes.md"
-                raw_notes_file.write_text('\n\n'.join(raw_notes_sections), encoding='utf-8')
+                # Read existing content if file exists
+                existing_content = raw_notes_file.read_text(encoding='utf-8') if raw_notes_file.exists() else ""
+                # Append new content with a separator
+                full_content = existing_content + ("\n\n" if existing_content else "") + '\n\n'.join(raw_notes_sections)
+                raw_notes_file.write_text(full_content, encoding='utf-8')
                 metadata.add_output_file(raw_notes_file)
             
             if attachments:

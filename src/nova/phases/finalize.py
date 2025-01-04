@@ -24,7 +24,7 @@ class FinalizePhase(Phase):
             pipeline: Pipeline instance
         """
         super().__init__("finalize", config, pipeline)
-        self.validator = PipelineValidator(config)
+        self.validator = PipelineValidator(pipeline)
         
     async def process_impl(
         self,
@@ -74,6 +74,14 @@ class FinalizePhase(Phase):
             metadata.processed = True
             metadata.add_output_file(output_path)
             
+            # Save metadata file
+            metadata_path = output_dir / f"{file_path.stem}.metadata.json"
+            metadata.save(metadata_path)
+            logger.info(f"Saved metadata to {metadata_path}")
+            
+            # Update pipeline state
+            self.pipeline.state[self.name]["successful_files"].add(file_path)
+            
             return metadata
             
         except Exception as e:
@@ -81,6 +89,10 @@ class FinalizePhase(Phase):
             if metadata:
                 metadata.add_error("finalize", str(e))
                 metadata.processed = False
+            
+            # Update pipeline state
+            self.pipeline.state[self.name]["failed_files"].add(file_path)
+            
             return None
             
     def finalize(self) -> None:
