@@ -49,7 +49,35 @@ apis:
 
 ## Development
 
-See [Development Guidelines](docs/development.md) for coding standards and practices.
+### Setup
+
+1. Install Python 3.11 or later
+2. Install Poetry for dependency management
+3. Run `poetry install` to set up the development environment
+
+### Testing
+
+Run tests using pytest:
+```bash
+# Run all tests
+python -m pytest
+
+# Run specific test categories
+python -m pytest -m unit        # Unit tests
+python -m pytest -m integration # Integration tests
+python -m pytest -m handlers    # Handler tests
+python -m pytest -m config      # Configuration tests
+python -m pytest -m utils       # Utility tests
+```
+
+Test categories are configured in `pytest.ini` and include:
+- Unit tests for individual components
+- Integration tests for end-to-end workflows
+- Handler-specific tests
+- Configuration tests
+- Utility function tests
+
+For more details, see [Development Guidelines](docs/development.md).
 
 ## License
 

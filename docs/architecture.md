@@ -54,13 +54,20 @@ The system processes documents through multiple phases:
 ### Document Handlers
 
 Specialized handlers process different document types:
-- PDF documents
-- Word documents (DOCX)
+- PDF documents (using pypdf)
+- Word documents (using python-docx)
 - Markdown files
-- Images (with AI vision)
+- Images (with OpenAI Vision API)
 - Text files
-- Spreadsheets
+- Spreadsheets (using openpyxl)
 - HTML files
+
+Each handler implements a common interface and provides:
+- File type detection
+- Content extraction
+- Metadata parsing
+- Format conversion
+- Error handling
 
 ### Pipeline Management
 
@@ -78,6 +85,21 @@ Comprehensive logging system with:
 - Phase-specific logging
 - Performance tracking
 - Error reporting
+
+### Testing
+
+The test suite is organized into several categories:
+- Unit tests for individual components
+- Integration tests for end-to-end workflows
+- Handler-specific tests for each document type
+- Configuration tests
+- Utility function tests
+
+Test configuration is managed through `pytest.ini` with:
+- Custom markers for test categorization
+- Async test support with pytest-asyncio
+- Detailed logging configuration
+- Mock filesystem support
 
 ## Development Guidelines
 
