@@ -252,14 +252,23 @@ class NovaPipeline:
                     self.logger.error(f"Error in finalize: {str(e)}")
                     self.logger.error(traceback.format_exc())
                     self.state['finalize']['failed_files'].add('finalize')
+                    self.state['finalize'].update({
+                        'completed': True,
+                        'success': False
+                    })
+                    return False
                     
-                finally:
-                    # Always mark finalize as complete
-                    self.state['finalize']['completed'] = True
+                # Only mark as complete if successful
+                self.state['finalize'].update({
+                    'completed': True,
+                    'success': True
+                })
                 
-                # Wait for progress to complete
-                self.progress.refresh()
+                return True
                 
+            # Wait for progress to complete
+            self.progress.refresh()
+            
             # Show final summary
             self.show_summary()
             

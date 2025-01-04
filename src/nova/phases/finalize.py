@@ -55,18 +55,38 @@ class FinalizePhase(Phase):
             
     def finalize(self) -> None:
         """Run pipeline validation and cleanup."""
-        # Run validation
-        validation_passed = self.validator.validate()
-        if not validation_passed:
-            logger.error("Pipeline validation failed. Aborting finalization.")
-            return
+        try:
+            # Run validation
+            validation_passed = self.validator.validate()
+            if not validation_passed:
+                logger.error("Pipeline validation failed. Aborting finalization.")
+                self.pipeline.state[self.name]["failed_files"].add("validation")
+                return
+                
+            # Copy attachments
+            split_dir = self.config.processing_dir / "phases" / "split"
+            if split_dir.exists():
+                for file_name in ["Summary.md", "Raw Notes.md", "Attachments.md"]:
+                    src = split_dir / file_name
+                    if src.exists():
+                        dst = self.config.output_dir / file_name
+                        shutil.copy2(src, dst)
+                        logger.info(f"Copied {src} to {dst}")
+                        self.pipeline.state[self.name]["successful_files"].add(dst)
+                        
+            # Update stats
+            self.pipeline.state[self.name].update({
+                "total_files": len(self.pipeline.state[self.name]["successful_files"]),
+                "failed_files": len(self.pipeline.state[self.name]["failed_files"]),
+                "completed": True,
+                "success": validation_passed
+            })
             
-        # Copy attachments
-        split_dir = self.config.processing_dir / "phases" / "split"
-        if split_dir.exists():
-            for file_name in ["Summary.md", "Raw Notes.md", "Attachments.md"]:
-                src = split_dir / file_name
-                if src.exists():
-                    dst = self.config.output_dir / file_name
-                    shutil.copy2(src, dst)
-                    logger.info(f"Copied {src} to {dst}") 
+        except Exception as e:
+            logger.error(f"Error in finalize phase: {str(e)}")
+            self.pipeline.state[self.name]["failed_files"].add("finalize")
+            self.pipeline.state[self.name].update({
+                "completed": True,
+                "success": False
+            })
+            raise 
