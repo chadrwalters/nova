@@ -25,6 +25,31 @@ class OpenAIConfig(BaseModel):
         "If it's a photograph, describe the scene and key elements. "
         "Focus on what makes this image relevant in a note-taking context."
     )
+    
+    @property
+    def has_valid_key(self) -> bool:
+        """Check if the API key is valid."""
+        if not self.api_key:
+            return False
+        if not isinstance(self.api_key, str):
+            return False
+        key = self.api_key.strip()
+        if not key:
+            return False
+        # Remove quotes if present
+        if key.startswith('"') and key.endswith('"'):
+            key = key[1:-1]
+        # Check if key starts with expected prefix
+        return key.startswith('sk-')
+    
+    def get_key(self) -> Optional[str]:
+        """Get the API key, properly formatted."""
+        if not self.has_valid_key:
+            return None
+        key = self.api_key.strip()
+        if key.startswith('"') and key.endswith('"'):
+            key = key[1:-1]
+        return key
 
 
 class APIConfig(BaseModel):

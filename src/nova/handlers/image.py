@@ -40,10 +40,22 @@ class ImageHandler(BaseHandler):
         
         # Initialize OpenAI client if API key is configured
         self.vision_client = None
-        if hasattr(config, 'apis') and config.apis and hasattr(config.apis, 'openai') and config.apis.openai:
-            api_key = config.apis.openai.api_key
-            if api_key and not api_key.startswith('${'):  # Only use if key is properly expanded
-                self.vision_client = OpenAI(api_key=api_key)
+        try:
+            if config.config.apis and config.config.apis.openai:
+                self.logger.debug("Found OpenAI config")
+                self.logger.debug(f"Raw API key: {config.config.apis.openai.api_key}")
+                api_key = config.config.apis.openai.get_key()
+                self.logger.debug(f"Processed API key: {api_key}")
+                self.logger.debug(f"API key valid: {config.config.apis.openai.has_valid_key}")
+                if api_key:
+                    self.vision_client = OpenAI(api_key=api_key)
+                    self.logger.info("OpenAI vision client initialized successfully")
+                else:
+                    self.logger.warning("OpenAI API key not configured, image descriptions will be disabled")
+            else:
+                self.logger.warning("OpenAI API key not configured, image descriptions will be disabled")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         
     def _encode_image(self, file_path: Path) -> str:
         """Encode image file as base64.

@@ -1,15 +1,10 @@
 # Nova Configuration Template
-# Copy this file to nova.yaml and update ONLY the values below
-# All other settings are inherited from default configuration
+# Only override what's specific to your setup
 
 # Base directory for all Nova files
-# This is where all Nova directories will be created
-base_dir: ${HOME}/path/to/your/nova/directory
+base_dir: ~/nova
 
 # API keys (sensitive information)
 apis:
   openai:
-    api_key: "your-openai-api-key-here"  # Required for image analysis
-
-# Everything else (directory structure, handlers, pipeline phases, etc.)
-# is inherited from the default configuration in src/nova/config/default.yaml 
+    api_key: "your-api-key-here"  # Replace with your actual API key 

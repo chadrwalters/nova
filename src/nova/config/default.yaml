@@ -1,6 +1,6 @@
 # Default configuration for Nova document processing system
 
-base_dir: ${HOME}/nova
+base_dir: ~/nova
 input_dir: ${base_dir}/_NovaInput
 output_dir: ${base_dir}/_Nova
 processing_dir: ${base_dir}/_NovaProcessing
@@ -12,7 +12,7 @@ cache:
 
 apis:
   openai:
-    api_key: ${OPENAI_API_KEY}  # Will be replaced with environment variable
+    api_key: ""  # Set this in your user config file
     model: "gpt-4o"  # Vision-capable model
     max_tokens: 500
     vision_prompt: |

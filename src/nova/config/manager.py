@@ -73,8 +73,8 @@ class ConfigManager:
             # Handle Windows encoding
             safe_str = path_str.encode('cp1252', errors='replace').decode('cp1252')
             
-            # Expand environment variables and user paths
-            safe_str = os.path.expandvars(os.path.expanduser(safe_str))
+            # Only expand user paths (~ for home directory)
+            safe_str = os.path.expanduser(safe_str)
             
             # Convert back to Path
             return Path(safe_str)
@@ -118,8 +118,12 @@ class ConfigManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 user_config = yaml.safe_load(f) or {}
             
+            self.logger.debug(f"User config APIs: {user_config.get('apis', {})}")
+            
             # Merge configs (user config overrides default)
             config_dict = {**default_config, **user_config}
+            
+            self.logger.debug(f"Merged config APIs: {config_dict.get('apis', {})}")
             
             # Validate required fields
             required_fields = ['base_dir', 'input_dir', 'output_dir', 'processing_dir']
@@ -128,34 +132,52 @@ class ConfigManager:
                 raise ValueError(f"Missing required configuration fields: {', '.join(missing_fields)}")
             
             # Expand base_dir first since other paths may reference it
-            base_dir = os.path.expandvars(os.path.expanduser(config_dict['base_dir']))
+            base_dir = os.path.expanduser(config_dict['base_dir'])  # Only expand ~ for user home
             config_dict['base_dir'] = base_dir
             
             # Expand other paths, replacing ${base_dir} with actual base_dir
             for key in ['input_dir', 'output_dir', 'processing_dir']:
                 if key in config_dict:
                     path = config_dict[key].replace('${base_dir}', base_dir)
-                    config_dict[key] = os.path.expandvars(os.path.expanduser(path))
+                    config_dict[key] = os.path.expanduser(path)  # Only expand ~ for user home
             
             # Handle cache directory
             if 'cache' in config_dict and 'dir' in config_dict['cache']:
                 cache_dir = config_dict['cache']['dir'].replace('${base_dir}', base_dir)
-                config_dict['cache']['dir'] = os.path.expandvars(os.path.expanduser(cache_dir))
+                config_dict['cache']['dir'] = os.path.expanduser(cache_dir)  # Only expand ~ for user home
             
             # Handle logging directory
             if 'logging' in config_dict and 'log_dir' in config_dict['logging']:
                 log_dir = config_dict['logging']['log_dir'].replace('${base_dir}', base_dir)
-                config_dict['logging']['log_dir'] = os.path.expandvars(os.path.expanduser(log_dir))
+                config_dict['logging']['log_dir'] = os.path.expanduser(log_dir)  # Only expand ~ for user home
             
-            # Expand environment variables in API configuration
+            # Handle API configuration
             if 'apis' in config_dict:
+                self.logger.debug("Found APIs configuration")
                 apis_config = config_dict['apis']
-                if 'openai' in apis_config:
+                if apis_config and 'openai' in apis_config:
+                    self.logger.debug("Found OpenAI configuration")
                     openai_config = apis_config['openai']
-                    if 'api_key' in openai_config:
-                        openai_config['api_key'] = os.path.expandvars(openai_config['api_key'])
-                        if '${' in openai_config['api_key']:  # If still contains unexpanded variables
-                            openai_config['api_key'] = None  # Set to None to trigger environment lookup
+                    if openai_config and 'api_key' in openai_config:
+                        self.logger.debug("Found OpenAI API key")
+                        api_key = str(openai_config['api_key']).strip()  # Convert to string and strip whitespace
+                        if api_key:
+                            openai_config['api_key'] = api_key
+                            if api_key:
+                                self.logger.debug(f"OpenAI API key loaded: {api_key[:8]}...")
+                                self.logger.debug(f"OpenAI API key type: {type(api_key)}")
+                                self.logger.debug(f"OpenAI API key length: {len(api_key)}")
+                            else:
+                                self.logger.debug("OpenAI API key is None")
+                        else:
+                            self.logger.debug("OpenAI API key is empty")
+                            openai_config['api_key'] = None
+                    else:
+                        self.logger.debug("No OpenAI API key found in config")
+                else:
+                    self.logger.debug("No OpenAI configuration found")
+            else:
+                self.logger.debug("No APIs configuration found")
             
             return NovaConfig(**config_dict)
             
