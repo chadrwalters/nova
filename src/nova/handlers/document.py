@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
-import PyPDF2
+from pypdf import PdfReader
 from docx import Document as DocxDocument
 
 from ..models.document import DocumentMetadata
@@ -41,7 +41,7 @@ class DocumentHandler(BaseHandler):
             # Open PDF file
             with open(file_path, 'rb') as f:
                 # Create PDF reader
-                reader = PyPDF2.PdfReader(f)
+                reader = PdfReader(f)
                 
                 # Extract text from all pages
                 text = []
@@ -100,7 +100,7 @@ class DocumentHandler(BaseHandler):
                 
                 # Extract PDF metadata
                 with open(file_path, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
+                    reader = PdfReader(f)
                     if reader.metadata:
                         metadata.metadata.update({
                             k.lower().replace('/', '_'): v

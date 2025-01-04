@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Dict, Optional, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CacheConfig(BaseModel):
@@ -11,6 +11,8 @@ class CacheConfig(BaseModel):
     dir: Path
     enabled: bool = True
     ttl: int = 3600  # seconds
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class OpenAIConfig(BaseModel):
@@ -25,6 +27,8 @@ class OpenAIConfig(BaseModel):
         "If it's a photograph, describe the scene and key elements. "
         "Focus on what makes this image relevant in a note-taking context."
     )
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     @property
     def has_valid_key(self) -> bool:
@@ -56,6 +60,8 @@ class APIConfig(BaseModel):
     """API configuration."""
     
     openai: Optional[OpenAIConfig] = None
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class PipelineConfig(BaseModel):
@@ -63,13 +69,11 @@ class PipelineConfig(BaseModel):
     
     phases: List[str] = ["parse", "split"]
     
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     @staticmethod
     def create_initial_state() -> Dict[str, Dict]:
-        """Create initial pipeline state.
-        
-        Returns:
-            Initial state dictionary
-        """
+        """Create initial pipeline state."""
         return {
             'parse': {
                 'successful_files': set(),
@@ -77,33 +81,11 @@ class PipelineConfig(BaseModel):
                 'skipped_files': set(),
                 'unchanged_files': set(),
                 'reprocessed_files': set(),
-                'file_type_stats': {},
-                'attachments': {}  # Track attachments by parent directory
-            },
-            'disassemble': {
-                'successful_files': set(),
-                'failed_files': set(),
-                'skipped_files': set(),
-                'unchanged_files': set(),
-                'reprocessed_files': set(),
-                'attachments': {},  # Track attachments by parent directory
-                'stats': {
-                    'total_processed': 0,
-                    'summary_files': {
-                        'created': 0,
-                        'empty': 0,
-                        'failed': 0
-                    },
-                    'raw_notes_files': {
-                        'created': 0,
-                        'empty': 0,
-                        'failed': 0
-                    },
-                    'attachments': {
-                        'copied': 0,
-                        'failed': 0
-                    }
-                }
+                'file_stats': {},
+                'total_files': 0,
+                'processed_files': 0,
+                'failed_files_count': 0,
+                'skipped_files_count': 0
             },
             'split': {
                 'successful_files': set(),
@@ -150,6 +132,8 @@ class DebugConfig(BaseModel):
     break_on_error: bool = False
     dump_state: bool = False
     dump_dir: Optional[Path] = None
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class LoggingConfig(BaseModel):
@@ -166,6 +150,8 @@ class LoggingConfig(BaseModel):
     handler_levels: Dict[str, str] = {}  # Per-handler log levels
     structured: bool = True  # Enable structured logging
     include_context: bool = True  # Include phase, timing, etc.
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class NovaConfig(BaseModel):
@@ -181,7 +167,4 @@ class NovaConfig(BaseModel):
     logging: Optional[LoggingConfig] = LoggingConfig()
     debug: Optional[DebugConfig] = DebugConfig()
     
-    class Config:
-        """Pydantic model configuration."""
-        
-        arbitrary_types_allowed = True 
+    model_config = ConfigDict(arbitrary_types_allowed=True) 

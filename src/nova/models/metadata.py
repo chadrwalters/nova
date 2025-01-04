@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ImageMetadata(BaseModel):
@@ -16,10 +16,10 @@ class ImageMetadata(BaseModel):
     size: tuple[int, int] = Field(description="Image dimensions (width, height)")
     info: Dict = Field(default_factory=dict, description="Additional image info")
     
-    class Config:
-        """Model configuration."""
-        arbitrary_types_allowed = True
-        json_encoders = {
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
             Path: str,
             datetime: lambda v: v.isoformat(),
-        } 
+        }
+    ) 

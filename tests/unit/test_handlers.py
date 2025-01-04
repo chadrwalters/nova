@@ -7,6 +7,8 @@ import tempfile
 import shutil
 from unittest.mock import Mock, patch, MagicMock
 from PIL import Image
+from reportlab.pdfgen import canvas
+from io import BytesIO
 
 from nova.models.document import DocumentMetadata
 from nova.config.settings import NovaConfig, CacheConfig
@@ -127,7 +129,7 @@ class TestDocumentHandler:
         assert handler.version == "0.2.0"
         assert handler.file_types == ["pdf", "docx", "doc", "odt", "rtf"]
         
-    @patch('PyPDF2.PdfReader')
+    @patch('pypdf.PdfReader')
     async def test_process_pdf(self, mock_pdf_reader, config, metadata):
         """Test PDF processing."""
         # Mock PDF reader
@@ -136,9 +138,13 @@ class TestDocumentHandler:
         mock_reader.metadata = {"Title": "Test PDF"}
         mock_pdf_reader.return_value = mock_reader
         
-        # Create test file
+        # Create test file with actual content
         test_file = Path(config.input_dir) / "test.pdf"
-        test_file.touch()
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer)
+        c.drawString(100, 100, "Test content")
+        c.save()
+        test_file.write_bytes(buffer.getvalue())
         
         handler = DocumentHandler(config)
         output_path = Path(config.output_dir) / "test.md"
