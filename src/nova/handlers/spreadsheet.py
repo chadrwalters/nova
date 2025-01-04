@@ -54,15 +54,24 @@ class SpreadsheetHandler(BaseHandler):
         Returns:
             Markdown table representation of CSV file.
         """
-        try:
-            # Read CSV file
-            df = pd.read_csv(file_path)
-            
-            # Convert to markdown table
-            return df.to_markdown(index=False)
-            
-        except Exception as e:
-            return f"Error converting CSV to markdown: {str(e)}"
+        encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252', 'iso-8859-1']
+        last_error = None
+        
+        for encoding in encodings:
+            try:
+                # Read CSV file with specific encoding
+                df = pd.read_csv(file_path, encoding=encoding)
+                
+                # Convert to markdown table
+                return df.to_markdown(index=False)
+                
+            except UnicodeDecodeError as e:
+                last_error = e
+                continue
+            except Exception as e:
+                return f"Error converting CSV to markdown: {str(e)}"
+        
+        return f"Error converting CSV to markdown: Failed to decode with encodings {encodings}. Last error: {str(last_error)}"
     
     async def process_impl(
         self,
