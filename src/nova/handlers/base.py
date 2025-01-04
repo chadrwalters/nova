@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from ..models.document import DocumentMetadata
-from ..config.settings import NovaConfig
+from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
 from ..utils.path_utils import ensure_parent_dirs, get_safe_path
 from ..utils.output_manager import OutputManager
@@ -44,11 +44,11 @@ class BaseHandler(ABC):
     version = "0.1.0"
     file_types: List[str] = []
     
-    def __init__(self, config: NovaConfig) -> None:
+    def __init__(self, config: ConfigManager) -> None:
         """Initialize handler.
         
         Args:
-            config: Nova configuration
+            config: Nova configuration manager.
         """
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.name}")

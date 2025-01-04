@@ -8,7 +8,7 @@ from docx import Document as DocxDocument
 
 from ..models.document import DocumentMetadata
 from .base import BaseHandler, ProcessingStatus, ProcessingResult
-from ..config.settings import NovaConfig
+from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
 
 
@@ -19,11 +19,11 @@ class DocumentHandler(BaseHandler):
     version = "0.2.0"
     file_types = ["pdf", "docx", "doc", "odt", "rtf"]
     
-    def __init__(self, config: NovaConfig) -> None:
+    def __init__(self, config: ConfigManager) -> None:
         """Initialize document handler.
         
         Args:
-            config: Nova configuration.
+            config: Nova configuration manager.
         """
         super().__init__(config)
         self.markdown_writer = MarkdownWriter()

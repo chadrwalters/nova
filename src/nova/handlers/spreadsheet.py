@@ -7,8 +7,9 @@ from typing import Dict, List, Optional, Union
 import pandas as pd
 
 from ..models.document import DocumentMetadata
-from .base import BaseHandler
+from .base import BaseHandler, ProcessingStatus, ProcessingResult
 from ..config.manager import ConfigManager
+from ..core.markdown import MarkdownWriter
 
 
 class SpreadsheetHandler(BaseHandler):
@@ -125,6 +126,13 @@ class SpreadsheetHandler(BaseHandler):
             output_path.write_text(markdown_content, encoding='utf-8')
             
             metadata.add_output_file(output_path)
+            
+            # Get relative path from input directory
+            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            
+            # Save metadata using relative path
+            self._save_metadata(file_path, relative_path, metadata)
+            
             return metadata
             
         except Exception as e:
