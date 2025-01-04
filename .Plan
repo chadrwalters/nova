@@ -53,10 +53,6 @@ This plan outlines the implementation of a comprehensive test suite for the Nova
   - [x] Test DocumentHandler
   - [x] Test ImageHandler
   - [x] Fix OpenAI client initialization warnings in ImageHandler
-- [ ] Integration tests
-  - [ ] Test end-to-end document processing
-  - [ ] Test configuration loading
-  - [ ] Test error handling
 
 ### Phase 3: Document Processing [NOT_STARTED]
 - [ ] Document parsing

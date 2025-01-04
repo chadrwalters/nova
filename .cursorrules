@@ -1,0 +1,9 @@
+# Nova Project Rules
+
+1. Package Management
+   - Use Poetry ONLY
+   - Direct pip usage is FORBIDDEN
+
+2. Vision Model
+   - Use "gpt-4o" model for vision recognition
+   - Do NOT use gpt-4-vision-preview or any other vision models 

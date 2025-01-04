@@ -41,12 +41,12 @@ class ImageHandler(BaseHandler):
         # Initialize OpenAI client if API key is configured
         self.vision_client = None
         try:
-            if config.apis and config.apis.openai:
+            if self.config.config.apis and self.config.config.apis.openai:
                 self.logger.debug("Found OpenAI config")
-                self.logger.debug(f"Raw API key: {config.apis.openai.api_key}")
-                api_key = config.apis.openai.get_key()
+                self.logger.debug(f"Raw API key: {self.config.config.apis.openai.api_key}")
+                api_key = self.config.config.apis.openai.get_key()
                 self.logger.debug(f"Processed API key: {api_key}")
-                self.logger.debug(f"API key valid: {config.apis.openai.has_valid_key}")
+                self.logger.debug(f"API key valid: {self.config.config.apis.openai.has_valid_key}")
                 if api_key:
                     self.vision_client = OpenAI(api_key=api_key)
                     self.logger.info("OpenAI vision client initialized successfully")
