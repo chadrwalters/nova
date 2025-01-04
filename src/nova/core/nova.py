@@ -169,7 +169,14 @@ class Nova:
                 if file_path.is_file():
                     try:
                         # Get relative path from input dir to maintain directory structure
-                        rel_path = file_path.relative_to(input_dir)
+                        # but skip the _NovaInput part if it exists
+                        try:
+                            rel_path = file_path.relative_to(input_dir)
+                            # Always skip _NovaInput from the path parts
+                            rel_path = Path(*[p for p in rel_path.parts if p != "_NovaInput"])
+                        except ValueError:
+                            # If not under input_dir, just use the filename
+                            rel_path = Path(file_path.name)
                         
                         # If the input directory is named "test_files", preserve its structure
                         if input_dir.name == "test_files":
@@ -186,12 +193,10 @@ class Nova:
                             else:
                                 category = "Other"
                                 
-                            # Create output directory preserving subdirectories
+                            # Create output directory preserving subdirectories but skip _NovaInput
                             if len(rel_path.parts) > 1:
-                                # If there are subdirectories, preserve them
-                                file_output_dir = output_dir / category / Path(*rel_path.parts[1:-1])
+                                file_output_dir = output_dir / category / rel_path.parent
                             else:
-                                # If no subdirectories, just use the category
                                 file_output_dir = output_dir / category
                         
                         metadata = await self.process_file(file_path, file_output_dir)

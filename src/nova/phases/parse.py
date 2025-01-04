@@ -72,7 +72,11 @@ class ParsePhase(Phase):
                 self._update_stats(file_path.suffix.lower(), "successful", handler.__class__.__name__)
                 
                 # Save metadata file
-                metadata_path = self.config.processing_dir / "phases" / "parse" / file_path.parent.name / f"{file_path.stem}.metadata.json"
+                parent_parts = [p for p in file_path.parent.parts if p != "_NovaInput"]
+                if parent_parts:
+                    metadata_path = self.config.processing_dir / "phases" / "parse" / Path(*parent_parts) / f"{file_path.stem}.metadata.json"
+                else:
+                    metadata_path = self.config.processing_dir / "phases" / "parse" / f"{file_path.stem}.metadata.json"
                 metadata_path.parent.mkdir(parents=True, exist_ok=True)
                 metadata.save(metadata_path)
                 
