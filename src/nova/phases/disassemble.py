@@ -305,6 +305,19 @@ class DisassemblyPhase(Phase):
             # Get base name without .parsed.md extension
             base_name = file_path.stem.replace('.parsed', '')
             
+            # Get relative path from parse directory to maintain structure
+            parse_dir = self.pipeline.config.processing_dir / "phases" / "parse"
+            try:
+                rel_path = file_path.relative_to(parse_dir)
+                # Use parent directory structure but exclude the filename
+                output_subdir = output_dir / rel_path.parent
+            except ValueError:
+                # If not under parse_dir, use the parent directory name
+                output_subdir = output_dir / file_path.parent.name
+            
+            # Create output directory
+            output_subdir.mkdir(parents=True, exist_ok=True)
+            
             # Initialize section count for this file
             section_count = 0
             
@@ -313,7 +326,7 @@ class DisassemblyPhase(Phase):
             
             # Write summary file
             if summary_content:
-                summary_file = output_dir / f"{base_name}.summary.md"
+                summary_file = output_subdir / f"{base_name}.summary.md"
                 summary_file.write_text(summary_content, encoding='utf-8')
                 metadata.add_output_file(summary_file)
                 self.pipeline.state['disassemble']['stats']['summary_files']['created'] += 1
@@ -326,7 +339,7 @@ class DisassemblyPhase(Phase):
                 
             # Write raw notes file if it exists
             if raw_notes_content:
-                raw_notes_file = output_dir / f"{base_name}.rawnotes.md"
+                raw_notes_file = output_subdir / f"{base_name}.rawnotes.md"
                 raw_notes_file.write_text(raw_notes_content, encoding='utf-8')
                 metadata.add_output_file(raw_notes_file)
                 self.pipeline.state['disassemble']['stats']['raw_notes_files']['created'] += 1
@@ -336,9 +349,9 @@ class DisassemblyPhase(Phase):
             else:
                 self.pipeline.state['disassemble']['stats']['raw_notes_files']['empty'] += 1
                 logger.debug(f"No raw notes content for {base_name}")
-                
+            
             # Copy attachments if they exist
-            attachment_count = self._copy_attachments(file_path.parent, output_dir, base_name)
+            attachment_count = self._copy_attachments(file_path.parent, output_subdir, base_name)
             if attachment_count > 0:
                 # Initialize total_attachments if not present
                 if 'total_attachments' not in self.pipeline.state['disassemble']['stats']:

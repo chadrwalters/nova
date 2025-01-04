@@ -199,6 +199,18 @@ class SplitPhase(Phase):
                 self.logger.error("Disassemble directory does not exist")
                 return metadata
             
+            # Get relative path from disassemble directory to maintain structure
+            try:
+                rel_path = file_path.relative_to(disassemble_dir)
+                # Use parent directory structure but exclude the filename
+                output_subdir = output_dir / rel_path.parent
+            except ValueError:
+                # If not under disassemble_dir, use the parent directory name
+                output_subdir = output_dir / file_path.parent.name
+            
+            # Create output directory
+            output_subdir.mkdir(parents=True, exist_ok=True)
+            
             # Track sections for each output file
             summary_sections = []
             raw_notes_sections = []
@@ -259,45 +271,15 @@ class SplitPhase(Phase):
                                 except Exception:
                                     attachment_copy['content'] = f"Binary file: {Path(attachment['path']).name}"
                             attachments[parent_dir].append(attachment_copy)
-                
-                # Then, scan for any parsed files that might have been missed
-                for file in parse_dir.rglob("*.parsed.md"):
-                    # Only process files in subdirectories
-                    if len(file.relative_to(parse_dir).parts) > 1:
-                        parent_dir = file.parent.name
-                        if parent_dir not in attachments:
-                            attachments[parent_dir] = []
-                        
-                        # Get original file name without .parsed.md extension
-                        original_name = file.stem[:-7] if file.stem.endswith('.parsed') else file.stem
-                        
-                        # Get original file extension from the original name
-                        original_ext = Path(original_name).suffix.lower()
-                        file_type = self.TYPE_MAP.get(original_ext, 'OTHER')
-                        
-                        # Read content
-                        try:
-                            content = file.read_text(encoding='utf-8')
-                        except Exception:
-                            content = f"Binary file: {file.name}"
-                        
-                        # Create attachment info with original name as ID
-                        attachments[parent_dir].append({
-                            'path': str(file),
-                            'type': file_type,
-                            'content': content,
-                            'id': original_name + original_ext,  # Keep the extension
-                            'original_name': original_name  # Store original name for reference
-                        })
             
             # Write consolidated files
             if summary_sections:
-                summary_file = output_dir / "Summary.md"
+                summary_file = output_subdir / "Summary.md"
                 summary_file.write_text('\n\n'.join(summary_sections), encoding='utf-8')
                 metadata.add_output_file(summary_file)
             
             if raw_notes_sections:
-                raw_notes_file = output_dir / "Raw Notes.md"
+                raw_notes_file = output_subdir / "Raw Notes.md"
                 raw_notes_file.write_text('\n\n'.join(raw_notes_sections), encoding='utf-8')
                 metadata.add_output_file(raw_notes_file)
             
@@ -305,7 +287,7 @@ class SplitPhase(Phase):
                 # Store attachments for finalize phase
                 self._all_attachments = attachments
                 # Write attachments file
-                attachments_file = self._write_attachments_file(attachments, output_dir)
+                attachments_file = self._write_attachments_file(attachments, output_subdir)
                 if attachments_file and attachments_file.exists():
                     metadata.add_output_file(attachments_file)
             
@@ -358,12 +340,10 @@ class SplitPhase(Phase):
         """
         try:
             # Create output file paths
-            split_attachments_file = self.pipeline.config.processing_dir / "phases" / "split" / "Attachments.md"
-            output_attachments_file = output_dir / "Attachments.md"
+            attachments_file = output_dir / "Attachments.md"
             
-            # Create directories if they don't exist
-            split_attachments_file.parent.mkdir(parents=True, exist_ok=True)
-            output_attachments_file.parent.mkdir(parents=True, exist_ok=True)
+            # Create directory if it doesn't exist
+            attachments_file.parent.mkdir(parents=True, exist_ok=True)
             
             # Build content
             content = ["# Attachments\n"]
@@ -421,23 +401,12 @@ class SplitPhase(Phase):
                             
                             content.append("\n")
             
-            # Write content to both locations
+            # Write content
             content_str = "\n".join(content)
+            attachments_file.write_text(content_str, encoding='utf-8')
             
-            # Write to split phase directory
-            try:
-                split_attachments_file.write_text(content_str, encoding='utf-8')
-            except Exception as e:
-                self.logger.error(f"Failed to write split phase attachments file: {str(e)}")
-            
-            # Write to output directory
-            try:
-                output_attachments_file.write_text(content_str, encoding='utf-8')
-            except Exception as e:
-                self.logger.error(f"Failed to write output attachments file: {str(e)}")
-            
-            # Return the split phase file path for validation
-            return split_attachments_file if split_attachments_file.exists() else output_attachments_file
+            # Return the file path for validation
+            return attachments_file if attachments_file.exists() else None
             
         except Exception as e:
             self.logger.error(f"Failed to write attachments file: {str(e)}")
