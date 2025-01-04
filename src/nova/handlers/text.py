@@ -24,31 +24,23 @@ class TextHandler(BaseHandler):
         """
         super().__init__(config)
     
-    async def process_impl(
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a text file.
         
         Args:
             file_path: Path to text file.
+            output_path: Path to write output.
             metadata: Document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Get relative path from input directory
-            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
-            
-            # Get output path using relative path
-            output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,
-                "parse",
-                ".parsed.md"
-            )
-            
             # Read text file
             with open(file_path, 'r', encoding='utf-8') as f:
                 text = f.read()
@@ -74,10 +66,6 @@ class TextHandler(BaseHandler):
             self._safe_write_file(output_path, markdown_content)
             
             metadata.add_output_file(output_path)
-            
-            # Save metadata using relative path
-            self._save_metadata(file_path, relative_path, metadata)
-            
             return metadata
             
         except Exception as e:

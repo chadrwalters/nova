@@ -38,23 +38,23 @@ class OutputManager:
         """
         input_file = Path(input_file)
         
-        # If input_file is already relative, use it directly
-        if not input_file.is_absolute():
-            relative_path = input_file
-        else:
-            # Get path relative to input directory
-            try:
-                relative_path = input_file.relative_to(self.config.input_dir)
-            except ValueError:
-                # If the file is not under input_dir, use its name only
-                relative_path = Path(input_file.name)
-        
         # Build output path under phase directory
         output_base = self.config.processing_dir / "phases" / phase_name
         
-        # Get the parent directory structure from the relative path
-        # Preserve spaces in directory names
-        parent_dirs = relative_path.parent
+        # Always try to get path relative to input directory first
+        try:
+            relative_path = input_file.relative_to(self.config.input_dir)
+        except ValueError:
+            # If not under input_dir, try to find a parent directory that matches
+            # Look for common parent directories like "Format Test" or "Format Test 3"
+            parts = input_file.parts
+            for i in range(len(parts)-1, -1, -1):
+                if "Format Test" in parts[i]:
+                    relative_path = Path(*parts[i:])
+                    break
+            else:
+                # If no match found, use just the filename
+                relative_path = Path(input_file.name)
         
         # Remove any existing .parsed or .metadata suffix from the stem
         # Preserve spaces in the filename
@@ -68,16 +68,7 @@ class OutputManager:
                 break
         
         # Construct the output path preserving directory structure and spaces
-        if parent_dirs != Path('.'):
-            # File is in a subdirectory, preserve the structure
-            output_path = output_base
-            for part in parent_dirs.parts:
-                # Keep spaces in directory names
-                output_path = output_path / part
-            output_path = output_path / f"{stem}{extension}"
-        else:
-            # File is in root directory
-            output_path = output_base / f"{stem}{extension}"
+        output_path = output_base / relative_path.parent / f"{stem}{extension}"
         
         # Ensure parent directories exist
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -101,15 +92,28 @@ class OutputManager:
         """
         input_file = Path(input_file)
         
-        # Get path relative to input directory
+        # Build base directory path
+        output_base = self.config.processing_dir / "phases" / phase_name
+        
+        # Always try to get path relative to input directory first
         try:
             relative_path = input_file.relative_to(self.config.input_dir)
         except ValueError:
+            # If not under input_dir, use the file name only
             relative_path = Path(input_file.name)
-            
-        # Build directory path
-        output_base = self.config.processing_dir / "phases" / phase_name
-        output_dir = output_base / relative_path.parent / relative_path.stem
+        
+        # Remove any existing .parsed or .metadata suffix from the stem
+        stem = relative_path.stem
+        while True:
+            if stem.endswith('.parsed'):
+                stem = stem[:-7]  # Remove '.parsed' suffix
+            elif stem.endswith('.metadata'):
+                stem = stem[:-9]  # Remove '.metadata' suffix
+            else:
+                break
+        
+        # Construct the output directory path
+        output_dir = output_base / stem
         
         if create:
             output_dir.mkdir(parents=True, exist_ok=True)

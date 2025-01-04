@@ -27,8 +27,8 @@ class SpreadsheetHandler(BaseHandler):
         """
         super().__init__(config)
     
-    def _convert_excel_to_markdown(self, file_path: Path) -> str:
-        """Convert Excel file to markdown table.
+    def _extract_excel_text(self, file_path: Path) -> str:
+        """Extract text from Excel file.
         
         Args:
             file_path: Path to Excel file.
@@ -46,8 +46,8 @@ class SpreadsheetHandler(BaseHandler):
         except Exception as e:
             return f"Error converting Excel to markdown: {str(e)}"
             
-    def _convert_csv_to_markdown(self, file_path: Path) -> str:
-        """Convert CSV file to markdown table.
+    def _extract_csv_text(self, file_path: Path) -> str:
+        """Extract text from CSV file.
         
         Args:
             file_path: Path to CSV file.
@@ -73,44 +73,38 @@ class SpreadsheetHandler(BaseHandler):
                 return f"Error converting CSV to markdown: {str(e)}"
         
         return f"Error converting CSV to markdown: Failed to decode with encodings {encodings}. Last error: {str(last_error)}"
-    
-    async def process_impl(
+        
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a spreadsheet file.
         
         Args:
-            file_path: Path to file.
+            file_path: Path to spreadsheet file.
+            output_path: Path to write output.
             metadata: Document metadata.
-                
-        Returns:
-            Document metadata, or None if file is ignored.
             
-        Raises:
-            ValueError: If file cannot be processed.
+        Returns:
+            Document metadata.
         """
         try:
-            # Get output path from output manager
-            output_path = self.output_manager.get_output_path_for_phase(
-                file_path,
-                "parse",
-                ".parsed.md"
-            )
-            
-            # Process content based on file type
+            # Extract text based on file type
+            content = ""
             if file_path.suffix.lower() in ['.xlsx', '.xls']:
-                content = self._convert_excel_to_markdown(file_path)
-            else:  # CSV
-                content = self._convert_csv_to_markdown(file_path)
-            
+                content = self._extract_excel_text(file_path)
+            elif file_path.suffix.lower() == '.csv':
+                content = self._extract_csv_text(file_path)
+            else:
+                raise ValueError(f"Unsupported file type: {file_path.suffix}")
+                
             # Update metadata
             metadata.title = file_path.stem
-            metadata.metadata['original_path'] = str(file_path)
             metadata.processed = True
             
-            # Write markdown using MarkdownWriter and get the content
+            # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
                 content=content,
@@ -119,23 +113,16 @@ class SpreadsheetHandler(BaseHandler):
                 output_path=output_path
             )
             
-            # Create parent directory if it doesn't exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Write the markdown content to the output file
-            output_path.write_text(markdown_content, encoding='utf-8')
+            # Write the file
+            self._safe_write_file(output_path, markdown_content)
             
             metadata.add_output_file(output_path)
-            
-            # Get relative path from input directory
-            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
-            
-            # Save metadata using relative path
-            self._save_metadata(file_path, relative_path, metadata)
-            
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process spreadsheet {file_path}: {str(e)}")
-            metadata.add_error(self.name, str(e))
+            error_msg = f"Failed to process spreadsheet {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            if metadata:
+                metadata.add_error(self.name, error_msg)
+                metadata.processed = False
             return metadata 

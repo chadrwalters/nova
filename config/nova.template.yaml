@@ -1,46 +1,15 @@
 # Nova Configuration Template
-# Copy this file to nova.yaml and update the values
+# Copy this file to nova.yaml and update ONLY the values below
+# All other settings are inherited from default configuration
 
-# Base Directories
-base_dir: "${HOME}/Documents/Nova"
-input_dir: "${HOME}/Documents/Nova/Input"
-output_dir: "${HOME}/Documents/Nova/Output"
-processing_dir: "${HOME}/Documents/Nova/Processing"
+# Base directory for all Nova files
+# This is where all Nova directories will be created
+base_dir: ${HOME}/path/to/your/nova/directory
 
-# Cache Configuration
-cache:
-  dir: "${HOME}/Documents/Nova/Cache"
-  enabled: true
-  ttl: 3600  # 1 hour
-
-# API Configuration
+# API keys (sensitive information)
 apis:
   openai:
-    api_key: ${OPENAI_API_KEY}
-    model: "gpt-4o"
-    max_tokens: 500
-    vision_prompt: |
-      Please analyze this image and provide a detailed description.
-      If it's a screenshot, extract any visible text.
-      If it's a photograph, describe the scene and key elements.
-      Focus on what makes this image relevant in a note-taking context.
+    api_key: "your-openai-api-key-here"  # Required for image analysis
 
-# Handler Configuration
-handlers:
-  image:
-    formats:
-      - jpg
-      - jpeg
-      - png
-      - gif
-      - webp
-      - heic
-      - svg
-
-# Pipeline Configuration
-pipeline:
-  phases:
-    - parse
-    - disassemble
-    - split
-    - finalize 
+# Everything else (directory structure, handlers, pipeline phases, etc.)
+# is inherited from the default configuration in src/nova/config/default.yaml 

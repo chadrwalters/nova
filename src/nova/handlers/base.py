@@ -122,36 +122,145 @@ class BaseHandler(ABC):
                 error=error_msg
             )
     
-    @abstractmethod
+    def _get_relative_path(self, file_path: Path) -> Path:
+        """Get relative path from input directory.
+        
+        Args:
+            file_path: Path to file
+            
+        Returns:
+            Relative path from input directory
+        """
+        try:
+            # Convert to absolute path if not already
+            abs_path = file_path if file_path.is_absolute() else file_path.resolve()
+            
+            # Get relative path from input directory
+            rel_path = abs_path.relative_to(self.config.input_dir)
+            
+            return rel_path
+        except ValueError:
+            # If not under input directory, try to find a parent directory that matches
+            # Look for common parent directories like "Format Test" or "Format Test 3"
+            parts = file_path.parts
+            for i in range(len(parts)-1, -1, -1):
+                if "Format Test" in parts[i]:
+                    return Path(*parts[i:])
+            
+            # If no match found, use just the filename
+            return Path(file_path.name)
+            
+    def _get_output_path(self, file_path: Path, phase: str, suffix: str) -> Path:
+        """Get output path for a file.
+        
+        Args:
+            file_path: Path to file
+            phase: Phase name
+            suffix: File suffix
+            
+        Returns:
+            Output path
+        """
+        # Get relative path from input directory
+        rel_path = self._get_relative_path(file_path)
+        
+        # Get output path using output manager
+        output_path = self.output_manager.get_output_path_for_phase(
+            rel_path,
+            phase,
+            suffix
+        )
+        
+        return output_path
+        
     async def process_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a file implementation.
         
         Args:
             file_path: Path to file
+            output_path: Path to output file
             metadata: Document metadata
             
         Returns:
             Updated document metadata
         """
-        pass
-        
-    def _safe_write_file(self, file_path: Path, content: str) -> bool:
-        """Safely write content to a file.
+        try:
+            # Get relative path from input directory
+            rel_path = self._get_relative_path(file_path)
+            
+            # Process file and update metadata
+            metadata = await self.process_file_impl(file_path, output_path, metadata)
+            if metadata:
+                # Save metadata using relative path
+                self._save_metadata(file_path, rel_path, metadata)
+            
+            return metadata
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
+            if metadata:
+                metadata.add_error(self.name, str(e))
+                metadata.processed = False
+            return None
+            
+    @abstractmethod
+    async def process_file_impl(
+        self,
+        file_path: Path,
+        output_path: Path,
+        metadata: DocumentMetadata,
+    ) -> Optional[DocumentMetadata]:
+        """Process a file implementation.
         
         Args:
-            file_path: Path to write to
+            file_path: Path to file
+            output_path: Path to write output
+            metadata: Document metadata
+            
+        Returns:
+            Updated document metadata
+        """
+        raise NotImplementedError("Subclasses must implement process_file_impl")
+        
+    def _save_metadata(self, file_path: Path, relative_path: Path, metadata: DocumentMetadata) -> None:
+        """Save metadata for a file.
+        
+        Args:
+            file_path: Path to file
+            relative_path: Relative path from input directory
+            metadata: Document metadata
+        """
+        # Get output path for metadata
+        metadata_path = self.output_manager.get_output_path_for_phase(
+            relative_path,
+            "parse",
+            ".metadata.json"
+        )
+        
+        # Ensure parent directories exist
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write metadata
+        metadata.save(metadata_path)
+        
+    def _safe_write_file(self, file_path: Path, content: str) -> bool:
+        """Write content to file safely.
+        
+        Args:
+            file_path: Path to file
             content: Content to write
             
         Returns:
-            True if file was written
+            True if successful, False otherwise
         """
         try:
             # Ensure parent directories exist
-            ensure_parent_dirs(file_path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Write content
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -161,41 +270,4 @@ class BaseHandler(ABC):
             
         except Exception as e:
             self.logger.error(f"Failed to write file {file_path}: {str(e)}")
-            return False
-            
-    def _save_metadata(self, file_path: Path, relative_path: Path, metadata: DocumentMetadata) -> None:
-        """Save metadata to file.
-        
-        Args:
-            file_path: Original file path
-            relative_path: Relative path from input directory
-            metadata: Document metadata
-        """
-        try:
-            # Get metadata path
-            metadata_path = self.output_manager.get_output_path_for_phase(
-                relative_path,
-                "parse",
-                ".metadata.json"
-            )
-            
-            # Save metadata
-            metadata.save(metadata_path)
-            
-        except Exception as e:
-            self.logger.error(f"Failed to save metadata for {file_path}: {str(e)}")
-            
-    def _get_relative_path(self, from_path: Path, to_path: Path) -> Path:
-        """Get relative path between two paths.
-        
-        Args:
-            from_path: Source path
-            to_path: Target path
-            
-        Returns:
-            Relative path
-        """
-        try:
-            return Path(os.path.relpath(to_path, from_path.parent))
-        except Exception:
-            return to_path 
+            return False 

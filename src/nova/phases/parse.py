@@ -60,23 +60,46 @@ class ParsePhase(Phase):
             
         try:
             # Process file with handler
-            # Ensure we use the actual file path without modifying spaces
             metadata = FileMetadata.from_file(
                 file_path=file_path,
                 handler_name=handler.name,
                 handler_version=handler.version
             )
-            metadata = await handler.process_impl(file_path, metadata)
+            
+            # Get relative path from input directory
+            try:
+                rel_path = file_path.relative_to(self.config.input_dir)
+            except ValueError:
+                # If not under input_dir, try to find a parent directory that matches
+                # Look for common parent directories like "Format Test" or "Format Test 3"
+                parts = file_path.parts
+                for i in range(len(parts)-1, -1, -1):
+                    if "Format Test" in parts[i]:
+                        rel_path = Path(*parts[i:])
+                        break
+                else:
+                    # If no match found, use just the filename
+                    rel_path = Path(file_path.name)
+                
+            # Get output path using output manager
+            output_path = self.pipeline.output_manager.get_output_path_for_phase(
+                rel_path,
+                'parse',
+                '.parsed.md'
+            )
+            
+            # Process file and update metadata
+            metadata = await handler.process_impl(file_path, output_path, metadata)
             if metadata and metadata.processed:
                 logger.info(f"Successfully processed {file_path}")
                 self._update_stats(file_path.suffix.lower(), "successful", handler.__class__.__name__)
                 
-                # Save metadata file
-                parent_parts = [p for p in file_path.parent.parts if p != "_NovaInput"]
-                if parent_parts:
-                    metadata_path = self.config.processing_dir / "phases" / "parse" / Path(*parent_parts) / f"{file_path.stem}.metadata.json"
-                else:
-                    metadata_path = self.config.processing_dir / "phases" / "parse" / f"{file_path.stem}.metadata.json"
+                # Save metadata file in parse phase output directory
+                metadata_path = self.pipeline.output_manager.get_output_path_for_phase(
+                    rel_path,
+                    'parse',
+                    '.metadata.json'
+                )
                 metadata_path.parent.mkdir(parents=True, exist_ok=True)
                 metadata.save(metadata_path)
                 
@@ -87,8 +110,8 @@ class ParsePhase(Phase):
                 return None
                 
         except Exception as e:
-            logger.error(f"Error processing {file_path}: {str(e)}")
-            self._update_stats(file_path.suffix.lower(), "failed", handler.__class__.__name__)
+            logger.error(f"Failed to process {file_path}: {str(e)}")
+            self._update_stats(file_path.suffix.lower(), "failed", handler.__class__.__name__ if handler else None)
             return None
             
     def _update_stats(self, extension: str, status: str, handler: Optional[str]) -> None:

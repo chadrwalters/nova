@@ -43,31 +43,23 @@ class VideoHandler(BaseHandler):
 This is a video file. The content cannot be displayed directly in markdown.
 Please use an appropriate video player to view this file."""
     
-    async def process_impl(
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a video file.
         
         Args:
-            file_path: Path to file.
+            file_path: Path to video file.
+            output_path: Path to write output.
             metadata: Document metadata.
-                
+            
         Returns:
             Document metadata.
-            
-        Raises:
-            ValueError: If file cannot be processed.
         """
         try:
-            # Get output path from output manager
-            output_path = self.output_manager.get_output_path_for_phase(
-                file_path,
-                "parse",
-                ".parsed.md"
-            )
-            
             # Create video content
             content = self._create_video_content(file_path)
             
@@ -77,13 +69,16 @@ Please use an appropriate video player to view this file."""
             metadata.processed = True
             
             # Write markdown using MarkdownWriter
-            self.markdown_writer.write_document(
+            markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
                 content=content,
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path
             )
+            
+            # Write the file
+            self._safe_write_file(output_path, markdown_content)
             
             metadata.add_output_file(output_path)
             return metadata

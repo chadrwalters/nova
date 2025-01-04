@@ -174,16 +174,7 @@ class SplitPhase(Phase):
         output_dir: Path,
         metadata: Optional[DocumentMetadata] = None
     ) -> Optional[DocumentMetadata]:
-        """Process a file in the split phase.
-        
-        Args:
-            file_path: Path to file.
-            output_dir: Output directory.
-            metadata: Optional document metadata.
-            
-        Returns:
-            Document metadata.
-        """
+        """Process a file in the split phase."""
         try:
             # Initialize metadata if not provided
             if metadata is None:
@@ -193,22 +184,34 @@ class SplitPhase(Phase):
                     handler_version="1.0"
                 )
             
-            # Get all disassembled files
-            disassemble_dir = self.pipeline.config.processing_dir / "phases" / "disassemble"
-            if not disassemble_dir.exists():
-                self.logger.error("Disassemble directory does not exist")
-                return metadata
+            # Get base name without extensions
+            base_name = file_path.stem
+            if base_name.endswith('.summary'):
+                base_name = base_name[:-8]  # Remove '.summary'
+            elif base_name.endswith('.rawnotes'):
+                base_name = base_name[:-9]  # Remove '.rawnotes'
             
-            # Get relative path from disassemble directory to maintain structure
+            # Look for related files in the same directory
+            summary_file = file_path.parent / f"{base_name}.summary.md"
+            raw_notes_file = file_path.parent / f"{base_name}.rawnotes.md"
+            
+            # Get relative path from input directory
             try:
-                rel_path = file_path.relative_to(disassemble_dir)
-                # Use parent directory structure but exclude the filename
-                output_subdir = output_dir / rel_path.parent
+                # First get the original input file path from metadata
+                if metadata and metadata.file_path:
+                    original_path = Path(metadata.file_path)
+                    rel_path = original_path.relative_to(self.config.input_dir)
+                else:
+                    # Fallback to using the current file path relative to disassemble dir
+                    disassemble_dir = self.pipeline.config.processing_dir / "phases" / "disassemble"
+                    rel_path = file_path.relative_to(disassemble_dir)
             except ValueError:
-                # If not under disassemble_dir, use the parent directory name
-                output_subdir = output_dir / file_path.parent.name
+                # If not under input_dir or disassemble_dir, use just the filename
+                rel_path = Path(base_name)
             
-            # Create output directory
+            # Create output directory preserving relative path
+            split_phase_dir = self.pipeline.get_phase_output_dir('split')
+            output_subdir = split_phase_dir / rel_path.parent
             output_subdir.mkdir(parents=True, exist_ok=True)
             
             # Track sections for each output file
@@ -216,61 +219,42 @@ class SplitPhase(Phase):
             raw_notes_sections = []
             attachments = {}
             
-            # Process each disassembled file
-            for file in disassemble_dir.rglob("*.summary.md"):
-                # Read summary content
-                summary_content = file.read_text(encoding='utf-8')
+            # Process summary file if it exists
+            if summary_file and summary_file.exists():
+                summary_content = summary_file.read_text(encoding='utf-8')
                 if summary_content.strip():
                     summary_sections.append(summary_content)
-                
-                # Check for raw notes
-                raw_notes_file = file.parent / f"{file.stem.replace('.summary', '')}.rawnotes.md"
-                if raw_notes_file.exists():
-                    raw_notes_content = raw_notes_file.read_text(encoding='utf-8')
-                    if raw_notes_content.strip():
-                        raw_notes_sections.append(raw_notes_content)
-                
-                # Get parent directory name for attachments
-                parent_dir = file.parent.name
-                if parent_dir not in attachments:
-                    attachments[parent_dir] = []
-                
-                # Get attachments from pipeline state
-                if 'attachments' in self.pipeline.state['disassemble']:
-                    if parent_dir in self.pipeline.state['disassemble']['attachments']:
-                        # Copy attachments and ensure they have IDs
-                        for attachment in self.pipeline.state['disassemble']['attachments'][parent_dir]:
-                            attachment_copy = attachment.copy()
-                            if 'id' not in attachment_copy:
-                                # Use file name as fallback ID
-                                attachment_copy['id'] = Path(attachment_copy['path']).stem
-                            attachments[parent_dir].append(attachment_copy)
+            
+            # Process raw notes file if it exists
+            if raw_notes_file and raw_notes_file.exists():
+                raw_notes_content = raw_notes_file.read_text(encoding='utf-8')
+                if raw_notes_content.strip():
+                    raw_notes_sections.append(raw_notes_content)
+            
+            # Get parent directory name for attachments
+            parent_dir = file_path.parent.name
+            if parent_dir not in attachments:
+                attachments[parent_dir] = []
             
             # Get attachments from parse phase
             parse_dir = self.pipeline.config.processing_dir / "phases" / "parse"
             if parse_dir.exists():
-                # First, get attachments from pipeline state
-                if 'attachments' in self.pipeline.state['parse']:
-                    for parent_dir, attachment_list in self.pipeline.state['parse']['attachments'].items():
-                        if parent_dir not in attachments:
-                            attachments[parent_dir] = []
-                        for attachment in attachment_list:
-                            # Create a copy of the attachment info
-                            attachment_copy = attachment.copy()
-                            # Get file type from extension
-                            file_ext = Path(attachment['path']).suffix.lower()
-                            file_type = self.TYPE_MAP.get(file_ext, 'OTHER')
-                            attachment_copy['type'] = file_type
-                            # Read content if not already present
-                            if not attachment_copy.get('content'):
-                                try:
-                                    if file_type in ['IMAGE', 'PDF', 'EXCEL']:
-                                        attachment_copy['content'] = f"Binary file: {Path(attachment['path']).name}"
-                                    else:
-                                        attachment_copy['content'] = Path(attachment['path']).read_text(encoding='utf-8')
-                                except Exception:
-                                    attachment_copy['content'] = f"Binary file: {Path(attachment['path']).name}"
-                            attachments[parent_dir].append(attachment_copy)
+                # Look for files in the same directory as the input file
+                input_dir = file_path.parent
+                for file_path in input_dir.glob('*.*'):
+                    if file_path.is_file() and not file_path.name.endswith(('.summary.md', '.rawnotes.md')):
+                        # Get file type from extension
+                        file_ext = file_path.suffix.lower()
+                        file_type = self.TYPE_MAP.get(file_ext, 'OTHER')
+                        
+                        # Create attachment info
+                        attachment = {
+                            'path': str(file_path),
+                            'id': file_path.stem,
+                            'type': file_type,
+                            'content': f"Binary file: {file_path.name}" if file_type in ['IMAGE', 'PDF', 'EXCEL'] else file_path.read_text(encoding='utf-8')
+                        }
+                        attachments[parent_dir].append(attachment)
             
             # Write consolidated files
             if summary_sections:
@@ -285,11 +269,20 @@ class SplitPhase(Phase):
             
             if attachments:
                 # Store attachments for finalize phase
-                self._all_attachments = attachments
-                # Write attachments file
-                attachments_file = self._write_attachments_file(attachments, output_subdir)
-                if attachments_file and attachments_file.exists():
+                if not hasattr(self, '_all_attachments'):
+                    self._all_attachments = {}
+                self._all_attachments.update(attachments)
+                
+                # Write directory-specific attachments file
+                attachments_file = output_subdir / "Attachments.md"
+                self._write_attachments_file(attachments, output_subdir)
+                if attachments_file.exists():
                     metadata.add_output_file(attachments_file)
+                
+                # Write consolidated attachments file in the split phase directory
+                consolidated_attachments_file = split_phase_dir / "Attachments.md"
+                self._write_attachments_file(self._all_attachments, split_phase_dir)
+                metadata.add_output_file(consolidated_attachments_file)
             
             metadata.processed = True
             return metadata
@@ -328,18 +321,15 @@ class SplitPhase(Phase):
             if stats['empty'] > 0:
                 logger.warning(f"Found {stats['empty']} empty {section} sections")
 
-    def _write_attachments_file(self, attachments: Dict[str, List[Dict]], output_dir: Path) -> Optional[Path]:
-        """Write consolidated attachments file.
+    def _write_attachments_file(self, attachments: Dict[str, List[Dict]], output_dir: Path) -> None:
+        """Write attachments file.
         
         Args:
             attachments: Dict mapping parent directory names to lists of attachment info
             output_dir: Output directory
-            
-        Returns:
-            Path to the attachments file if successful, None otherwise
         """
         try:
-            # Create output file paths
+            # Create output file path - ensure it's in the correct directory
             attachments_file = output_dir / "Attachments.md"
             
             # Create directory if it doesn't exist
@@ -367,30 +357,21 @@ class SplitPhase(Phase):
                         
                         # Process each attachment of this type
                         for attachment in sorted(by_type[file_type], key=lambda x: x.get('id', '')):
-                            # Create standardized reference using id if available
-                            if 'id' in attachment:
-                                # Get base name without .parsed extension
-                                base_name = attachment['id']
-                                if base_name.endswith('.parsed'):
-                                    base_name = base_name[:-7]
-                                # Remove file extension and keep only the base name
+                            # Get base name without any extensions
+                            file_path = Path(attachment.get('path', ''))
+                            base_name = file_path.stem
+                            while '.' in base_name:
                                 base_name = Path(base_name).stem
-                                # Keep the original base name with spaces
-                                ref = f"[ATTACH:{file_type}:{base_name}]"
-                            else:
-                                # Get base name without extension for the reference
-                                file_path = attachment.get('path', '')
-                                base_name = Path(file_path).stem
-                                if base_name.endswith('.parsed'):
-                                    base_name = base_name[:-7]
-                                # Remove any remaining extensions
-                                base_name = Path(base_name).stem
-                                ref = f"[ATTACH:{file_type}:{base_name}]"
+                            
+                            # Create standardized reference
+                            ref = f"[ATTACH:{file_type}:{base_name}]"
                             content.append(f"\n#### {ref}")
                             
                             # Add title if available
                             if 'text' in attachment:
                                 content.append(f"\n**{attachment['text']}**")
+                            elif 'id' in attachment:
+                                content.append(f"\n**{attachment['id']}**")
                             
                             # Add content preview if available
                             if 'content' in attachment:
@@ -405,9 +386,5 @@ class SplitPhase(Phase):
             content_str = "\n".join(content)
             attachments_file.write_text(content_str, encoding='utf-8')
             
-            # Return the file path for validation
-            return attachments_file if attachments_file.exists() else None
-            
         except Exception as e:
             self.logger.error(f"Failed to write attachments file: {str(e)}")
-            return None

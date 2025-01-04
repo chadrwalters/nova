@@ -86,75 +86,44 @@ class MarkdownHandler(BaseHandler):
         
         return content
         
-    async def process_impl(
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process a markdown file.
         
         Args:
             file_path: Path to markdown file.
+            output_path: Path to write output.
             metadata: Document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Get relative path from input directory
-            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
-            
-            # Get output path using relative path
-            output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,
-                "parse",
-                ".parsed.md"
-            )
-            
-            # Read the file content
+            # Read markdown file
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            
-            # Update links to use reference markers
-            updated_content = self._update_links(content)
             
             # Update metadata
             metadata.title = file_path.stem
             metadata.processed = True
             
             # Write markdown using MarkdownWriter
-            self.logger.debug(f"Writing markdown content to {output_path}")
-            self.logger.debug(f"Title: {metadata.title}")
-            self.logger.debug(f"Content length: {len(updated_content)}")
-            self.logger.debug(f"Metadata: {metadata.metadata}")
-            
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
-                content=updated_content,
+                content=content,
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path
             )
             
-            self.logger.debug(f"Generated markdown content length: {len(markdown_content)}")
-            
-            # Ensure parent directories exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
             # Write the file
-            try:
-                self.logger.debug(f"Writing markdown file to {output_path}")
-                self._safe_write_file(output_path, markdown_content)
-                self.logger.debug("Successfully wrote markdown file")
-            except Exception as e:
-                self.logger.error(f"Failed to write markdown file: {str(e)}")
-                raise
+            self._safe_write_file(output_path, markdown_content)
             
             metadata.add_output_file(output_path)
-            
-            # Save metadata using relative path
-            self._save_metadata(file_path, relative_path, metadata)
-            
             return metadata
             
         except Exception as e:

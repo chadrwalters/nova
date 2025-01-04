@@ -111,34 +111,37 @@ class ConfigManager:
             ValueError: If configuration file is invalid.
         """
         try:
+            # Load default config first
+            default_config_path = Path(__file__).parent / "default.yaml"
+            with open(default_config_path, 'r', encoding='utf-8') as f:
+                default_config = yaml.safe_load(f) or {}
+            
+            # Load user config
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                config_dict = yaml.safe_load(f) or {}
+                user_config = yaml.safe_load(f) or {}
             
-            # Validate required fields
-            required_fields = ['base_dir', 'input_dir', 'output_dir', 'processing_dir']
-            missing_fields = [field for field in required_fields if field not in config_dict]
-            if missing_fields:
-                raise ValueError(f"Missing required fields in config: {', '.join(missing_fields)}")
+            # Merge configs (user config overrides default)
+            config_dict = {**default_config, **user_config}
             
-            # Ensure required sections exist
-            if 'cache' not in config_dict:
-                config_dict['cache'] = {}
-                
-            # Ensure pipeline config exists
-            if 'pipeline' not in config_dict:
-                config_dict['pipeline'] = {}
+            # Expand base_dir first since other paths may reference it
+            base_dir = os.path.expandvars(os.path.expanduser(config_dict['base_dir']))
+            config_dict['base_dir'] = base_dir
             
-            # Expand environment variables and user paths
-            if 'base_dir' in config_dict:
-                config_dict['base_dir'] = os.path.expandvars(os.path.expanduser(config_dict['base_dir']))
-            if 'input_dir' in config_dict:
-                config_dict['input_dir'] = os.path.expandvars(os.path.expanduser(config_dict['input_dir']))
-            if 'output_dir' in config_dict:
-                config_dict['output_dir'] = os.path.expandvars(os.path.expanduser(config_dict['output_dir']))
-            if 'processing_dir' in config_dict:
-                config_dict['processing_dir'] = os.path.expandvars(os.path.expanduser(config_dict['processing_dir']))
+            # Expand other paths, replacing ${base_dir} with actual base_dir
+            for key in ['input_dir', 'output_dir', 'processing_dir']:
+                if key in config_dict:
+                    path = config_dict[key].replace('${base_dir}', base_dir)
+                    config_dict[key] = os.path.expandvars(os.path.expanduser(path))
+            
+            # Handle cache directory
             if 'cache' in config_dict and 'dir' in config_dict['cache']:
-                config_dict['cache']['dir'] = os.path.expandvars(os.path.expanduser(config_dict['cache']['dir']))
+                cache_dir = config_dict['cache']['dir'].replace('${base_dir}', base_dir)
+                config_dict['cache']['dir'] = os.path.expandvars(os.path.expanduser(cache_dir))
+            
+            # Handle logging directory
+            if 'logging' in config_dict and 'log_dir' in config_dict['logging']:
+                log_dir = config_dict['logging']['log_dir'].replace('${base_dir}', base_dir)
+                config_dict['logging']['log_dir'] = os.path.expandvars(os.path.expanduser(log_dir))
             
             # Expand environment variables in API configuration
             if 'apis' in config_dict:
@@ -149,30 +152,6 @@ class ConfigManager:
                         openai_config['api_key'] = os.path.expandvars(openai_config['api_key'])
                         if '${' in openai_config['api_key']:  # If still contains unexpanded variables
                             openai_config['api_key'] = None  # Set to None to trigger environment lookup
-            
-            # Convert paths to Path objects
-            base_dir = os.path.expandvars(os.path.expanduser("${HOME}/Library/Mobile Documents/com~apple~CloudDocs"))
-            config_dict['base_dir'] = self._safe_path(config_dict.get('base_dir', base_dir))
-            config_dict['input_dir'] = self._safe_path(config_dict.get('input_dir', f"{base_dir}/_NovaInput"))
-            config_dict['output_dir'] = self._safe_path(config_dict.get('output_dir', f"{base_dir}/_Nova"))
-            config_dict['processing_dir'] = self._safe_path(config_dict.get('processing_dir', f"{base_dir}/_NovaProcessing"))
-            
-            # Ensure cache config
-            cache_config = config_dict.get('cache', {})
-            if 'dir' not in cache_config:
-                cache_config['dir'] = f"{base_dir}/_NovaCache"
-            cache_config['dir'] = self._safe_path(cache_config['dir'])
-            
-            # Set cache defaults
-            if 'enabled' not in cache_config:
-                cache_config['enabled'] = True
-            if 'ttl' not in cache_config:
-                cache_config['ttl'] = 3600
-            elif isinstance(cache_config['ttl'], dict):
-                # Convert legacy TTL dict to single value
-                cache_config['ttl'] = 3600
-            
-            config_dict['cache'] = cache_config
             
             # Create config object
             config = NovaConfig(**config_dict)

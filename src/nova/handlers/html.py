@@ -68,41 +68,43 @@ class HTMLHandler(BaseHandler):
 """
         return self._safe_write_file(output_path, markdown_content)
         
-    async def process_impl(
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an HTML file.
         
         Args:
-            file_path: Path to file.
+            file_path: Path to HTML file.
+            output_path: Path to write output.
             metadata: Document metadata.
-                
-        Returns:
-            Document metadata, or None if file is ignored.
             
-        Raises:
-            ValueError: If file cannot be processed.
+        Returns:
+            Document metadata.
         """
         try:
-            # Get relative path from input directory
-            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
+            # Read HTML file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
             
-            # Get output path from output manager using relative path
-            output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,  # Use relative path to preserve directory structure
-                "parse",
-                ".parsed.md"
-            )
+            # Parse HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
             
-            # Process content
-            content = await self._process_content(file_path)
+            # Extract title
+            title = soup.title.string if soup.title else file_path.stem
+            
+            # Extract text content
+            text = soup.get_text(separator='\n\n')
+            
+            # Format content
+            content = f"HTML content from {file_path.stem}\n\n{text}"
             
             # Update metadata
-            metadata.title = file_path.stem
-            metadata.metadata['original_path'] = str(file_path)
+            metadata.title = title
             metadata.processed = True
+            metadata.metadata['html'] = html_content
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
@@ -113,23 +115,16 @@ class HTMLHandler(BaseHandler):
                 output_path=output_path
             )
             
-            # Ensure parent directories exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
             # Write the file
-            was_written = self._safe_write_file(output_path, markdown_content)
+            self._safe_write_file(output_path, markdown_content)
             
-            metadata.unchanged = not was_written
             metadata.add_output_file(output_path)
-            
-            # Save metadata using relative path
-            self._save_metadata(file_path, relative_path, metadata)
-            
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process HTML file {file_path}: {str(e)}")
-            metadata.add_error(self.name, str(e))
+            error_msg = f"Failed to process HTML file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            metadata.add_error(self.name, error_msg)
             return metadata
             
     def _convert_html_to_markdown(self, html: str) -> str:

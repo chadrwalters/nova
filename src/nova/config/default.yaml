@@ -1,11 +1,12 @@
 # Default configuration for Nova document processing system
 
-base_dir: "~/Library/Mobile Documents/com~apple~CloudDocs"
-input_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
-output_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_Nova"
+base_dir: ${HOME}/nova
+input_dir: ${base_dir}/_NovaInput
+output_dir: ${base_dir}/_Nova
+processing_dir: ${base_dir}/_NovaProcessing
 
 cache:
-  dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaCache"
+  dir: ${base_dir}/_NovaCache
   enabled: true
   ttl: 3600  # 1 hour default TTL
 
@@ -20,11 +21,31 @@ apis:
       If it's a photograph, describe the scene and key elements.
       Focus on what makes this image relevant in a note-taking context.
 
+# Handler Configuration
+handlers:
+  image:
+    formats:
+      - jpg
+      - jpeg
+      - png
+      - gif
+      - webp
+      - heic
+      - svg
+
+# Pipeline Configuration
+pipeline:
+  phases:
+    - parse
+    - disassemble
+    - split
+    - finalize
+
 logging:
   level: INFO  # Default to INFO if not set
   file_level: DEBUG
   console_level: INFO
-  log_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaLogs"
+  log_dir: ${base_dir}/_NovaLogs
   format: "%(asctime)s [%(levelname)s] %(message)s"
   date_format: "%Y-%m-%d %H:%M:%S"
   handlers: ["console", "file"]
@@ -47,15 +68,4 @@ logging:
 debug:
   enabled: false  # Can be enabled via environment variable
   phase_flags:  # Enable debug for specific phases
-    parse: false
-    disassemble: false
-    split: false
-    finalize: false
-  state_logging: false  # Log pipeline state changes
-  extra_validation: false  # Perform additional state validation
-  performance_tracking: false  # Track operation timing
-  memory_tracking: false  # Track memory usage
-  trace_files: []  # List of file patterns to trace in detail
-  break_on_error: false  # Stop processing on errors
-  dump_state: false  # Write state snapshots to disk
-  dump_dir: "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaDebug" 
+    parse: false 

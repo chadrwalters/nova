@@ -43,31 +43,23 @@ class AudioHandler(BaseHandler):
 This is an audio file. The content cannot be played directly in markdown.
 Please use an appropriate audio player to listen to this file."""
     
-    async def process_impl(
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an audio file.
         
         Args:
-            file_path: Path to file.
+            file_path: Path to audio file.
+            output_path: Path to write output.
             metadata: Document metadata.
-                
+            
         Returns:
             Document metadata.
-            
-        Raises:
-            ValueError: If file cannot be processed.
         """
         try:
-            # Get output path from output manager
-            output_path = self.output_manager.get_output_path_for_phase(
-                file_path,
-                "parse",
-                ".parsed.md"
-            )
-            
             # Create audio content
             content = self._create_audio_content(file_path)
             

@@ -70,31 +70,23 @@ class ImageHandler(BaseHandler):
             
             return base64.b64encode(img_byte_arr).decode('utf-8')
             
-    async def process_impl(
+    async def process_file_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an image file.
         
         Args:
             file_path: Path to image file.
+            output_path: Path to write output.
             metadata: Document metadata.
             
         Returns:
             Document metadata.
         """
         try:
-            # Get relative path from input directory
-            relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
-            
-            # Get output path using relative path
-            output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,
-                "parse",
-                ".parsed.md"
-            )
-            
             # Generate image description if vision client is available
             description = ""
             if self.vision_client:
@@ -150,17 +142,10 @@ class ImageHandler(BaseHandler):
                 output_path=output_path
             )
             
-            # Ensure parent directories exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
             # Write the file
             self._safe_write_file(output_path, markdown_content)
             
             metadata.add_output_file(output_path)
-            
-            # Save metadata using relative path
-            self._save_metadata(file_path, relative_path, metadata)
-            
             return metadata
             
         except Exception as e:

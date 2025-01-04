@@ -222,11 +222,18 @@ class NovaPipeline:
                         self.progress.advance(disassemble_task)
                 
                 # Split phase
-                successful_files = self.state['disassemble']['successful_files']
-                self.progress.update(split_task, total=len(successful_files))
+                disassemble_output_dir = self.get_phase_output_dir('disassemble')
                 split_output_dir = self.get_phase_output_dir('split')
                 
-                for file_path in successful_files:
+                # Get all summary files from disassemble phase
+                summary_files = []
+                for file_path in disassemble_output_dir.rglob('*.summary.md'):
+                    if file_path.is_file():
+                        summary_files.append(file_path)
+                
+                self.progress.update(split_task, total=len(summary_files))
+                
+                for file_path in summary_files:
                     try:
                         metadata = await self.phases['split'].process_file(file_path, split_output_dir)
                         if metadata:
