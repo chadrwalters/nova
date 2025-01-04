@@ -184,14 +184,66 @@ Nova uses a single **MarkdownWriter** (in `core/markdown/writer.py`) to ensure c
 
 ## 6. Configuration Management
 
-- The **ConfigManager** in `nova/config/manager.py` loads `default.yaml` (or an override path).  
-- The loaded config is stored in a `NovaConfig` pydantic model with sub-sections like `cache`, `logging`, `pipeline`, `debug`, etc.  
-- `Nova` or `NovaPipeline` references `config.pipeline.phases` to decide which phases to run.  
-- The logging config portion is used by `LoggingManager` to set up console/file loggers.
+The configuration system in Nova is designed to be flexible and secure, with a layered approach to settings:
 
-**Highlights**:
-- You can set environment variables (e.g. `NOVA_LOG_LEVEL=DEBUG`) to override part of the config dynamically.  
-- Paths in the config are typically expanded and validated, ensuring they exist if `create_dirs=True`.
+### Configuration Loading
+
+1. **Default Configuration**
+   - Located at `nova/config/default.yaml`
+   - Provides baseline settings for all components
+   - Should never contain sensitive information
+
+2. **User Configuration**
+   - Can be specified via `NOVA_CONFIG_PATH` or passed to `ConfigManager`
+   - Overrides any settings from default configuration
+   - Typically stored in `config/nova.yaml`
+
+3. **Environment Variables**
+   - Used for sensitive data (API keys)
+   - Can override both default and user configs
+   - Example: `${OPENAI_API_KEY}` in config expands to environment value
+
+### Path Resolution
+
+The `ConfigManager` handles path resolution in a specific order:
+1. Expands `base_dir` first (resolving `${HOME}` etc.)
+2. Uses expanded `base_dir` to resolve other paths
+3. Handles special directories (input, output, processing, cache)
+4. Validates all required paths exist (if `create_dirs=True`)
+
+### Configuration Validation
+
+The system enforces:
+- Required fields (`base_dir`, `input_dir`, `output_dir`, `processing_dir`)
+- Type checking via Pydantic models
+- Environment variable expansion
+- Path existence and permissions
+
+### Usage Example
+
+```python
+# Loading configuration
+config_manager = ConfigManager()
+
+# Accessing paths
+input_dir = config_manager.input_dir
+cache_dir = config_manager.cache_dir
+
+# Updating configuration
+config_manager.update_config({
+    "cache": {"enabled": False}
+})
+
+# Saving configuration
+config_manager.save_config()
+```
+
+### Security Considerations
+
+- Sensitive values (API keys) should use environment variables
+- Configuration files should be properly permissioned
+- Failed environment variable expansion results in `None`
+- Invalid configurations raise `ValueError`
 
 ---
 

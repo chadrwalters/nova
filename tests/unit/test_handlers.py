@@ -101,7 +101,8 @@ class TestMarkdownHandler:
         test_file.write_text(test_content)
         
         handler = MarkdownHandler(config)
-        result = await handler.process_impl(test_file, metadata)
+        output_path = Path(config.output_dir) / "test.md"
+        result = await handler.process_impl(test_file, output_path, metadata)
         
         assert result is not None
         assert result.processed is True
@@ -140,7 +141,8 @@ class TestDocumentHandler:
         test_file.touch()
         
         handler = DocumentHandler(config)
-        result = await handler.process_impl(test_file, metadata)
+        output_path = Path(config.output_dir) / "test.md"
+        result = await handler.process_impl(test_file, output_path, metadata)
         
         assert result is not None
         assert result.processed is True
@@ -169,7 +171,8 @@ class TestDocumentHandler:
         mock_docx.side_effect = lambda file_path: mock_doc
 
         handler = DocumentHandler(config)
-        result = await handler.process_impl(test_file, metadata)
+        output_path = Path(config.output_dir) / "test.md"
+        result = await handler.process_impl(test_file, output_path, metadata)
 
         assert result is not None
         assert result.processed is True
@@ -215,7 +218,8 @@ class TestImageHandler:
         
         handler = ImageHandler(config)
         handler.vision_client = mock_client
-        result = await handler.process_impl(test_file, metadata)
+        output_path = Path(config.output_dir) / "test.md"
+        result = await handler.process_impl(test_file, output_path, metadata)
         
         assert result is not None
         assert result.processed is True
@@ -239,7 +243,8 @@ class TestImageHandler:
         config.apis = Mock(openai=None)
         
         handler = ImageHandler(config)
-        result = await handler.process_impl(test_file, metadata)
+        output_path = Path(config.output_dir) / "test.md"
+        result = await handler.process_impl(test_file, output_path, metadata)
         
         assert result is not None
         assert result.processed is True

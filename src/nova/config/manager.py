@@ -107,13 +107,11 @@ class ConfigManager:
             Loaded configuration.
             
         Raises:
-            FileNotFoundError: If configuration file not found.
-            ValueError: If configuration file is invalid.
+            ValueError: If configuration is invalid.
         """
         try:
             # Load default config first
-            default_config_path = Path(__file__).parent / "default.yaml"
-            with open(default_config_path, 'r', encoding='utf-8') as f:
+            with open(self.DEFAULT_CONFIG_PATH, 'r', encoding='utf-8') as f:
                 default_config = yaml.safe_load(f) or {}
             
             # Load user config
@@ -122,6 +120,12 @@ class ConfigManager:
             
             # Merge configs (user config overrides default)
             config_dict = {**default_config, **user_config}
+            
+            # Validate required fields
+            required_fields = ['base_dir', 'input_dir', 'output_dir', 'processing_dir']
+            missing_fields = [field for field in required_fields if field not in config_dict]
+            if missing_fields:
+                raise ValueError(f"Missing required configuration fields: {', '.join(missing_fields)}")
             
             # Expand base_dir first since other paths may reference it
             base_dir = os.path.expandvars(os.path.expanduser(config_dict['base_dir']))
@@ -153,19 +157,10 @@ class ConfigManager:
                         if '${' in openai_config['api_key']:  # If still contains unexpanded variables
                             openai_config['api_key'] = None  # Set to None to trigger environment lookup
             
-            # Create config object
-            config = NovaConfig(**config_dict)
+            return NovaConfig(**config_dict)
             
-            # Initialize pipeline state
-            if config.pipeline is None:
-                config.pipeline = PipelineConfig()
-            
-            return config
-            
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Configuration file not found: {self.config_path}")
         except Exception as e:
-            raise ValueError(f"Invalid configuration file: {str(e)}")
+            raise ValueError(f"Failed to load configuration: {str(e)}")
     
     def _create_directories(self) -> None:
         """Create configured directories if they don't exist."""

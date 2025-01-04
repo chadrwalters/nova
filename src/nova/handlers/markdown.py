@@ -107,6 +107,9 @@ class MarkdownHandler(BaseHandler):
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
+            # Update links in content
+            content = self._update_links(content)
+            
             # Update metadata
             metadata.title = file_path.stem
             metadata.processed = True

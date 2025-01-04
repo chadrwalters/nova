@@ -31,11 +31,43 @@ pipeline.process("path/to/document")
 
 ## Configuration
 
-### Logging
+Nova uses a combination of configuration files and environment variables:
 
-Nova uses environment variables for logging configuration:
+### Configuration Files
 
+The system uses two configuration files:
+- `default.yaml`: Contains default settings
+- `config/nova.yaml`: Your custom configuration (overrides defaults)
+
+Key configuration sections:
+```yaml
+base_dir: ${HOME}/nova           # Base directory for all Nova operations
+input_dir: ${base_dir}/input    # Input directory for documents
+output_dir: ${base_dir}/output  # Output directory for processed files
+processing_dir: ${base_dir}/tmp # Temporary processing directory
+
+# Cache configuration
+cache:
+  dir: ${base_dir}/cache
+  enabled: true
+  ttl: 3600
+
+# API configurations
+apis:
+  openai:
+    api_key: ${OPENAI_API_KEY}  # Uses environment variable
+    model: "gpt-4o"
+    max_tokens: 500
+```
+
+### Environment Variables
+
+Nova supports several environment variables:
 ```bash
+# Configuration
+export NOVA_CONFIG_PATH=/path/to/config.yaml  # Override default config path
+export OPENAI_API_KEY=your_api_key            # OpenAI API key for image processing
+
 # Set logging level (ERROR, WARNING, INFO, DEBUG)
 export NOVA_LOG_LEVEL=DEBUG
 
