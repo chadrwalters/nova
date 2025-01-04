@@ -248,12 +248,16 @@ class NovaPipeline:
                         self.progress.advance(split_task)
                 
                 # Finalize phase
-                self.progress.update(finalize_task, total=3)  # 3 steps: validate, copy, summarize
+                self.progress.update(finalize_task, total=3)  # 3 steps: process, validate, copy
                 
                 try:
+                    # Process files from split phase
+                    await self.phases['finalize'].process_files()
+                    self.progress.advance(finalize_task)
+                    
                     # Run finalize phase
                     self.phases['finalize'].finalize()
-                    self.progress.advance(finalize_task, 3)
+                    self.progress.advance(finalize_task, 2)
                     
                 except Exception as e:
                     self.logger.error(f"Error in finalize: {str(e)}")

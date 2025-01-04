@@ -14,7 +14,7 @@ from rich.console import Console
 logger = logging.getLogger(__name__)
 
 class FinalizePhase(Phase):
-    """Finalize phase that copies processed files to output directory."""
+    """Finalize phase that processes split files and moves them to output directory."""
     
     def __init__(self, config, pipeline):
         """Initialize finalize phase.
@@ -26,35 +26,65 @@ class FinalizePhase(Phase):
         super().__init__("finalize", config, pipeline)
         self.validator = PipelineValidator(config)
         
-    async def process_file(self, file_path: Path, output_dir: Path) -> Optional[FileMetadata]:
-        """Process a single file.
+    async def process_impl(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[FileMetadata] = None
+    ) -> Optional[FileMetadata]:
+        """Process a file in the finalize phase.
         
         Args:
             file_path: Path to file to process
-            output_dir: Directory to write output to
+            output_dir: Directory to write output to (this will be the finalize phase dir)
+            metadata: Optional metadata from previous phase
             
         Returns:
             FileMetadata if successful, None if failed
         """
         try:
-            # Copy file to output directory
-            output_file = self.config.output_dir / file_path.name
-            shutil.copy2(file_path, output_file)
-            logger.debug(f"Copied {file_path} to {output_file}")
+            logger.info(f"Processing file in finalize phase: {file_path}")
+            logger.info(f"Output directory is: {output_dir}")
             
-            # Create metadata
-            metadata = FileMetadata(file_path=file_path)
+            # Get relative path from split directory
+            split_dir = self.pipeline.config.processing_dir / "phases" / "split"
+            try:
+                rel_path = file_path.relative_to(split_dir)
+                logger.info(f"Got relative path: {rel_path}")
+            except ValueError:
+                # If not under split_dir, use just the filename
+                rel_path = Path(file_path.name)
+                logger.info(f"Using filename as relative path: {rel_path}")
+            
+            # Create output path in finalize directory using provided output_dir
+            output_path = output_dir / rel_path
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy file to finalize directory
+            shutil.copy2(file_path, output_path)
+            logger.info(f"Copied {file_path} to {output_path}")
+            
+            # Create or update metadata
+            if metadata is None:
+                metadata = FileMetadata.from_file(
+                    file_path=file_path,
+                    handler_name="finalize",
+                    handler_version="1.0"
+                )
             metadata.processed = True
-            metadata.add_output_file(output_file)
+            metadata.add_output_file(output_path)
             
             return metadata
             
         except Exception as e:
             logger.error(f"Failed to finalize {file_path}: {str(e)}")
+            if metadata:
+                metadata.add_error("finalize", str(e))
+                metadata.processed = False
             return None
             
     def finalize(self) -> None:
-        """Run pipeline validation and cleanup."""
+        """Run pipeline validation and move files to output directory."""
         try:
             # Run validation
             validation_passed = self.validator.validate()
@@ -63,16 +93,21 @@ class FinalizePhase(Phase):
                 self.pipeline.state[self.name]["failed_files"].add("validation")
                 return
                 
-            # Copy attachments
-            split_dir = self.config.processing_dir / "phases" / "split"
-            if split_dir.exists():
-                for file_name in ["Summary.md", "Raw Notes.md", "Attachments.md"]:
-                    src = split_dir / file_name
-                    if src.exists():
-                        dst = self.config.output_dir / file_name
-                        shutil.copy2(src, dst)
-                        logger.info(f"Copied {src} to {dst}")
-                        self.pipeline.state[self.name]["successful_files"].add(dst)
+            # Move files from finalize directory to output directory
+            finalize_dir = self.pipeline.config.processing_dir / "phases" / "finalize"
+            if finalize_dir.exists():
+                # Walk through all files in finalize directory
+                for file_path in finalize_dir.rglob("*"):
+                    if file_path.is_file():
+                        # Get relative path from finalize dir
+                        rel_path = file_path.relative_to(finalize_dir)
+                        # Create output path
+                        output_path = self.config.output_dir / rel_path
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        # Copy file to output
+                        shutil.copy2(file_path, output_path)
+                        logger.info(f"Moved {file_path} to {output_path}")
+                        self.pipeline.state[self.name]["successful_files"].add(output_path)
                         
             # Update stats
             self.pipeline.state[self.name].update({
@@ -89,4 +124,17 @@ class FinalizePhase(Phase):
                 "completed": True,
                 "success": False
             })
-            raise 
+            raise
+            
+    async def process_files(self) -> None:
+        """Process all files from the split phase."""
+        split_dir = self.pipeline.config.processing_dir / "phases" / "split"
+        if not split_dir.exists():
+            logger.warning("Split phase directory does not exist")
+            return
+            
+        # Get all files from split phase
+        for file_path in split_dir.rglob("*"):
+            if file_path.is_file():
+                output_dir = self.pipeline.get_phase_output_dir('finalize')
+                await self.process_file(file_path, output_dir) 
