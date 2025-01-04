@@ -125,31 +125,53 @@ class ConfigManager:
             
             self.logger.debug(f"Merged config APIs: {config_dict.get('apis', {})}")
             
-            # Validate required fields
-            required_fields = ['base_dir', 'input_dir', 'output_dir', 'processing_dir']
+            # Validate required fields before creating NovaConfig
+            required_fields = ['base_dir', 'input_dir', 'output_dir', 'processing_dir', 'cache']
             missing_fields = [field for field in required_fields if field not in config_dict]
             if missing_fields:
                 raise ValueError(f"Missing required configuration fields: {', '.join(missing_fields)}")
             
+            # Ensure cache has required fields
+            if 'cache' in config_dict:
+                if not isinstance(config_dict['cache'], dict):
+                    raise ValueError("Cache configuration must be a dictionary")
+                if 'dir' not in config_dict['cache']:
+                    raise ValueError("Cache configuration missing required field: dir")
+            
+            # Expand environment variables in paths
+            def expand_path(path: str) -> str:
+                """Expand environment variables and user home in path."""
+                # First replace ${VAR} style variables
+                import re
+                pattern = r'\${([^}]+)}'
+                matches = re.finditer(pattern, path)
+                for match in matches:
+                    var_name = match.group(1)
+                    var_value = os.environ.get(var_name)
+                    if var_value:
+                        path = path.replace(f"${{{var_name}}}", var_value)
+                # Then expand user home
+                return os.path.expanduser(path)
+            
             # Expand base_dir first since other paths may reference it
-            base_dir = os.path.expanduser(config_dict['base_dir'])  # Only expand ~ for user home
+            base_dir = expand_path(config_dict['base_dir'])
             config_dict['base_dir'] = base_dir
             
             # Expand other paths, replacing ${base_dir} with actual base_dir
             for key in ['input_dir', 'output_dir', 'processing_dir']:
                 if key in config_dict:
                     path = config_dict[key].replace('${base_dir}', base_dir)
-                    config_dict[key] = os.path.expanduser(path)  # Only expand ~ for user home
+                    config_dict[key] = expand_path(path)
             
             # Handle cache directory
             if 'cache' in config_dict and 'dir' in config_dict['cache']:
                 cache_dir = config_dict['cache']['dir'].replace('${base_dir}', base_dir)
-                config_dict['cache']['dir'] = os.path.expanduser(cache_dir)  # Only expand ~ for user home
+                config_dict['cache']['dir'] = expand_path(cache_dir)
             
             # Handle logging directory
             if 'logging' in config_dict and 'log_dir' in config_dict['logging']:
                 log_dir = config_dict['logging']['log_dir'].replace('${base_dir}', base_dir)
-                config_dict['logging']['log_dir'] = os.path.expanduser(log_dir)  # Only expand ~ for user home
+                config_dict['logging']['log_dir'] = expand_path(log_dir)
             
             # Handle API configuration
             if 'apis' in config_dict:
@@ -179,7 +201,11 @@ class ConfigManager:
             else:
                 self.logger.debug("No APIs configuration found")
             
-            return NovaConfig(**config_dict)
+            # Create NovaConfig instance which will validate all fields
+            try:
+                return NovaConfig(**config_dict)
+            except Exception as e:
+                raise ValueError(f"Invalid configuration: {str(e)}")
             
         except Exception as e:
             raise ValueError(f"Failed to load configuration: {str(e)}")

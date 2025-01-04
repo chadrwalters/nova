@@ -191,8 +191,8 @@ class TestImageHandler:
     
     def test_init(self, config):
         """Test handler initialization."""
-        # Set up mock APIs config
-        config.apis = Mock(openai=None)
+        # Set up mock APIs config with proper structure
+        config.apis = None
         
         handler = ImageHandler(config)
         assert handler.name == "image"
@@ -213,8 +213,9 @@ class TestImageHandler:
         mock_response.choices = [Mock(message=Mock(content="Test description"))]
         mock_client.chat.completions.create.return_value = mock_response
         
-        # Set up config with mock client
-        config.apis = Mock(openai=Mock(api_key="test_key"))
+        # Set up config with proper OpenAI config structure
+        from nova.config.settings import APIConfig, OpenAIConfig
+        config.apis = APIConfig(openai=OpenAIConfig(api_key="test_key"))
         
         handler = ImageHandler(config)
         handler.vision_client = mock_client
@@ -240,7 +241,7 @@ class TestImageHandler:
         img.save(test_file)
         
         # Set up config without OpenAI API key
-        config.apis = Mock(openai=None)
+        config.apis = None
         
         handler = ImageHandler(config)
         output_path = Path(config.output_dir) / "test.md"

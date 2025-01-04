@@ -39,6 +39,10 @@ This plan outlines the implementation of a comprehensive test suite for the Nova
 
 ### Phase 2: Core Module Tests [IN_PROGRESS]
 - [x] Configuration tests
+  - [x] Fix config validation test (not raising ValueError for missing fields)
+  - [x] Fix path resolution test (environment variable substitution not working)
+  - [x] Update config manager to handle missing required fields
+  - [x] Implement proper environment variable resolution
 - [x] Path utility tests
   - [x] Test sanitize_filename function
   - [x] Test empty and invalid filenames
@@ -48,6 +52,7 @@ This plan outlines the implementation of a comprehensive test suite for the Nova
   - [x] Test MarkdownHandler
   - [x] Test DocumentHandler
   - [x] Test ImageHandler
+  - [x] Fix OpenAI client initialization warnings in ImageHandler
 - [ ] Integration tests
   - [ ] Test end-to-end document processing
   - [ ] Test configuration loading
@@ -107,8 +112,24 @@ This plan outlines the implementation of a comprehensive test suite for the Nova
 2024-01-04: Implemented most path utility tests in test_utils_path.py
 2024-01-04: Fixed all issues with filename sanitization tests
 2024-01-04: Implemented and fixed all handler tests (MarkdownHandler, DocumentHandler, ImageHandler)
+2024-01-04: Identified and documented test failures in ConfigManager
+2024-01-04: Found OpenAI client initialization warnings in ImageHandler tests
+2024-01-04: Fixed ConfigManager validation test
+2024-01-04: Fixed ConfigManager path resolution test
+2024-01-04: Added environment variable substitution to ConfigManager
+2024-01-04: Fixed ImageHandler OpenAI client initialization warnings
 
 ## Next Actions
-1. Implement integration tests
-2. Set up test resource files
-3. Create mock test files for integration testing 
+1. Implement integration tests:
+   - Set up test fixtures
+   - Create test data files
+   - Write end-to-end test cases
+2. Create mock test files for integration testing:
+   - Sample markdown files
+   - Sample PDF documents
+   - Sample images
+   - Sample configuration files
+3. Set up test resource management:
+   - Create test resource directory
+   - Add resource cleanup in fixtures
+   - Document test data requirements 
