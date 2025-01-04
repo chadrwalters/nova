@@ -28,6 +28,26 @@ class HTMLHandler(BaseHandler):
         super().__init__(config)
         self.logger = logging.getLogger("nova.handlers.html")
     
+    async def _process_content(self, file_path: Path) -> str:
+        """Process HTML content.
+        
+        Args:
+            file_path: Path to HTML file.
+            
+        Returns:
+            Processed content as markdown.
+        """
+        try:
+            # Read HTML file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                html = f.read()
+                
+            # Convert to markdown
+            return self._convert_html_to_markdown(html)
+            
+        except Exception as e:
+            raise ValueError(f"Failed to process HTML content: {str(e)}")
+    
     def _write_markdown(self, output_path: Path, title: str, file_path: Path, content: str) -> bool:
         """Write markdown file with HTML content.
         
@@ -47,7 +67,7 @@ class HTMLHandler(BaseHandler):
 {content}
 """
         return self._safe_write_file(output_path, markdown_content)
-    
+        
     async def process_impl(
         self,
         file_path: Path,
@@ -111,7 +131,7 @@ class HTMLHandler(BaseHandler):
             self.logger.error(f"Failed to process HTML file {file_path}: {str(e)}")
             metadata.add_error(self.name, str(e))
             return metadata
-    
+            
     def _convert_html_to_markdown(self, html: str) -> str:
         """Convert HTML to markdown.
         

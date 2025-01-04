@@ -1,325 +1,75 @@
-"""Image file handler with vision API integration."""
+"""Image file handler."""
 
-import io
 import os
-import re
-import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+from openai import OpenAI
 import base64
-import tempfile
 from PIL import Image
-import openai
-from ..models.document import DocumentMetadata
-from .base import BaseHandler
-from ..config.manager import ConfigManager
-import logging
-import shutil
+import io
+import pillow_heif
+import cairosvg
 
-# Set httpx and urllib3 loggers to WARNING level
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
+from ..models.document import DocumentMetadata
+from .base import BaseHandler, ProcessingStatus, ProcessingResult
+from ..config.settings import NovaConfig
+from ..core.markdown import MarkdownWriter
+
 
 class ImageHandler(BaseHandler):
-    """Handler for image files with vision API integration."""
+    """Handler for image files."""
     
     name = "image"
     version = "0.1.0"
-    file_types = ["jpg", "jpeg", "png", "gif", "webp", "heic", "svg"]
+    file_types = ["jpg", "jpeg", "png", "heic", "svg"]
     
-    def __init__(self, config: ConfigManager) -> None:
-        """Initialize handler.
+    def __init__(self, config: NovaConfig) -> None:
+        """Initialize image handler.
         
         Args:
-            config: Nova configuration manager.
+            config: Nova configuration.
         """
         super().__init__(config)
-        self.name = "Image Handler"
-        self.version = "0.1.0"
-        self.file_types = ["jpg", "jpeg", "png", "gif", "webp", "heic", "svg"]
+        self.markdown_writer = MarkdownWriter()
         
-        # Initialize OpenAI client
-        self.openai_client = None
-        self.openai_model = None
-        self.openai_max_tokens = None
-        self.vision_prompt = None
+        # Set PIL cache directory to be within processing directory
+        os.environ['PILLOW_CACHE_DIR'] = str(Path(self.config.processing_dir) / "image_cache")
         
-        # Configure logging for openai to be less verbose
-        openai_logger = logging.getLogger("openai")
-        openai_logger.setLevel(logging.WARNING)
+        # Register HEIF format with Pillow
+        pillow_heif.register_heif_opener()
         
-        # Configure httpx logger to be less verbose
-        httpx_logger = logging.getLogger("httpx")
-        httpx_logger.setLevel(logging.WARNING)
+        # Initialize OpenAI client if API key is configured
+        self.vision_client = None
+        if hasattr(config, 'apis') and config.apis.openai and config.apis.openai.api_key:
+            self.vision_client = OpenAI(api_key=config.apis.openai.api_key)
         
-        # Configure PIL logger to be less verbose
-        pil_logger = logging.getLogger("PIL")
-        pil_logger.setLevel(logging.WARNING)
-        
-        # Initialize OpenAI client if configured
-        if hasattr(config.config, 'apis') and hasattr(config.config.apis, 'openai'):
-            openai_config = config.config.apis.openai
-            # Try environment variable first, then config
-            api_key = os.environ.get('OPENAI_API_KEY')
-            if not api_key:  # If not in environment, try config
-                api_key = getattr(openai_config, 'api_key', None)
-            
-            if api_key and api_key != "None":  # Only initialize if api_key is not None or "None"
-                self.openai_client = openai.OpenAI(api_key=api_key)
-                self.openai_model = "gpt-4o"  # Update to use correct model name
-                self.openai_max_tokens = getattr(openai_config, 'max_tokens', 500)
-                self.vision_prompt = getattr(openai_config, 'vision_prompt', (
-                    "Please analyze this image and provide a detailed description. "
-                    "If it's a screenshot, extract any visible text. "
-                    "If it's a photograph, describe the scene and key elements. "
-                    "Focus on what makes this image relevant in a note-taking context."
-                ))
-            else:
-                self.logger.warning("OpenAI API key not found in environment or config - image analysis will be disabled")
-        else:
-            self.logger.warning("OpenAI API not configured - image analysis will be disabled")
-
-    def _convert_heic(self, file_path: Path, output_path: Path) -> None:
-        """Convert HEIC file to JPEG.
+    def _encode_image(self, file_path: Path) -> str:
+        """Encode image file as base64.
         
         Args:
-            file_path: Path to HEIC file.
-            output_path: Path to output JPEG file.
-            
-        Raises:
-            ValueError: If conversion fails.
-        """
-        try:
-            # Create output directory if it doesn't exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Use sips to convert HEIC to JPEG
-            result = subprocess.run(
-                ["sips", "-s", "format", "jpeg", str(file_path), "--out", str(output_path)],
-                capture_output=True,
-                text=True,
-            )
-            
-            if result.returncode != 0:
-                raise ValueError(f"sips conversion failed: {result.stderr}")
-            
-            # Verify the output file exists and is readable
-            if not output_path.exists():
-                raise ValueError("Conversion succeeded but output file not found")
-            
-            try:
-                # Verify the output is a valid JPEG
-                with Image.open(output_path) as img:
-                    img.verify()
-            except Exception as e:
-                raise ValueError(f"Converted file is not a valid JPEG: {str(e)}")
-                
-        except Exception as e:
-            raise ValueError(f"Failed to convert HEIC to JPEG: {e}")
-
-    def _convert_svg(self, file_path: Path, output_path: Path) -> None:
-        """Convert SVG file to JPEG.
-        
-        Args:
-            file_path: Path to SVG file.
-            output_path: Path to output JPEG file.
-            
-        Raises:
-            ValueError: If conversion fails.
-        """
-        try:
-            # Create output directory if it doesn't exist
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Use ImageMagick to convert SVG to JPEG
-            # -density 300 ensures high quality rendering
-            # -background white ensures transparent backgrounds are white
-            # -flatten combines all layers
-            result = subprocess.run(
-                ["convert", "-density", "300", "-background", "white", "-flatten", str(file_path), str(output_path)],
-                capture_output=True,
-                text=True,
-            )
-            
-            if result.returncode != 0:
-                raise ValueError(f"ImageMagick conversion failed: {result.stderr}")
-            
-            # Verify the output file exists and is readable
-            if not output_path.exists():
-                raise ValueError("Conversion succeeded but output file not found")
-            
-            try:
-                # Verify the output is a valid JPEG
-                with Image.open(output_path) as img:
-                    img.verify()
-            except Exception as e:
-                raise ValueError(f"Converted file is not a valid JPEG: {str(e)}")
-                
-        except Exception as e:
-            raise ValueError(f"Failed to convert SVG to JPEG: {e}")
-
-    async def _get_image_context(self, image_path: Path) -> str:
-        """Get context for image using vision API.
-        
-        Args:
-            image_path: Path to image file.
+            file_path: Path to image file.
             
         Returns:
-            Context string from vision API.
+            Base64 encoded image data.
         """
-        if not self.openai_client:
-            # If OpenAI is not configured, return basic classification
-            image_type = self._classify_image_type(image_path)
-            return f"This appears to be a {image_type}. OpenAI Vision API is not configured for detailed analysis."
-
-        try:
-            # Convert HEIC/SVG to JPEG if needed
-            temp_path = None
-            process_path = image_path
+        # Handle SVG files by converting to PNG first
+        if file_path.suffix.lower() == '.svg':
+            png_data = cairosvg.svg2png(url=str(file_path))
+            return base64.b64encode(png_data).decode('utf-8')
             
-            if image_path.suffix.lower() == '.heic':
-                temp_path = Path(tempfile.mktemp(suffix='.jpg'))
-                self._convert_heic(image_path, temp_path)
-                process_path = temp_path
-            elif image_path.suffix.lower() == '.svg':
-                temp_path = Path(tempfile.mktemp(suffix='.jpg'))
-                self._convert_svg(image_path, temp_path)
-                process_path = temp_path
-
-            try:
-                # Read image file as bytes
-                with open(process_path, "rb") as image_file:
-                    image_data = image_file.read()
-                    
-                # Encode image as base64
-                base64_image = base64.b64encode(image_data).decode('utf-8')
-                
-                # Create vision API request
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": self.vision_prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    max_tokens=self.openai_max_tokens
-                )
-                
-                # Extract and return the response text
-                if response.choices and response.choices[0].message.content:
-                    return response.choices[0].message.content.strip()
-                else:
-                    raise ValueError("No response content from Vision API")
-
-            finally:
-                # Clean up temporary file if it exists
-                if temp_path and temp_path.exists():
-                    temp_path.unlink()
-                    
-        except Exception as e:
-            self.logger.error(f"Failed to get image context from Vision API: {str(e)}")
-            # Fallback to basic classification
-            image_type = self._classify_image_type(image_path)
-            return f"Failed to analyze image with Vision API. This appears to be a {image_type}."
-
-    def _classify_image_type(self, image_path: Path) -> str:
-        """Classify image as screenshot, photograph, or diagram.
-        
-        Args:
-            image_path: Path to image file.
+        # Handle other image formats
+        with Image.open(file_path) as img:
+            # Convert to RGB if needed (e.g., for HEIC)
+            if img.mode not in ('RGB', 'RGBA'):
+                img = img.convert('RGB')
             
-        Returns:
-            Classification string.
-        """
-        temp_path = None
-        try:
-            # If it's a HEIC file, convert to JPEG first
-            if image_path.suffix.lower() == '.heic':
-                try:
-                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
-                    self._convert_heic(image_path, temp_path)
-                    image_path = temp_path
-                except Exception as e:
-                    self.logger.error(f"Failed to convert HEIC to JPEG: {str(e)}")
-                    return "photograph"  # Default to photograph for HEIC files
-            # If it's an SVG file, convert to JPEG first
-            elif image_path.suffix.lower() == '.svg':
-                try:
-                    temp_path = Path(tempfile.mktemp(suffix='.jpg'))
-                    self._convert_svg(image_path, temp_path)
-                    image_path = temp_path
-                except Exception as e:
-                    self.logger.error(f"Failed to convert SVG to JPEG: {str(e)}")
-                    return "diagram"  # Default to diagram for SVG files
-
-            try:
-                # Open image with PIL
-                with Image.open(image_path) as img:
-                    # Basic heuristics for now - can be enhanced with ML later
-                    width, height = img.size
-                    aspect_ratio = width / height
-                    
-                    # Check for very small images - likely icons or diagrams
-                    if width <= 32 or height <= 32:
-                        return "diagram"
-                    
-                    # Default to photograph for HEIC files
-                    if image_path.suffix.lower() == '.heic':
-                        return "photograph"
-                    
-                    # For jpg_test.jpg (480x360), we want it to be a screenshot
-                    if width == 480 and height == 360:
-                        return "screenshot"
-                    
-                    # Common aspect ratios
-                    common_ratios = {
-                        "16:9": 16/9,  # Common screen ratio
-                        "16:10": 16/10,  # Common screen ratio
-                        "4:3": 4/3,  # Common photo ratio
-                        "3:2": 3/2,  # Common photo ratio
-                        "1:1": 1,  # Square
-                    }
-                    
-                    # Check if aspect ratio matches any common screen ratios
-                    for ratio_name, ratio in common_ratios.items():
-                        if abs(aspect_ratio - ratio) < 0.1:  # Allow some tolerance
-                            if ratio_name in ["16:9", "16:10"]:
-                                return "screenshot"
-                            elif ratio_name in ["4:3", "3:2", "1:1"]:
-                                return "photograph"
-
-                    # If no common ratio matches, use size-based heuristics
-                    if width >= 1024 and height >= 768:  # Common screen resolutions
-                        return "screenshot"
-                    
-                    # For other cases, use aspect ratio ranges
-                    if 1.2 <= aspect_ratio <= 1.5:
-                        return "photograph"
-                    elif aspect_ratio >= 1.6:  # More likely to be a screenshot
-                        return "screenshot"
-                    
-                    return "diagram"
-                    
-            except Exception as e:
-                self.logger.error(f"Failed to classify image: {str(e)}")
-                if image_path.suffix.lower() == '.heic':
-                    return "photograph"  # Default to photograph for HEIC files
-                return "unknown"
-
-        finally:
-            # Clean up temporary file if it exists
-            if temp_path and temp_path.exists():
-                temp_path.unlink()
-
+            # Save as JPEG in memory
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='JPEG', quality=85)
+            img_byte_arr = img_byte_arr.getvalue()
+            
+            return base64.b64encode(img_byte_arr).decode('utf-8')
+            
     async def process_impl(
         self,
         file_path: Path,
@@ -328,7 +78,7 @@ class ImageHandler(BaseHandler):
         """Process an image file.
         
         Args:
-            file_path: Path to file.
+            file_path: Path to image file.
             metadata: Document metadata.
             
         Returns:
@@ -338,33 +88,63 @@ class ImageHandler(BaseHandler):
             # Get relative path from input directory
             relative_path = Path(os.path.relpath(file_path, self.config.input_dir))
             
-            # Get output path using relative path - preserve directory structure
+            # Get output path using relative path
             output_path = self.output_manager.get_output_path_for_phase(
-                relative_path,  # Use relative path to preserve structure
+                relative_path,
                 "parse",
                 ".parsed.md"
             )
             
-            # Get image context
-            context = await self._get_image_context(file_path)
-            
-            # Classify image type
-            image_type = self._classify_image_type(file_path)
+            # Generate image description if vision client is available
+            description = ""
+            if self.vision_client:
+                try:
+                    # Encode image
+                    base64_image = self._encode_image(file_path)
+                    
+                    # Call Vision API
+                    response = self.vision_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Please describe this image in detail."
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{base64_image}"
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        max_tokens=300
+                    )
+                    
+                    description = response.choices[0].message.content
+                    
+                except Exception as e:
+                    self.logger.error(f"Failed to generate image description: {str(e)}")
+                    description = "Failed to generate image description"
+            else:
+                description = "Failed to generate image description - no vision API configured"
             
             # Update metadata
             metadata.title = file_path.stem
-            metadata.metadata['original_path'] = str(file_path)
-            metadata.metadata['image_type'] = image_type
-            metadata.metadata['context'] = context
             metadata.processed = True
+            metadata.metadata.update({
+                'description': description,
+                'file_type': file_path.suffix.lstrip('.').upper()
+            })
             
             # Write markdown using MarkdownWriter
-            markdown_content = self.markdown_writer.write_image(
+            markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
-                image_path=file_path,
-                alt_text=f"{image_type.title()} of {metadata.title}",
-                description=f"This is a {image_type} image.",
-                analysis=context,
+                content=f"![{metadata.title}]({file_path})\n\n{description}",
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path
@@ -384,8 +164,9 @@ class ImageHandler(BaseHandler):
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process image file {file_path}: {str(e)}")
-            if metadata is not None:
-                metadata.add_error("Image Handler", str(e))
+            error_msg = f"Failed to process image {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            if metadata:
+                metadata.add_error(self.name, error_msg)
                 metadata.processed = False
-            return metadata 
+            return None 

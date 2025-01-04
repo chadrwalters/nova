@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from ..models.document import DocumentMetadata
-from .base import BaseHandler
-from ..config.manager import ConfigManager
-from ..core.markdown.writer import MarkdownWriter
+from .base import BaseHandler, ProcessingStatus, ProcessingResult
+from ..config.settings import NovaConfig
+from ..core.markdown import MarkdownWriter
 
 
 class MarkdownHandler(BaseHandler):
@@ -18,15 +18,15 @@ class MarkdownHandler(BaseHandler):
     version = "0.1.0"
     file_types = ["md", "markdown"]
     
-    def __init__(self, config: ConfigManager) -> None:
+    def __init__(self, config: NovaConfig) -> None:
         """Initialize markdown handler.
         
         Args:
-            config: Nova configuration manager.
+            config: Nova configuration.
         """
         super().__init__(config)
         self.markdown_writer = MarkdownWriter()
-    
+        
     def _update_links(self, content: str) -> str:
         """Update links to use simple reference markers.
         
@@ -79,7 +79,7 @@ class MarkdownHandler(BaseHandler):
             
             # Return the reference marker
             return ref
-        
+            
         # Update all links using the pattern
         link_pattern = r'(!?\[([^\]]*)\]\(([^)]+)\))'
         content = re.sub(link_pattern, replace_link, content)
@@ -138,6 +138,9 @@ class MarkdownHandler(BaseHandler):
             
             self.logger.debug(f"Generated markdown content length: {len(markdown_content)}")
             
+            # Ensure parent directories exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
             # Write the file
             try:
                 self.logger.debug(f"Writing markdown file to {output_path}")
@@ -160,4 +163,4 @@ class MarkdownHandler(BaseHandler):
             if metadata:
                 metadata.add_error(self.name, error_msg)
                 metadata.processed = False
-            return metadata 
+            return None 
