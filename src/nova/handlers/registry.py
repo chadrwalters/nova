@@ -33,22 +33,31 @@ class HandlerRegistry:
         self.logger = logging.getLogger(__name__)
         self._register_default_handlers()
     
+    def register_handler(self, handler_class: Type[BaseHandler]) -> None:
+        """Register a new handler.
+        
+        Args:
+            handler_class: Handler class to register.
+        """
+        handler = handler_class(self.config)
+        for file_type in handler.file_types:
+            self.logger.debug(f"Registering {handler.name} for file type: {file_type}")
+            self.handlers[file_type] = handler
+    
     def _register_default_handlers(self) -> None:
         """Register default handlers."""
-        handlers = [
-            DocumentHandler(self.config),
-            ImageHandler(self.config),
-            TextHandler(self.config),
-            MarkdownHandler(self.config),
-            SpreadsheetHandler(self.config),
-            HTMLHandler(self.config),
-            VideoHandler(self.config),
+        default_handlers = [
+            DocumentHandler,
+            ImageHandler,
+            TextHandler,
+            MarkdownHandler,
+            SpreadsheetHandler,
+            HTMLHandler,
+            VideoHandler,
         ]
         
-        for handler in handlers:
-            for file_type in handler.file_types:
-                self.logger.debug(f"Registering {handler.name} for file type: {file_type}")
-                self.handlers[file_type] = handler
+        for handler_class in default_handlers:
+            self.register_handler(handler_class)
     
     def get_handler(self, file_path: Union[str, Path]) -> Optional[BaseHandler]:
         """Get handler for file.

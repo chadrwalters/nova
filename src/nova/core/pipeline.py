@@ -146,6 +146,7 @@ class NovaPipeline:
                     'stats': {
                         'total_processed': 0,
                         'total_sections': 0,
+                        'total_outputs': 0,
                         'summary_files': {
                             'created': 0,
                             'empty': 0,
@@ -323,13 +324,24 @@ class NovaPipeline:
             skipped = len(phase_state['skipped_files'])
             total = successful + failed + skipped
             
-            table.add_row(
-                phase_name.upper(),
-                str(total),
-                f"[green]{successful}[/green]" if successful > 0 else "0",
-                f"[red]{failed}[/red]" if failed > 0 else "0",
-                f"[yellow]{skipped}[/yellow]" if skipped > 0 else "0"
-            )
+            # Add extra output file info for disassemble phase
+            if phase_name.lower() == 'disassemble':
+                total_outputs = phase_state['stats'].get('total_outputs', 0)
+                table.add_row(
+                    phase_name.upper(),
+                    f"{total} processed ({total_outputs} created)",
+                    f"[green]{successful}[/green]" if successful > 0 else "0",
+                    f"[red]{failed}[/red]" if failed > 0 else "0",
+                    f"[yellow]{skipped}[/yellow]" if skipped > 0 else "0"
+                )
+            else:
+                table.add_row(
+                    phase_name.upper(),
+                    str(total),
+                    f"[green]{successful}[/green]" if successful > 0 else "0",
+                    f"[red]{failed}[/red]" if failed > 0 else "0",
+                    f"[yellow]{skipped}[/yellow]" if skipped > 0 else "0"
+                )
             
             total_successful += successful
             total_failed += failed

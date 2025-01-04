@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+import mimetypes
 
 import pandas as pd
 
@@ -91,23 +92,30 @@ class SpreadsheetHandler(BaseHandler):
             Document metadata.
         """
         try:
-            # Extract text based on file type
-            content = ""
+            # Extract content based on file type
             if file_path.suffix.lower() in ['.xlsx', '.xls']:
                 content = self._extract_excel_text(file_path)
             elif file_path.suffix.lower() == '.csv':
                 content = self._extract_csv_text(file_path)
             else:
-                raise ValueError(f"Unsupported file type: {file_path.suffix}")
-                
+                raise ValueError(f"Unsupported spreadsheet type: {file_path.suffix}")
+            
             # Update metadata
             metadata.title = file_path.stem
             metadata.processed = True
+            metadata.metadata.update({
+                'file_type': mimetypes.guess_type(file_path)[0] or f"application/{file_path.suffix.lstrip('.')}",
+                'file_size': os.path.getsize(file_path)
+            })
+            
+            # Create spreadsheet marker
+            sheet_type = 'EXCEL' if file_path.suffix.lower() in ['.xlsx', '.xls'] else 'CSV'
+            sheet_marker = f"[ATTACH:{sheet_type}:{file_path.stem}]"
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
-                content=content,
+                content=f"{sheet_marker}\n\n{content}",
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path

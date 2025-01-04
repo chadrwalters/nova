@@ -138,7 +138,7 @@ class ParsePhase(Phase):
             self.stats[extension]["handlers"].add(handler)
             
     def finalize(self) -> None:
-        """Print phase summary."""
+        """Print phase summary and update pipeline stats."""
         logger.info("=== Parse Phase Summary ===")
         
         for extension, stats in self.stats.items():
@@ -156,3 +156,6 @@ class ParsePhase(Phase):
             logger.warning(f"\nSkipped {len(skipped_files)} files:")
             for file in skipped_files:
                 logger.warning(f"  - {file}")
+                
+        # Update pipeline stats
+        self.pipeline.update_stats(self.name, self.stats)

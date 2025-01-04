@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 import os
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -139,28 +140,53 @@ class MarkdownWriter:
         title: str,
         content: str,
         metadata: Dict[str, Any],
-        file_path: Optional[Path] = None,
-        output_path: Optional[Path] = None
+        file_path: Path,
+        output_path: Path,
     ) -> str:
-        """Write a complete Markdown document.
+        """Write a markdown document with metadata.
         
         Args:
             title: Document title
             content: Document content
             metadata: Document metadata
-            file_path: Optional source file path
-            output_path: Optional output file path
+            file_path: Original file path
+            output_path: Output file path
             
         Returns:
-            Complete Markdown document
+            Markdown content
         """
-        # Write metadata section
-        doc = self.write_metadata(metadata)
+        # Create metadata block
+        metadata_block = self.write_metadata({
+            'file_name': file_path.name,
+            'file_path': str(file_path),
+            **metadata
+        })
         
-        # Write title and content
-        doc += self.write_section(title, content)
+        # Process image paths in content
+        def replace_image_path(match):
+            alt_text = match.group(1)
+            img_path = match.group(2)
+            # Convert to Path object
+            img_path = Path(img_path)
+            try:
+                # Get relative path from output file to image
+                rel_path = os.path.relpath(img_path, output_path.parent)
+                return f"![{alt_text}]({rel_path})"
+            except ValueError:
+                # If paths are on different drives, use original path
+                return match.group(0)
         
-        return doc
+        # Replace image paths with relative paths
+        content = re.sub(r'!\[(.*?)\]\((.*?)\)', replace_image_path, content)
+        
+        # Combine all parts
+        parts = [
+            metadata_block,
+            f"# {title}",
+            content
+        ]
+        
+        return "\n\n".join(parts)
     
     def write_image(self, title: str, image_path: Path, alt_text: str,
                    description: str, analysis: str, metadata: Dict[str, Any],

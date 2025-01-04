@@ -6,6 +6,7 @@ from typing import Optional
 import shutil
 from bs4 import BeautifulSoup
 import os
+import mimetypes
 
 from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
@@ -85,31 +86,24 @@ class HTMLHandler(BaseHandler):
             Document metadata.
         """
         try:
-            # Read HTML file
-            with open(file_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            # Parse HTML
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Extract title
-            title = soup.title.string if soup.title else file_path.stem
-            
-            # Extract text content
-            text = soup.get_text(separator='\n\n')
-            
-            # Format content
-            content = f"HTML content from {file_path.stem}\n\n{text}"
+            # Process HTML content
+            content = await self._process_content(file_path)
             
             # Update metadata
-            metadata.title = title
+            metadata.title = file_path.stem
             metadata.processed = True
-            metadata.metadata['html'] = html_content
+            metadata.metadata.update({
+                'file_type': mimetypes.guess_type(file_path)[0] or 'text/html',
+                'file_size': os.path.getsize(file_path)
+            })
+            
+            # Create HTML marker
+            html_marker = f"[ATTACH:DOC:{file_path.stem}]"
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
-                content=content,
+                content=f"{html_marker}\n\n{content}",
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path
@@ -122,9 +116,11 @@ class HTMLHandler(BaseHandler):
             return metadata
             
         except Exception as e:
-            error_msg = f"Failed to process HTML file {file_path}: {str(e)}"
+            error_msg = f"Failed to process HTML {file_path}: {str(e)}"
             self.logger.error(error_msg)
-            metadata.add_error(self.name, error_msg)
+            if metadata:
+                metadata.add_error(self.name, error_msg)
+                metadata.processed = False
             return metadata
             
     def _convert_html_to_markdown(self, html: str) -> str:

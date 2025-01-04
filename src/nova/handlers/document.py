@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 from pypdf import PdfReader
 from docx import Document as DocxDocument
+import mimetypes
 
 from ..models.document import DocumentMetadata
 from .base import BaseHandler, ProcessingStatus, ProcessingResult
@@ -94,32 +95,29 @@ class DocumentHandler(BaseHandler):
         """
         try:
             # Extract text based on file type
-            content = ""
             if file_path.suffix.lower() == '.pdf':
                 content = self._extract_pdf_text(file_path)
-                
-                # Extract PDF metadata
-                with open(file_path, 'rb') as f:
-                    reader = PdfReader(f)
-                    if reader.metadata:
-                        metadata.metadata.update({
-                            k.lower().replace('/', '_'): v
-                            for k, v in reader.metadata.items()
-                        })
-                        
             elif file_path.suffix.lower() in ['.docx', '.doc']:
                 content = self._extract_docx_text(file_path)
             else:
-                raise ValueError(f"Unsupported file type: {file_path.suffix}")
-                
+                raise ValueError(f"Unsupported document type: {file_path.suffix}")
+            
             # Update metadata
             metadata.title = file_path.stem
             metadata.processed = True
+            metadata.metadata.update({
+                'file_type': mimetypes.guess_type(file_path)[0] or f"application/{file_path.suffix.lstrip('.')}",
+                'content_length': len(content)
+            })
+            
+            # Create document marker
+            doc_type = 'PDF' if file_path.suffix.lower() == '.pdf' else 'DOC'
+            doc_marker = f"[ATTACH:{doc_type}:{file_path.stem}]"
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
                 title=metadata.title,
-                content=content,
+                content=f"{doc_marker}\n\n{content}",
                 metadata=metadata.metadata,
                 file_path=file_path,
                 output_path=output_path
@@ -137,4 +135,4 @@ class DocumentHandler(BaseHandler):
             if metadata:
                 metadata.add_error(self.name, error_msg)
                 metadata.processed = False
-            return None 
+            return metadata 

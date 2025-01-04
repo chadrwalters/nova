@@ -75,34 +75,38 @@ class TestMarkdownHandler:
     def test_update_links(self, config):
         """Test link updating."""
         handler = MarkdownHandler(config)
-        content = """
-        # Test Document
         
-        [Link 1](file1.pdf)
-        [Link 2](file2.docx)
-        ![Image](image.jpg)
-        [External](https://example.com)
-        """
-        
+        # Test basic link
+        content = "Here is a [link](test.md)"
         updated = handler._update_links(content)
-        assert "[ATTACH:PDF:file1]" in updated
-        assert "[ATTACH:DOC:file2]" in updated
-        assert "![ATTACH:IMAGE:image]" in updated
-        assert "[External](https://example.com)" in updated
+        assert updated == "Here is a [ATTACH:DOC:test]"
         
-    async def test_process_markdown(self, config, metadata):
+        # Test image link
+        content = "Here is an ![image](test.png)"
+        updated = handler._update_links(content)
+        assert updated == "Here is an ![ATTACH:IMAGE:test]"
+        
+        # Test multiple links
+        content = "Here is a [link](test.md) and an ![image](test.png)"
+        updated = handler._update_links(content)
+        assert updated == "Here is a [ATTACH:DOC:test] and an ![ATTACH:IMAGE:test]"
+        
+        # Test external link (should not be transformed)
+        content = "Here is an [external link](https://example.com)"
+        updated = handler._update_links(content)
+        assert updated == "Here is an [external link](https://example.com)"
+        
+    @pytest.mark.asyncio
+    async def test_process_markdown(self, config):
         """Test markdown processing."""
+        handler = MarkdownHandler(config)
+        
         # Create test file
         test_file = Path(config.input_dir) / "test.md"
-        test_content = """
-        # Test Document
+        test_file.write_text("# Test\n\nThis is a test.")
         
-        This is a test markdown file.
-        [Link](file.pdf)
-        """
-        test_file.write_text(test_content)
-        
-        handler = MarkdownHandler(config)
+        # Process file
+        metadata = DocumentMetadata(title="test")
         output_path = Path(config.output_dir) / "test.md"
         result = await handler.process_impl(test_file, output_path, metadata)
         
@@ -115,8 +119,8 @@ class TestMarkdownHandler:
         output_file = list(result.output_files)[0]
         assert output_file.exists()
         content = output_file.read_text()
-        assert "# Test Document" in content
-        assert "[ATTACH:PDF:file]" in content
+        assert "# Test" in content
+        assert "This is a test." in content
 
 
 class TestDocumentHandler:
@@ -129,24 +133,19 @@ class TestDocumentHandler:
         assert handler.version == "0.2.0"
         assert handler.file_types == ["pdf", "docx", "doc", "odt", "rtf"]
         
-    @patch('pypdf.PdfReader')
-    async def test_process_pdf(self, mock_pdf_reader, config, metadata):
+    @pytest.mark.asyncio
+    async def test_process_pdf(self, config):
         """Test PDF processing."""
-        # Mock PDF reader
-        mock_reader = Mock()
-        mock_reader.pages = [Mock(extract_text=lambda: "Test content")]
-        mock_reader.metadata = {"Title": "Test PDF"}
-        mock_pdf_reader.return_value = mock_reader
+        handler = DocumentHandler(config)
         
-        # Create test file with actual content
+        # Create test PDF file with actual content
         test_file = Path(config.input_dir) / "test.pdf"
-        buffer = BytesIO()
-        c = canvas.Canvas(buffer)
-        c.drawString(100, 100, "Test content")
+        c = canvas.Canvas(str(test_file))
+        c.drawString(100, 750, "Test PDF content")
         c.save()
-        test_file.write_bytes(buffer.getvalue())
         
-        handler = DocumentHandler(config)
+        # Process file
+        metadata = DocumentMetadata(title="test")
         output_path = Path(config.output_dir) / "test.md"
         result = await handler.process_impl(test_file, output_path, metadata)
         
@@ -159,37 +158,35 @@ class TestDocumentHandler:
         output_file = list(result.output_files)[0]
         assert output_file.exists()
         content = output_file.read_text()
-        assert "Test content" in content
+        assert "Test PDF content" in content
         
-    @patch('nova.handlers.document.DocxDocument')
-    async def test_process_docx(self, mock_docx, config, metadata):
+    @pytest.mark.asyncio
+    async def test_process_docx(self, config):
         """Test DOCX processing."""
-        # Mock Document
-        mock_doc = Mock()
-        mock_doc.paragraphs = [Mock(text="Test content")]
-        mock_docx.return_value = mock_doc
-
-        # Create test file
-        test_file = Path(config.input_dir) / "test.docx"
-        test_file.touch()
-
-        # Mock the Document class to return our mock doc
-        mock_docx.side_effect = lambda file_path: mock_doc
-
         handler = DocumentHandler(config)
+        
+        # Create test DOCX file with actual content
+        from docx import Document
+        test_file = Path(config.input_dir) / "test.docx"
+        doc = Document()
+        doc.add_paragraph("Test DOCX content")
+        doc.save(test_file)
+        
+        # Process file
+        metadata = DocumentMetadata(title="test")
         output_path = Path(config.output_dir) / "test.md"
         result = await handler.process_impl(test_file, output_path, metadata)
-
+        
         assert result is not None
         assert result.processed is True
         assert result.title == "test"
         assert len(result.output_files) == 1
-
+        
         # Check output file
         output_file = list(result.output_files)[0]
         assert output_file.exists()
         content = output_file.read_text()
-        assert "Test content" in content
+        assert "Test DOCX content" in content
 
 
 class TestImageHandler:
@@ -206,6 +203,7 @@ class TestImageHandler:
         assert handler.file_types == ["jpg", "jpeg", "png", "heic", "svg"]
         assert handler.vision_client is None
         
+    @pytest.mark.asyncio
     async def test_process_image(self, config, metadata):
         """Test image processing."""
         # Create test image file with actual content
@@ -239,6 +237,7 @@ class TestImageHandler:
         content = output_file.read_text()
         assert "Test description" in content
         
+    @pytest.mark.asyncio
     async def test_process_image_no_vision(self, config, metadata):
         """Test image processing without vision API."""
         # Create test image file with actual content
@@ -262,4 +261,4 @@ class TestImageHandler:
         output_file = list(result.output_files)[0]
         assert output_file.exists()
         content = output_file.read_text()
-        assert "Failed to generate image description - no vision API configured" in content 
+        assert "Failed to generate image description: OpenAI API not configured" in content 

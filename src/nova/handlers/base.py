@@ -56,13 +56,13 @@ class BaseHandler(ABC):
         self.output_manager = OutputManager(config)
         
     def supports_file(self, file_path: Path) -> bool:
-        """Check if handler supports a file type.
+        """Check if handler supports file type.
         
         Args:
             file_path: Path to file
             
         Returns:
-            True if file type is supported
+            True if handler supports file type
         """
         return file_path.suffix.lstrip('.').lower() in self.file_types
         
@@ -90,8 +90,12 @@ class BaseHandler(ABC):
                     error=f"Cannot access file: {file_path}"
                 )
                 
+            # Get output path
+            rel_path = self._get_relative_path(file_path)
+            output_path = self._get_output_path(rel_path, "parse", ".md")
+            
             # Process the file
-            updated_metadata = await self.process_impl(file_path, metadata)
+            updated_metadata = await self.process_impl(file_path, output_path, metadata)
             
             if updated_metadata is None:
                 return ProcessingResult(

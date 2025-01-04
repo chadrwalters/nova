@@ -16,6 +16,24 @@ from nova.config.settings import NovaConfig, CacheConfig, APIConfig, OpenAIConfi
 
 
 @pytest.fixture
+def mock_openai_client():
+    """Create a mock OpenAI client."""
+    mock_client = Mock()
+    mock_response = Mock()
+    mock_response.choices = [Mock(message=Mock(content="Test image description"))]
+    mock_client.chat.completions.create.return_value = mock_response
+    return mock_client
+
+
+@pytest.fixture
+def mock_image_handler(nova_config, mock_openai_client):
+    """Create a mock image handler with OpenAI client."""
+    handler = ImageHandler(nova_config)
+    handler.vision_client = mock_openai_client
+    return handler
+
+
+@pytest.fixture
 def nova_config(mock_fs):
     """Create test configuration."""
     config = NovaConfig(
@@ -83,24 +101,6 @@ def test_state(nova_config, mock_fs):
         "config": nova_config,
         "pipeline": mock_pipeline
     }
-
-
-@pytest.fixture
-def mock_openai_client():
-    """Create a mock OpenAI client."""
-    mock_client = Mock()
-    mock_response = Mock()
-    mock_response.choices = [Mock(message=Mock(content="Test image description"))]
-    mock_client.chat.completions.create.return_value = mock_response
-    return mock_client
-
-
-@pytest.fixture
-def mock_image_handler(nova_config, mock_openai_client):
-    """Create a mock image handler with OpenAI client."""
-    handler = ImageHandler(nova_config)
-    handler.vision_client = mock_openai_client
-    return handler
 
 
 @pytest.mark.unit
@@ -263,7 +263,7 @@ class TestParsePhase:
                     assert result.processed is False
                     assert result.has_errors is True
                     assert len(result.errors) > 0
-                    assert result.errors.get(file_path.suffix.lstrip('.')) is not None 
+                    assert result.errors.get(file_path.suffix.lstrip('.')) is not None
     
     async def test_parse_svg(self, mock_fs, test_state, mock_image_handler):
         """Test parsing SVG files."""

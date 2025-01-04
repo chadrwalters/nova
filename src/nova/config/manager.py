@@ -6,7 +6,7 @@ import logging
 
 import yaml
 
-from nova.config.settings import NovaConfig, CacheConfig, PipelineConfig
+from nova.config.settings import NovaConfig, CacheConfig, PipelineConfig, APIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +19,27 @@ class ConfigManager:
     
     def __init__(
         self,
-        config_path: Optional[Union[str, Path]] = None,
+        config: Optional[Union[str, Path, NovaConfig]] = None,
         create_dirs: bool = True,
     ) -> None:
         """Initialize configuration manager.
         
         Args:
-            config_path: Path to configuration file. If not provided, will check
+            config: Path to configuration file or NovaConfig instance. If not provided, will check
                 environment variable NOVA_CONFIG_PATH, then fall back to default.
             create_dirs: Whether to create configured directories if they don't exist.
         """
         self.logger = logging.getLogger(__name__)
-        self.config_path = self._resolve_config_path(config_path)
-        self.logger.info(f"Loading config from: {self.config_path}")
-        self.config = self._load_config()
+        
+        if isinstance(config, NovaConfig):
+            self.config = config
+            self.config_path = None
+            self.logger.info(f"Using provided NovaConfig instance")
+        else:
+            self.config_path = self._resolve_config_path(config)
+            self.logger.info(f"Loading config from: {self.config_path}")
+            self.config = self._load_config()
+            
         self.logger.info(f"Using input directory: {self.input_dir}")
         
         if create_dirs:
@@ -289,6 +296,11 @@ class ConfigManager:
         """Get pipeline configuration."""
         return self.config.pipeline
         
+    @property
+    def apis(self) -> APIConfig:
+        """Get API configuration."""
+        return self.config.apis
+
     def __str__(self) -> str:
         """Get string representation of config manager."""
         return str(self.config)

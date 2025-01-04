@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+import mimetypes
 
 from nova.config.manager import ConfigManager
 from nova.handlers.base import BaseHandler
@@ -32,9 +33,13 @@ class VideoHandler(BaseHandler):
         Returns:
             Markdown content.
         """
+        # Create video marker
+        video_marker = f"[ATTACH:VIDEO:{file_path.stem}]"
+        
         return f"""## Video Information
 
-- **File**: {file_path.name}
+{video_marker}
+
 - **Type**: {file_path.suffix.lstrip('.')}
 - **Size**: {os.path.getsize(file_path) / (1024*1024):.2f} MB
 
@@ -60,13 +65,16 @@ Please use an appropriate video player to view this file."""
             Document metadata.
         """
         try:
-            # Create video content
-            content = self._create_video_content(file_path)
-            
             # Update metadata
             metadata.title = file_path.stem
-            metadata.metadata['original_path'] = str(file_path)
             metadata.processed = True
+            metadata.metadata.update({
+                'file_type': mimetypes.guess_type(file_path)[0] or f"video/{file_path.suffix.lstrip('.')}",
+                'file_size': os.path.getsize(file_path)
+            })
+            
+            # Create content
+            content = self._create_video_content(file_path)
             
             # Write markdown using MarkdownWriter
             markdown_content = self.markdown_writer.write_document(
@@ -84,9 +92,9 @@ Please use an appropriate video player to view this file."""
             return metadata
             
         except Exception as e:
-            self.logger.error(f"Failed to process video file: {file_path}")
-            self.logger.error(str(e))
+            error_msg = f"Failed to process video {file_path}: {str(e)}"
+            self.logger.error(error_msg)
             if metadata:
-                metadata.add_error("VideoHandler", str(e))
+                metadata.add_error(self.name, error_msg)
                 metadata.processed = False
             return metadata 

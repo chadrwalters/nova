@@ -1,87 +1,87 @@
-# Nova Document Processing System
+# Nova
 
-Nova is a document processing system that helps organize and analyze your documents.
-
-## Features
-
-- Process multiple document types (PDF, DOCX, MD, etc.)
-- Generate summaries and insights
-- Organize documents by topic
-- Extract key information
-- Process images with AI vision
+Nova is a document processing pipeline that extracts information from various file types and generates structured output.
 
 ## Installation
 
 1. Clone the repository
-2. Run `./install.sh` to set up dependencies
-3. Configure Nova using `config/nova.yaml`
-
-## Configuration
-
-Create a `config/nova.yaml` file with your settings:
-
-```yaml
-# Base configuration
-base_dir: ~/nova           # Base directory for all Nova operations
-input_dir: ~/nova/input    # Input directory for documents
-output_dir: ~/nova/output  # Output directory for processed files
-processing_dir: ~/nova/tmp # Temporary processing directory
-
-# Cache configuration
-cache:
-  dir: ~/nova/cache
-  enabled: true
-  ttl: 3600  # 1 hour
-
-# API configuration
-apis:
-  openai:
-    api_key: "your-api-key-here"  # Your OpenAI API key
-    model: "gpt-4o"
-    max_tokens: 500
+2. Install dependencies using Poetry:
+```bash
+poetry install
 ```
 
 ## Usage
 
-1. Place documents in your input directory
-2. Run `./run_nova.sh` to process documents
-3. Find processed files in your output directory
-
-## Development
-
-### Setup
-
-1. Install Python 3.11 or later
-2. Install Poetry for dependency management
-3. Run `poetry install` to set up the development environment
-
-### Testing
-
-Run tests using pytest:
+Run Nova with:
 ```bash
-# Run all tests
-python -m pytest
-
-# Run specific test categories
-python -m pytest -m unit        # Unit tests
-python -m pytest -m integration # Integration tests
-python -m pytest -m handlers    # Handler tests
-python -m pytest -m config      # Configuration tests
-python -m pytest -m utils       # Utility tests
+./run_nova.sh
 ```
 
-Test categories are configured in `pytest.ini` and include:
-- Unit tests for individual components
-- Integration tests for end-to-end workflows
-- Handler-specific tests
-- Configuration tests
-- Utility function tests
+Clean up processing artifacts with:
+```bash
+./cleanup.sh -a
+```
 
-For more details, see [Development Guidelines](docs/development.md).
+## Testing
 
-## License
+Nova uses pytest for testing. The test suite includes unit tests, integration tests, and API tests.
 
-MIT License - see LICENSE file for details
+### Running Tests
+
+Run all tests (excluding API tests):
+```bash
+poetry run pytest
+```
+
+Run tests with OpenAI API access:
+```bash
+poetry run pytest --openai-api
+```
+
+### Testing Strategy
+
+#### Image Handler Tests
+
+The ImageHandler tests use three different modes:
+
+1. **Mock API Mode (Default)**
+   - Uses a mock OpenAI client that returns predefined responses
+   - Fast and reliable for development
+   - No API costs or rate limits
+   - Run with: `poetry run pytest tests/handlers/test_image_handler.py`
+
+2. **Real API Mode**
+   - Tests against the actual OpenAI API
+   - Requires valid API key in configuration
+   - Useful for verifying API integration
+   - Run with: `poetry run pytest tests/handlers/test_image_handler.py --openai-api`
+
+3. **No API Mode**
+   - Tests behavior when API is not configured
+   - Verifies graceful fallback behavior
+   - Run with any test command
+
+### Writing Tests
+
+Example test case with mocked API:
+```python
+@pytest.mark.handlers
+def test_image_handler_mock_api(nova_config, test_image, mock_openai_client):
+    handler = ImageHandler(nova_config)
+    handler.vision_client = mock_openai_client
+    metadata = handler.process_file(test_image)
+    assert metadata.description == "This is a test image showing a simple geometric pattern."
+```
+
+Example test case with real API:
+```python
+@pytest.mark.handlers
+@pytest.mark.openai_api
+def test_image_handler_real_api(nova_config, test_image):
+    handler = ImageHandler(nova_config)
+    metadata = handler.process_file(test_image)
+    assert len(metadata.description) > 0
+```
 
 
 

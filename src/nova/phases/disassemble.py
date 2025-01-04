@@ -38,7 +38,8 @@ class DisassemblyPhase(Phase):
             'attachments': {'copied': 0, 'failed': 0},
             'total_sections': 0,
             'total_processed': 0,
-            'total_attachments': 0
+            'total_attachments': 0,
+            'total_outputs': 0
         }
                 
         if 'successful_files' not in state:
@@ -330,6 +331,7 @@ class DisassemblyPhase(Phase):
                 summary_file.write_text(summary_content, encoding='utf-8')
                 metadata.add_output_file(summary_file)
                 self.pipeline.state['disassemble']['stats']['summary_files']['created'] += 1
+                self.pipeline.state['disassemble']['stats']['total_outputs'] += 1
                 section_count += 1
                 logger.debug(f"Created summary file for {base_name}, section_count = {section_count}")
                 logger.debug(f"Summary content length: {len(summary_content)}")
@@ -343,6 +345,7 @@ class DisassemblyPhase(Phase):
                 raw_notes_file.write_text(raw_notes_content, encoding='utf-8')
                 metadata.add_output_file(raw_notes_file)
                 self.pipeline.state['disassemble']['stats']['raw_notes_files']['created'] += 1
+                self.pipeline.state['disassemble']['stats']['total_outputs'] += 1
                 section_count += 1
                 logger.debug(f"Created raw notes file for {base_name}, section_count = {section_count}")
                 logger.debug(f"Raw notes content length: {len(raw_notes_content)}")
