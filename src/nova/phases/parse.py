@@ -61,10 +61,21 @@ class ParsePhase(Phase):
         try:
             # Process file with handler
             # Ensure we use the actual file path without modifying spaces
-            metadata = await handler.process(file_path, output_dir)
-            if metadata:
+            metadata = FileMetadata.from_file(
+                file_path=file_path,
+                handler_name=handler.name,
+                handler_version=handler.version
+            )
+            metadata = await handler.process_impl(file_path, metadata)
+            if metadata and metadata.processed:
                 logger.info(f"Successfully processed {file_path}")
                 self._update_stats(file_path.suffix.lower(), "successful", handler.__class__.__name__)
+                
+                # Save metadata file
+                metadata_path = self.config.processing_dir / "phases" / "parse" / file_path.parent.name / f"{file_path.stem}.metadata.json"
+                metadata_path.parent.mkdir(parents=True, exist_ok=True)
+                metadata.save(metadata_path)
+                
                 return metadata
             else:
                 logger.error(f"Failed to process {file_path}")
