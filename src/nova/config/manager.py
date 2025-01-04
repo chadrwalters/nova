@@ -114,6 +114,12 @@ class ConfigManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 config_dict = yaml.safe_load(f) or {}
             
+            # Validate required fields
+            required_fields = ['base_dir', 'input_dir', 'output_dir', 'processing_dir']
+            missing_fields = [field for field in required_fields if field not in config_dict]
+            if missing_fields:
+                raise ValueError(f"Missing required fields in config: {', '.join(missing_fields)}")
+            
             # Ensure required sections exist
             if 'cache' not in config_dict:
                 config_dict['cache'] = {}
