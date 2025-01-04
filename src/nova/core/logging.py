@@ -13,7 +13,8 @@ from rich.table import Table
 
 from ..config.settings import LoggingConfig
 
-console = Console()
+# Initialize console with force terminal
+console = Console(force_terminal=True)
 
 
 class NovaLogRecord(logging.LogRecord):
@@ -140,7 +141,7 @@ class LoggingManager:
                 tracebacks_width=100,
                 tracebacks_extra_lines=3,
                 tracebacks_theme='monokai',
-                level=self.config.console_level.upper(),
+                level=logging.WARNING,  # Set to WARNING to ensure summary is shown
                 show_level=False,  # We'll handle this in our formatter
                 omit_repeated_times=True,
                 log_time_format="[%X]"
@@ -157,7 +158,7 @@ class LoggingManager:
         
         # Configure root logger
         root = logging.getLogger()
-        root.setLevel(logging.WARNING)  # Set root logger to WARNING by default
+        root.setLevel(logging.INFO)  # Set root logger to INFO to allow summary through
         
         # Remove existing handlers
         root.handlers = []
@@ -173,7 +174,7 @@ class LoggingManager:
                 
                 # Set base level from config
                 if 'summary' in logger_name:
-                    logger.setLevel(logging.WARNING)  # Force summary logger to WARNING
+                    logger.setLevel(logging.INFO)  # Set summary logger to INFO
                 else:
                     logger.setLevel(self.config.level.upper())
                 
@@ -224,26 +225,30 @@ def print_summary(
     """Print processing summary."""
     logger = logging.getLogger("nova.summary")
     
+    # Create a new console for the summary
+    summary_console = Console(force_terminal=True)
+    
     # Create summary table
-    table = Table(title="Processing Summary")
-    table.add_column("Metric", style="cyan")
+    table = Table(title="\n📊 Processing Summary", title_style="bold cyan", border_style="cyan")
+    table.add_column("Metric", style="bold white")
     table.add_column("Value", justify="right", style="green")
     
     # Add rows
     table.add_row("Total Files", str(total_files))
-    table.add_row("Successful", str(successful))
-    table.add_row("Failed", str(failed))
-    table.add_row("Skipped", str(skipped))
+    table.add_row("Successful", f"[green]{str(successful)}[/green]")
+    table.add_row("Failed", f"[red]{str(failed)}[/red]" if failed > 0 else str(failed))
+    table.add_row("Skipped", f"[yellow]{str(skipped)}[/yellow]" if skipped > 0 else str(skipped))
     table.add_row("Unchanged", str(len(unchanged)))
     table.add_row("Reprocessed", str(len(reprocessed)))
     table.add_row("Duration", f"{duration:.2f}s")
     
-    # Log table
-    logger.info("\n" + str(table))
+    # Print table directly to console
+    summary_console.print("\n")  # Add some spacing
+    summary_console.print(table)
     
     # Log failures if any
     if failures:
-        failure_msg = "\nFailed Files:\n" + "━" * 80 + "\n"
+        failure_msg = "\n❌ Failed Files:\n" + "━" * 80 + "\n"
         for file_path, error_msg in failures:
             failure_msg += f"• {Path(file_path).name}\n"
             failure_msg += f"  Error: {error_msg}\n\n"

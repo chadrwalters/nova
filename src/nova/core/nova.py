@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import traceback
 import os
+import time
 
 from nova.config.manager import ConfigManager
 from nova.core.pipeline import NovaPipeline
@@ -154,6 +155,9 @@ class Nova:
         Returns:
             List of metadata about processed documents.
         """
+        # Start timing
+        start_time = time.time()
+        
         # Convert paths safely
         input_dir = self._safe_path(input_dir or self.config.input_dir)
         output_dir = self._safe_path(output_dir or self.config.processing_dir / "phases" / "parse")

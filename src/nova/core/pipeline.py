@@ -3,14 +3,15 @@
 import logging
 import os
 import time
+import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Union
-import traceback
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
+import sys
 
 from nova.config.manager import ConfigManager
 from nova.config.settings import PipelineConfig
@@ -127,6 +128,9 @@ class NovaPipeline:
         Returns:
             True if successful, False if failed
         """
+        # Start timing
+        start_time = time.time()
+        
         try:
             # Convert directory to Path
             input_dir = Path(directory)
@@ -168,7 +172,8 @@ class NovaPipeline:
                 BarColumn(bar_width=None),
                 TextColumn("[progress.percentage]{task.completed}/{task.total}"),
                 TaskProgressColumn(),
-                expand=True
+                expand=True,
+                console=Console(file=sys.stderr, force_terminal=True)
             )
             
             # Process files through pipeline phases
@@ -248,40 +253,40 @@ class NovaPipeline:
                         self.progress.advance(split_task)
                 
                 # Finalize phase
-                self.progress.update(finalize_task, total=3)  # 3 steps: process, validate, copy
+                finalize_output_dir = self.get_phase_output_dir('finalize')
+                split_files = []
+                for pattern in ['Summary.md', 'Raw Notes.md', 'Attachments.md']:
+                    for file_path in split_output_dir.rglob(pattern):
+                        if file_path.is_file():
+                            split_files.append(file_path)
                 
-                try:
-                    # Process files from split phase
-                    await self.phases['finalize'].process_files()
-                    self.progress.advance(finalize_task)
-                    
-                    # Run finalize phase
-                    self.phases['finalize'].finalize()
-                    self.progress.advance(finalize_task, 2)
-                    
-                except Exception as e:
-                    self.logger.error(f"Error in finalize: {str(e)}")
-                    self.logger.error(traceback.format_exc())
-                    self.state['finalize']['failed_files'].add('finalize')
-                    self.state['finalize'].update({
-                        'completed': True,
-                        'success': False
-                    })
-                    return False
-                    
-                # Only mark as complete if successful
-                self.state['finalize'].update({
-                    'completed': True,
-                    'success': True
-                })
+                self.progress.update(finalize_task, total=len(split_files))
                 
-                return True
-                
-            # Wait for progress to complete
+                for file_path in split_files:
+                    try:
+                        metadata = await self.phases['finalize'].process_file(file_path, finalize_output_dir)
+                        if metadata:
+                            self.state['finalize']['successful_files'].add(file_path)
+                        else:
+                            self.state['finalize']['failed_files'].add(file_path)
+                    except Exception as e:
+                        self.logger.error(f"Error finalizing {file_path}: {str(e)}")
+                        self.logger.debug(traceback.format_exc())
+                        self.state['finalize']['failed_files'].add(file_path)
+                    finally:
+                        self.progress.advance(finalize_task)
+
+            # Ensure progress bar is finished
             self.progress.refresh()
+            self.progress.stop()
             
-            # Show final summary
-            self.show_summary()
+            # Clear screen after progress bar
+            console = Console(file=sys.stderr, force_terminal=True)
+            console.clear()
+            
+            # Show summary
+            duration = time.time() - start_time
+            self.show_summary(duration)
             
             return True
             
@@ -290,160 +295,89 @@ class NovaPipeline:
             self.logger.debug(traceback.format_exc())
             return False
             
-    def show_summary(self):
-        """Show pipeline summary and statistics."""
-        # Create console for rich output
-        console = Console()
+    def show_summary(self, duration: float) -> None:
+        """Show pipeline summary and statistics.
         
-        # Create summary table
-        table = Table(title="Pipeline Summary", show_header=True, header_style="bold cyan", box=None)
-        table.add_column("Phase", style="cyan")
+        Args:
+            duration: Total processing duration in seconds
+        """
+        console = Console(file=sys.stderr, force_terminal=True)
+        
+        # Create main summary table
+        table = Table(title="\n📊 Pipeline Summary", title_style="bold cyan", border_style="cyan")
+        table.add_column("Phase", style="bold white")
         table.add_column("Total", justify="right")
-        table.add_column("Completed", justify="right", style="green")
+        table.add_column("Successful", justify="right", style="green")
         table.add_column("Failed", justify="right", style="red")
         table.add_column("Skipped", justify="right", style="yellow")
-        table.add_column("Duration", justify="right")
         
-        total_files = 0
-        total_completed = 0
+        # Add rows for each phase
+        total_successful = 0
         total_failed = 0
         total_skipped = 0
         
-        # Add rows for each phase
-        for phase_name, phase_state in self.state.items():
-            if phase_name in ['parse', 'disassemble', 'split', 'finalize']:
-                completed = len(phase_state.get('successful_files', set()))
-                failed = len(phase_state.get('failed_files', set()))
-                skipped = len(phase_state.get('skipped_files', set()))
-                phase_total = completed + failed + skipped
-                duration = phase_state.get('duration', 0)
-                duration_str = f"{duration:.1f}s" if duration else "-"
-                
-                table.add_row(
-                    phase_name.upper(),
-                    str(phase_total),
-                    str(completed),
-                    str(failed),
-                    str(skipped),
-                    duration_str
-                )
-                
-                total_files += phase_total
-                total_completed += completed
-                total_failed += failed
-                total_skipped += skipped
+        for phase_name in ['parse', 'disassemble', 'split', 'finalize']:
+            phase_state = self.state[phase_name]
+            successful = len(phase_state['successful_files'])
+            failed = len(phase_state['failed_files'])
+            skipped = len(phase_state['skipped_files'])
+            total = successful + failed + skipped
+            
+            table.add_row(
+                phase_name.upper(),
+                str(total),
+                f"[green]{successful}[/green]" if successful > 0 else "0",
+                f"[red]{failed}[/red]" if failed > 0 else "0",
+                f"[yellow]{skipped}[/yellow]" if skipped > 0 else "0"
+            )
+            
+            total_successful += successful
+            total_failed += failed
+            total_skipped += skipped
         
         # Add totals row
-        total_duration = sum(phase_state.get('duration', 0) for phase_state in self.state.values())
         table.add_row(
             "TOTAL",
-            str(total_files),
-            str(total_completed),
-            str(total_failed),
-            str(total_skipped),
-            f"{total_duration:.1f}s",
+            str(total_successful + total_failed + total_skipped),
+            f"[green]{total_successful}[/green]" if total_successful > 0 else "0",
+            f"[red]{total_failed}[/red]" if total_failed > 0 else "0",
+            f"[yellow]{total_skipped}[/yellow]" if total_skipped > 0 else "0",
             style="bold"
         )
         
-        # Print summary table
-        console.print("\nPipeline Summary:", style="yellow bold")
+        # Print summary with spacing
+        console.print("\n\n")
         console.print(table)
+        console.print(f"\nTotal Duration: {duration:.2f}s", style="cyan")
         
-        # Print detailed phase statistics
-        console.print("\nPhase Statistics:", style="yellow bold")
-        
-        # Parse phase stats - File type table
-        if 'parse' in self.state:
-            parse_state = self.state['parse']
-            file_types = {}
-            success_types = {}
-            failed_types = {}
+        # Show phase-specific details
+        if self.state['disassemble']['stats']['total_sections'] > 0:
+            console.print("\n📑 Document Statistics:", style="bold cyan")
+            stats = self.state['disassemble']['stats']
+            doc_table = Table(show_header=False, box=None)
+            doc_table.add_column("Metric", style="white")
+            doc_table.add_column("Value", style="green")
             
-            # Count successful and failed files by type
-            for file_path in parse_state.get('successful_files', set()):
-                file_type = file_path.suffix.lower()
-                success_types[file_type] = success_types.get(file_type, 0) + 1
-                file_types[file_type] = True
-                
-            for file_path in parse_state.get('failed_files', set()):
-                file_type = file_path.suffix.lower()
-                failed_types[file_type] = failed_types.get(file_type, 0) + 1
-                file_types[file_type] = True
+            doc_table.add_row("Total Sections", str(stats['total_sections']))
+            doc_table.add_row("Summary Files", f"{stats['summary_files']['created']} created, {stats['summary_files']['empty']} empty")
+            doc_table.add_row("Raw Notes Files", f"{stats['raw_notes_files']['created']} created, {stats['raw_notes_files']['empty']} empty")
+            doc_table.add_row("Attachments", f"{stats['attachments']['copied']} copied, {stats['attachments']['failed']} failed")
             
-            if file_types:
-                # Create file types table
-                types_table = Table(show_header=True, header_style="bold cyan", title="File Types", box=None)
-                types_table.add_column("Status", style="cyan")
-                
-                # Add columns for each file type
-                file_type_list = sorted(file_types.keys())
-                for file_type in file_type_list:
-                    types_table.add_column(file_type, justify="right")
-                
-                # Add success row
-                success_row = ["Success"]
-                for file_type in file_type_list:
-                    success_row.append(str(success_types.get(file_type, 0)))
-                types_table.add_row(*success_row, style="green")
-                
-                # Add failed row if there are any failures
-                if failed_types:
-                    failed_row = ["Failed"]
-                    for file_type in file_type_list:
-                        failed_row.append(str(failed_types.get(file_type, 0)))
-                    types_table.add_row(*failed_row, style="red")
-                
-                console.print("\nParse phase:", style="yellow")
-                console.print(types_table)
-        
-        # Disassemble phase stats
-        if 'disassemble' in self.state:
-            disassemble_state = self.state['disassemble']
-            total_sections = disassemble_state.get('stats', {}).get('total_sections', 0)
-            total_attachments = disassemble_state.get('stats', {}).get('total_attachments', 0)
-            
-            # Create disassemble stats table
-            disassemble_table = Table(show_header=True, header_style="bold cyan", title="Disassemble Results", box=None)
-            disassemble_table.add_column("Metric", style="cyan")
-            disassemble_table.add_column("Count", justify="right")
-            
-            disassemble_table.add_row("Total Sections", str(total_sections))
-            disassemble_table.add_row("Total Attachments", str(total_attachments))
-            
-            console.print("\nDisassemble phase:", style="yellow")
-            console.print(disassemble_table)
-        
-        # Split phase stats
-        if 'split' in self.state:
-            split_state = self.state['split']
-            section_stats = {}
-            
-            # Aggregate section stats from all files
-            for file_sections in split_state.get('sections', {}).values():
-                for section in file_sections:
-                    section_type = section.get('type', 'unknown')
-                    section_stats[section_type] = section_stats.get(section_type, 0) + 1
-            
-            if section_stats:
-                # Create section types table
-                section_table = Table(show_header=True, header_style="bold cyan", title="Section Types", box=None)
-                section_table.add_column("Type", style="cyan")
-                section_table.add_column("Count", justify="right")
-                
-                for section_type, count in sorted(section_stats.items()):
-                    section_table.add_row(section_type, str(count))
-                
-                console.print("\nSplit phase:", style="yellow")
-                console.print(section_table)
+            console.print(doc_table)
         
         # Show failures if any
         if total_failed > 0:
-            console.print(f"\nFailed files: {total_failed}", style="red bold")
-            for phase_name, phase_state in self.state.items():
-                failed_files = phase_state.get('failed_files', set())
-                if failed_files:
-                    console.print(f"\n{phase_name.upper()} phase failures:", style="red")
-                    for file_path in failed_files:
-                        console.print(f"  • {file_path}", style="red")
-        else:
-            console.print("\nAll files processed successfully!", style="green bold") 
+            console.print("\n❌ Failed Files:", style="red bold")
+            console.print("━" * 80, style="red")
+            
+            for phase_name in ['parse', 'disassemble', 'split', 'finalize']:
+                phase_state = self.state[phase_name]
+                if phase_state['failed_files']:
+                    console.print(f"\n{phase_name.upper()} Phase:", style="red")
+                    for file_path in phase_state['failed_files']:
+                        console.print(f"• {Path(file_path).name}", style="red")
+                        if phase_name in self.error_messages and file_path in self.error_messages[phase_name]:
+                            console.print(f"  Error: {self.error_messages[phase_name][file_path]}", style="red")
+                        console.print()
+        
+        console.print()  # Final newline for spacing 
