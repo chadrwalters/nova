@@ -17,7 +17,7 @@ Implement a comprehensive but practical pre-commit filter system that:
 
 ✓ Phase Validation:
 - Tests: poetry run pytest (PASSED)
-- Pipeline: ./cleanup.sh -a && ./run_nova.sh (PASSED)
+- Pipeline: ./cleanup.sh -a && ./process_notes.sh (PASSED)
 
 ## Phase 2: Type Checking Implementation (IN PROGRESS)
 Current Status: Mypy configured but with loose settings
@@ -67,7 +67,7 @@ Current Status: Mypy configured but with loose settings
 
 Phase Validation:
 - Tests: poetry run pytest
-- Pipeline: ./cleanup.sh -a && ./run_nova.sh
+- Pipeline: ./cleanup.sh -a && ./process_notes.sh
 
 ## Phase 3: Test Coverage Enhancement
 1. [ ] Add pre-commit hook for test coverage
@@ -84,7 +84,7 @@ Phase Validation:
 
 Phase Validation:
 - Tests: poetry run pytest
-- Pipeline: ./cleanup.sh -a && ./run_nova.sh
+- Pipeline: ./cleanup.sh -a && ./process_notes.sh
 
 ## Phase 4: Documentation Standards
 1. [ ] Add docstring checks:
@@ -101,7 +101,7 @@ Phase Validation:
 
 Phase Validation:
 - Tests: poetry run pytest
-- Pipeline: ./cleanup.sh -a && ./run_nova.sh
+- Pipeline: ./cleanup.sh -a && ./process_notes.sh
 
 ## Phase 5: Performance and Complexity
 1. [ ] Add complexity checks:
@@ -118,7 +118,7 @@ Phase Validation:
 
 Phase Validation:
 - Tests: poetry run pytest
-- Pipeline: ./cleanup.sh -a && ./run_nova.sh
+- Pipeline: ./cleanup.sh -a && ./process_notes.sh
 
 ## Current Ignore Patterns
 - tests/
@@ -146,7 +146,7 @@ Phase Validation:
 
 Phase Validation:
 - Tests: poetry run pytest
-- Pipeline: ./cleanup.sh -a && ./run_nova.sh
+- Pipeline: ./cleanup.sh -a && ./process_notes.sh
 
 ## Success Criteria
 1. All hooks pass on clean codebase
@@ -174,4 +174,4 @@ Phase Validation:
    - Performance impact assessment
    Final Validation:
    - Tests: poetry run pytest
-   - Pipeline: ./cleanup.sh -a && ./run_nova.sh 
+   - Pipeline: ./cleanup.sh -a && ./process_notes.sh 

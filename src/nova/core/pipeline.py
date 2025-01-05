@@ -10,7 +10,14 @@ from typing import Any, Dict, List, Optional, Set, Type, Union
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from rich.table import Table
 from rich.text import Text
 
@@ -51,6 +58,17 @@ class NovaPipeline:
 
         # Initialize progress tracker
         self.progress_tracker = ProgressTracker()
+
+        # Initialize progress display
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]{task.description}"),
+            BarColumn(bar_width=40),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            console=self.console,
+            transient=False,
+        )
 
         # Reset state
         self.reset_state()
@@ -156,72 +174,92 @@ class NovaPipeline:
                         self.logger.error(f"Invalid phase: {phase}")
                         return False
 
-            # Process each phase
-            for phase_name in phases:
-                current_phase: Phase = available_phases[phase_name]
-                phase_output_dir = self.get_phase_output_dir(phase_name)
+            # Start progress display
+            with self.progress:
+                # Process each phase
+                for phase_name in phases:
+                    current_phase: Phase = available_phases[phase_name]
+                    phase_output_dir = self.get_phase_output_dir(phase_name)
 
-                # Initialize state for this phase
-                if phase_name not in self.state:
-                    self.state[phase_name] = {
-                        "successful_files": set(),
-                        "failed_files": set(),
-                        "skipped_files": set(),
-                        "unchanged_files": set(),
-                        "_file_errors": {},
-                    }
+                    # Initialize state for this phase
+                    if phase_name not in self.state:
+                        self.state[phase_name] = {
+                            "successful_files": set(),
+                            "failed_files": set(),
+                            "skipped_files": set(),
+                            "unchanged_files": set(),
+                            "_file_errors": {},
+                        }
 
-                # Get input files for this phase
-                if phase_name == "parse":
-                    # Parse phase uses original input files
-                    phase_input_files = input_files
-                elif phase_name == "disassemble":
-                    # Disassemble phase uses parsed markdown files
-                    parse_dir = self.get_phase_output_dir("parse")
-                    phase_input_files = [f for f in parse_dir.rglob("*.parsed.md")]
-                elif phase_name == "split":
-                    # Split phase uses disassembled files
-                    disassemble_dir = self.get_phase_output_dir("disassemble")
-                    phase_input_files = [
-                        f for f in disassemble_dir.rglob("*.summary.md")
-                    ]
-                    phase_input_files.extend(
-                        [f for f in disassemble_dir.rglob("*.rawnotes.md")]
-                    )
-                elif phase_name == "finalize":
-                    # Finalize phase uses split files
-                    split_dir = self.get_phase_output_dir("split")
-                    phase_input_files = [f for f in split_dir.rglob("*")]
-                else:
-                    # Unknown phase, use original input files
-                    phase_input_files = input_files
-
-                # Process files for this phase
-                for file_path in phase_input_files:
-                    try:
-                        # Skip .DS_Store files silently without counting them
-                        if str(file_path).endswith(".DS_Store"):
-                            continue
-
-                        metadata = await current_phase.process_file(
-                            file_path, phase_output_dir
+                    # Get input files for this phase
+                    if phase_name == "parse":
+                        # Parse phase uses original input files
+                        phase_input_files = input_files
+                    elif phase_name == "disassemble":
+                        # Disassemble phase uses parsed markdown files
+                        parse_dir = self.get_phase_output_dir("parse")
+                        phase_input_files = [f for f in parse_dir.rglob("*.parsed.md")]
+                    elif phase_name == "split":
+                        # Split phase uses disassembled files
+                        disassemble_dir = self.get_phase_output_dir("disassemble")
+                        phase_input_files = [
+                            f for f in disassemble_dir.rglob("*.summary.md")
+                        ]
+                        phase_input_files.extend(
+                            [f for f in disassemble_dir.rglob("*.rawnotes.md")]
                         )
-                        if metadata and metadata.processed:
-                            self.state[phase_name]["successful_files"].add(file_path)
-                        else:
-                            self.state[phase_name]["failed_files"].add(file_path)
-                    except Exception as e:
-                        error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                        self.logger.error(f"Error processing {file_path}: {error_msg}")
-                        self._add_failed_file(phase_name, file_path, error_msg)
+                    elif phase_name == "finalize":
+                        # Finalize phase uses split files
+                        split_dir = self.get_phase_output_dir("split")
+                        phase_input_files = [f for f in split_dir.rglob("*")]
+                    else:
+                        # Unknown phase, use original input files
+                        phase_input_files = input_files
 
-                # Run phase finalization
-                try:
-                    current_phase.finalize()
-                except Exception as e:
-                    error_msg = f"Error in {phase_name} finalization: {str(e)}"
-                    self.logger.error(error_msg)
-                    self._add_failed_file(phase_name, Path("finalization"), error_msg)
+                    # Create progress task for this phase
+                    task_id = self.progress.add_task(
+                        f"[cyan]{phase_name.upper()}[/cyan]",
+                        total=len(phase_input_files),
+                    )
+
+                    # Process files for this phase
+                    for file_path in phase_input_files:
+                        try:
+                            # Skip .DS_Store files silently without counting them
+                            if str(file_path).endswith(".DS_Store"):
+                                continue
+
+                            metadata = await current_phase.process_file(
+                                file_path, phase_output_dir
+                            )
+                            if metadata and metadata.processed:
+                                self.state[phase_name]["successful_files"].add(
+                                    file_path
+                                )
+                            else:
+                                self.state[phase_name]["failed_files"].add(file_path)
+
+                            # Update progress
+                            self.progress.update(task_id, advance=1)
+
+                        except Exception as e:
+                            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+                            self.logger.error(
+                                f"Error processing {file_path}: {error_msg}"
+                            )
+                            self._add_failed_file(phase_name, file_path, error_msg)
+                            # Update progress even on error
+                            self.progress.update(task_id, advance=1)
+
+                    # Run phase finalization
+                    try:
+                        current_phase.finalize()
+                    except Exception as e:
+                        error_msg = f"Error in {phase_name} finalization: {str(e)}"
+                        self.logger.error(error_msg)
+                        self._add_failed_file(
+                            phase_name, Path("finalization"), error_msg
+                        )
 
             # Calculate duration and show summary
             duration = time.time() - start_time

@@ -211,7 +211,7 @@ main() {
     validate_installation
 
     log_success "Nova installation completed successfully"
-    log_info "You can now run './run_nova.sh' to process documents"
+    log_info "You can now run './process_notes.sh' to process documents"
 }
 
 # Run main installation

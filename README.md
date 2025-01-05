@@ -33,7 +33,7 @@ These are enforced via pre-commit hooks. The hooks will run automatically on com
 
 Run Nova with:
 ```bash
-./run_nova.sh
+./process_notes.sh
 ```
 
 Clean up processing artifacts with:
