@@ -4,7 +4,6 @@ Unit tests for Nova core functionality.
 import asyncio
 import json
 import logging
-import time
 from pathlib import Path
 
 import pytest

@@ -1,5 +1,4 @@
 """Test utilities for Nova."""
-import os
 from pathlib import Path
 
 

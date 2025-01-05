@@ -1,7 +1,6 @@
 """
 Global pytest fixtures and utilities for Nova test suite.
 """
-import os
 import shutil
 import tempfile
 from pathlib import Path

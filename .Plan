@@ -43,7 +43,7 @@ Priority: HIGHEST - Get pre-commit working with limited scope first
 - Verify hooks pass with overrides
 - Update .Plan with progress
 
-## Phase 2: Mypy Errors (0 errors in 0 files, down from 1 in 1 file)
+## Phase 2: Mypy Errors (0 errors in 0 files) ✓
 Priority: HIGH - Start with type checking as it's most critical for bot interaction
 
 ### Current State (2024-01-06)
@@ -112,83 +112,405 @@ None - All mypy errors have been resolved!
 - All tests passing (56 passed, 1 skipped)
 - Ready to proceed to Phase 3: Flake8 Issues
 
-## Phase 3: Flake8 Issues
-Priority: MEDIUM - Code style and organization
+## Phase 3: Import Organization and Cleanup
 
-### Tasks
-1. Configure Flake8 Overrides ✓
-   - Add ignore rules for:
-     - Unused imports (F401)
-     - Line length (E501)
-     - Undefined names (F821)
-     - Unused variables (F841)
-     - F-string issues (F541)
-     - Redefinition (F811)
-     - Whitespace (E203, W293)
-   - Document each override
+### Current State
+- Completed initial analysis of all files
+- Created comprehensive import standards
+- Developed detailed refactoring strategy
+- All tests currently passing (56 passed, 1 skipped)
 
-2. Fix Issues by Category
-   - Start with unused imports
-   - Then line length
-   - Then undefined names
-   - Remove overrides as fixed
+### Import Standards and Organization
 
-3. Clean Up Remaining Issues
-   - Fix unused variables
-   - Fix f-string placeholders
-   - Remove final overrides
+1. **Standard Import Structure**
+   ```python
+   """Module docstring explaining purpose and dependencies."""
+   # Standard library
+   import logging
+   import os
+   from pathlib import Path
+   from typing import Dict, List, Optional
 
-### Validation
-- Run flake8 checks
-- Remove working overrides
-- Update documentation
-- Track remaining issues
+   # External dependencies
+   from rich.console import Console
+   from PIL import Image
 
-## Phase 4: Black/isort Issues
-Priority: MEDIUM - Code formatting
+   # Internal imports
+   from nova.config.manager import ConfigManager
+   from nova.core.metadata import FileMetadata
+   ```
 
-### Tasks
-1. Configure Formatting Overrides ✓
-   - Add exclude patterns
-   - Document exclusions
-   - Set up consistent rules
+2. **Type Hint Organization**
+   ```python
+   from typing import TYPE_CHECKING
 
-2. Fix Formatting Issues
-   - Run black with --check
-   - Run isort with --check
-   - Remove exclusions as fixed
+   if TYPE_CHECKING:
+       from nova.core.pipeline import NovaPipeline
+   ```
 
-### Validation
-- Run formatting checks
-- Remove working exclusions
-- Update documentation
-- Track remaining issues
+3. **Module-Specific Patterns**
+   - Handler Pattern:
+     ```python
+     # Core utilities
+     import mimetypes
+     import os
+     from pathlib import Path
 
-## Phase 5: Final Clean Up
-Priority: LOW - Remove all remaining overrides
+     # Handler-specific external dependencies
+     from PIL import Image
 
-### Tasks
-1. Audit Remaining Overrides
-   - List all remaining overrides
-   - Prioritize removal
-   - Document blockers
+     # Internal imports
+     from ..config.manager import ConfigManager
+     from ..core.markdown import MarkdownWriter
+     ```
+   - Phase Pattern:
+     ```python
+     # Core utilities
+     import logging
+     from pathlib import Path
 
-2. Remove Overrides
-   - Fix remaining issues
-   - Remove overrides one by one
-   - Update documentation
+     # Output formatting
+     from rich.console import Console
+     from rich.table import Table
 
-3. Final Validation
-   - Run all hooks
-   - Verify no overrides needed
-   - Update documentation
+     # Internal imports
+     from nova.core.metadata import FileMetadata
+     from nova.phases.base import Phase
+     ```
 
-### Validation
-- Run full pre-commit suite
-- Verify all checks pass
-- Document final state
+### Tooling Configuration
+
+1. **isort Setup**
+   ```ini
+   [settings]
+   profile = black
+   line_length = 88
+   multi_line_output = 3
+   include_trailing_comma = True
+   known_first_party = nova
+   known_third_party = PIL,rich,pandas,openai
+   sections = FUTURE,STDLIB,THIRDPARTY,FIRSTPARTY,LOCALFOLDER
+   ```
+
+2. **flake8 Configuration**
+   ```ini
+   [flake8]
+   max-line-length = 88
+   extend-ignore = E203
+   per-file-ignores =
+       __init__.py:F401
+       test_*.py:E501
+   ```
+
+### Tasks and Progress
+
+1. Documentation and Standards ✓
+   - Created import_standards.md with organization rules ✓
+   - Documented common patterns and best practices ✓
+   - Added module-specific guidelines ✓
+   - Provided example code blocks ✓
+
+2. Analysis Phase ✓
+   - Analyzed utility files ✓
+   - Completed test file analysis ✓
+   - Analyzed medium-risk files ✓
+   - Documented patterns found ✓
+   - Identified no unused imports in analyzed files ✓
+
+3. Core Module Refactoring (IN PROGRESS)
+   - [ ] Standardize base.py imports
+     - Organize according to standards
+     - Move type hints to TYPE_CHECKING
+     - Document requirements
+   - [ ] Update registry.py imports
+     - Consolidate handler imports
+     - Move type hints to TYPE_CHECKING
+   - [ ] Review configuration imports
+     - Standardize settings imports
+     - Document dependencies
+
+4. Handler Refactoring (NEXT)
+   - [ ] Standardize core imports across handlers
+   - [ ] Update image handler imports
+   - [ ] Update document handler imports
+   - [ ] Apply standards to remaining handlers
+
+5. Phase Refactoring (PENDING)
+   - [ ] Standardize phase imports
+   - [ ] Update parse phase imports
+   - [ ] Update split phase imports
+   - [ ] Update remaining phase imports
+
+6. Utility Refactoring (PENDING)
+   - [ ] Review and update utility imports
+   - [ ] Update test utility imports
+   - [ ] Document dependencies
+
+7. Testing and Validation (PENDING)
+   - [ ] Run full test suite
+   - [ ] Verify standards compliance
+   - [ ] Document any exceptions
+
+8. Final Review (PENDING)
+   - [ ] Review all documentation
+   - [ ] Check import time impact
+   - [ ] Verify memory usage
+
+### Implementation Details
+
+1. **Core Module Updates**
+   - Base Classes:
+     ```python
+     """Base module docstring with dependency explanation."""
+     # Standard library
+     import logging
+     import os
+     from abc import ABC, abstractmethod
+     from pathlib import Path
+     from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
+     if TYPE_CHECKING:
+         from ..core.pipeline import NovaPipeline
+     ```
+
+   - Registry:
+     ```python
+     """Registry module with handler management."""
+     # Standard library
+     import logging
+     from pathlib import Path
+     from typing import Dict, List, Type, TypeVar
+
+     # Internal imports
+     from .base import BaseHandler
+     from ..config.manager import ConfigManager
+     ```
+
+2. **Handler Implementation**
+   - Common Pattern:
+     ```python
+     """Handler implementation with specific purpose."""
+     # Standard library
+     import mimetypes
+     import os
+     from pathlib import Path
+     from typing import Optional
+
+     # External dependencies (if needed)
+     from PIL import Image  # Example for image handler
+
+     # Internal imports
+     from ..config.manager import ConfigManager
+     from .base import BaseHandler
+     ```
+
+3. **Phase Implementation**
+   - Standard Structure:
+     ```python
+     """Phase implementation details."""
+     # Standard library
+     import logging
+     from pathlib import Path
+     from typing import Optional
+
+     # Output formatting
+     from rich.console import Console
+
+     # Internal imports
+     from ..core.metadata import FileMetadata
+     from .base import Phase
+     ```
+
+### Validation Requirements
+
+1. **Import Organization**
+   - Correct section ordering
+   - Proper grouping by type
+   - Clear separation with newlines
+   - Consistent import style
+
+2. **Type Hint Validation**
+   - All runtime imports outside TYPE_CHECKING
+   - Forward references in TYPE_CHECKING
+   - Consistent type hint format
+   - No unnecessary type imports
+
+3. **Performance Checks**
+   - Import time measurement
+   - Memory usage monitoring
+   - Circular dependency detection
+   - Import path optimization
+
+4. **Documentation Requirements**
+   - Module docstrings explaining dependencies
+   - Import section comments
+   - Type hint explanations
+   - External dependency justification
+
+### Module-Specific Standards
+
+1. **Handlers**
+   - Always import BaseHandler
+   - Document external dependencies
+   - Use type hints for metadata
+   - Keep imports minimal
+
+2. **Phases**
+   - Import Phase base class
+   - Document rich usage
+   - Type hint pipeline references
+   - Organize by functionality
+
+3. **Utilities**
+   - Focus on standard library
+   - Minimize external deps
+   - Document any exceptions
+   - Keep interface clean
+
+### Implementation Strategy
+1. Follow priority order:
+   - Core modules first
+   - Handlers by usage frequency
+   - Phases in pipeline order
+   - Utilities by dependency count
+
+2. For each module:
+   - Review current imports
+   - Apply standard organization
+   - Update type hints
+   - Run validation sequence:
+     ```bash
+     # Run test suite
+     poetry run pytest
+     
+     # Run cleanup and nova
+     ./cleanup.sh -a && ./run_nova.sh
+     
+     # Verify all changes
+     pre-commit run --all-files
+     ```
+   - Document changes
+   - Update .Plan
+
+3. Validation Checkpoints:
+   - After each core module update
+   - After each group of handler updates
+   - After each group of phase updates
+   - After utility updates
+   - Before moving to next phase
+
+### Phase Validation Requirements
+
+1. **Core Module Phase**
+   - After base.py updates:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After registry.py updates:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After configuration updates:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+
+2. **Handler Phase**
+   - After core handler updates:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After image/document handlers:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After remaining handlers:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+
+3. **Phase Updates**
+   - After parse phase updates:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After split phase updates:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After remaining phases:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+
+4. **Utility Updates**
+   - After each utility module:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+   - After test utilities:
+     ```bash
+     poetry run pytest
+     ./cleanup.sh -a && ./run_nova.sh
+     ```
+
+### Validation Failure Protocol
+1. If tests fail:
+   - Revert last change
+   - Document failure in .Plan
+   - Analyze test output
+   - Create focused fix
+   - Re-run validation sequence
+
+2. If cleanup/nova fails:
+   - Document failure details
+   - Check file permissions
+   - Verify path handling
+   - Fix and re-validate
+   - Update .Plan with solution
+
+3. If pre-commit fails:
+   - Address each hook error
+   - Re-run affected files
+   - Document any overrides
+   - Update configuration if needed
+
+### Success Criteria
+1. All imports follow standard organization
+2. No unused imports remain
+3. Type hints properly organized
+4. All tests passing
+5. Documentation complete and accurate
+6. No flake8 import warnings
+7. Improved code maintainability
+8. All validation checkpoints pass
+9. cleanup.sh -a runs successfully
+10. run_nova.sh executes without errors
+11. No regressions in existing functionality
 
 ## Progress Log
+
+### 2024-01-07
+- Completed Phase 2: All mypy errors resolved
+- Starting Phase 3: Flake8 Issues
+- Successfully removed first unused import (os from test_utils.py)
+- Analyzed utils/markdown.py: all imports required (os.path.relpath actively used)
+- Successfully removed second unused import (os from file_utils.py)
+- Analyzed utils/path_utils.py: all imports required (os.path operations used extensively)
+- Analyzed utils/output_manager.py: all imports required and clean (no unused imports)
+- Successfully removed third unused import (os from tests/conftest.py)
+- All tests passing (56 passed, 1 skipped)
+- Current focus: Continuing with low-risk file cleanup
 
 ### 2024-01-06
 - Updated mypy error status: 0 errors in 0 files
@@ -206,8 +528,25 @@ Priority: LOW - Remove all remaining overrides
   - Documented current state and overrides
 - Ready to begin Phase 2: Mypy Errors
 
+### 2024-01-08
+- Completed documentation and analysis phase:
+  - Created comprehensive import standards
+  - Documented patterns and best practices
+  - Analyzed all files for import usage
+  - Created detailed refactoring plan
+- Next immediate tasks:
+  1. Begin core module refactoring with base.py
+  2. Configure isort and flake8 settings
+  3. Update registry.py imports
+- Maintaining current progress: 56 tests passing, 1 skipped
+- Focus: Systematic implementation of refactoring plan
+
 ## Notes
-- Start with maximum overrides ✓
-- Remove overrides one at a time
-- Document override removal process
-- Track progress in each phase 
+- Follow priority order for refactoring
+- Document all changes
+- Keep tests passing
+- Update progress tracking
+- Follow import examples exactly
+- Use provided patterns for each module type
+- Validate against standards before commit
+- Document any deviations 
