@@ -67,7 +67,8 @@ class NovaPipeline:
             TaskProgressColumn(),
             TimeRemainingColumn(),
             console=self.console,
-            transient=False,
+            transient=True,
+            expand=True,
         )
 
         # Reset state
@@ -263,7 +264,9 @@ class NovaPipeline:
 
             # Calculate duration and show summary
             duration = time.time() - start_time
+            console.print()  # Add spacing after progress bars
             self.show_summary(duration)
+            console.print()  # Add spacing after summary
 
             # Check for any failures
             for phase_name in phases:

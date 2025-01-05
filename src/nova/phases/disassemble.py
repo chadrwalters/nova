@@ -487,7 +487,10 @@ class DisassemblyPhase(Phase):
 
     def finalize(self) -> None:
         """Print summary and cleanup after processing all files."""
+        # Ensure we have a newline before printing summary
+        console.print()
         self._print_summary()
+        console.print()
 
         # Clear any temporary state
         if "_file_errors" in self.pipeline.state["disassemble"]:
