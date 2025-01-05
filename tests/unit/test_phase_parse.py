@@ -64,11 +64,11 @@ def test_state(nova_config, mock_fs):
 
     def get_output_path_for_phase(input_file, phase_name, extension):
         input_file = Path(input_file)
-        return mock_fs["output"] / f"{input_file.stem}{extension}"
+        output_path = mock_fs["output"] / f"{input_file.stem}{extension}"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        return output_path
 
-    mock_output_manager.get_output_path_for_phase.side_effect = (
-        get_output_path_for_phase
-    )
+    mock_output_manager.get_output_path_for_phase.side_effect = get_output_path_for_phase
 
     # Configure mock pipeline
     mock_pipeline.output_manager = mock_output_manager
@@ -115,7 +115,7 @@ class TestParsePhase:
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.register_handler(MarkdownHandler)
+        phase.handler_registry.register_handler(MarkdownHandler)
 
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])
@@ -143,7 +143,7 @@ class TestParsePhase:
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.register_handler(DocumentHandler)
+        phase.handler_registry.register_handler(DocumentHandler)
 
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])
@@ -169,7 +169,7 @@ class TestParsePhase:
 
         # Set up parse phase with mocked handler
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.handlers["jpg"] = mock_image_handler
+        phase.handler_registry.handlers["jpg"] = mock_image_handler
 
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])
@@ -205,9 +205,9 @@ class TestParsePhase:
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.register_handler(MarkdownHandler)
-        phase.registry.register_handler(DocumentHandler)
-        phase.registry.handlers["jpg"] = mock_image_handler
+        phase.handler_registry.register_handler(MarkdownHandler)
+        phase.handler_registry.register_handler(DocumentHandler)
+        phase.handler_registry.handlers["jpg"] = mock_image_handler
 
         # Process files concurrently
         tasks = [
@@ -247,9 +247,9 @@ class TestParsePhase:
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.register_handler(MarkdownHandler)
-        phase.registry.register_handler(DocumentHandler)
-        phase.registry.handlers["jpg"] = mock_image_handler
+        phase.handler_registry.register_handler(MarkdownHandler)
+        phase.handler_registry.register_handler(DocumentHandler)
+        phase.handler_registry.handlers["jpg"] = mock_image_handler
 
         # Process files and check error handling
         for file_path in files.values():
@@ -279,7 +279,7 @@ class TestParsePhase:
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.handlers["svg"] = mock_image_handler
+        phase.handler_registry.handlers["svg"] = mock_image_handler
 
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])
@@ -311,7 +311,7 @@ class TestParsePhase:
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
-        phase.registry.handlers["svg"] = mock_image_handler
+        phase.handler_registry.handlers["svg"] = mock_image_handler
 
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])

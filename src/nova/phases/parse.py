@@ -2,37 +2,36 @@
 
 # Standard library
 import logging
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
 # Internal imports
 from ..config.manager import ConfigManager
+from ..core.metadata import FileMetadata
 from ..handlers.base import BaseHandler
 from ..handlers.registry import HandlerRegistry
 from ..models.document import DocumentMetadata
-from .base import Phase
+from ..phases.base import Phase
+
+if TYPE_CHECKING:
+    from ..core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 
 
 class ParsePhase(Phase):
-    """Parse phase that converts input files to markdown."""
+    """Parse phase implementation."""
 
-    def __init__(self, config, pipeline):
-        """Initialize parse phase.
+    def __init__(self, config: ConfigManager, pipeline: "NovaPipeline") -> None:
+        """Initialize phase.
 
         Args:
-            config: Configuration manager
+            config: Nova configuration manager
             pipeline: Pipeline instance
         """
         super().__init__("parse", config, pipeline)
-
-        # Initialize handler registry
-        self.registry = HandlerRegistry(config)
-
-        # Initialize stats
-        self.stats: Dict[str, Dict[str, Any]] = {}
+        self.handler_registry = HandlerRegistry(config)
+        self.stats: Dict[str, Dict] = {}
 
     def _get_handler(self, file_path: Path) -> Optional[BaseHandler]:
         """Get appropriate handler for file type.
@@ -43,7 +42,7 @@ class ParsePhase(Phase):
         Returns:
             Handler instance or None if no handler available
         """
-        return self.registry.get_handler(file_path)
+        return self.handler_registry.get_handler(file_path)
 
     async def process_file(
         self, file_path: Union[str, Path], output_dir: Union[str, Path]

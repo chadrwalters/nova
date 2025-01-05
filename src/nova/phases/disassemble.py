@@ -157,7 +157,11 @@ class DisassemblyPhase(Phase):
                             try:
                                 content = (
                                     file_path.read_text(encoding="utf-8")
-                                    if file_type not in ["IMAGE", "PDF", "EXCEL"]
+                                    if file_type
+                                    not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
+                                    and not file_path.name.startswith(
+                                        "."
+                                    )  # Skip hidden files like .DS_Store
                                     else f"Binary file: {file_path.name}"
                                 )
                             except UnicodeDecodeError:
@@ -234,7 +238,11 @@ class DisassemblyPhase(Phase):
                         try:
                             content = (
                                 asset.read_text(encoding="utf-8")
-                                if file_type not in ["IMAGE", "PDF", "EXCEL"]
+                                if file_type
+                                not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
+                                and not asset.name.startswith(
+                                    "."
+                                )  # Skip hidden files like .DS_Store
                                 else f"Binary file: {asset.name}"
                             )
                         except UnicodeDecodeError:
@@ -266,42 +274,39 @@ class DisassemblyPhase(Phase):
 
         return attachment_count
 
-    def _print_summary(self):
-        """Print processing summary table."""
+    def _print_summary(self) -> None:
+        """Print a summary of the disassembly phase results."""
         stats = self.pipeline.state["disassemble"]["stats"]
 
-        table = Table(title="Disassemble Results")
+        # Create summary table
+        table = Table(title="Disassembly Phase Summary")
         table.add_column("Metric", style="cyan")
-        table.add_column("Count", justify="right")
+        table.add_column("Value", justify="right", style="green")
 
-        # Add total sections row
-        total_sections = stats.get("total_sections", 0)
-        table.add_row("Total Sections", str(total_sections))
+        # Add rows
+        table.add_row(
+            "Total Files Processed",
+            str(stats["total_processed"]),
+        )
+        table.add_row(
+            "Total Sections",
+            str(stats["total_sections"]),
+        )
+        table.add_row(
+            "Summary Files",
+            f"{stats['summary_files']['created']} created, {stats['summary_files']['empty']} empty",
+        )
+        table.add_row(
+            "Raw Notes Files",
+            f"{stats['raw_notes_files']['created']} created, {stats['raw_notes_files']['empty']} empty",
+        )
+        table.add_row(
+            "Attachments",
+            f"{stats['attachments']['copied']} copied, {stats['attachments']['failed']} failed",
+        )
 
-        # Add total attachments row
-        total_attachments = stats.get("total_attachments", 0)
-        table.add_row("Total Attachments", str(total_attachments))
-
-        # Always show the table if we processed any files
-        if stats["total_processed"] > 0:
-            logger.info("\n" + str(table))
-
-        # Log failed files with their errors
-        failed_files = self.pipeline.state["disassemble"]["failed_files"]
-        if failed_files:
-            logger.error(f"\nFailed to process {len(failed_files)} files:")
-            for file_path in failed_files:
-                # Get error message if available in metadata
-                error_msg = ""
-                if file_path in self.pipeline.state["disassemble"]["_file_errors"]:
-                    error_msg = f": {self.pipeline.state['disassemble']['_file_errors'][file_path]}"
-                logger.error(f"  - {file_path}{error_msg}")
-            # Indicate phase failure
-            logger.error("\nDisassembly phase completed with errors")
-            self.pipeline.state["disassemble"]["phase_failed"] = True
-        else:
-            logger.info("All files processed successfully")
-            self.pipeline.state["disassemble"]["phase_failed"] = False
+        # Print table
+        console.print(table)
 
     def _split_content(self, content: str) -> Tuple[str, Optional[str]]:
         """Split content into summary and raw notes if marker exists.
@@ -473,12 +478,13 @@ class DisassemblyPhase(Phase):
             ] += 1
             return metadata
 
-    def finalize(self):
-        """Finalize the disassembly phase."""
+    def finalize(self) -> None:
+        """Print summary and cleanup after processing all files."""
         self._print_summary()
-        logger.debug("Disassembly phase complete")
-        # Return failure status
-        return not self.pipeline.state["disassemble"].get("phase_failed", False)
+
+        # Clear any temporary state
+        if "_file_errors" in self.pipeline.state["disassemble"]:
+            del self.pipeline.state["disassemble"]["_file_errors"]
 
     async def process_file(
         self, file_path: Union[str, Path], output_dir: Union[str, Path]

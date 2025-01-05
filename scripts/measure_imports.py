@@ -5,7 +5,7 @@ Measure import times for Nova modules.
 import importlib
 import statistics
 import time
-from typing import Dict, List, Union, cast
+from typing import Dict, List, NoReturn, Union, cast
 
 MODULES_TO_TEST = [
     "nova.config.manager",
@@ -49,7 +49,7 @@ def measure_import_time(module_name: str, iterations: int = 5) -> List[float]:
     return times
 
 
-def main():
+def main() -> NoReturn:
     """Run import time measurements."""
     results: Dict[str, Dict[str, Union[float, List[float]]]] = {}
 
@@ -70,6 +70,8 @@ def main():
     print("-" * 60)
     total_mean = sum(cast(float, r["mean"]) for r in results.values())
     print(f"\nTotal mean import time: {total_mean:.2f}ms")
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -7,3 +7,52 @@
 2. Vision Model
    - Use "gpt-4o" model for vision recognition
    - Do NOT use gpt-4-vision-preview or any other vision models 
+
+3 AI Commands
+When I submit a command to you, you MUST follow the procedure outlined in the command.
+
+- "update docs":
+    - procedure:
+        1. "Parse all Markdown files in docs/**/*.md and README.md"
+        2. "Extract relevant updates from conversation"
+        3. "Apply any relevant and useful updates"
+
+- "update rules":
+    - procedure:
+        1. "Parse .cursorrules file"
+        2. "Extract rule updates from conversation"
+        3. "Apply any relevant and useful updates"
+
+- "capture thoughts":
+    - procedure:
+        1. "You MUST read the .cursorscratchpad file"
+        2. "Extract relevant insights from current context"
+        3. "Interleave your thoughts with previous thoughts in the <SCRATCHPAD> buffer"
+        4. "You MUST write your thoughts in the <SCRATCHPAD> buffer"
+        5. "Consolidate your thoughts as necessary, grouping related thoughts together"
+
+- "update cursornotes":
+    - procedure:
+        1. "You MUST read the .cursornotes and .cursorscratchpad files"
+        2. "Consolidate previous thoughts from <SCRATCHPAD>"
+        3. "Integrate new information from current conversation"
+        4. "Format as dated entry, request date from user"
+        5. "Append to .cursornotes file"
+        6. "Clear <SCRATCHPAD> section in .cursorscratchpad"
+
+- "run tests":
+    - procedure:
+        1. "You MUST poetry run pytest"    
+
+- "clean run":
+    - procedure:
+        1. "You MUST poetry run ./cleanup.sh -a && ./run_nova.sh"   
+
+- "fix pre-commit":
+    - procedure:
+        1. "You MUST poetry run pre-commit run mypy --all-files"  
+        2. "You MUST fix all the errors"
+
+
+
+❯ 

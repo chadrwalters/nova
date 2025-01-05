@@ -44,7 +44,7 @@ class ReferenceManager:
         ".md": "DOC",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the reference manager."""
         self.logger = logging.getLogger(__name__)
         self.references: Dict[str, Reference] = {}  # ref_marker -> Reference

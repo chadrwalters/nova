@@ -3,16 +3,20 @@
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 from rich.console import Console
 from rich.logging import RichHandler
+
+from ..config.manager import ConfigManager
+from ..config.settings import LoggingConfig, NovaConfig
 
 # This module is deprecated in favor of nova.core.logging.LoggingManager
 # Keeping this file for backwards compatibility
 from ..core.logging import LoggingManager
 
 
-def setup_logging(config=None):
+def setup_logging(config: Optional[ConfigManager] = None) -> None:
     """Set up logging configuration using LoggingManager.
 
     This function is deprecated. Use LoggingManager directly instead.
@@ -20,9 +24,7 @@ def setup_logging(config=None):
     Args:
         config: Optional configuration manager instance
     """
-    if config and config.logging:
-        manager = LoggingManager(config.logging)
+    if config and isinstance(config.config, NovaConfig) and config.config.logging:
+        manager = LoggingManager(config.config.logging)
     else:
-        from ..config.settings import LoggingConfig
-
         manager = LoggingManager(LoggingConfig())

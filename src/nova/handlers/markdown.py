@@ -4,7 +4,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Match, Optional, Union
 
 # Internal imports
 from ..config.manager import ConfigManager
@@ -41,7 +41,15 @@ class MarkdownHandler(BaseHandler):
         # First remove any existing HTML comments
         content = re.sub(r"<!--.*?-->", "", content)
 
-        def replace_link(match):
+        def replace_link(match: Match[str]) -> str:
+            """Replace markdown links with reference markers.
+
+            Args:
+                match: Regex match object containing link components
+
+            Returns:
+                Reference marker string
+            """
             full_match = match.group(0)
             is_image = full_match.startswith("!")
             text = match.group(2)

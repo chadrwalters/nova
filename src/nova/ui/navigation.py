@@ -173,7 +173,7 @@ class NavigationRenderer:
     }
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize navigation renderer."""
         self.header_template = Template(self.HEADER_TEMPLATE)
         self.tooltip_template = Template(self.TOOLTIP_TEMPLATE)

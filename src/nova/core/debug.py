@@ -67,6 +67,27 @@ class DebugManager:
 
         return any(file_path.match(pattern) for pattern in self.config.trace_files)
 
+    def _sanitize_state(self, state: Dict) -> Dict:
+        """Sanitize state before dumping to JSON.
+
+        Args:
+            state: State to sanitize
+
+        Returns:
+            Sanitized state
+        """
+        sanitized: Dict[str, Any] = {}
+        for key, value in state.items():
+            if isinstance(value, (str, int, float, bool)):
+                sanitized[key] = value
+            elif isinstance(value, (list, set)):
+                sanitized[key] = list(value)
+            elif isinstance(value, dict):
+                sanitized[key] = self._sanitize_state(value)
+            else:
+                sanitized[key] = str(value)
+        return sanitized
+
     def take_state_snapshot(self, state: Dict, phase: str) -> None:
         """Take a snapshot of pipeline state.
 
@@ -77,10 +98,13 @@ class DebugManager:
         if not self.config.state_logging:
             return
 
+        # Sanitize state before storing
+        sanitized_state = self._sanitize_state(state)
+
         snapshot = {
             "timestamp": datetime.now().isoformat(),
             "phase": phase,
-            "state": state,
+            "state": sanitized_state,
         }
 
         self.state_snapshots.append(snapshot)

@@ -4,16 +4,21 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 # External dependencies
 from rich.console import Console
 from rich.table import Table
 
+from ..config.manager import ConfigManager
+
 # Internal imports
 from ..core.metadata import FileMetadata
 from ..phases.base import Phase
 from ..validation.pipeline_validator import PipelineValidator
+
+if TYPE_CHECKING:
+    from ..core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +26,7 @@ logger = logging.getLogger(__name__)
 class FinalizePhase(Phase):
     """Finalize phase that processes split files and moves them to output directory."""
 
-    def __init__(self, config, pipeline):
+    def __init__(self, config: ConfigManager, pipeline: "NovaPipeline") -> None:
         """Initialize finalize phase.
 
         Args:
@@ -129,7 +134,9 @@ class FinalizePhase(Phase):
                     "total_files": len(
                         self.pipeline.state[self.name]["successful_files"]
                     ),
-                    "failed_files": len(self.pipeline.state[self.name]["failed_files"]),
+                    "failed_files_count": len(
+                        self.pipeline.state[self.name]["failed_files"]
+                    ),
                     "completed": True,
                     "success": validation_passed,
                 }

@@ -155,7 +155,7 @@ class HandlerRegistry:
 
             # Skip ignored files without creating metadata
             if file_path_obj.name in self.IGNORED_FILES:
-                self.logger.debug(f"Skipping ignored file: {file_path_obj.name}")
+                self.logger.debug(f"Silently ignoring file: {file_path_obj.name}")
                 return None
 
             # Get handler for file

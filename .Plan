@@ -1,189 +1,177 @@
 # Nova Code Quality Improvement Plan
 
-## ✓ Phase 1: Pre-commit Hook Setup (COMPLETED)
-- Configured initial hook overrides
-- Updated .pre-commit-config.yaml
-- Validated hook setup
-- Current State: All hooks passing except mypy (temporarily disabled)
+## Goal
+Implement a comprehensive but practical pre-commit filter system that:
+1. Enforces code quality standards
+2. Maintains consistent style
+3. Catches common errors early
+4. Doesn't impede development workflow
+5. Works seamlessly with Cursor.ai
 
-## ✓ Phase 2: Mypy Errors (COMPLETED)
-All errors resolved through systematic fixes:
-1. Fixed missing type annotations
-2. Fixed LSP violations
-3. Fixed handler registry issues
-4. Fixed image handler issues
-5. Fixed pipeline validator issues
-6. Fixed metadata type issues
-7. Fixed pipeline stats issues
-8. Fixed ConfigManager property issues
+## Phase 1: Basic Linting and Formatting (COMPLETED)
+- ✓ Configured black for code formatting
+- ✓ Added isort for import organization
+- ✓ Implemented flake8 for basic linting
+- ✓ Added bandit for security checks
+- ✓ Set up commitizen for commit message standards
 
-Final State:
-- 0 errors in 0 files
-- All type checking issues resolved
-- All tests passing (56 passed, 1 skipped)
+✓ Phase Validation:
+- Tests: poetry run pytest (PASSED)
+- Pipeline: ./cleanup.sh -a && ./run_nova.sh (PASSED)
 
-## → Phase 3: Import Organization (IN PROGRESS)
+## Phase 2: Type Checking Implementation (IN PROGRESS)
+Current Status: Mypy configured but with loose settings
 
-### ✓ Completed Work
-1. Core Phase Imports:
-   - handlers/base.py ✓
-   - handlers/registry.py ✓
-   - config/manager.py ✓
-   - handlers/image.py ✓
-   - handlers/document.py ✓
-   - handlers/markdown.py ✓
-   - phases/parse.py ✓
-   - phases/split.py ✓ (was already compliant)
-   - phases/finalize.py ✓
-   - phases/disassemble.py ✓
+### Next Steps
+1. [ ] Gradually tighten mypy settings:
+   For each setting change:
+   a) Run pre-commit check to identify affected files:
+      ```bash
+      poetry run pre-commit run mypy --all-files
+      ```
+   b) Fix identified type issues
+   c) Run tests to verify fixes
+   d) Run pipeline to ensure functionality
+   e) Update .pre-commit-config.yaml with new setting
+   f) Final validation with tests and pipeline
 
-2. Utility Imports:
-   - utils/markdown.py ✓
-   - utils/path_utils.py ✓
-   - utils/output_manager.py ✓
-   - utils/file_utils.py ✓
+   Settings to update:
+   - [✓] Remove --allow-untyped-defs
+     Files fixed:
+     - [✓] src/nova/validation/pipeline_validator.py
+     - [✓] src/nova/core/reference_manager.py
+     - [✓] src/nova/core/markdown/writer.py
+     - [✓] src/nova/processor/markdown_processor.py
+     - [✓] src/nova/config/logging.py
+     - [✓] src/nova/ui/navigation.py
+     - [✓] scripts/measure_imports.py
+     - [✓] src/nova/handlers/markdown.py
+     - [✓] src/nova/core/metrics.py
+     - [✓] src/nova/phases/parse.py
+     - [✓] src/nova/phases/finalize.py
+     - [✓] src/nova/phases/disassemble.py
 
-3. Test Imports:
-   - tests/unit/test_phase_parse.py ✓
-   - tests/unit/test_phase_split.py ✓
-   - tests/unit/test_phase_finalize.py ✓
-   - tests/unit/test_phase_disassemble.py ✓
+   - [ ] Remove --allow-untyped-decorators
+   - [ ] Enable --strict-optional
+   - [ ] Add error codes to ignore list instead of blanket allows
 
-### → Current Focus: Test Imports
-Next files to update:
-1. [✓] tests/unit/test_handlers.py
-2. [✓] tests/unit/test_utils.py
-3. [✓] tests/conftest.py
+2. [ ] Update type hints in core modules:
+   - [ ] phases/*.py
+   - [ ] handlers/*.py
+   - [ ] utils/*.py
+   - [ ] models/*.py
+   Validation: poetry run pytest
 
-### Future Work
-1. Test Imports:
-   - [✓] tests/unit/test_phase_*.py
-   - [✓] tests/unit/test_handlers.py
-   - [✓] tests/unit/test_utils.py
-   - [✓] tests/conftest.py
+3. [ ] Create type stubs for missing libraries
+   Validation: poetry run pytest
 
-2. Final Validation:
-   - [✓] Run full test suite
-   - [✓] Verify pipeline functionality
-   - [✓] Check import time impact
-   - [✓] Document any performance changes
+Phase Validation:
+- Tests: poetry run pytest
+- Pipeline: ./cleanup.sh -a && ./run_nova.sh
 
-## Import Standards
+## Phase 3: Test Coverage Enhancement
+1. [ ] Add pre-commit hook for test coverage
+   - [ ] Configure pytest-cov
+   - [ ] Set minimum coverage threshold
+   - [ ] Exclude appropriate paths
+   Validation: poetry run pytest
 
-### Standard Structure
-```python
-"""Module docstring explaining purpose."""
+2. [ ] Implement test-specific checks:
+   - [ ] pytest-randomly for test order independence
+   - [ ] pytest-deadfixtures for unused fixtures
+   - [ ] pytest-mock for proper mock usage
+   Validation: poetry run pytest
 
-# Standard library
-import logging
-from pathlib import Path
+Phase Validation:
+- Tests: poetry run pytest
+- Pipeline: ./cleanup.sh -a && ./run_nova.sh
 
-# External dependencies (if any)
-from rich.console import Console
+## Phase 4: Documentation Standards
+1. [ ] Add docstring checks:
+   - [ ] pydocstyle configuration
+   - [ ] Custom rules for Nova's documentation style
+   - [ ] Integration with existing hooks
+   Validation: poetry run pytest
 
-# Internal imports
-from ..core.metadata import FileMetadata
-```
+2. [ ] Implement documentation coverage:
+   - [ ] Set up interrogate
+   - [ ] Configure minimum doc coverage
+   - [ ] Add to pre-commit hooks
+   Validation: poetry run pytest
 
-### Module-Specific Patterns
+Phase Validation:
+- Tests: poetry run pytest
+- Pipeline: ./cleanup.sh -a && ./run_nova.sh
 
-1. Base Classes:
-```python
-# Standard library
-import logging
-import os
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+## Phase 5: Performance and Complexity
+1. [ ] Add complexity checks:
+   - [ ] Configure radon
+   - [ ] Set maximum complexity thresholds
+   - [ ] Add to pre-commit hooks
+   Validation: poetry run pytest
 
-if TYPE_CHECKING:
-    from ..core.pipeline import NovaPipeline
-```
+2. [ ] Implement performance checks:
+   - [ ] Add scalene for performance profiling
+   - [ ] Set performance budgets
+   - [ ] Configure CI integration
+   Validation: poetry run pytest
 
-2. Handlers:
-```python
-# Standard library
-import mimetypes
-import os
-from pathlib import Path
-from typing import Optional
+Phase Validation:
+- Tests: poetry run pytest
+- Pipeline: ./cleanup.sh -a && ./run_nova.sh
 
-# External dependencies (if needed)
-from PIL import Image
+## Current Ignore Patterns
+- tests/
+- docs/
+- examples/
 
-# Internal imports
-from ..config.manager import ConfigManager
-from .base import BaseHandler
-```
+## Planned Ignore Updates
+1. [ ] Refine test directory exclusions:
+   - [ ] Include test_*.py files in type checking
+   - [ ] Apply documentation standards to test files
+   - [ ] Keep formatting rules relaxed for test data
+   Validation: poetry run pytest
 
-3. Phases:
-```python
-# Standard library
-import logging
-from pathlib import Path
-from typing import Optional
+2. [ ] Documentation directory handling:
+   - [ ] Apply markdown linting to docs/
+   - [ ] Include API documentation checks
+   - [ ] Exclude generated documentation
+   Validation: poetry run pytest
 
-# Output formatting
-from rich.console import Console
+3. [ ] Example code management:
+   - [ ] Apply basic formatting
+   - [ ] Skip complex checks
+   - [ ] Ensure examples are typed
+   Validation: poetry run pytest
 
-# Internal imports
-from ..core.metadata import FileMetadata
-from .base import Phase
-```
-
-## Validation Process
-
-### For Each File
-1. Review current imports
-2. Apply standard organization
-3. Run validation:
-   ```bash
-   poetry run pytest
-   ./cleanup.sh -a && ./run_nova.sh
-   ```
-4. Update .Plan with progress
-
-### Error Handling
-1. Test Failures:
-   - Revert change
-   - Document failure
-   - Create focused fix
-   - Re-validate
-
-2. Pipeline Failures:
-   - Document details
-   - Check permissions
-   - Verify paths
-   - Fix and re-validate
+Phase Validation:
+- Tests: poetry run pytest
+- Pipeline: ./cleanup.sh -a && ./run_nova.sh
 
 ## Success Criteria
-1. All imports follow standards
-2. No unused imports
-3. Type hints properly organized
-4. All tests passing (56 passed, 1 skipped)
-5. Pipeline functioning correctly
-6. No flake8 warnings
-7. Documentation updated
+1. All hooks pass on clean codebase
+2. CI pipeline matches local checks
+3. Developer workflow remains smooth
+4. Cursor.ai integration works seamlessly
+5. Documentation stays current
+6. Test coverage maintains high standards
 
-## Recent Updates (2024-01-08)
-- Completed all phase imports organization
-- Verified split.py compliance
-- Updated finalize.py to use relative paths
-- Updated disassemble.py imports
-- Updated utils/markdown.py imports to use relative paths and proper grouping
-- Updated utils/path_utils.py imports with standard library section header
-- Updated utils/output_manager.py imports with section headers and relative imports
-- Updated utils/file_utils.py imports with standard library section header
-- Updated test_phase_parse.py imports with standard organization and section headers
-- Updated test_phase_split.py imports with standard organization and section headers
-- Updated test_phase_finalize.py imports with standard organization and section headers
-- Updated test_phase_disassemble.py imports with standard organization and section headers
-- Updated test_handlers.py imports with standard organization and section headers
-- Updated test_utils_path.py imports with standard organization and section headers
-- Updated conftest.py imports with standard organization and section headers
-- Completed all test file import organization
-- Measured import performance impact:
-  - Total mean import time: 195.09ms
-  - Most modules import in under 1ms
-  - config.manager has highest import time (188.28ms)
-  - No significant performance regression from import reorganization 
+## Validation Process
+1. For each new hook or rule change:
+   - Run on isolated branch
+   - Measure performance impact
+   - Document false positives
+   - Update ignore patterns
+   - Test with Cursor.ai
+   - Roll out to team
+   Validation: poetry run pytest
+
+2. For each phase completion:
+   - Full codebase validation
+   - CI pipeline verification
+   - Developer feedback review
+   - Documentation update
+   - Performance impact assessment
+   Final Validation:
+   - Tests: poetry run pytest
+   - Pipeline: ./cleanup.sh -a && ./run_nova.sh 

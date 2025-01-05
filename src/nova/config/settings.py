@@ -1,8 +1,8 @@
 """Configuration settings for Nova."""
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CacheConfig(BaseModel):
@@ -65,7 +65,7 @@ class APIConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Pipeline configuration."""
 
-    phases: List[str] = ["parse", "split"]
+    phases: List[str] = ["parse", "disassemble", "split", "finalize"]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -84,6 +84,28 @@ class PipelineConfig(BaseModel):
                 "processed_files": 0,
                 "failed_files_count": 0,
                 "skipped_files_count": 0,
+                "file_type_stats": {},
+                "attachments": {},
+                "_file_errors": {},
+            },
+            "disassemble": {
+                "successful_files": set(),
+                "failed_files": set(),
+                "skipped_files": set(),
+                "unchanged_files": set(),
+                "reprocessed_files": set(),
+                "stats": {
+                    "summary_files": {"created": 0, "empty": 0, "failed": 0},
+                    "raw_notes_files": {"created": 0, "empty": 0, "failed": 0},
+                    "attachments": {"copied": 0, "failed": 0},
+                    "total_sections": 0,
+                    "total_processed": 0,
+                    "total_attachments": 0,
+                    "total_outputs": 0,
+                },
+                "attachments": {},
+                "_file_errors": {},
+                "file_type_stats": {},
             },
             "split": {
                 "successful_files": set(),
@@ -94,7 +116,9 @@ class PipelineConfig(BaseModel):
                 "section_stats": {},
                 "summary_sections": 0,
                 "raw_notes_sections": 0,
-                "attachments": 0,
+                "attachments": set(),
+                "file_type_stats": {},
+                "_file_errors": {},
             },
             "finalize": {
                 "successful_files": set(),
@@ -108,6 +132,8 @@ class PipelineConfig(BaseModel):
                     "invalid_references": 0,
                     "missing_references": 0,
                 },
+                "file_type_stats": {},
+                "_file_errors": {},
             },
         }
 
@@ -166,3 +192,18 @@ class NovaConfig(BaseModel):
     debug: Optional[DebugConfig] = DebugConfig()
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @field_validator("input_dir", "output_dir", "processing_dir")
+    @classmethod
+    def validate_path(cls, v: Union[str, Path]) -> Path:
+        """Validate path fields.
+
+        Args:
+            v: Path value to validate
+
+        Returns:
+            Validated Path object
+        """
+        if isinstance(v, str):
+            v = Path(v)
+        return v

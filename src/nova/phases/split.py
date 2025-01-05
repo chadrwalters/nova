@@ -263,9 +263,15 @@ class SplitPhase(Phase):
                             "type": file_type,
                             "name": file_path.stem,
                             "ref": ref,
-                            "content": f"Binary file: {file_path.name}"
-                            if file_type in ["IMAGE", "PDF", "EXCEL"]
-                            else file_path.read_text(encoding="utf-8"),
+                            "content": (
+                                f"Binary file: {file_path.name}"
+                                if file_type
+                                in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
+                                or file_path.name.startswith(
+                                    "."
+                                )  # Skip hidden files like .DS_Store
+                                else file_path.read_text(encoding="utf-8")
+                            ),
                         }
                         attachments[parent_dir].append(attachment)
 

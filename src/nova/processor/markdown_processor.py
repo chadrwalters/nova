@@ -14,7 +14,8 @@ from ..core.reference_manager import ReferenceManager
 class MarkdownProcessor:
     """Processor for markdown content."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the markdown processor."""
         self.logger = logging.getLogger(__name__)
         self.reference_manager = ReferenceManager()
 

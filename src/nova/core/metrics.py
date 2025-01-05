@@ -2,7 +2,9 @@
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -113,10 +115,28 @@ class timing:
             duration = time.time() - self.start_time
             await self.tracker.record_operation(self.operation, duration)
 
-    def __call__(self, func):
-        """Use as decorator."""
+    def __call__(
+        self, func: Callable[..., Awaitable[T]]
+    ) -> Callable[..., Awaitable[T]]:
+        """Use as decorator.
 
-        async def wrapper(*args, **kwargs):
+        Args:
+            func: Async function to wrap
+
+        Returns:
+            Wrapped async function
+        """
+
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            """Wrapped function that measures execution time.
+
+            Args:
+                *args: Positional arguments
+                **kwargs: Keyword arguments
+
+            Returns:
+                Result from wrapped function
+            """
             async with self:
                 return await func(*args, **kwargs)
 

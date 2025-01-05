@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Match, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,15 @@ class MarkdownWriter:
         )
 
         # Process image paths in content
-        def replace_image_path(match):
+        def replace_image_path(match: Match[str]) -> str:
+            """Replace image paths with relative paths.
+
+            Args:
+                match: Regex match object containing image path and alt text
+
+            Returns:
+                Updated image markdown with relative path
+            """
             alt_text = match.group(1)
             img_path = match.group(2)
             # Convert to Path object

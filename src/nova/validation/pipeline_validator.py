@@ -1,4 +1,4 @@
-"""Pipeline validation script."""
+"""Pipeline validator implementation."""
 
 import argparse
 import json
@@ -6,26 +6,32 @@ import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
+
+from ..config.manager import ConfigManager
+
+if TYPE_CHECKING:
+    from ..core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 
 
 class PipelineValidator:
-    """Validates pipeline output."""
+    """Validates pipeline state and outputs."""
 
     # Marker used to split sections in parsed files
     SPLIT_MARKER = "--==RAW NOTES==--"
 
-    def __init__(self, pipeline):
+    def __init__(self, pipeline: "NovaPipeline") -> None:
         """Initialize validator.
 
         Args:
             pipeline: Pipeline instance
         """
         self.pipeline = pipeline
-        self.errors = []
-        self.attachments = {}
+        self.config = pipeline.config
+        self.errors: List[str] = []
+        self.attachments: Dict[str, List[Dict]] = {}
 
         # Get phase directories from pipeline config
         self.processing_dir = self.pipeline.config.processing_dir
@@ -235,10 +241,40 @@ class PipelineValidator:
                     parent_dir = parsed_file.parent.name
                     if parent_dir not in self.attachments:
                         self.attachments[parent_dir] = []
+
+                    # Get file type from extension
+                    file_ext = parsed_file.suffix.lower()
+                    file_type = {
+                        ".pdf": "PDF",
+                        ".doc": "DOC",
+                        ".docx": "DOC",
+                        ".xls": "EXCEL",
+                        ".xlsx": "EXCEL",
+                        ".csv": "EXCEL",
+                        ".txt": "TXT",
+                        ".json": "JSON",
+                        ".png": "IMAGE",
+                        ".jpg": "IMAGE",
+                        ".jpeg": "IMAGE",
+                        ".heic": "IMAGE",
+                        ".svg": "IMAGE",
+                        ".gif": "IMAGE",
+                    }.get(file_ext, "OTHER")
+
+                    # Only read content for text files
+                    content = (
+                        parsed_file.read_text(encoding="utf-8").strip()
+                        if file_type not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
+                        and not parsed_file.name.startswith(
+                            "."
+                        )  # Skip hidden files like .DS_Store
+                        else f"Binary file: {parsed_file.name}"
+                    )
+
                     self.attachments[parent_dir].append(
                         {
                             "path": parsed_file,
-                            "content": parsed_file.read_text(encoding="utf-8").strip(),
+                            "content": content,
                         }
                     )
 
@@ -652,22 +688,22 @@ class PipelineValidator:
             return False
 
 
-def main():
-    """Main entry point."""
-    # Set up logging
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="Validate Nova pipeline phases")
-    parser.add_argument("processing_dir", help="Path to processing directory")
+def main() -> None:
+    """Run pipeline validation."""
+    parser = argparse.ArgumentParser(description="Validate pipeline output")
+    parser.add_argument("--config", help="Path to config file")
     args = parser.parse_args()
 
-    # Run validation
-    validator = PipelineValidator(args.processing_dir)
-    is_valid = validator.validate()
+    # Initialize pipeline
+    from ..core.pipeline import NovaPipeline
 
-    # Exit with appropriate status
-    sys.exit(0 if is_valid else 1)
+    pipeline = NovaPipeline(args.config)
+
+    # Run validation
+    validator = PipelineValidator(pipeline)
+    success = validator.validate()
+
+    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":

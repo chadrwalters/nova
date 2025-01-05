@@ -208,7 +208,9 @@ class ProgressTracker:
             if status == ProgressStatus.FAILED:
                 phase.files_failed += 1
             elif status == ProgressStatus.SKIPPED:
-                phase.files_skipped += 1
+                # Don't count .DS_Store files in skipped count
+                if not str(file_path).endswith(".DS_Store"):
+                    phase.files_skipped += 1
 
             # Update progress bar
             self._update_progress()
