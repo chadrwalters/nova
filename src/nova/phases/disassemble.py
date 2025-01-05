@@ -275,23 +275,31 @@ class DisassemblyPhase(Phase):
         return attachment_count
 
     def _print_summary(self) -> None:
-        """Print a summary of the disassembly phase results."""
-        stats = self.pipeline.state["disassemble"]["stats"]
-
-        # Create summary table
+        """Print phase summary."""
         table = Table(title="Disassembly Phase Summary")
         table.add_column("Metric", style="cyan")
-        table.add_column("Value", justify="right", style="green")
+        table.add_column("Value", justify="right")
 
-        # Add rows
-        table.add_row(
-            "Total Files Processed",
-            str(stats["total_processed"]),
+        # Get stats
+        stats = self.pipeline.state["disassemble"]["stats"]
+
+        # Count actual input files (excluding metadata)
+        input_files = len(
+            [
+                f
+                for f in self.pipeline.state["disassemble"].get(
+                    "successful_files", set()
+                )
+                if not f.name.endswith(".metadata.json")
+            ]
         )
+
+        table.add_row("Input Files", str(input_files))
         table.add_row(
-            "Total Sections",
-            str(stats["total_sections"]),
+            "Output Files",
+            f"{stats['summary_files']['created']} summaries, {stats['raw_notes_files']['created']} raw notes",
         )
+        table.add_row("Total Sections", str(stats["total_sections"]))
         table.add_row(
             "Summary Files",
             f"{stats['summary_files']['created']} created, {stats['summary_files']['empty']} empty",
@@ -305,7 +313,6 @@ class DisassemblyPhase(Phase):
             f"{stats['attachments']['copied']} copied, {stats['attachments']['failed']} failed",
         )
 
-        # Print table
         console.print(table)
 
     def _split_content(self, content: str) -> Tuple[str, Optional[str]]:

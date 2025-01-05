@@ -164,7 +164,7 @@ class ImageHandler(BaseHandler):
 
                     # Call Vision API
                     response = self.vision_client.chat.completions.create(
-                        model="gpt-4o",
+                        model=self.config.apis.openai.model,
                         messages=[
                             {
                                 "role": "user",

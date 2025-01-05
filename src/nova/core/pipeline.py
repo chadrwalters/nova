@@ -293,10 +293,32 @@ class NovaPipeline:
         # Add rows for each phase
         for phase_name, phase_state in self.state.items():
             if isinstance(phase_state, dict):  # Skip non-dict state entries
-                successful = len(phase_state.get("successful_files", set()))
-                failed = len(phase_state.get("failed_files", set()))
-                skipped = len(phase_state.get("skipped_files", set()))
-                unchanged = len(phase_state.get("unchanged_files", set()))
+                # Filter out metadata files
+                successful_files = {
+                    f
+                    for f in phase_state.get("successful_files", set())
+                    if not str(f).endswith(".metadata.json")
+                }
+                failed_files = {
+                    f
+                    for f in phase_state.get("failed_files", set())
+                    if not str(f).endswith(".metadata.json")
+                }
+                skipped_files = {
+                    f
+                    for f in phase_state.get("skipped_files", set())
+                    if not str(f).endswith(".metadata.json")
+                }
+                unchanged_files = {
+                    f
+                    for f in phase_state.get("unchanged_files", set())
+                    if not str(f).endswith(".metadata.json")
+                }
+
+                successful = len(successful_files)
+                failed = len(failed_files)
+                skipped = len(skipped_files)
+                unchanged = len(unchanged_files)
 
                 status = "✓" if failed == 0 else "✗"
                 style = "green" if failed == 0 else "red"
@@ -310,6 +332,17 @@ class NovaPipeline:
                     details.append(f"{skipped} skipped")
                 if unchanged > 0:
                     details.append(f"{unchanged} unchanged")
+
+                # Add phase-specific details
+                if phase_name == "disassemble" and "stats" in phase_state:
+                    stats = phase_state["stats"]
+                    summary_files = stats.get("summary_files", {}).get("created", 0)
+                    raw_files = stats.get("raw_notes_files", {}).get("created", 0)
+                    details.append(
+                        f"→ {summary_files} summaries, {raw_files} raw notes"
+                    )
+                elif phase_name == "split":
+                    details.append("(includes both summary and raw note files)")
 
                 table.add_row(
                     phase_name.upper(),
@@ -327,19 +360,15 @@ class NovaPipeline:
                     total_successful += len(successful_files)
 
         # Add timing information
-        avg_time = (
-            duration / max(1, total_successful) if total_successful > 0 else duration
-        )
         table.add_row(
             "TIMING",
             "✓",
             f"{duration:.2f}s",
-            f"Average: {avg_time:.3f}s per file",
+            f"Average: {duration/max(1, total_successful):.3f}s per file",
         )
 
-        # Print summary
-        console.print("\n")
-        console.print(Panel(table, title="Pipeline Summary", expand=False))
+        # Show the summary in a panel
+        console.print(Panel(table, title="Pipeline Summary"))
 
         # Print any errors
         has_errors = False

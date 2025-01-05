@@ -13,7 +13,7 @@ cache:
 apis:
   openai:
     api_key: ""  # Set this in your user config file
-    model: "gpt-4-vision-preview"  # Vision-capable model
+    model: "gpt-4o"  # Vision-capable model
     max_tokens: 500
     vision_prompt: |
       Please analyze this image and provide a detailed description.

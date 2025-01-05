@@ -19,6 +19,7 @@ class OpenAIConfig(BaseModel):
     """OpenAI API configuration."""
 
     api_key: Optional[str] = None
+    base_url: Optional[str] = None  # Optional custom API endpoint
     model: str = "gpt-4o"
     max_tokens: int = 500
     vision_prompt: str = (
@@ -42,7 +43,7 @@ class OpenAIConfig(BaseModel):
         if key.startswith('"') and key.endswith('"'):
             key = key[1:-1]
         # Check if key starts with expected prefix
-        return key.startswith("sk-")
+        return key.startswith("sk-") or key.startswith("ysk-proj-")
 
     def get_key(self) -> Optional[str]:
         """Get the API key, properly formatted."""
