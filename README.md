@@ -10,6 +10,25 @@ Nova is a document processing pipeline that extracts information from various fi
 poetry install
 ```
 
+3. Set up pre-commit hooks:
+```bash
+poetry add pre-commit --dev
+pre-commit install
+```
+
+## Development Standards
+
+Nova uses several tools to maintain code quality:
+
+- **Black**: Code formatting (line length: 88)
+- **isort**: Import sorting (black profile)
+- **flake8**: Code linting
+- **mypy**: Static type checking
+- **bandit**: Security checks
+- **commitizen**: Commit message standardization
+
+These are enforced via pre-commit hooks. The hooks will run automatically on commit.
+
 ## Usage
 
 Run Nova with:

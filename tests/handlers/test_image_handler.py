@@ -1,16 +1,17 @@
 """
 Unit tests for Nova image handler.
 """
-import pytest
-from unittest.mock import Mock, patch
-from PIL import Image
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import Mock, patch
 
-from nova.handlers.image import ImageHandler
-from nova.config.settings import NovaConfig, APIConfig, OpenAIConfig, CacheConfig
-from nova.models.document import DocumentMetadata
+import pytest
+from PIL import Image
+
 from nova.config.manager import ConfigManager
+from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
+from nova.handlers.image import ImageHandler
+from nova.models.document import DocumentMetadata
 
 
 @pytest.fixture
@@ -31,18 +32,10 @@ def test_config(mock_fs):
         input_dir=str(mock_fs["input"]),
         output_dir=str(mock_fs["output"]),
         processing_dir=str(mock_fs["processing"]),
-        cache=CacheConfig(
-            dir=str(mock_fs["cache"]),
-            enabled=True,
-            ttl=3600
-        ),
+        cache=CacheConfig(dir=str(mock_fs["cache"]), enabled=True, ttl=3600),
         apis=APIConfig(
-            openai=OpenAIConfig(
-                api_key="test_key",
-                model="gpt-4o",
-                max_tokens=300
-            )
-        )
+            openai=OpenAIConfig(api_key="test_key", model="gpt-4o", max_tokens=300)
+        ),
     )
     return ConfigManager(config)
 
@@ -50,9 +43,9 @@ def test_config(mock_fs):
 @pytest.fixture
 def test_image():
     """Create a test image."""
-    img = Image.new('RGB', (100, 100), color='red')
+    img = Image.new("RGB", (100, 100), color="red")
     buffer = BytesIO()
-    img.save(buffer, format='PNG')
+    img.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer.read()
 
@@ -60,7 +53,9 @@ def test_image():
 @pytest.mark.unit
 @pytest.mark.handlers
 @pytest.mark.asyncio
-async def test_image_handler_mock_api(test_config, test_image, mock_openai_client, mock_fs):
+async def test_image_handler_mock_api(
+    test_config, test_image, mock_openai_client, mock_fs
+):
     """Test image handler with mocked OpenAI API."""
     handler = ImageHandler(test_config)
     handler.vision_client = mock_openai_client
@@ -68,15 +63,15 @@ async def test_image_handler_mock_api(test_config, test_image, mock_openai_clien
     # Create test file path and metadata
     file_path = mock_fs["input"] / "test.png"
     output_path = mock_fs["output"] / "test.parsed.md"
-    
+
     # Write test image to file
     file_path.write_bytes(test_image)
-    
+
     metadata = DocumentMetadata.from_file(file_path, handler.name, handler.version)
 
     # Process image
     result = await handler.process_file_impl(file_path, output_path, metadata)
-    
+
     # Verify results
     assert result is not None
     assert result.processed is True
@@ -99,23 +94,23 @@ async def test_image_handler_no_api(test_config, test_image, mock_fs):
     """Test image handler without OpenAI API."""
     # Remove API key
     test_config.config.apis.openai.api_key = None
-    
+
     handler = ImageHandler(test_config)
-    
+
     # Create test file path and metadata
     file_path = mock_fs["input"] / "test.png"
     output_path = mock_fs["output"] / "test.parsed.md"
-    
+
     # Write test image to file
     file_path.write_bytes(test_image)
-    
+
     metadata = DocumentMetadata.from_file(file_path, handler.name, handler.version)
 
     # Process image
     result = await handler.process_file_impl(file_path, output_path, metadata)
-    
+
     # Verify results
     assert result is not None
     assert result.processed is True
     assert result.title == "test"
-    assert "Failed to generate image description" in str(result.metadata) 
+    assert "Failed to generate image description" in str(result.metadata)

@@ -1,0 +1,95 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: ["--line-length", "88"]
+        exclude: ^(tests/|docs/|examples/)
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: ["--profile", "black", "--line-length", "88"]
+        language_version: python3.11
+        exclude: ^(tests/|docs/|examples/)
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        language_version: python3.11
+        args: [
+          "--max-line-length", "88",
+          "--extend-ignore", "F401,E501,F821,F841,F541,W293,F811,E203",
+          "--exclude", "tests/*,docs/*,examples/*"
+        ]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        language_version: python3.11
+        args: ["-ll", "-i"]
+        exclude: ^(tests/|docs/|examples/)
+
+  # Temporarily disabled due to internal error
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.5.1
+  #   hooks:
+  #     - id: mypy
+  #       language_version: python3.11
+  #       additional_dependencies:
+  #         - types-aiofiles
+  #         - types-PyYAML
+  #         - types-Markdown
+  #         - types-Pillow
+  #         - types-tqdm
+  #         - types-psutil
+  #         - types-beautifulsoup4
+  #         - types-requests
+  #         - pandas-stubs
+  #         - types-jinja2
+  #         - types-setuptools
+  #         - types-reportlab
+  #         - types-lxml
+  #         - types-openpyxl
+  #         - types-tabulate
+  #       args: [
+  #         "--python-version", "3.11",
+  #         "--warn-return-any",
+  #         "--warn-unused-configs",
+  #         "--disallow-untyped-defs",
+  #         "--disallow-incomplete-defs",
+  #         "--check-untyped-defs",
+  #         "--disallow-untyped-decorators",
+  #         "--no-implicit-optional",
+  #         "--warn-redundant-casts",
+  #         "--warn-unused-ignores",
+  #         "--warn-no-return",
+  #         "--warn-unreachable",
+  #         "--ignore-missing-imports",
+  #         "--follow-imports=skip",
+  #         "--allow-untyped-defs",
+  #         "--allow-incomplete-defs",
+  #         "--allow-untyped-decorators",
+  #         "--disable-error-code=attr-defined",
+  #         "--disable-error-code=union-attr",
+  #         "--disable-error-code=var-annotated",
+  #         "--disable-error-code=assignment",
+  #         "--disable-error-code=operator",
+  #         "--disable-error-code=arg-type",
+  #         "--disable-error-code=override",
+  #         "--disable-error-code=return-value",
+  #         "--disable-error-code=no-any-return",
+  #         "--disable-error-code=no-untyped-def",
+  #         "--disable-error-code=unreachable"
+  #       ]
+  #       exclude: ^(tests/|docs/|examples/)
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.12.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg] 

@@ -14,4 +14,4 @@ __all__ = [
     "MarkdownHandler",
     "TextHandler",
     "VideoHandler",
-] 
+]

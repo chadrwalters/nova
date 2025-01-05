@@ -6,4 +6,4 @@ from nova.config.settings import NovaConfig
 __all__ = [
     "ConfigManager",
     "NovaConfig",
-] 
+]

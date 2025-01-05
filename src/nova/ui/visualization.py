@@ -1,17 +1,18 @@
 """Link visualization components and utilities."""
 
-from typing import Dict, List, Optional, Set, Tuple
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
-from nova.models.links import LinkContext, LinkType
 from nova.models.link_map import LinkRelationshipMap, NavigationPath
+from nova.models.links import LinkContext, LinkType
 
 
 @dataclass
 class VisualizationNode:
     """Node in the link visualization graph."""
+
     id: str
     label: str
     type: str
@@ -22,6 +23,7 @@ class VisualizationNode:
 @dataclass
 class VisualizationEdge:
     """Edge in the link visualization graph."""
+
     source: str
     target: str
     type: LinkType
@@ -31,7 +33,7 @@ class VisualizationEdge:
 
 class LinkVisualizer:
     """Generates link visualization components."""
-    
+
     # JavaScript for interactive visualization
     VIS_SCRIPT = """
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -135,7 +137,7 @@ class LinkVisualizer:
     }
     </script>
     """
-    
+
     # CSS styles for visualization
     VIS_STYLES = """
     /* Link Graph Styles */
@@ -243,154 +245,156 @@ class LinkVisualizer:
         border-radius: 50%;
     }
     """
-    
+
     def __init__(self, link_map: LinkRelationshipMap):
         """Initialize link visualizer.
-        
+
         Args:
             link_map: Link relationship map to visualize
         """
         self.link_map = link_map
-    
+
     def generate_graph_data(
-        self,
-        files: Set[str],
-        include_warnings: bool = True
+        self, files: Set[str], include_warnings: bool = True
     ) -> Dict[str, List]:
         """Generate graph data for visualization.
-        
+
         Args:
             files: Set of files to include in visualization
             include_warnings: Whether to include warning states
-            
+
         Returns:
             Dictionary with nodes and edges lists
         """
         nodes = []
         edges = []
-        
+
         # Create nodes
         for file in files:
             metrics = self.link_map.get_health_report(file)
             status = self._get_node_status(metrics, include_warnings)
-            
-            nodes.append(VisualizationNode(
-                id=file,
-                label=Path(file).stem,
-                type="file",
-                metrics=metrics,
-                status=status
-            ))
-        
+
+            nodes.append(
+                VisualizationNode(
+                    id=file,
+                    label=Path(file).stem,
+                    type="file",
+                    metrics=metrics,
+                    status=status,
+                )
+            )
+
         # Create edges
         for source in files:
             related = self.link_map.get_related_files(source)
-            
+
             # Add edges for outgoing links
-            for target in related['outgoing']:
+            for target in related["outgoing"]:
                 if target in files:
-                    edges.append(VisualizationEdge(
-                        source=source,
-                        target=target,
-                        type=LinkType.OUTGOING,
-                        bidirectional=target in related['bidirectional']
-                    ))
-        
+                    edges.append(
+                        VisualizationEdge(
+                            source=source,
+                            target=target,
+                            type=LinkType.OUTGOING,
+                            bidirectional=target in related["bidirectional"],
+                        )
+                    )
+
         return {
-            'nodes': [self._node_to_dict(n) for n in nodes],
-            'edges': [self._edge_to_dict(e) for e in edges]
+            "nodes": [self._node_to_dict(n) for n in nodes],
+            "edges": [self._edge_to_dict(e) for e in edges],
         }
-    
+
     def render_graph(
         self,
         files: Set[str],
         container_id: str = "nova-link-graph",
-        include_warnings: bool = True
+        include_warnings: bool = True,
     ) -> str:
         """Render an interactive link graph.
-        
+
         Args:
             files: Set of files to include in visualization
             container_id: ID for the container element
             include_warnings: Whether to include warning states
-            
+
         Returns:
             HTML string for the graph
         """
         # Generate graph data
         graph_data = self.generate_graph_data(files, include_warnings)
-        
+
         # Create HTML
         html = [
             f'<div class="nova-link-graph" id="{container_id}">',
             self.VIS_SCRIPT,
-            f'<style>{self.VIS_STYLES}</style>',
-            '</div>',
+            f"<style>{self.VIS_STYLES}</style>",
+            "</div>",
             '<div class="nova-link-legend">',
             '  <div class="nova-legend-item">',
             '    <span class="nova-legend-color" style="background: #0d6efd"></span>',
-            '    <span>Normal</span>',
-            '  </div>',
+            "    <span>Normal</span>",
+            "  </div>",
             '  <div class="nova-legend-item">',
             '    <span class="nova-legend-color" style="background: #ffc107"></span>',
-            '    <span>Warning</span>',
-            '  </div>',
+            "    <span>Warning</span>",
+            "  </div>",
             '  <div class="nova-legend-item">',
             '    <span class="nova-legend-color" style="background: #dc3545"></span>',
-            '    <span>Error</span>',
-            '  </div>',
-            '</div>',
-            f'<script>initLinkGraph({json.dumps(graph_data)}, "{container_id}");</script>'
+            "    <span>Error</span>",
+            "  </div>",
+            "</div>",
+            f'<script>initLinkGraph({json.dumps(graph_data)}, "{container_id}");</script>',
         ]
-        
-        return '\n'.join(html)
-    
+
+        return "\n".join(html)
+
     def _get_node_status(self, metrics: Dict[str, int], include_warnings: bool) -> str:
         """Get status for a node based on its metrics.
-        
+
         Args:
             metrics: Node metrics
             include_warnings: Whether to include warning states
-            
+
         Returns:
             Status string
         """
-        if metrics['broken_links'] > 0:
+        if metrics["broken_links"] > 0:
             return "error"
-        if include_warnings and metrics['repair_attempts'] > metrics['repaired_links']:
+        if include_warnings and metrics["repair_attempts"] > metrics["repaired_links"]:
             return "warning"
         return "normal"
-    
+
     def _node_to_dict(self, node: VisualizationNode) -> Dict:
         """Convert node to dictionary for JSON serialization.
-        
+
         Args:
             node: Node to convert
-            
+
         Returns:
             Dictionary representation
         """
         return {
-            'id': node.id,
-            'label': node.label,
-            'type': node.type,
-            'metrics': node.metrics,
-            'status': node.status
+            "id": node.id,
+            "label": node.label,
+            "type": node.type,
+            "metrics": node.metrics,
+            "status": node.status,
         }
-    
+
     def _edge_to_dict(self, edge: VisualizationEdge) -> Dict:
         """Convert edge to dictionary for JSON serialization.
-        
+
         Args:
             edge: Edge to convert
-            
+
         Returns:
             Dictionary representation
         """
         return {
-            'source': edge.source,
-            'target': edge.target,
-            'type': edge.type.value if edge.type else "link",
-            'bidirectional': edge.bidirectional,
-            'status': edge.status
-        } 
+            "source": edge.source,
+            "target": edge.target,
+            "type": edge.type.value if edge.type else "link",
+            "bidirectional": edge.bidirectional,
+            "status": edge.status,
+        }

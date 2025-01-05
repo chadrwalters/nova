@@ -1,1 +1,1 @@
-"""Core Nova functionality.""" 
+"""Core Nova functionality."""

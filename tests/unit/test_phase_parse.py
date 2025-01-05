@@ -1,18 +1,19 @@
 """
 Unit tests for Nova parse phase.
 """
-import pytest
 import asyncio
 from pathlib import Path
+from unittest.mock import MagicMock, Mock
+
+import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
-from unittest.mock import Mock, MagicMock
 
-from nova.phases.parse import ParsePhase
-from nova.handlers.markdown import MarkdownHandler
+from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
 from nova.handlers.document import DocumentHandler
 from nova.handlers.image import ImageHandler
-from nova.config.settings import NovaConfig, CacheConfig, APIConfig, OpenAIConfig
+from nova.handlers.markdown import MarkdownHandler
+from nova.phases.parse import ParsePhase
 
 
 @pytest.fixture
@@ -23,18 +24,10 @@ def nova_config(mock_fs):
         input_dir=str(mock_fs["input"]),
         output_dir=str(mock_fs["output"]),
         processing_dir=str(mock_fs["processing"]),
-        cache=CacheConfig(
-            dir=str(mock_fs["cache"]),
-            enabled=True,
-            ttl=3600
-        ),
+        cache=CacheConfig(dir=str(mock_fs["cache"]), enabled=True, ttl=3600),
         apis=APIConfig(
-            openai=OpenAIConfig(
-                api_key="test_key",
-                model="gpt-4o",
-                max_tokens=300
-            )
-        )
+            openai=OpenAIConfig(api_key="test_key", model="gpt-4o", max_tokens=300)
+        ),
     )
     return config
 
@@ -46,7 +39,9 @@ def mock_pipeline(mock_fs):
     pipeline.name = "test"
     pipeline.state = {"parse": {"skipped_files": set()}}
     pipeline.output_manager = MagicMock()
-    pipeline.output_manager.get_output_path_for_phase.return_value = mock_fs["output"] / "test.md"
+    pipeline.output_manager.get_output_path_for_phase.return_value = (
+        mock_fs["output"] / "test.md"
+    )
     return pipeline
 
 
@@ -57,19 +52,19 @@ def test_state(nova_config, mock_fs):
     mock_pipeline = Mock()
     mock_pipeline.name = "test"
     mock_pipeline.state = {
-        "parse": {
-            "skipped_files": set(),
-            "processed_files": set(),
-            "errors": []
-        }
+        "parse": {"skipped_files": set(), "processed_files": set(), "errors": []}
     }
 
     # Create mock output manager
     mock_output_manager = Mock()
+
     def get_output_path_for_phase(input_file, phase_name, extension):
         input_file = Path(input_file)
         return mock_fs["output"] / f"{input_file.stem}{extension}"
-    mock_output_manager.get_output_path_for_phase.side_effect = get_output_path_for_phase
+
+    mock_output_manager.get_output_path_for_phase.side_effect = (
+        get_output_path_for_phase
+    )
 
     # Configure mock pipeline
     mock_pipeline.output_manager = mock_output_manager
@@ -81,7 +76,7 @@ def test_state(nova_config, mock_fs):
         "errors": [],
         "metrics": {},
         "config": nova_config,
-        "pipeline": mock_pipeline
+        "pipeline": mock_pipeline,
     }
 
 
@@ -107,33 +102,33 @@ def mock_image_handler(nova_config, mock_openai_client):
 @pytest.mark.phases
 class TestParsePhase:
     """Test parse phase functionality."""
-    
+
     async def test_parse_markdown(self, mock_fs, test_state):
         """Test parsing markdown files."""
         # Create test markdown file
         test_file = mock_fs["input"] / "test.md"
         test_file.write_text("# Test Document\n\nThis is a test markdown file.")
-        
+
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
         phase.registry.register_handler(MarkdownHandler)
-        
+
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])
-        
+
         # Verify results
         assert result is not None
         assert result.processed is True
         assert result.title == "test"
         assert len(result.output_files) == 1
-        
+
         # Check output content
         output_file = mock_fs["output"] / "test.parsed.md"
         assert output_file.exists()
         content = output_file.read_text()
         assert "# Test Document" in content
         assert "This is a test markdown file." in content
-    
+
     async def test_parse_pdf(self, mock_fs, test_state):
         """Test parsing PDF files."""
         # Create test PDF file
@@ -141,31 +136,31 @@ class TestParsePhase:
         c = canvas.Canvas(str(test_file))
         c.drawString(100, 750, "Test PDF Content")
         c.save()
-        
+
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
         phase.registry.register_handler(DocumentHandler)
-        
+
         # Process the file
         result = await phase.process_file(test_file, mock_fs["output"])
-        
+
         # Verify results
         assert result is not None
         assert result.processed is True
         assert result.title == "test"
         assert len(result.output_files) == 1
-        
+
         # Check output content
         output_file = mock_fs["output"] / "test.parsed.md"
         assert output_file.exists()
         content = output_file.read_text()
         assert "Test PDF Content" in content
-    
+
     async def test_parse_image(self, mock_fs, test_state, mock_image_handler):
         """Test parsing image files."""
         # Create test image file
         test_file = mock_fs["input"] / "test.jpg"
-        img = Image.new('RGB', (100, 100), color='red')
+        img = Image.new("RGB", (100, 100), color="red")
         img.save(test_file)
 
         # Set up parse phase with mocked handler
@@ -186,56 +181,59 @@ class TestParsePhase:
         assert output_file.exists()
         content = output_file.read_text()
         assert "Test image description" in content
-    
+
     async def test_parse_multiple_files(self, mock_fs, test_state, mock_image_handler):
         """Test parsing multiple files concurrently."""
         # Create test files
         files = {
             "markdown": mock_fs["input"] / "test1.md",
             "pdf": mock_fs["input"] / "test2.pdf",
-            "image": mock_fs["input"] / "test3.jpg"
+            "image": mock_fs["input"] / "test3.jpg",
         }
-        
+
         # Create content
         files["markdown"].write_text("# Test Markdown")
         c = canvas.Canvas(str(files["pdf"]))
         c.drawString(100, 750, "Test PDF")
         c.save()
-        img = Image.new('RGB', (100, 100), color='red')
+        img = Image.new("RGB", (100, 100), color="red")
         img.save(files["image"])
-        
+
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
         phase.registry.register_handler(MarkdownHandler)
         phase.registry.register_handler(DocumentHandler)
         phase.registry.handlers["jpg"] = mock_image_handler
-        
+
         # Process files concurrently
-        tasks = [phase.process_file(file_path, mock_fs["output"]) for file_path in files.values()]
+        tasks = [
+            phase.process_file(file_path, mock_fs["output"])
+            for file_path in files.values()
+        ]
         results = await asyncio.gather(*tasks)
-        
+
         # Verify results
         assert all(result is not None for result in results)
         assert all(result.processed is True for result in results)
         assert all(len(result.output_files) == 1 for result in results)
-        
+
         # Check output files
         output_files = {
             "markdown": mock_fs["output"] / "test1.parsed.md",
             "pdf": mock_fs["output"] / "test2.parsed.md",
-            "image": mock_fs["output"] / "test3.parsed.md"
+            "image": mock_fs["output"] / "test3.parsed.md",
         }
-        
+
         for file_path in output_files.values():
             assert file_path.exists()
-    
+
     async def test_parse_error_handling(self, mock_fs, test_state, mock_image_handler):
         """Test error handling during parsing."""
         # Create corrupted/invalid files
         files = {
             "invalid_pdf": mock_fs["input"] / "invalid.pdf",
             "empty_md": mock_fs["input"] / "empty.md",
-            "corrupted_img": mock_fs["input"] / "corrupted.jpg"
+            "corrupted_img": mock_fs["input"] / "corrupted.jpg",
         }
 
         # Create invalid content
@@ -254,7 +252,7 @@ class TestParsePhase:
             result = await phase.process_file(file_path, mock_fs["output"])
 
             if result is not None:
-                if file_path.suffix == '.md':
+                if file_path.suffix == ".md":
                     # Empty markdown files are valid
                     assert result.processed is True
                     assert len(result.errors) == 0
@@ -263,8 +261,8 @@ class TestParsePhase:
                     assert result.processed is False
                     assert result.has_errors is True
                     assert len(result.errors) > 0
-                    assert result.errors.get(file_path.suffix.lstrip('.')) is not None 
-    
+                    assert result.errors.get(file_path.suffix.lstrip(".")) is not None
+
     async def test_parse_svg(self, mock_fs, test_state, mock_image_handler):
         """Test parsing SVG files."""
         # Create test SVG file
@@ -298,12 +296,14 @@ class TestParsePhase:
         """Test parsing invalid SVG files."""
         # Create invalid SVG file with completely invalid XML
         test_file = mock_fs["input"] / "invalid.svg"
-        test_file.write_text("""
+        test_file.write_text(
+            """
         <svg xmlns="http://www.w3.org/2000/svg">
             <invalidtag>
             <unclosed>
             <broken
-        """)
+        """
+        )
 
         # Set up parse phase
         phase = ParsePhase(test_state["config"], test_state["pipeline"])
@@ -317,4 +317,4 @@ class TestParsePhase:
 
         # Verify the file was not created
         output_file = mock_fs["output"] / "invalid.parsed.md"
-        assert not output_file.exists() 
+        assert not output_file.exists()

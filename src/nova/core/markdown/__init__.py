@@ -2,4 +2,4 @@
 
 from .writer import MarkdownWriter
 
-__all__ = ['MarkdownWriter'] 
+__all__ = ["MarkdownWriter"]

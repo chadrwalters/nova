@@ -1,1 +1,1 @@
-"""Nova utility functions.""" 
+"""Nova utility functions."""

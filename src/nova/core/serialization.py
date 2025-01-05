@@ -7,13 +7,13 @@ from typing import Any, Dict
 
 class NovaJSONEncoder(json.JSONEncoder):
     """Custom JSON encoder for Nova objects."""
-    
+
     def default(self, obj):
         """Handle custom object serialization.
-        
+
         Args:
             obj: Object to serialize.
-            
+
         Returns:
             JSON-serializable object.
         """
@@ -28,10 +28,10 @@ class NovaJSONEncoder(json.JSONEncoder):
 
 def serialize_metadata(obj: Dict[str, Any]) -> str:
     """Serialize metadata to JSON string.
-    
+
     Args:
         obj: Metadata dictionary.
-        
+
     Returns:
         JSON string.
     """
@@ -40,11 +40,11 @@ def serialize_metadata(obj: Dict[str, Any]) -> str:
 
 def deserialize_metadata(data: str) -> Dict[str, Any]:
     """Deserialize metadata from JSON string.
-    
+
     Args:
         data: JSON string.
-        
+
     Returns:
         Metadata dictionary.
     """
-    return json.loads(data) 
+    return json.loads(data)

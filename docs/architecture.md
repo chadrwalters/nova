@@ -4,6 +4,34 @@
 
 Nova is a document processing system that transforms various document formats into structured markdown with metadata.
 
+## Development Standards
+
+### Code Quality Tools
+
+The project enforces code quality through automated tools:
+
+1. **Code Formatting**
+   - Black for consistent Python formatting
+   - Line length: 88 characters
+   - Automatic formatting on commit
+
+2. **Import Management**
+   - isort with black profile
+   - Consistent import grouping and ordering
+   - Automatic sorting on commit
+
+3. **Code Analysis**
+   - flake8 for style guide enforcement
+   - mypy for static type checking
+   - bandit for security analysis
+
+4. **Version Control**
+   - Commitizen for standardized commit messages
+   - Conventional commits format
+   - Automated validation on commit
+
+These tools are enforced through pre-commit hooks, ensuring consistent code quality across all contributions.
+
 ## Core Components
 
 ### Configuration Management

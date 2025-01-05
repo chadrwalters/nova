@@ -2,14 +2,14 @@
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import traceback
 from pathlib import Path
 from typing import List, Optional
-import os
 
 from nova.config.manager import ConfigManager
-from nova.config.settings import LoggingConfig
+from nova.config.settings import LoggingConfig, PipelineConfig
 from nova.core.logging import NovaFormatter, create_progress_bar, print_summary
 from nova.core.pipeline import NovaPipeline
 
@@ -18,52 +18,54 @@ logger = logging.getLogger("nova")
 
 def configure_logging(debug: bool = False, no_color: bool = False) -> None:
     """Configure logging.
-    
+
     Args:
         debug: Whether to enable debug logging.
         no_color: Whether to disable colored output.
     """
     # Get log level from environment variable or fallback to debug/warning
     log_level = os.getenv("NOVA_LOG_LEVEL", "DEBUG" if debug else "WARNING")
-    
+
     # Create basic logging config
     config = LoggingConfig(
         level=log_level,
         console_level=log_level,
         format="%(asctime)s [%(levelname)s] %(message)s",
         date_format="%Y-%m-%d %H:%M:%S",
-        handlers=["console"]
+        handlers=["console"],
     )
-    
+
     # Create handler with custom formatter
     handler = logging.StreamHandler()
     handler.setFormatter(NovaFormatter(config))
-    
+
     # Configure root logger
     root = logging.getLogger()
     root.addHandler(handler)
     root.setLevel(getattr(logging, log_level))
-    
+
     # Configure nova logger (using module-level logger)
     nova_logger = logging.getLogger("nova")
     nova_logger.setLevel(getattr(logging, log_level))
-    
+
     # Configure specific loggers to reduce verbosity
     for logger_name in logging.root.manager.loggerDict:
-        if logger_name.startswith('nova'):
+        if logger_name.startswith("nova"):
             current_logger = logging.getLogger(logger_name)
             current_logger.setLevel(getattr(logging, log_level))
             # Only show file skipping messages in debug mode
-            if log_level != "DEBUG" and 'unchanged since last processing' in str(current_logger.handlers):
+            if log_level != "DEBUG" and "unchanged since last processing" in str(
+                current_logger.handlers
+            ):
                 current_logger.handlers = []
 
 
 async def main(args: Optional[List[str]] = None) -> int:
     """Run Nova pipeline.
-    
+
     Args:
         args: Command line arguments.
-        
+
     Returns:
         Exit code.
     """
@@ -99,47 +101,53 @@ async def main(args: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Disable colored output",
     )
-    
+
     parsed_args = parser.parse_args(args)
-    
+
     # Configure logging
     configure_logging(
         debug=parsed_args.debug,
         no_color=parsed_args.no_color,
     )
-    
+
     try:
         # Load configuration
         config = ConfigManager(parsed_args.config)
-        
+
         # Create pipeline
         if config.pipeline is None:
             config.pipeline = PipelineConfig()
         pipeline = NovaPipeline(config=config)
-        
+
         # Get input directory
         input_dir = parsed_args.input_dir if parsed_args.input_dir else config.input_dir
         if not input_dir:
             logger.error("No input directory specified")
             return 1
-        
+
         # Get output directory
-        output_dir = parsed_args.output_dir if parsed_args.output_dir else config.output_dir
+        output_dir = (
+            parsed_args.output_dir if parsed_args.output_dir else config.output_dir
+        )
         if not output_dir:
             logger.error("No output directory specified")
             return 1
-        
+
         # Get phases from config or command line override
-        phases = config.pipeline.phases if hasattr(config.pipeline, "phases") else ["parse", "split"]
+        phases = (
+            config.pipeline.phases
+            if hasattr(config.pipeline, "phases")
+            else ["parse", "split"]
+        )
         if parsed_args.phases:
             logger.info("Overriding phases from config with command line arguments")
             phases = parsed_args.phases
-        
+
         # Process directory
         await pipeline.process_directory(input_dir, phases)
-        
+
         return 0
-        
+
     except Exception as e:
         logger.error(f"Pipeline failed: {str(e)}")
         if parsed_args.debug:
@@ -148,4 +156,4 @@ async def main(args: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main())) 
+    sys.exit(asyncio.run(main()))
