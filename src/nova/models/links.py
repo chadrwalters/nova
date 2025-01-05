@@ -139,10 +139,10 @@ class LinkMap(BaseModel):
         errors = []
 
         # Check for circular references
-        visited = set()
+        visited: set[str] = set()
         for source_file in self.outgoing_links:
             if source_file not in visited:
-                path = []
+                path: list[str] = []
                 if self._has_circular_reference(source_file, path, visited):
                     errors.append(f"Circular reference detected: {' -> '.join(path)}")
 

@@ -114,7 +114,9 @@ class MarkdownProcessor:
             return "# Attachments\n\nNo attachments found."
 
         # Group attachments by date and type
-        by_date = defaultdict(lambda: defaultdict(list))
+        by_date: defaultdict[str, defaultdict[str, list[Dict[str, Any]]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
         for attachment in attachments:
             date = self._extract_date(attachment["source_file"])
             file_type = attachment["type"]

@@ -4,7 +4,7 @@ import os
 import shutil
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 from rich.console import Console
 from rich.table import Table
@@ -14,6 +14,9 @@ from nova.core.metadata import FileMetadata
 from nova.handlers.registry import HandlerRegistry
 from nova.phases.base import Phase
 
+if TYPE_CHECKING:
+    from nova.core.pipeline import NovaPipeline
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -21,7 +24,9 @@ console = Console()
 class DisassemblyPhase(Phase):
     """Phase that splits parsed markdown files into summary and raw notes components."""
 
-    def __init__(self, config: ConfigManager, pipeline=None):
+    def __init__(
+        self, config: ConfigManager, pipeline: Optional["NovaPipeline"] = None
+    ):
         """Initialize the disassembly phase."""
         super().__init__("disassemble", config, pipeline)
         self.handler_registry = HandlerRegistry(config)
@@ -472,7 +477,7 @@ class DisassemblyPhase(Phase):
         return not self.pipeline.state["disassemble"].get("phase_failed", False)
 
     async def process_file(
-        self, file_path: Path, output_dir: Path
+        self, file_path: Union[str, Path], output_dir: Union[str, Path]
     ) -> Optional[FileMetadata]:
         """Process a file through the disassembly phase.
 
@@ -484,6 +489,9 @@ class DisassemblyPhase(Phase):
             Updated metadata if successful, None if failed
         """
         try:
+            # Convert to Path objects
+            file_path = Path(file_path)
+            output_dir = Path(output_dir)
             return await self.process_impl(file_path, output_dir)
         except Exception as e:
             self.logger.error(f"Failed to process file {file_path}: {str(e)}")

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Dict, Optional
 
-from nova.models.document import DocumentMetadata
+from nova.core.metadata import DocumentMetadata
 
 
 def update_markdown_links(
@@ -32,7 +32,7 @@ def update_markdown_links(
 
         # Skip external links
         if path.startswith(("http://", "https://", "ftp://")):
-            return match.group(0)
+            return str(match.group(0))
 
         # Convert path to absolute
         abs_path = str(Path(path).resolve())
@@ -40,7 +40,7 @@ def update_markdown_links(
         # Look up metadata for path
         metadata = attachment_metadata.get(abs_path)
         if not metadata or not metadata.output_path:
-            return match.group(0)
+            return str(match.group(0))
 
         # Create relative path from markdown to output
         rel_path = Path(os.path.relpath(metadata.output_path, markdown_path.parent))
@@ -53,7 +53,7 @@ def update_markdown_links(
 
         # Skip external images
         if path.startswith(("http://", "https://", "ftp://")):
-            return match.group(0)
+            return str(match.group(0))
 
         # Convert path to absolute
         abs_path = str(Path(path).resolve())
@@ -61,7 +61,7 @@ def update_markdown_links(
         # Look up metadata for path
         metadata = attachment_metadata.get(abs_path)
         if not metadata or not metadata.output_path:
-            return match.group(0)
+            return str(match.group(0))
 
         # Create relative path from markdown to output
         rel_path = Path(os.path.relpath(metadata.output_path, markdown_path.parent))

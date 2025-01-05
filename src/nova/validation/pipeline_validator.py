@@ -171,8 +171,8 @@ class PipelineValidator:
 
                 # Validate metadata format
                 try:
-                    with open(metadata_file, "r") as f:
-                        metadata = json.load(f)
+                    with open(metadata_file, "r") as file_handle:
+                        metadata = json.load(file_handle)
                     if not isinstance(metadata, dict):
                         self.errors.append(
                             f"Invalid metadata format in {metadata_file}"

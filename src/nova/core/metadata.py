@@ -1,9 +1,21 @@
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class LinkContext:
+    """Context for a link between documents."""
+
+    source_file: str
+    target_file: str
+    link_text: str
+    link_url: str
+    context: str = ""
 
 
 class FileMetadata:
@@ -15,16 +27,43 @@ class FileMetadata:
         Args:
             file_path: Path to file
         """
-        self.file_path = file_path
-        self.processed = False
-        self.unchanged = False
-        self.reprocessed = False
-        self.output_files = set()
+        self.file_path: Path = file_path
+        self.processed: bool = False
+        self.unchanged: bool = False
+        self.reprocessed: bool = False
+        self.output_files: Set[Path] = set()
         self.errors: Dict[str, str] = {}
         self.metadata: Dict[str, Any] = {}
         self.title: Optional[str] = None
-        self.has_errors = False
-        self.links = []
+        self.has_errors: bool = False
+        self.links: List[LinkContext] = []
+        self.handler_name: Optional[str] = None
+        self.handler_version: Optional[str] = None
+
+    @classmethod
+    def parse_raw(cls, data: str) -> "FileMetadata":
+        """Parse metadata from JSON string.
+
+        Args:
+            data: JSON string containing metadata
+
+        Returns:
+            FileMetadata object
+        """
+        json_data = json.loads(data)
+        metadata = cls(Path(json_data["file_path"]))
+        metadata.processed = json_data.get("processed", False)
+        metadata.unchanged = json_data.get("unchanged", False)
+        metadata.reprocessed = json_data.get("reprocessed", False)
+        metadata.output_files = {Path(p) for p in json_data.get("output_files", [])}
+        metadata.errors = json_data.get("errors", {})
+        metadata.metadata = json_data.get("metadata", {})
+        metadata.title = json_data.get("title")
+        metadata.has_errors = json_data.get("has_errors", False)
+        metadata.links = [LinkContext(**link) for link in json_data.get("links", [])]
+        metadata.handler_name = json_data.get("handler_name")
+        metadata.handler_version = json_data.get("handler_version")
+        return metadata
 
     def add_error(self, handler_name: str, error: str) -> None:
         """Add an error from a handler.
@@ -44,7 +83,7 @@ class FileMetadata:
         """
         self.output_files.add(output_file)
 
-    def add_link(self, link_context) -> None:
+    def add_link(self, link_context: LinkContext) -> None:
         """Add a link to the document's links.
 
         Args:
@@ -52,19 +91,19 @@ class FileMetadata:
         """
         self.links.append(link_context)
 
-    def get_outgoing_links(self) -> List:
+    def get_outgoing_links(self) -> List[LinkContext]:
         """Get all outgoing links from this document.
 
         Returns:
-            List of link contexts
+            List of link contexts where this document is the source
         """
         return [link for link in self.links if link.source_file == str(self.file_path)]
 
-    def get_incoming_links(self) -> List:
+    def get_incoming_links(self) -> List[LinkContext]:
         """Get all incoming links to this document.
 
         Returns:
-            List of link contexts
+            List of link contexts where this document is the target
         """
         return [link for link in self.links if link.target_file == str(self.file_path)]
 
@@ -95,12 +134,8 @@ class FileMetadata:
                 "title": self.title,
                 "has_errors": self.has_errors,
                 "links": [link.__dict__ for link in self.links],
-                "handler_name": self.handler_name
-                if hasattr(self, "handler_name")
-                else None,
-                "handler_version": self.handler_version
-                if hasattr(self, "handler_version")
-                else None,
+                "handler_name": self.handler_name,
+                "handler_version": self.handler_version,
             }
 
             # Write metadata to file
@@ -127,6 +162,8 @@ class FileMetadata:
         """
         metadata = cls(file_path)
         metadata.title = file_path.stem
+        metadata.handler_name = handler_name
+        metadata.handler_version = handler_version
         metadata.metadata = {
             "file_name": file_path.name,
             "file_path": str(file_path),
@@ -135,6 +172,21 @@ class FileMetadata:
             "handler_version": handler_version,
         }
         return metadata
+
+
+@dataclass
+class Section:
+    """A section in a document."""
+
+    title: str
+    content: str
+    level: int = 1
+    subsections: List["Section"] = None
+
+    def __post_init__(self) -> None:
+        """Initialize subsections if not provided."""
+        if self.subsections is None:
+            self.subsections = []
 
 
 class DocumentMetadata(FileMetadata):
@@ -147,13 +199,14 @@ class DocumentMetadata(FileMetadata):
             file_path: Path to file
         """
         super().__init__(file_path)
-        self.sections = []
-        self.attachments = []
-        self.references = []
-        self.summary = None
-        self.raw_notes = None
+        self.sections: List[Section] = []
+        self.attachments: List[Path] = []
+        self.references: List[str] = []
+        self.summary: Optional[str] = None
+        self.raw_notes: Optional[str] = None
+        self.output_path: Optional[Path] = None
 
-    def get_references(self) -> List:
+    def get_references(self) -> List[str]:
         """Get all references from this document.
 
         Returns:
@@ -177,6 +230,8 @@ class DocumentMetadata(FileMetadata):
         """
         metadata = cls(file_path)
         metadata.title = file_path.stem
+        metadata.handler_name = handler_name
+        metadata.handler_version = handler_version
         metadata.metadata = {
             "file_name": file_path.name,
             "file_path": str(file_path),

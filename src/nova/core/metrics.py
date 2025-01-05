@@ -102,7 +102,12 @@ class timing:
         """Enter async context."""
         self.start_time = time.time()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[object],
+    ) -> None:
         """Exit async context."""
         if self.start_time is not None:
             duration = time.time() - self.start_time

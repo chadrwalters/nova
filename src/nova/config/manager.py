@@ -319,6 +319,15 @@ class ConfigManager:
         """Get pipeline configuration."""
         return self.config.pipeline
 
+    @pipeline.setter
+    def pipeline(self, value: PipelineConfig) -> None:
+        """Set pipeline configuration.
+
+        Args:
+            value: Pipeline configuration to set.
+        """
+        self.config.pipeline = value
+
     @property
     def apis(self) -> APIConfig:
         """Get API configuration."""

@@ -3,8 +3,9 @@ import logging
 import os
 import time
 from datetime import datetime
+from logging import LogRecord
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Type, TypeVar, Union
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -16,19 +17,22 @@ from ..config.settings import LoggingConfig
 # Initialize console with force terminal
 console = Console(force_terminal=True)
 
+# Type variable for LogRecord subclasses
+LR = TypeVar("LR", bound=LogRecord)
 
-class NovaLogRecord(logging.LogRecord):
+
+class NovaLogRecord(LogRecord):
     """Extended LogRecord with Nova-specific fields."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize log record with Nova-specific fields."""
         super().__init__(*args, **kwargs)
-        self.phase = None
-        self.handler = None
-        self.duration = None
-        self.context = {}
-        self.file_path = None
-        self.progress = None
+        self.phase: Optional[str] = None
+        self.handler: Optional[str] = None
+        self.duration: Optional[float] = None
+        self.context: Dict[str, Any] = {}
+        self.file_path: Optional[Path] = None
+        self.progress: Optional[str] = None
 
 
 class NovaLogger(logging.Logger):
@@ -36,18 +40,34 @@ class NovaLogger(logging.Logger):
 
     def makeRecord(
         self,
-        name,
-        level,
-        fn,
-        lno,
-        msg,
-        args,
-        exc_info,
-        func=None,
-        extra=None,
-        sinfo=None,
-    ):
-        """Create a NovaLogRecord instead of LogRecord."""
+        name: str,
+        level: int,
+        fn: str,
+        lno: int,
+        msg: object,
+        args: Union[Sequence[Any], Mapping[str, Any]],
+        exc_info: Union[BaseException, tuple[Any, Any, Any], None],
+        func: Optional[str] = None,
+        extra: Optional[Mapping[str, Any]] = None,
+        sinfo: Optional[str] = None,
+    ) -> NovaLogRecord:
+        """Create a NovaLogRecord instead of LogRecord.
+
+        Args:
+            name: Logger name
+            level: Log level
+            fn: Filename
+            lno: Line number
+            msg: Log message
+            args: Message arguments
+            exc_info: Exception info
+            func: Function name
+            extra: Extra fields
+            sinfo: Stack info
+
+        Returns:
+            A NovaLogRecord instance
+        """
         record = NovaLogRecord(name, level, fn, lno, msg, args, exc_info, func, sinfo)
         if extra:
             for key, value in extra.items():
@@ -58,14 +78,25 @@ class NovaLogger(logging.Logger):
 class NovaFormatter(logging.Formatter):
     """Nova-specific log formatter with rich text support."""
 
-    def __init__(self, config):
-        """Initialize formatter with config."""
+    def __init__(self, config: LoggingConfig) -> None:
+        """Initialize formatter with config.
+
+        Args:
+            config: Logging configuration
+        """
         super().__init__()
         self.config = config
         self.datefmt = config.date_format
 
-    def format(self, record: NovaLogRecord) -> str:
-        """Format log record with phase and timing info."""
+    def format(self, record: LogRecord) -> str:
+        """Format log record with phase and timing info.
+
+        Args:
+            record: Log record to format
+
+        Returns:
+            Formatted log message
+        """
         # Format timestamp
         record.asctime = self.formatTime(record, self.datefmt)
 
@@ -118,12 +149,27 @@ class NovaFormatter(logging.Formatter):
 
 
 class LoggingManager:
-    """Manage logging configuration."""
+    """Manager for Nova logging configuration."""
 
-    def __init__(self, config):
-        """Initialize logging manager."""
+    def __init__(self, config: LoggingConfig) -> None:
+        """Initialize logging manager.
+
+        Args:
+            config: Logging configuration
+        """
         self.config = config
         self._setup_logging()
+
+    def get_logger(self, name: str) -> NovaLogger:
+        """Get a logger with Nova-specific configuration.
+
+        Args:
+            name: Logger name
+
+        Returns:
+            Configured NovaLogger instance
+        """
+        return logging.getLogger(name)  # type: ignore[return-value]
 
     def _setup_logging(self) -> None:
         """Set up logging configuration."""
@@ -139,7 +185,7 @@ class LoggingManager:
         formatter = NovaFormatter(self.config)
 
         # Configure handlers
-        handlers = []
+        handlers: List[logging.Handler] = []
 
         if "console" in self.config.handlers:
             console_handler = RichHandler(
@@ -233,11 +279,22 @@ def print_summary(
     failed: int,
     skipped: int,
     duration: float,
-    unchanged: list,
-    reprocessed: list,
-    failures: list,
+    unchanged: List[Path],
+    reprocessed: List[Path],
+    failures: List[Dict[str, Any]],
 ) -> None:
-    """Print processing summary."""
+    """Print processing summary.
+
+    Args:
+        total_files: Total number of files processed
+        successful: Number of successfully processed files
+        failed: Number of failed files
+        skipped: Number of skipped files
+        duration: Total processing duration in seconds
+        unchanged: List of unchanged files
+        reprocessed: List of reprocessed files
+        failures: List of failure details
+    """
     logger = logging.getLogger("nova.summary")
 
     # Create a new console for the summary
@@ -248,27 +305,49 @@ def print_summary(
         title="\n📊 Processing Summary", title_style="bold cyan", border_style="cyan"
     )
     table.add_column("Metric", style="bold white")
-    table.add_column("Value", justify="right", style="green")
+    table.add_column("Value", style="white")
 
-    # Add rows
+    # Add summary rows
     table.add_row("Total Files", str(total_files))
-    table.add_row("Successful", f"[green]{str(successful)}[/green]")
-    table.add_row("Failed", f"[red]{str(failed)}[/red]" if failed > 0 else str(failed))
-    table.add_row(
-        "Skipped", f"[yellow]{str(skipped)}[/yellow]" if skipped > 0 else str(skipped)
-    )
-    table.add_row("Unchanged", str(len(unchanged)))
-    table.add_row("Reprocessed", str(len(reprocessed)))
+    table.add_row("Successful", f"[green]{successful}[/green]")
+    table.add_row("Failed", f"[red]{failed}[/red]")
+    table.add_row("Skipped", f"[yellow]{skipped}[/yellow]")
     table.add_row("Duration", f"{duration:.2f}s")
 
-    # Print table directly to console
-    summary_console.print("\n")  # Add some spacing
+    # Print summary table
     summary_console.print(table)
 
-    # Log failures if any
+    # Print unchanged files if any
+    if unchanged:
+        logger.info("\n📝 Unchanged Files:")
+        for file in unchanged:
+            logger.info(f"  • [dim]{file}[/dim]")
+
+    # Print reprocessed files if any
+    if reprocessed:
+        logger.info("\n🔄 Reprocessed Files:")
+        for file in reprocessed:
+            logger.info(f"  • [yellow]{file}[/yellow]")
+
+    # Print failures if any
     if failures:
-        failure_msg = "\n❌ Failed Files:\n" + "━" * 80 + "\n"
-        for file_path, error_msg in failures:
-            failure_msg += f"• {Path(file_path).name}\n"
-            failure_msg += f"  Error: {error_msg}\n\n"
-        logger.error(failure_msg)
+        logger.error("\n❌ Failures:")
+        for failure in failures:
+            file_path = failure.get("file", "Unknown file")
+            error = failure.get("error", "Unknown error")
+            phase = failure.get("phase", "Unknown phase")
+            logger.error(f"  • [red]{file_path}[/red]")
+            logger.error(f"    Phase: {phase}")
+            logger.error(f"    Error: {error}")
+
+
+def log_duration(start_time: float) -> float:
+    """Calculate and return duration since start time.
+
+    Args:
+        start_time: Start time in seconds
+
+    Returns:
+        Duration in seconds
+    """
+    return time.time() - start_time

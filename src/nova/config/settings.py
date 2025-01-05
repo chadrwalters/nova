@@ -35,8 +35,6 @@ class OpenAIConfig(BaseModel):
         """Check if the API key is valid."""
         if not self.api_key:
             return False
-        if not isinstance(self.api_key, str):
-            return False
         key = self.api_key.strip()
         if not key:
             return False

@@ -114,7 +114,7 @@ class MarkdownWriter:
             self._template_cache[template_name] = template
             return template
 
-    def write_from_template(self, template_name: str, **kwargs) -> str:
+    def write_from_template(self, template_name: str, **kwargs: Any) -> str:
         """Generate Markdown content using a template.
 
         Args:

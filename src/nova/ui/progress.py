@@ -1,9 +1,10 @@
-"""Enhanced progress visualization for Nova."""
-from typing import Dict, List, Optional
+"""Progress tracking UI components."""
+import asyncio
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Set
 
 from rich.console import Console
-from rich.layout import Layout
-from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -11,220 +12,169 @@ from rich.progress import (
     SpinnerColumn,
     TaskProgressColumn,
     TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
 )
 from rich.table import Table
 
-from nova.core.progress import FileProgress, PhaseProgress, ProcessingStatus
+from nova.core.progress import FileProgress, PhaseProgress, ProgressStatus
+
+logger = logging.getLogger(__name__)
 
 
 class ProgressDisplay:
-    """Enhanced progress display for Nova pipeline."""
+    """Display progress of pipeline execution."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize progress display."""
         self.console = Console()
         self.progress = Progress(
             SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
+            TextColumn("[bold cyan]{task.description:>12}[/]"),
+            BarColumn(bar_width=40, style="cyan", complete_style="green"),
             TaskProgressColumn(),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
+            TextColumn("[dim]{task.completed}/{task.total}[/]"),
+            console=self.console,
+            expand=False,
+            transient=False,  # Make progress display persistent
+            refresh_per_second=2,  # Increase refresh rate slightly
         )
-        self.layout = Layout()
-        self._setup_layout()
+        self.progress.start()
+        self.task_ids: Dict[str, int] = {}
 
-    def _setup_layout(self) -> None:
-        """Set up the layout structure."""
-        self.layout.split(
-            Layout(name="header", size=3),
-            Layout(name="body"),
-            Layout(name="footer", size=3),
-        )
-
-        # Split body into progress and stats
-        self.layout["body"].split_row(
-            Layout(name="progress", ratio=2),
-            Layout(name="stats", ratio=1),
-        )
-
-    def create_phase_progress(self, phase: str, total: int) -> int:
-        """Create a progress bar for a phase.
+    def add_phase(self, phase: str, total_files: int) -> int:
+        """Add a phase to the progress display.
 
         Args:
             phase: Phase name
-            total: Total number of files
+            total_files: Total number of files to process
 
         Returns:
-            Task ID for the progress bar
+            Task ID for the phase
         """
-        return self.progress.add_task(f"[cyan]{phase.upper()}[/cyan]", total=total)
+        task_id: int = self.progress.add_task(
+            f"[cyan]{phase.upper()}[/cyan]",
+            total=total_files,
+            start=True,
+            visible=True,
+        )
+        self.task_ids[phase] = task_id
+        return task_id
 
-    def create_stats_table(self, phase_progress: Dict[str, PhaseProgress]) -> Table:
-        """Create statistics table.
+    def update_phase(self, phase: str, progress: PhaseProgress) -> None:
+        """Update phase progress.
 
         Args:
-            phase_progress: Dictionary of phase progress
-
-        Returns:
-            Rich Table object
+            phase: Phase name
+            progress: Phase progress data
         """
-        table = Table(title="Processing Statistics")
+        if phase in self.task_ids:
+            task_id = self.task_ids[phase]
+            if progress.files_total > 0:
+                percentage = (progress.files_processed / progress.files_total) * 100
+                self.progress.update(
+                    task_id,
+                    completed=progress.files_processed,
+                    description=f"{phase.upper():>12}",
+                    visible=True,
+                )
+
+    def stop(self) -> None:
+        """Stop the progress display."""
+        self.progress.stop()
+
+    async def print_summary(
+        self,
+        phases: Dict[str, PhaseProgress],
+        files: Dict[Path, FileProgress],
+    ) -> None:
+        """Print processing summary.
+
+        Args:
+            phases: Phase progress data
+            files: File progress data
+        """
+        # Stop the progress display before showing summary
+        self.stop()
+
+        # Create summary table
+        table = Table(title="Processing Summary")
         table.add_column("Phase", style="cyan")
-        table.add_column("Status", justify="center")
+        table.add_column("Total", justify="right")
+        table.add_column("Completed", justify="right", style="green")
+        table.add_column("Failed", justify="right", style="red")
+        table.add_column("Skipped", justify="right", style="yellow")
         table.add_column("Progress", justify="right")
         table.add_column("Duration", justify="right")
 
-        for phase, progress in phase_progress.items():
-            # Calculate progress percentage
-            if progress.total_files > 0:
-                percentage = (progress.completed_files / progress.total_files) * 100
-            else:
-                percentage = 0
+        all_successful = True
+        total_files = 0
+        total_success = 0
+        total_failed = 0
+        total_skipped = 0
+        total_duration = 0.0
 
-            # Format duration
-            duration = progress.duration if progress.duration is not None else 0
-
-            # Add row with appropriate status color
-            status_style = {
-                ProcessingStatus.PENDING: "white",
-                ProcessingStatus.IN_PROGRESS: "yellow",
-                ProcessingStatus.COMPLETED: "green",
-                ProcessingStatus.FAILED: "red",
-            }[progress.status]
+        for phase_name, progress in phases.items():
+            duration = progress.duration or 0.0
+            percentage = (
+                (progress.files_processed / progress.files_total * 100)
+                if progress.files_total > 0
+                else 0
+            )
 
             table.add_row(
-                phase.upper(),
-                f"[{status_style}]{progress.status.value}[/{status_style}]",
+                phase_name.upper(),
+                str(progress.files_total),
+                str(
+                    progress.files_processed
+                    - progress.files_failed
+                    - progress.files_skipped
+                ),
+                str(progress.files_failed),
+                str(progress.files_skipped),
                 f"{percentage:.1f}%",
                 f"{duration:.1f}s",
             )
 
-        return table
-
-    def create_file_table(self, current_files: Dict[str, List[FileProgress]]) -> Table:
-        """Create table of current file processing status.
-
-        Args:
-            current_files: Dictionary of current files being processed per phase
-
-        Returns:
-            Rich Table object
-        """
-        table = Table(title="Current Processing")
-        table.add_column("Phase", style="cyan")
-        table.add_column("File")
-        table.add_column("Status", justify="center")
-        table.add_column("Duration", justify="right")
-
-        for phase, files in current_files.items():
-            for file in files:
-                # Format duration
-                duration = file.duration if file.duration is not None else 0
-
-                # Add row with appropriate status color
-                status_style = {
-                    ProcessingStatus.PENDING: "white",
-                    ProcessingStatus.IN_PROGRESS: "yellow",
-                    ProcessingStatus.COMPLETED: "green",
-                    ProcessingStatus.FAILED: "red",
-                }[file.status]
-
-                table.add_row(
-                    phase.upper(),
-                    file.file_path.name,
-                    f"[{status_style}]{file.status.value}[/{status_style}]",
-                    f"{duration:.1f}s",
-                )
-
-        return table
-
-    def update_display(
-        self,
-        phase_progress: Dict[str, PhaseProgress],
-        current_files: Dict[str, List[FileProgress]],
-        task_id: int,
-        completed: int,
-    ) -> None:
-        """Update the display with current progress.
-
-        Args:
-            phase_progress: Dictionary of phase progress
-            current_files: Dictionary of current files being processed per phase
-            task_id: Task ID of the current progress bar
-            completed: Number of completed files
-        """
-        # Update progress bar
-        self.progress.update(task_id, completed=completed)
-
-        # Update statistics
-        stats_table = self.create_stats_table(phase_progress)
-        self.layout["stats"].update(Panel(stats_table))
-
-        # Update current files
-        files_table = self.create_file_table(current_files)
-        self.layout["progress"].update(Panel(files_table))
-
-    def start(self) -> None:
-        """Start the live display."""
-        self.progress.start()
-
-    def stop(self) -> None:
-        """Stop the live display."""
-        self.progress.stop()
-
-    def print_summary(self, phase_progress: Dict[str, PhaseProgress]) -> None:
-        """Print final processing summary.
-
-        Args:
-            phase_progress: Dictionary of phase progress
-        """
-        table = Table(title="Processing Summary")
-        table.add_column("Phase", style="cyan")
-        table.add_column("Files", justify="right")
-        table.add_column("Success", justify="right", style="green")
-        table.add_column("Failed", justify="right", style="red")
-        table.add_column("Duration", justify="right")
-
-        total_files = 0
-        total_success = 0
-        total_failed = 0
-        total_duration = 0.0
-
-        for phase, progress in phase_progress.items():
-            duration = progress.duration if progress.duration is not None else 0
-            table.add_row(
-                phase.upper(),
-                str(progress.total_files),
-                str(progress.completed_files),
-                str(progress.failed_files),
-                f"{duration:.1f}s",
+            total_files += progress.files_total
+            total_success += (
+                progress.files_processed
+                - progress.files_failed
+                - progress.files_skipped
             )
-
-            total_files += progress.total_files
-            total_success += progress.completed_files
-            total_failed += progress.failed_files
+            total_failed += progress.files_failed
+            total_skipped += progress.files_skipped
             total_duration += duration
 
+            if progress.files_failed > 0:
+                all_successful = False
+
         # Add totals row
+        total_progress = (
+            ((total_success + total_failed + total_skipped) / total_files * 100)
+            if total_files > 0
+            else 0
+        )
         table.add_row(
             "TOTAL",
             str(total_files),
             str(total_success),
             str(total_failed),
+            str(total_skipped),
+            f"{total_progress:.1f}%",
             f"{total_duration:.1f}s",
             style="bold",
         )
 
-        self.console.print("\n")
-        self.console.print(table)
-
-        # Print status message
-        if total_failed == 0:
-            self.console.print("\n[green]All files processed successfully![/green]")
+        # Only show summary if there are failures or if debug logging is enabled
+        if total_failed > 0:
+            logger.warning("\n" + str(table))
+            logger.error("\nFailed Files:")
+            for file_path, file_progress in files.items():
+                if file_progress.status == ProgressStatus.FAILED:
+                    logger.error(f"  • {file_path}")
+                    if file_progress.error:
+                        logger.error(f"    Error: {file_progress.error}")
         else:
-            self.console.print(
-                f"\n[red]Processing completed with {total_failed} failures.[/red]"
-            )
+            logger.debug("\n" + str(table))
+
+        # Add small delay to prevent overwhelming the event loop
+        await asyncio.sleep(0)

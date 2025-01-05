@@ -2,11 +2,11 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Type, Union
+from typing import Dict, List, Optional, Type, TypeVar, Union
 
 from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
-from .base import BaseHandler
+from .base import BaseHandler, ProcessingResult
 from .document import DocumentHandler
 from .html import HTMLHandler
 from .image import ImageHandler
@@ -14,6 +14,9 @@ from .markdown import MarkdownHandler
 from .spreadsheet import SpreadsheetHandler
 from .text import TextHandler
 from .video import VideoHandler
+
+# Type variable for concrete handler classes
+H = TypeVar("H", bound=BaseHandler)
 
 
 class HandlerRegistry:
@@ -33,11 +36,11 @@ class HandlerRegistry:
         self.logger = logging.getLogger(__name__)
         self._register_default_handlers()
 
-    def register_handler(self, handler_class: Type[BaseHandler]) -> None:
+    def register_handler(self, handler_class: Type[H]) -> None:
         """Register a new handler.
 
         Args:
-            handler_class: Handler class to register.
+            handler_class: Concrete handler class to register.
         """
         handler = handler_class(self.config)
         for file_type in handler.file_types:
@@ -46,7 +49,7 @@ class HandlerRegistry:
 
     def _register_default_handlers(self) -> None:
         """Register default handlers."""
-        default_handlers = [
+        default_handlers: List[Type[BaseHandler]] = [
             DocumentHandler,
             ImageHandler,
             TextHandler,
@@ -140,24 +143,24 @@ class HandlerRegistry:
             )
 
             # Convert to Path if needed
-            if isinstance(file_path, str):
-                self.logger.debug(f"Converting file_path from str to Path")
-                file_path = Path(file_path)
+            file_path_obj = Path(file_path)
 
-            self.logger.debug(f"File path after conversion: {file_path}")
-            self.logger.debug(f"File exists: {file_path.exists()}")
-            self.logger.debug(f"File is file: {file_path.is_file()}")
-            self.logger.debug(f"File suffix: {file_path.suffix}")
-            self.logger.debug(f"File name: {file_path.name}")
+            self.logger.debug(f"File path after conversion: {file_path_obj}")
+            self.logger.debug(f"File exists: {file_path_obj.exists()}")
+            self.logger.debug(f"File is file: {file_path_obj.is_file()}")
+            self.logger.debug(f"File suffix: {file_path_obj.suffix}")
+            self.logger.debug(f"File name: {file_path_obj.name}")
 
             # Skip ignored files without creating metadata
-            if file_path.name in self.IGNORED_FILES:
-                self.logger.debug(f"Skipping ignored file: {file_path.name}")
+            if file_path_obj.name in self.IGNORED_FILES:
+                self.logger.debug(f"Skipping ignored file: {file_path_obj.name}")
                 return None
 
             # Get handler for file
-            self.logger.debug(f"Looking up handler for file type: {file_path.suffix}")
-            handler = self.get_handler(file_path)
+            self.logger.debug(
+                f"Looking up handler for file type: {file_path_obj.suffix}"
+            )
+            handler = self.get_handler(file_path_obj)
             self.logger.debug(
                 f"Handler lookup result: {handler.name if handler else None}"
             )
@@ -166,34 +169,34 @@ class HandlerRegistry:
                 # Create metadata for unsupported files
                 self.logger.debug(f"No handler found, creating error metadata")
                 metadata = DocumentMetadata.from_file(
-                    file_path=file_path,
+                    file_path=file_path_obj,
                     handler_name="registry",
                     handler_version="0.1.0",
                 )
                 metadata.processed = False
                 metadata.add_error(
-                    "registry", f"No handler found for file type: {file_path.suffix}"
+                    "registry",
+                    f"No handler found for file type: {file_path_obj.suffix}",
                 )
                 return metadata
 
-            self.logger.info(f"Using {handler.name} handler for file: {file_path}")
+            self.logger.info(f"Using {handler.name} handler for file: {file_path_obj}")
+
+            # Create initial metadata
+            metadata = DocumentMetadata.from_file(
+                file_path=file_path_obj,
+                handler_name=handler.name,
+                handler_version=handler.version,
+            )
 
             # Process file
             try:
-                result = await handler.process(
-                    file_path,
-                    output_dir=output_dir,
-                )
+                result = await handler.process(file_path_obj, metadata)
                 self.logger.debug(f"Handler process result: {result}")
-                return result
+                return result.metadata
             except Exception as e:
                 self.logger.exception(
-                    f"Handler {handler.name} failed to process file: {file_path}"
-                )
-                metadata = DocumentMetadata.from_file(
-                    file_path=file_path,
-                    handler_name=handler.name,
-                    handler_version=handler.version,
+                    f"Handler {handler.name} failed to process file: {file_path_obj}"
                 )
                 metadata.processed = False
                 metadata.add_error(handler.name, str(e))
@@ -202,7 +205,7 @@ class HandlerRegistry:
         except Exception as e:
             self.logger.exception(f"Failed to process file {file_path}: {str(e)}")
             metadata = DocumentMetadata.from_file(
-                file_path=file_path,
+                file_path=Path(file_path),
                 handler_name="registry",
                 handler_version="0.1.0",
             )

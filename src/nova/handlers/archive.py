@@ -46,12 +46,14 @@ Please use an appropriate archive tool to extract and view the contents."""
     async def process_impl(
         self,
         file_path: Path,
+        output_path: Path,
         metadata: DocumentMetadata,
     ) -> Optional[DocumentMetadata]:
         """Process an archive file.
 
         Args:
             file_path: Path to file.
+            output_path: Path to output file.
             metadata: Document metadata.
 
         Returns:
@@ -61,11 +63,6 @@ Please use an appropriate archive tool to extract and view the contents."""
             ValueError: If file cannot be processed.
         """
         try:
-            # Get output path from output manager
-            output_path = self.output_manager.get_output_path_for_phase(
-                file_path, "parse", ".parsed.md"
-            )
-
             # Create archive content
             content = self._create_archive_content(file_path)
 

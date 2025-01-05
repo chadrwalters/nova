@@ -2,11 +2,11 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-from nova.core.metadata import FileMetadata
 from nova.handlers.base import BaseHandler
 from nova.handlers.registry import HandlerRegistry
+from nova.models.document import DocumentMetadata
 from nova.phases.base import Phase
 
 logger = logging.getLogger(__name__)
@@ -42,8 +42,8 @@ class ParsePhase(Phase):
         return self.registry.get_handler(file_path)
 
     async def process_file(
-        self, file_path: Path, output_dir: Path
-    ) -> Optional[FileMetadata]:
+        self, file_path: Union[str, Path], output_dir: Union[str, Path]
+    ) -> Optional[DocumentMetadata]:
         """Process a single file.
 
         Args:
@@ -51,8 +51,12 @@ class ParsePhase(Phase):
             output_dir: Directory to write output to
 
         Returns:
-            FileMetadata if successful, None if skipped
+            DocumentMetadata if successful, None if skipped
         """
+        # Convert to Path objects
+        file_path = Path(file_path)
+        output_dir = Path(output_dir)
+
         # Get handler for file type
         handler = self._get_handler(file_path)
         if not handler:
@@ -63,7 +67,7 @@ class ParsePhase(Phase):
 
         try:
             # Process file with handler
-            metadata = FileMetadata.from_file(
+            metadata = DocumentMetadata.from_file(
                 file_path=file_path,
                 handler_name=handler.name,
                 handler_version=handler.version,
@@ -166,5 +170,7 @@ class ParsePhase(Phase):
             for file in skipped_files:
                 logger.warning(f"  - {file}")
 
-        # Update pipeline stats
-        self.pipeline.update_stats(self.name, self.stats)
+        # Update pipeline state with stats
+        if "stats" not in self.pipeline.state[self.name]:
+            self.pipeline.state[self.name]["stats"] = {}
+        self.pipeline.state[self.name]["stats"].update(self.stats)

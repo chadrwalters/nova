@@ -100,11 +100,11 @@ class ImageHandler(BaseHandler):
                     img = img.convert("RGB")
 
                 # Save as JPEG in memory
-                img_byte_arr = io.BytesIO()
-                img.save(img_byte_arr, format="JPEG", quality=85)
-                img_byte_arr = img_byte_arr.getvalue()
+                buffer = io.BytesIO()
+                img.save(buffer, format="JPEG", quality=85)
+                img_bytes = buffer.getvalue()
 
-                return base64.b64encode(img_byte_arr).decode("utf-8")
+                return base64.b64encode(img_bytes).decode("utf-8")
         except Exception as e:
             self.logger.error(f"Failed to encode image {file_path}: {str(e)}")
             raise

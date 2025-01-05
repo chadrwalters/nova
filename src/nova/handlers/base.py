@@ -111,10 +111,12 @@ class BaseHandler(ABC):
                 )
 
             if updated_metadata.errors:
+                # Get the first error message from the errors dictionary
+                first_error = next(iter(updated_metadata.errors.values()))
                 return ProcessingResult(
                     status=ProcessingStatus.FAILED,
                     metadata=updated_metadata,
-                    error=str(updated_metadata.errors[0]),
+                    error=str(first_error),
                 )
 
             return ProcessingResult(

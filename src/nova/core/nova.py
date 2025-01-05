@@ -149,7 +149,7 @@ class Nova:
         input_dir: Optional[Union[str, Path]] = None,
         output_dir: Optional[Union[str, Path]] = None,
         recursive: bool = True,
-    ) -> List[Dict]:
+    ) -> List[FileMetadata]:
         """Process all files in directory.
 
         Args:

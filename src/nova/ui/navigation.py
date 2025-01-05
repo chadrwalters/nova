@@ -232,7 +232,7 @@ class NavigationRenderer:
         Returns:
             List of breadcrumb strings
         """
-        breadcrumbs = []
+        breadcrumbs: List[str] = []
 
         # Add parent path if provided
         if header.parent_path:

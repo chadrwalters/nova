@@ -423,3 +423,15 @@ class NovaPipeline:
                         console.print()
 
         console.print()  # Final newline for spacing
+
+    def get_supported_formats(self) -> List[str]:
+        """Get list of supported file formats.
+
+        Returns:
+            List of supported file extensions.
+        """
+        formats = set()
+        for phase in [ParsePhase, DisassemblyPhase, SplitPhase, FinalizePhase]:
+            if hasattr(phase, "supported_formats"):
+                formats.update(getattr(phase, "supported_formats"))
+        return sorted(list(formats))

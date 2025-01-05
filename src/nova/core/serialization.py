@@ -1,50 +1,55 @@
 """Serialization utilities for Nova."""
 import json
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union, cast
 
 
-class NovaJSONEncoder(json.JSONEncoder):
-    """Custom JSON encoder for Nova objects."""
+@dataclass
+class SerializationConfig:
+    """Configuration for JSON serialization."""
 
-    def default(self, obj):
-        """Handle custom object serialization.
-
-        Args:
-            obj: Object to serialize.
-
-        Returns:
-            JSON-serializable object.
-        """
-        if isinstance(obj, bytes):
-            return obj.hex()
-        if isinstance(obj, Path):
-            return str(obj)
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
+    indent: int = 2
+    sort_keys: bool = True
 
 
-def serialize_metadata(obj: Dict[str, Any]) -> str:
-    """Serialize metadata to JSON string.
+def load_json(file_path: Path) -> Dict[str, Any]:
+    """Load JSON data from a file.
 
     Args:
-        obj: Metadata dictionary.
+        file_path: Path to the JSON file
 
     Returns:
-        JSON string.
+        Parsed JSON data as a dictionary
+
+    Raises:
+        FileNotFoundError: If the file does not exist
+        json.JSONDecodeError: If the file contains invalid JSON
     """
-    return json.dumps(obj, cls=NovaJSONEncoder, indent=2)
+    with open(file_path, "r", encoding="utf-8") as f:
+        return cast(Dict[str, Any], json.loads(f.read()))
 
 
-def deserialize_metadata(data: str) -> Dict[str, Any]:
-    """Deserialize metadata from JSON string.
+def save_json(
+    data: Dict[str, Any], file_path: Path, config: Optional[SerializationConfig] = None
+) -> None:
+    """Save data to a JSON file.
 
     Args:
-        data: JSON string.
+        data: Data to save
+        file_path: Path to save the JSON file
+        config: Optional serialization configuration
 
-    Returns:
-        Metadata dictionary.
+    Raises:
+        OSError: If the file cannot be written
+        TypeError: If the data cannot be serialized to JSON
     """
-    return json.loads(data)
+    # Create parent directory if it doesn't exist
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use configuration if provided
+    indent = config.indent if config else 2
+    sort_keys = config.sort_keys if config else True
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=indent, sort_keys=sort_keys)

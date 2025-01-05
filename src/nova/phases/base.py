@@ -2,10 +2,13 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Set, Union
+from typing import TYPE_CHECKING, Dict, Optional, Set, Union
 
 from nova.config.manager import ConfigManager
 from nova.core.metadata import FileMetadata
+
+if TYPE_CHECKING:
+    from nova.core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +16,12 @@ logger = logging.getLogger(__name__)
 class Phase:
     """Base class for pipeline phases."""
 
-    def __init__(self, name: str, config: ConfigManager, pipeline=None):
+    def __init__(
+        self,
+        name: str,
+        config: ConfigManager,
+        pipeline: Optional["NovaPipeline"] = None,
+    ):
         """Initialize phase.
 
         Args:

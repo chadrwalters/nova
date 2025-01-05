@@ -266,20 +266,21 @@ class LinkRelationshipMap(BaseModel):
         Returns:
             List of suggested files to link to
         """
-        suggestions = []
+        suggestions: set[str] = set()
 
         # Get files that are linked to by files this file links to
         for target in self.direct_relationships[file_path]:
-            suggestions.extend(self.direct_relationships[target])
+            suggestions.update(self.direct_relationships[target])
 
         # Get files that link to files that link to this file
         for source in self.reverse_relationships[file_path]:
-            suggestions.extend(self.reverse_relationships[source])
+            suggestions.update(self.reverse_relationships[source])
 
-        # Remove duplicates and existing links
-        suggestions = set(suggestions)
-        suggestions -= {file_path}  # Remove self
-        suggestions -= self.direct_relationships[file_path]  # Remove existing links
+        # Remove self and existing links
+        suggestions.discard(file_path)  # Remove self
+        suggestions.difference_update(
+            self.direct_relationships[file_path]
+        )  # Remove existing links
 
         return sorted(suggestions)
 
@@ -400,7 +401,7 @@ class LinkRelationshipMap(BaseModel):
 
         # Find closest path by directory similarity
         best_match = None
-        best_similarity = 0
+        best_similarity: float = 0.0
         for match in matches:
             match_path = Path(match)
             similarity = difflib.SequenceMatcher(
