@@ -46,7 +46,7 @@ When I submit a command to you, you MUST follow the procedure outlined in the co
 
 - "clean run":
     - procedure:
-        1. "You MUST poetry run ./cleanup.sh -a && ./process_notes.sh"   
+        1. "You MUST poetry run python -m nova.cleanup -a && poetry run python -m nova.cli --config config/nova.yaml"   
 
 - "fix pre-commit":
     - procedure:

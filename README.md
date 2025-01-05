@@ -33,12 +33,12 @@ These are enforced via pre-commit hooks. The hooks will run automatically on com
 
 Run Nova with:
 ```bash
-./process_notes.sh
+poetry run python -m nova.cli --config config/nova.yaml
 ```
 
 Clean up processing artifacts with:
 ```bash
-./cleanup.sh -a
+poetry run python -m nova.cleanup -a
 ```
 
 ## Testing
