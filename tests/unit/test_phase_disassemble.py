@@ -1,11 +1,15 @@
 """
 Unit tests for Nova disassemble phase.
 """
+
+# Standard library
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
+# External dependencies
 import pytest
 
+# Internal imports
 from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
 from nova.core.metadata import FileMetadata
 from nova.phases.disassemble import DisassemblyPhase

@@ -1,10 +1,12 @@
 """Markdown file handler."""
 
+# Standard library
 import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
 from ..models.document import DocumentMetadata

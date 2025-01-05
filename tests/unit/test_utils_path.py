@@ -1,8 +1,12 @@
 """Unit tests for path utilities."""
+
+# Standard library
 from pathlib import Path
 
+# External dependencies
 import pytest
 
+# Internal imports
 from nova.utils.path_utils import (
     ensure_parent_dirs,
     get_markdown_path,

@@ -1,10 +1,13 @@
 """Markdown utilities for Nova."""
+
+# Standard library
 import os
 import re
 from pathlib import Path
 from typing import Dict, Optional
 
-from nova.core.metadata import DocumentMetadata
+# Internal imports
+from ..core.metadata import DocumentMetadata
 
 
 def update_markdown_links(

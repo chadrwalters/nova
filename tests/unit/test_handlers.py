@@ -1,5 +1,6 @@
 """Tests for file handlers."""
 
+# Standard library
 import os
 import shutil
 import tempfile
@@ -7,11 +8,14 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+# External dependencies
 import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
+from docx import Document
 
-from nova.config.settings import CacheConfig, NovaConfig
+# Internal imports
+from nova.config.settings import CacheConfig, NovaConfig, APIConfig, OpenAIConfig
 from nova.handlers.document import DocumentHandler
 from nova.handlers.image import ImageHandler
 from nova.handlers.markdown import MarkdownHandler
@@ -163,8 +167,6 @@ class TestDocumentHandler:
         handler = DocumentHandler(config)
 
         # Create test DOCX file with actual content
-        from docx import Document
-
         test_file = Path(config.input_dir) / "test.docx"
         doc = Document()
         doc.add_paragraph("Test DOCX content")

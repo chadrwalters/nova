@@ -1,10 +1,12 @@
 """Centralized output file management for Nova."""
 
+# Standard library
 import logging
 from pathlib import Path
 from typing import Optional, Union
 
-from nova.config.manager import ConfigManager
+# Internal imports
+from ..config.manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 

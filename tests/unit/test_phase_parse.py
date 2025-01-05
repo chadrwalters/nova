@@ -1,14 +1,18 @@
 """
 Unit tests for Nova parse phase.
 """
+
+# Standard library
 import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
+# External dependencies
 import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
 
+# Internal imports
 from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
 from nova.handlers.document import DocumentHandler
 from nova.handlers.image import ImageHandler

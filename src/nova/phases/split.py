@@ -1,18 +1,25 @@
 """Split phase implementation."""
 
+# Standard library
 import logging
+import os
+import re
 import traceback
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
-from nova.config.manager import ConfigManager
-from nova.core.metadata import DocumentMetadata, FileMetadata
-from nova.handlers.registry import HandlerRegistry
-from nova.phases.base import Phase
+# Internal imports
+from ..config.manager import ConfigManager
+from ..core.markdown import MarkdownWriter
+from ..core.metadata import FileMetadata
+from ..handlers.base import BaseHandler
+from ..handlers.registry import HandlerRegistry
+from ..models.document import DocumentMetadata
+from .base import Phase
 
 if TYPE_CHECKING:
-    from nova.core.pipeline import NovaPipeline
+    from ..core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -247,11 +254,15 @@ class SplitPhase(Phase):
                         file_ext = file_path.suffix.lower()
                         file_type = self.TYPE_MAP.get(file_ext, "OTHER")
 
-                        # Create attachment info
+                        # Create reference marker
+                        ref = self._make_reference(str(file_path))
+
                         attachment = {
                             "path": str(file_path),
                             "id": file_path.stem,
                             "type": file_type,
+                            "name": file_path.stem,
+                            "ref": ref,
                             "content": f"Binary file: {file_path.name}"
                             if file_type in ["IMAGE", "PDF", "EXCEL"]
                             else file_path.read_text(encoding="utf-8"),

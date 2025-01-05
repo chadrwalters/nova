@@ -1,11 +1,14 @@
 """Unit tests for Nova finalize phase."""
 
+# Standard library
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+# External dependencies
 import pytest
 
+# Internal imports
 from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
 from nova.core.metadata import FileMetadata
 from nova.phases.finalize import FinalizePhase

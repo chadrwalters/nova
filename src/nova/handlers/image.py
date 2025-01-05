@@ -1,5 +1,6 @@
 """Image file handler."""
 
+# Standard library
 import base64
 import io
 import mimetypes
@@ -7,11 +8,13 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# External dependencies
 import cairosvg
 import pillow_heif
 from openai import OpenAI
 from PIL import Image
 
+# Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
 from ..models.document import DocumentMetadata

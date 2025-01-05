@@ -1,9 +1,11 @@
 """Registry for document handlers."""
 
+# Standard library
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Type, TypeVar, Union
 
+# Internal imports
 from ..config.manager import ConfigManager
 from ..models.document import DocumentMetadata
 from .base import BaseHandler, ProcessingResult

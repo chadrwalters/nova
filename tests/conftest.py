@@ -1,14 +1,18 @@
 """
 Global pytest fixtures and utilities for Nova test suite.
 """
+
+# Standard library
 import shutil
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
+# External dependencies
 import pytest
 import yaml
 
+# Internal imports
 from nova.config.manager import ConfigManager
 
 

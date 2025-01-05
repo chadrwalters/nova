@@ -1,16 +1,19 @@
 """Finalize phase implementation."""
 
+# Standard library
 import logging
 import shutil
 from pathlib import Path
 from typing import Optional
 
+# External dependencies
 from rich.console import Console
 from rich.table import Table
 
-from nova.core.metadata import FileMetadata
-from nova.phases.base import Phase
-from nova.validation.pipeline_validator import PipelineValidator
+# Internal imports
+from ..core.metadata import FileMetadata
+from ..phases.base import Phase
+from ..validation.pipeline_validator import PipelineValidator
 
 logger = logging.getLogger(__name__)
 

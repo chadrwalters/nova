@@ -1,4 +1,6 @@
 """Disassembly phase of the Nova pipeline."""
+
+# Standard library
 import logging
 import os
 import shutil
@@ -6,16 +8,18 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
+# External dependencies
 from rich.console import Console
 from rich.table import Table
 
-from nova.config.manager import ConfigManager
-from nova.core.metadata import FileMetadata
-from nova.handlers.registry import HandlerRegistry
-from nova.phases.base import Phase
+# Internal imports
+from ..config.manager import ConfigManager
+from ..core.metadata import FileMetadata
+from ..handlers.registry import HandlerRegistry
+from ..phases.base import Phase
 
 if TYPE_CHECKING:
-    from nova.core.pipeline import NovaPipeline
+    from ..core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 console = Console()

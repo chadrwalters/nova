@@ -1,13 +1,16 @@
 """Document file handler."""
 
+# Standard library
 import mimetypes
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# External dependencies
 from docx import Document as DocxDocument
 from pypdf import PdfReader
 
+# Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
 from ..models.document import DocumentMetadata

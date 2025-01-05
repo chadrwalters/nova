@@ -1,0 +1,11 @@
+type(scope): summary
+
+# Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+# Scope: Optional, can be anything specifying the scope of the commit
+# Summary: Short description in present tense. Not capitalized. No period at the end.
+#
+# Optional long description
+#
+# Optional footer
+# BREAKING CHANGE: <description> 
+# Closes #<issue number> 
