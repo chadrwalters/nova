@@ -128,6 +128,13 @@ setup_environment() {
     log_success "Virtual environment created and dependencies installed"
 }
 
+# Setup pre-commit hooks
+setup_pre_commit() {
+    log_info "Setting up pre-commit hooks..."
+    poetry run pre-commit install
+    log_success "Pre-commit hooks installed"
+}
+
 # Create or update config file
 setup_config() {
     local config_file="${SCRIPT_DIR}/config/nova.yaml"
@@ -149,7 +156,7 @@ setup_config() {
         log_warning "Please edit config/nova.yaml and add your API keys"
     else
         # Validate configuration
-        if ! python3 -c "import yaml; yaml.safe_load(open('$config_file'))"; then
+        if ! poetry run python3 -c "import yaml; yaml.safe_load(open('$config_file'))"; then
             log_error "Invalid YAML configuration file"
             exit 1
         fi
@@ -159,21 +166,23 @@ setup_config() {
 
 # Create required directories
 setup_directories() {
-    local icloud_dir="${HOME}/Library/Mobile Documents/com~apple~CloudDocs"
-    local input_dir="${icloud_dir}/_NovaInput"
-    local processing_dir="${icloud_dir}/_NovaProcessing"
+    local base_dir="${SCRIPT_DIR}"
+    local dirs=(
+        "input"
+        "output"
+        "processing"
+        "processing/phases/parse"
+        "processing/phases/disassemble"
+        "processing/phases/split"
+    )
 
-    # Create _NovaInput directory if it doesn't exist
-    if [ ! -d "$input_dir" ]; then
-        log_info "Creating _NovaInput directory..."
-        mkdir -p "$input_dir"
-    fi
-
-    # Create _NovaProcessing directory if it doesn't exist
-    if [ ! -d "$processing_dir" ]; then
-        log_info "Creating _NovaProcessing directory..."
-        mkdir -p "$processing_dir"
-    fi
+    for dir in "${dirs[@]}"; do
+        local full_path="${base_dir}/${dir}"
+        if [ ! -d "$full_path" ]; then
+            log_info "Creating directory: ${dir}"
+            mkdir -p "$full_path"
+        fi
+    done
 
     log_success "Required directories are set up"
 }
@@ -195,6 +204,14 @@ validate_installation() {
         exit 1
     fi
     log_success "Configuration is valid"
+
+    # Run basic tests
+    log_info "Running basic tests..."
+    if ! poetry run pytest tests/unit -v; then
+        log_warning "Some tests failed. Please check the test output."
+    else
+        log_success "Basic tests passed"
+    fi
 }
 
 # Main installation process
@@ -206,12 +223,13 @@ main() {
     check_poetry
     check_system_dependencies
     setup_environment
+    setup_pre_commit
     setup_config
     setup_directories
     validate_installation
 
     log_success "Nova installation completed successfully"
-    log_info "You can now run './process_notes.sh' to process documents"
+    log_info "You can now run 'poetry run python -m nova.cli --config config/nova.yaml'"
 }
 
 # Run main installation
