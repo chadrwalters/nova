@@ -12,10 +12,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 # Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
-from ..core.metadata import FileMetadata
+from ..core.metadata import DocumentMetadata, FileMetadata
 from ..handlers.base import BaseHandler
 from ..handlers.registry import HandlerRegistry
-from ..models.document import DocumentMetadata
 from .base import Phase
 
 if TYPE_CHECKING:
@@ -407,4 +406,16 @@ class SplitPhase(Phase):
 
         # Write content to file
         attachments_file.write_text("\n".join(content), encoding="utf-8")
+
+        # Create and save metadata for attachments file
+        metadata = FileMetadata.from_file(
+            file_path=attachments_file,
+            handler_name="split",
+            handler_version="1.0",
+        )
+        metadata.processed = True
+        metadata.add_output_file(attachments_file)
+        metadata_path = output_dir / "Attachments.metadata.json"
+        metadata.save(metadata_path)
+
         return attachments_file
