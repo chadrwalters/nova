@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 # Internal imports
-from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
-from nova.core.metadata import DocumentMetadata
-from nova.phases.split import SplitPhase
+from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.core.metadata import DocumentMetadata
+from nova.context_processor.phases.split import SplitPhase
 
 
 @pytest.fixture

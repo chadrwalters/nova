@@ -19,12 +19,12 @@ All imports should be organized into the following sections, separated by a sing
    - AI/ML: `openai`
 
 3. **Internal Imports**
-   - Configuration: `nova.config.*`
-   - Core functionality: `nova.core.*`
-   - Models: `nova.models.*`
-   - Handlers: `nova.handlers.*`
-   - Phases: `nova.phases.*`
-   - Utilities: `nova.utils.*`
+   - Configuration: `nova.context_processor.config.*`
+   - Core functionality: `nova.context_processor.core.*`
+   - Models: `nova.context_processor.models.*`
+   - Handlers: `nova.context_processor.handlers.*`
+   - Phases: `nova.context_processor.phases.*`
+   - Utilities: `nova.context_processor.utils.*`
 
 ## Import Patterns
 
@@ -69,8 +69,8 @@ All imports should be organized into the following sections, separated by a sing
    from PIL import Image
 
    # Internal imports
-   from nova.config.manager import ConfigManager
-   from nova.core.metadata import FileMetadata
+   from nova.context_processor.config.manager import ConfigManager
+   from nova.context_processor.core.metadata import FileMetadata
    ```
 
 2. **Type Hint Imports**
@@ -78,7 +78,7 @@ All imports should be organized into the following sections, separated by a sing
    from typing import TYPE_CHECKING
 
    if TYPE_CHECKING:
-       from nova.core.pipeline import NovaPipeline
+       from nova.context_processor.core.pipeline import NovaPipeline
    ```
 
 3. **Handler-Specific Imports**
@@ -107,8 +107,8 @@ All imports should be organized into the following sections, separated by a sing
    from rich.table import Table
 
    # Internal imports
-   from nova.core.metadata import FileMetadata
-   from nova.phases.base import Phase
+   from nova.context_processor.core.metadata import FileMetadata
+   from nova.context_processor.phases.base import Phase
    ```
 
 ## Common Patterns by Module Type

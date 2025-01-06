@@ -8,10 +8,10 @@ from unittest.mock import Mock, patch
 import pytest
 from PIL import Image
 
-from nova.config.manager import ConfigManager
-from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
-from nova.handlers.image import ImageHandler
-from nova.models.document import DocumentMetadata
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.handlers.image import ImageHandler
+from nova.context_processor.models.document import DocumentMetadata
 
 
 @pytest.fixture

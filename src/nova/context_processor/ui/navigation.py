@@ -7,8 +7,8 @@ from typing import Dict, List, Optional, Set
 
 from jinja2 import Template
 
-from nova.models.link_map import NavigationNode, NavigationPath
-from nova.models.links import LinkContext
+from nova.context_processor.models.link_map import NavigationNode, NavigationPath
+from nova.context_processor.models.links import LinkContext
 
 
 @dataclass

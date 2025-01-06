@@ -295,7 +295,7 @@ def print_summary(
         reprocessed: List of reprocessed files
         failures: List of failure details
     """
-    logger = logging.getLogger("nova.summary")
+    logger = logging.getLogger("nova.context_processor.summary")
 
     # Create a new console for the summary
     summary_console = Console(force_terminal=True)

@@ -8,20 +8,20 @@ import time
 from typing import Dict, List, NoReturn, Union, cast
 
 MODULES_TO_TEST = [
-    "nova.config.manager",
-    "nova.handlers.base",
-    "nova.handlers.registry",
-    "nova.handlers.image",
-    "nova.handlers.document",
-    "nova.handlers.markdown",
-    "nova.phases.parse",
-    "nova.phases.split",
-    "nova.phases.finalize",
-    "nova.phases.disassemble",
-    "nova.utils.markdown",
-    "nova.utils.path_utils",
-    "nova.utils.output_manager",
-    "nova.utils.file_utils",
+    "nova.context_processor.config.manager",
+    "nova.context_processor.handlers.base",
+    "nova.context_processor.handlers.registry",
+    "nova.context_processor.handlers.image",
+    "nova.context_processor.handlers.document",
+    "nova.context_processor.handlers.markdown",
+    "nova.context_processor.phases.parse",
+    "nova.context_processor.phases.split",
+    "nova.context_processor.phases.finalize",
+    "nova.context_processor.phases.disassemble",
+    "nova.context_processor.utils.markdown",
+    "nova.context_processor.utils.path_utils",
+    "nova.context_processor.utils.output_manager",
+    "nova.context_processor.utils.file_utils",
 ]
 
 

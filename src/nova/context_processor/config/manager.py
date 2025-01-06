@@ -10,7 +10,7 @@ from typing import Optional, Union
 import yaml
 
 # Internal imports
-from nova.config.settings import APIConfig, CacheConfig, NovaConfig, PipelineConfig
+from nova.context_processor.config.settings import APIConfig, CacheConfig, NovaConfig, PipelineConfig
 
 logger = logging.getLogger(__name__)
 

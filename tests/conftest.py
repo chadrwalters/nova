@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 # Internal imports
-from nova.config.manager import ConfigManager
+from nova.context_processor.config.manager import ConfigManager
 
 
 def pytest_addoption(parser):

@@ -4,7 +4,7 @@ import logging
 import shutil
 from pathlib import Path
 
-from nova.config.manager import ConfigManager
+from nova.context_processor.config.manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 

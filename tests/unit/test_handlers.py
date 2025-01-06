@@ -15,11 +15,11 @@ from reportlab.pdfgen import canvas
 from docx import Document
 
 # Internal imports
-from nova.config.settings import CacheConfig, NovaConfig, APIConfig, OpenAIConfig
-from nova.handlers.document import DocumentHandler
-from nova.handlers.image import ImageHandler
-from nova.handlers.markdown import MarkdownHandler
-from nova.models.document import DocumentMetadata
+from nova.context_processor.config.settings import CacheConfig, OpenAIConfig
+from nova.context_processor.handlers.document import DocumentHandler
+from nova.context_processor.handlers.image import ImageHandler
+from nova.context_processor.handlers.markdown import MarkdownHandler
+from nova.context_processor.models.document import DocumentMetadata
 
 
 @pytest.fixture
@@ -218,7 +218,7 @@ class TestImageHandler:
         mock_client.chat.completions.create.return_value = mock_response
 
         # Set up config with proper OpenAI config structure
-        from nova.config.settings import APIConfig, OpenAIConfig
+        nova.context_processor.config.settings APIConfig, OpenAIConfig
 
         config.apis = APIConfig(openai=OpenAIConfig(api_key="test_key"))
 

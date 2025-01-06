@@ -9,11 +9,11 @@ import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
 
-from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
-from nova.handlers.document import DocumentHandler
-from nova.handlers.image import ImageHandler
-from nova.handlers.markdown import MarkdownHandler
-from nova.phases.parse import ParsePhase
+from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.handlers.document import DocumentHandler
+from nova.context_processor.handlers.image import ImageHandler
+from nova.context_processor.handlers.markdown import MarkdownHandler
+from nova.context_processor.phases.parse import ParsePhase
 
 
 @pytest.fixture

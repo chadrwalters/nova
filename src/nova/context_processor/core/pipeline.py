@@ -21,17 +21,17 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from nova.config.manager import ConfigManager
-from nova.config.settings import PipelineConfig
-from nova.core.logging import print_summary
-from nova.core.metadata import FileMetadata
-from nova.core.progress import ProgressTracker
-from nova.phases.base import Phase
-from nova.phases.disassemble import DisassemblyPhase
-from nova.phases.finalize import FinalizePhase
-from nova.phases.parse import ParsePhase
-from nova.phases.split import SplitPhase
-from nova.utils.output_manager import OutputManager
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.config.settings import PipelineConfig
+from nova.context_processor.core.logging import print_summary
+from nova.context_processor.core.metadata import FileMetadata
+from nova.context_processor.core.progress import ProgressTracker
+from nova.context_processor.phases.base import Phase
+from nova.context_processor.phases.disassemble import DisassemblyPhase
+from nova.context_processor.phases.finalize import FinalizePhase
+from nova.context_processor.phases.parse import ParsePhase
+from nova.context_processor.phases.split import SplitPhase
+from nova.context_processor.utils.output_manager import OutputManager
 
 logger = logging.getLogger(__name__)
 console = Console()

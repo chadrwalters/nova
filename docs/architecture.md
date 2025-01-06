@@ -38,7 +38,7 @@ These tools are enforced through pre-commit hooks, ensuring consistent code qual
 
 The configuration system uses a layered approach:
 
-1. Default configuration (`src/nova/config/default.yaml`)
+1. Default configuration (`src/nova/context_processor/config/default.yaml`)
 2. User configuration (`config/nova.yaml`)
 
 Configuration values are loaded in this order, with user config overriding defaults.
@@ -49,16 +49,18 @@ The configuration files use YAML format and support:
 - Path variables using `base_dir` reference
 - User home directory expansion (`~`)
 - Nested configuration sections
+- Environment variable expansion (`${VAR}`)
 
 Example configuration:
 ```yaml
 base_dir: ~/nova
-input_dir: ~/nova/input
-output_dir: ~/nova/output
+input_dir: ${base_dir}/input
+output_dir: ${base_dir}/output
+processing_dir: ${base_dir}/processing
 
 apis:
   openai:
-    api_key: "your-api-key-here"
+    api_key: ${OPENAI_API_KEY}
 ```
 
 #### Configuration Loading
@@ -66,7 +68,7 @@ apis:
 1. Load default configuration
 2. Load user configuration
 3. Merge configurations (user overrides default)
-4. Expand paths (~ for home directory)
+4. Expand environment variables and paths
 5. Validate required fields
 6. Create required directories
 
@@ -124,10 +126,10 @@ Specialized handlers process different document types:
 - PDF documents (using pypdf)
 - Word documents (using python-docx)
 - Markdown files
-- Images (with OpenAI Vision API)
+- Images (with gpt-4o Vision API)
 - Text files
 - Spreadsheets (using openpyxl)
-- HTML files
+- HTML files (using BeautifulSoup)
 
 Each handler implements a common interface and provides:
 - File type detection
@@ -152,6 +154,9 @@ Comprehensive logging system with:
 - Phase-specific logging
 - Performance tracking
 - Error reporting
+- Rich console output with progress bars
+- File logging with configurable paths
+- Context-aware logging with phase and handler information
 
 ### Testing
 
@@ -167,6 +172,23 @@ Test configuration is managed through `pytest.ini` with:
 - Async test support with pytest-asyncio
 - Detailed logging configuration
 - Mock filesystem support
+
+## Project Structure
+
+The project is organized into the following main components:
+
+### Core Modules
+- `nova.context_processor.core`: Core functionality and base classes
+- `nova.context_processor.config`: Configuration management
+- `nova.context_processor.models`: Data models and schemas
+- `nova.context_processor.handlers`: Document type handlers
+- `nova.context_processor.phases`: Processing phase implementations
+- `nova.context_processor.utils`: Utility functions and helpers
+- `nova.context_processor.ui`: User interface components
+
+### Command Line Interface
+- `nova.context_processor.cli`: Main CLI entry point
+- `nova.context_processor.cleanup`: Cleanup utilities
 
 ## Development Guidelines
 

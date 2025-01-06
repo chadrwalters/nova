@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from nova.config.settings import LoggingConfig
-from nova.core.logging import NovaFormatter, NovaLogger
-from nova.core.metadata import FileMetadata
-from nova.core.metrics import MetricsTracker, OperationMetrics, timing
+from nova.context_processor.config.settings import LoggingConfig
+from nova.context_processor.core.logging import NovaFormatter, NovaLogger
+from nova.context_processor.core.metadata import FileMetadata
+from nova.context_processor.core.metrics import MetricsTracker, timing
 
 
 @pytest.mark.unit
@@ -167,7 +167,7 @@ class TestNovaLogger:
         logging.setLoggerClass(NovaLogger)
 
         formatter = NovaFormatter(config)
-        logger = logging.getLogger("nova.test")
+        logger = logging.getLogger(nova.context_processor.test)
 
         # Remove any existing handlers
         logger.handlers = []
@@ -197,7 +197,7 @@ class TestNovaLogger:
         logging.setLoggerClass(NovaLogger)
 
         formatter = NovaFormatter(config)
-        logger = logging.getLogger("nova.test")
+        logger = logging.getLogger(nova.context_processor.test)
 
         # Remove any existing handlers
         logger.handlers = []

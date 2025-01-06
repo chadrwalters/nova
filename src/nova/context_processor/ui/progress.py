@@ -15,7 +15,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from nova.core.progress import FileProgress, PhaseProgress, ProgressStatus
+from nova.context_processor.core.progress import FileProgress, ProgressStatus
 
 logger = logging.getLogger(__name__)
 

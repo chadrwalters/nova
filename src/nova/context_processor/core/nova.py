@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from nova.config.manager import ConfigManager
-from nova.core.logging import LoggingManager
-from nova.core.metadata import FileMetadata
-from nova.core.pipeline import NovaPipeline
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.core.logging import LoggingManager
+from nova.context_processor.core.metadata import FileMetadata
+from nova.context_processor.core.pipeline import NovaPipeline
 
 
 class Nova:

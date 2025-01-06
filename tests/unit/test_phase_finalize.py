@@ -9,9 +9,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 # Internal imports
-from nova.config.settings import APIConfig, CacheConfig, NovaConfig, OpenAIConfig
-from nova.core.metadata import FileMetadata
-from nova.phases.finalize import FinalizePhase
+from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.core.metadata import FileMetadata
+from nova.context_processor.phases.finalize import FinalizePhase
 
 
 @pytest.fixture

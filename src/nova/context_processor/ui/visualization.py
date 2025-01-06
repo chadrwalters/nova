@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from nova.models.link_map import LinkRelationshipMap, NavigationPath
-from nova.models.links import LinkContext, LinkType
+from nova.context_processor.models.link_map import LinkRelationshipMap, NavigationPath
+from nova.context_processor.models.links import LinkContext, LinkType
 
 
 @dataclass

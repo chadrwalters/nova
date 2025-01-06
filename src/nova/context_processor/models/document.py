@@ -5,7 +5,7 @@ import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Union
 
-from nova.core.metadata import DocumentMetadata as CoreDocumentMetadata
+from nova.context_processor.core.metadata import DocumentMetadata as CoreDocumentMetadata
 
 
 class DocumentMetadata(CoreDocumentMetadata):
@@ -22,7 +22,7 @@ class DocumentMetadata(CoreDocumentMetadata):
             title: Document title.
         """
         warnings.warn(
-            "nova.models.document.DocumentMetadata is deprecated. "
+            "nova.context_processor.models.document.DocumentMetadata is deprecated. "
             "Use nova.core.metadata.DocumentMetadata instead.",
             DeprecationWarning,
             stacklevel=2,

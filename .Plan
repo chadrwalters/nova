@@ -1,0 +1,30 @@
+# Goal
+Successfully run the “clean run” command after moving all files from src/nova/ to src/nova/context_processor.
+
+# Plan
+
+1. Update Imports
+   - Search for all references to src/nova and change them to src/nova/context_processor.
+   - Verify that relative imports and package references are consistent throughout the code.
+
+2. Adjust pyproject.toml
+   - Update any scripts, entry points, or references that still point to the old src/nova location.
+   - Double-check the project’s package name and ensure that the new context_processor folder is recognized as the primary package.
+
+3. Confirm CLI Modules
+   - If previously calling poetry run python -m nova.cli, replace it with poetry run python -m nova.context_processor.cli or a similarly updated path.
+   - Do the same for your cleanup scripts (nova.cleanup → nova.context_processor.cleanup).
+
+4. Verify “Clean Run”
+   - Execute:
+     poetry run python -m nova.context_processor.cleanup -a && poetry run python -m nova.context_processor.cli --config config/nova.yaml
+   - Confirm that all phases complete without errors.
+
+5. Test and Validate
+   - Run:
+     poetry run pytest
+   - Ensure that all pre-commit hooks (black, isort, mypy, bandit, flake8, etc.) pass and that commit messages adhere to the conventional commits format.
+
+6. Document and Commit
+   - Update relevant documentation (README, architecture notes) to reference the new directory structure.
+   - Commit these changes using a conventional commit message (e.g., “refactor(context_processor): restructure code into context_processor folder”). 

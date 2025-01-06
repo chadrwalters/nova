@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 # Internal imports
-from nova.utils.path_utils import (
+from nova.context_processor.utils.path_utils import (
     ensure_parent_dirs,
     get_markdown_path,
     get_metadata_path,

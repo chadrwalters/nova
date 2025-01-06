@@ -28,7 +28,7 @@ class HTMLHandler(BaseHandler):
             config: Nova configuration manager.
         """
         super().__init__(config)
-        self.logger = logging.getLogger("nova.handlers.html")
+        self.logger = logging.getLogger("nova.context_processor.handlers.html")
 
     async def _process_content(self, file_path: Path) -> str:
         """Process HTML content.

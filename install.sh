@@ -199,7 +199,7 @@ validate_installation() {
     log_success "Nova package is installed correctly"
 
     # Validate configuration
-    if ! poetry run python3 -c "from nova.config.manager import ConfigManager; ConfigManager()" 2>&1; then
+    if ! poetry run python3 -c nova.context_processor.context_processor.config.manager ConfigManager; ConfigManager() 2>&1; then
         log_error "Configuration validation failed"
         exit 1
     fi
@@ -229,7 +229,7 @@ main() {
     validate_installation
 
     log_success "Nova installation completed successfully"
-    log_info "You can now run 'poetry run python -m nova.cli --config config/nova.yaml'"
+    log_info "You can now run 'poetry run nova.context_processor.cli --config config/nova.yaml'"
 }
 
 # Run main installation

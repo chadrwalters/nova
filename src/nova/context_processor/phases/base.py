@@ -4,11 +4,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional, Set, Union
 
-from nova.config.manager import ConfigManager
-from nova.core.metadata import FileMetadata
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.core.metadata import FileMetadata
 
 if TYPE_CHECKING:
-    from nova.core.pipeline import NovaPipeline
+    from nova.context_processor.core.pipeline import NovaPipeline
 
 logger = logging.getLogger(__name__)
 

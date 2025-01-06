@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from nova.config.manager import ConfigManager
-from nova.config.settings import CacheConfig, NovaConfig
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.config.settings import CacheConfig, NovaConfig
 
 
 @pytest.mark.unit
