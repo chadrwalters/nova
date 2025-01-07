@@ -48,12 +48,7 @@ class SplitPhase(Phase):
     def __init__(
         self, config: ConfigManager, pipeline: Optional["NovaPipeline"] = None
     ):
-        """Initialize split phase.
-
-        Args:
-            config: Configuration manager
-            pipeline: Optional pipeline instance
-        """
+        """Initialize split phase."""
         super().__init__("split", config, pipeline)
         self.handler_registry = HandlerRegistry(config)
 
@@ -66,7 +61,9 @@ class SplitPhase(Phase):
             lambda: {"processed": 0, "skipped": 0, "errors": 0}
         )
 
-        # Initialize attachments storage
+        # Initialize storage for sections and attachments
+        self._summary_sections: List[str] = []
+        self._raw_notes_sections: List[str] = []
         self._all_attachments: Dict[str, List[Dict[str, str]]] = {}
 
     def _get_file_type(self, path: str) -> str:
@@ -185,7 +182,7 @@ class SplitPhase(Phase):
         output_dir: Path,
         metadata: Optional[DocumentMetadata] = None,
     ) -> Optional[DocumentMetadata]:
-        """Process a file by splitting it into sections.
+        """Process a file by collecting its sections.
 
         Args:
             file_path: Path to file to process
@@ -196,6 +193,10 @@ class SplitPhase(Phase):
             Updated metadata or None if processing failed
         """
         try:
+            # Skip raw notes files - we'll get them when processing their paired summary file
+            if file_path.stem.endswith(".rawnotes"):
+                return metadata
+
             # Create metadata if not provided
             if metadata is None:
                 metadata = DocumentMetadata.from_file(
@@ -204,45 +205,43 @@ class SplitPhase(Phase):
                     handler_version="1.0",
                 )
 
-            # Track sections for each output file
-            summary_sections = []
-            raw_notes_sections = []
-            attachments: Dict[str, List[Dict]] = {}
-
             # Get base name without extensions
             base_name = file_path.stem
             if base_name.endswith(".summary"):
                 base_name = base_name[:-8]  # Remove '.summary'
-            elif base_name.endswith(".rawnotes"):
-                base_name = base_name[:-9]  # Remove '.rawnotes'
 
             # Look for related files in the disassemble phase directory
             disassemble_dir = self.pipeline.config.processing_dir / "phases" / "disassemble"
             summary_file = disassemble_dir / f"{base_name}.summary.md"
             raw_notes_file = disassemble_dir / f"{base_name}.rawnotes.md"
 
-            # Process summary file if it exists
+            # Create note ID from base name
+            note_id = base_name
+
+            # Collect summary content if it exists
             if summary_file.exists():
                 summary_content = summary_file.read_text(encoding="utf-8")
                 if summary_content.strip():
-                    summary_sections.append(summary_content)
+                    # Add note reference at the end of the summary
+                    summary_with_ref = f"{summary_content.strip()}\n\nSee raw notes: [NOTE:{note_id}]"
+                    self._summary_sections.append(summary_with_ref)
 
-            # Process raw notes file if it exists
+            # Collect raw notes content if it exists
             if raw_notes_file.exists():
                 raw_notes_content = raw_notes_file.read_text(encoding="utf-8")
                 if raw_notes_content.strip():
-                    raw_notes_sections.append(raw_notes_content)
+                    # Add note ID at the start of the raw notes
+                    raw_notes_with_id = f"[NOTE:{note_id}]\n\n{raw_notes_content.strip()}"
+                    self._raw_notes_sections.append(raw_notes_with_id)
 
             # Get parent directory name for attachments
             parent_dir = file_path.parent.name
-            if parent_dir not in attachments:
-                attachments[parent_dir] = []
 
             # Get attachments from pipeline state
             if "attachments" in self.pipeline.state["disassemble"]:
                 for parent_dir, dir_attachments in self.pipeline.state["disassemble"]["attachments"].items():
-                    if parent_dir not in attachments:
-                        attachments[parent_dir] = []
+                    if parent_dir not in self._all_attachments:
+                        self._all_attachments[parent_dir] = []
                     for attachment in dir_attachments:
                         # Get file type from extension
                         file_path = Path(attachment["path"])
@@ -253,7 +252,7 @@ class SplitPhase(Phase):
                         ref = self._make_reference(str(file_path))
 
                         # Add attachment info
-                        attachments[parent_dir].append({
+                        self._all_attachments[parent_dir].append({
                             "path": str(file_path),
                             "id": file_path.stem,
                             "type": file_type,
@@ -261,65 +260,6 @@ class SplitPhase(Phase):
                             "ref": ref,
                             "content": attachment.get("content", f"Binary file: {file_path.name}"),
                         })
-
-            # Write or append to consolidated files
-            if summary_sections:
-                summary_file = output_dir / "Summary.md"
-                existing_content = (
-                    summary_file.read_text(encoding="utf-8")
-                    if summary_file.exists()
-                    else ""
-                )
-                existing_parts = [
-                    part.strip()
-                    for part in existing_content.split("\n\n")
-                    if part.strip()
-                ]
-                new_parts = []
-                for section in summary_sections:
-                    section = section.strip()
-                    if section and section not in existing_parts:
-                        new_parts.append(section)
-                if new_parts:
-                    updated_parts = existing_parts + new_parts
-                    combined_content = "\n\n".join(updated_parts)
-                    summary_file.write_text(combined_content, encoding="utf-8")
-                metadata.add_output_file(summary_file)
-
-            if raw_notes_sections:
-                raw_notes_file = output_dir / "Raw Notes.md"
-                existing_content = (
-                    raw_notes_file.read_text(encoding="utf-8")
-                    if raw_notes_file.exists()
-                    else ""
-                )
-                existing_parts = [
-                    part.strip()
-                    for part in existing_content.split("\n\n")
-                    if part.strip()
-                ]
-                new_parts = []
-                for section in raw_notes_sections:
-                    section = section.strip()
-                    if section and section not in existing_parts:
-                        new_parts.append(section)
-                if new_parts:
-                    updated_parts = existing_parts + new_parts
-                    combined_content = "\n\n".join(updated_parts)
-                    raw_notes_file.write_text(combined_content, encoding="utf-8")
-                metadata.add_output_file(raw_notes_file)
-
-            if attachments:
-                # Store attachments for finalize phase
-                if not hasattr(self, "_all_attachments"):
-                    self._all_attachments = {}
-                self._all_attachments.update(attachments)
-
-                # Write attachments file
-                attachments_file = output_dir / "Attachments.md"
-                self._write_attachments_file(attachments, output_dir)
-                if attachments_file.exists():
-                    metadata.add_output_file(attachments_file)
 
             metadata.processed = True
             return metadata
@@ -337,12 +277,22 @@ class SplitPhase(Phase):
             self.section_stats[section][status] += 1
 
     def finalize(self) -> None:
-        """Finalize phase processing."""
+        """Write all collected sections to their respective files."""
         try:
             # Get output directory
             output_dir = self.pipeline.get_phase_output_dir("split")
 
-            # Write consolidated attachments file
+            # Write summary sections
+            if self._summary_sections:
+                summary_file = output_dir / "Summary.md"
+                summary_file.write_text("\n\n".join(self._summary_sections), encoding="utf-8")
+
+            # Write raw notes sections
+            if self._raw_notes_sections:
+                raw_notes_file = output_dir / "Raw Notes.md"
+                raw_notes_file.write_text("\n\n".join(self._raw_notes_sections), encoding="utf-8")
+
+            # Write attachments
             if self._all_attachments:
                 attachments_file = self._write_attachments_file(
                     self._all_attachments, output_dir
