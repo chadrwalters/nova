@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from ..config.manager import ConfigManager
-from ..models.document import DocumentMetadata
+from ..core.metadata import DocumentMetadata
 from .base import BaseHandler
 
 

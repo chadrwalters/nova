@@ -9,7 +9,7 @@ from typing import Dict, List, Match, Optional, Union
 # Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
-from ..models.document import DocumentMetadata
+from ..core.metadata import DocumentMetadata
 from .base import BaseHandler, ProcessingResult, ProcessingStatus
 
 

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Union
 # Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
-from ..models.document import DocumentMetadata
+from ..core.metadata import DocumentMetadata
 from ..utils.output_manager import OutputManager
 from ..utils.path_utils import ensure_parent_dirs, get_safe_path
 

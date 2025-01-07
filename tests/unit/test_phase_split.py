@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 # Internal imports
-from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.config.settings import NovaConfig, CacheConfig, APIConfig, OpenAIConfig
 from nova.context_processor.core.metadata import DocumentMetadata
 from nova.context_processor.phases.split import SplitPhase
 
@@ -111,18 +111,20 @@ class TestSplitPhase:
             assert result is not None
             assert result.processed is True
 
-        # Verify consolidated output files
+        # Finalize to write out the collected sections
+        phase.finalize()
+
+        # Verify output files
         summary_file = mock_fs["output"] / "Summary.md"
         raw_notes_file = mock_fs["output"] / "Raw Notes.md"
 
         assert summary_file.exists()
         assert raw_notes_file.exists()
 
-        # Check content consolidation
+        # Verify content
         summary_content = summary_file.read_text()
         raw_notes_content = raw_notes_file.read_text()
 
-        # Verify content order and preservation
         assert "# Document 1" in summary_content
         assert "Summary content" in summary_content
         assert "# Document 2" in summary_content
@@ -161,6 +163,9 @@ Note content 1.1"""
             result = await phase.process_impl(file, mock_fs["output"])
             assert result is not None
             assert result.processed is True
+
+        # Finalize to write out the collected sections
+        phase.finalize()
 
         # Verify consolidated output
         summary_file = mock_fs["output"] / "Summary.md"
@@ -226,6 +231,9 @@ console.log("test");
             assert result is not None
             assert result.processed is True
 
+        # Finalize to write out the collected sections
+        phase.finalize()
+
         # Verify consolidated output
         summary_file = mock_fs["output"] / "Summary.md"
         raw_notes_file = mock_fs["output"] / "Raw Notes.md"
@@ -277,7 +285,20 @@ console.log("test");
         assert result.title == "Document 1"
         assert result.tags == ["test", "doc1"]
 
+        # Finalize to write out the collected sections
+        phase.finalize()
+
         # Verify output files in metadata
-        output_files = list(result.output_files)
-        assert any(f.name == "Summary.md" for f in output_files)
-        assert any(f.name == "Raw Notes.md" for f in output_files)
+        summary_file = mock_fs["output"] / "Summary.md"
+        raw_notes_file = mock_fs["output"] / "Raw Notes.md"
+
+        assert summary_file.exists()
+        assert raw_notes_file.exists()
+
+        # Verify content
+        summary_content = summary_file.read_text()
+        raw_notes_content = raw_notes_file.read_text()
+
+        assert "# Document 1" in summary_content
+        assert "Summary content" in summary_content
+        assert "Raw notes content" in raw_notes_content

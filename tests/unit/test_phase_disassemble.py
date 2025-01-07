@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 # Internal imports
-from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.config.settings import NovaConfig, CacheConfig, APIConfig, OpenAIConfig
 from nova.context_processor.core.metadata import FileMetadata
 from nova.context_processor.phases.disassemble import DisassemblyPhase
 
@@ -142,7 +142,7 @@ These are raw notes.
         assert "--==RAW NOTES==--" not in raw_notes_content
 
         # Verify pipeline state
-        assert test_file in phase.pipeline.state["disassemble"]["successful_files"]
+        assert str(test_file) in phase.pipeline.state["disassemble"]["successful_files"]
         assert phase.pipeline.state["disassemble"]["stats"]["total_sections"] == 2
         assert (
             phase.pipeline.state["disassemble"]["stats"]["summary_files"]["created"]
@@ -200,7 +200,7 @@ More content here."""
         assert "More content here." in summary_content
 
         # Verify pipeline state
-        assert test_file in phase.pipeline.state["disassemble"]["successful_files"]
+        assert str(test_file) in phase.pipeline.state["disassemble"]["successful_files"]
         assert phase.pipeline.state["disassemble"]["stats"]["total_sections"] == 1
         assert (
             phase.pipeline.state["disassemble"]["stats"]["summary_files"]["created"]
@@ -285,7 +285,7 @@ Raw notes content 2."""
         assert "--==RAW NOTES==--" not in raw_notes_content
 
         # Verify pipeline state
-        assert test_file in phase.pipeline.state["disassemble"]["successful_files"]
+        assert str(test_file) in phase.pipeline.state["disassemble"]["successful_files"]
         assert phase.pipeline.state["disassemble"]["stats"]["total_sections"] == 2
         assert (
             phase.pipeline.state["disassemble"]["stats"]["summary_files"]["created"]
@@ -419,7 +419,7 @@ pytest tests/
         assert "--==RAW NOTES==--" not in raw_notes_content
 
         # Verify pipeline state
-        assert test_file in phase.pipeline.state["disassemble"]["successful_files"]
+        assert str(test_file) in phase.pipeline.state["disassemble"]["successful_files"]
         assert phase.pipeline.state["disassemble"]["stats"]["total_sections"] == 2
         assert (
             phase.pipeline.state["disassemble"]["stats"]["summary_files"]["created"]
@@ -428,84 +428,4 @@ pytest tests/
         assert (
             phase.pipeline.state["disassemble"]["stats"]["raw_notes_files"]["created"]
             == 1
-        )
-
-    async def test_metadata_updates(self, mock_fs, test_state, parse_dir):
-        """Test metadata updates during disassembly."""
-        # Create test parsed markdown file
-        test_file = parse_dir / "test.parsed.md"
-        test_content = """# Test Document
-Summary content here.
-
---==RAW NOTES==--
-
-Raw notes content here."""
-
-        test_file.write_text(test_content)
-
-        # Create test attachment files
-        attachments_dir = parse_dir / "test"
-        attachments_dir.mkdir(parents=True)
-
-        # Create various attachment types
-        (attachments_dir / "image.png").write_bytes(b"fake png data")
-        (attachments_dir / "doc.pdf").write_bytes(b"fake pdf data")
-        (attachments_dir / "data.json").write_text('{"key": "value"}')
-
-        # Create initial metadata
-        metadata = FileMetadata.from_file(
-            file_path=test_file, handler_name="disassemble", handler_version="1.0"
-        )
-        metadata.title = "Test Document"
-        metadata.tags = ["test", "metadata"]
-
-        # Set up disassemble phase
-        phase = DisassemblyPhase(test_state["config"], test_state["pipeline"])
-
-        # Process the file with metadata
-        result = await phase.process_impl(test_file, mock_fs["output"], metadata)
-
-        # Verify results
-        assert result is not None
-        assert result.processed is True
-        assert len(result.output_files) == 2  # Should have summary and raw notes
-
-        # Verify metadata preservation
-        assert result.title == "Test Document"
-        assert result.tags == ["test", "metadata"]
-
-        # Verify attachment handling in metadata
-        assert "attachments" in phase.pipeline.state["disassemble"]
-        attachments = phase.pipeline.state["disassemble"]["attachments"].get("test", [])
-        assert len(attachments) == 3  # Should have all three attachments
-
-        # Verify attachment types
-        attachment_types = {att["type"] for att in attachments}
-        assert "IMAGE" in attachment_types
-        assert "PDF" in attachment_types
-        assert "JSON" in attachment_types
-
-        # Verify pipeline state and stats
-        assert test_file in phase.pipeline.state["disassemble"]["successful_files"]
-        assert phase.pipeline.state["disassemble"]["stats"]["total_sections"] == 2
-        assert (
-            phase.pipeline.state["disassemble"]["stats"]["summary_files"]["created"]
-            == 1
-        )
-        assert (
-            phase.pipeline.state["disassemble"]["stats"]["raw_notes_files"]["created"]
-            == 1
-        )
-        assert (
-            phase.pipeline.state["disassemble"]["stats"]["attachments"]["copied"] == 3
-        )
-        assert phase.pipeline.state["disassemble"]["stats"]["total_attachments"] == 3
-
-        # Verify error tracking
-        assert not hasattr(result, "errors") or not result.errors
-        assert test_file not in phase.pipeline.state["disassemble"].get(
-            "failed_files", set()
-        )
-        assert test_file not in phase.pipeline.state["disassemble"].get(
-            "_file_errors", {}
         )

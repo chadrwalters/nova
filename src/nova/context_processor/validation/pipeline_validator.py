@@ -544,14 +544,27 @@ class PipelineValidator:
                         original_name = Path(base_name).stem
                         if original_name.endswith(".parsed"):
                             original_name = original_name[:-7]
-                        # Remove any remaining extensions
-                        original_name = Path(original_name).stem
+                        
                         # Try to find any reference that contains this name
                         ref_found = False
                         for line in attachments_content.split("\n"):
-                            if "[ATTACH:" in line and original_name in line:
-                                ref_found = True
-                                break
+                            # Look for reference markers
+                            if "Reference: [ATTACH:" in line:
+                                # Extract the reference
+                                ref_start = line.find("[ATTACH:")
+                                ref_end = line.find("]", ref_start)
+                                if ref_start >= 0 and ref_end > ref_start:
+                                    ref = line[ref_start:ref_end + 1]
+                                    # Split into parts
+                                    parts = ref[1:-1].split(":")  # Remove [] and split
+                                    if len(parts) == 3:
+                                        # Compare the name part
+                                        ref_name = parts[2]
+                                        # Check if either name contains the other
+                                        if original_name in ref_name or ref_name in original_name:
+                                            ref_found = True
+                                            break
+                        
                         if not ref_found:
                             self.errors.append(
                                 f"No attachment reference found for {original_name} in consolidated Attachments.md"

@@ -6,7 +6,7 @@ from typing import Optional
 
 from nova.context_processor.config.manager import ConfigManager
 from nova.context_processor.handlers.base import BaseHandler
-from nova.context_processor.models.document import DocumentMetadata
+from nova.context_processor.core.metadata import DocumentMetadata
 
 
 class AudioHandler(BaseHandler):

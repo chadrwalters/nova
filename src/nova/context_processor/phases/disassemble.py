@@ -437,7 +437,21 @@ class DisassemblyPhase(Phase):
 
             # Mark as processed
             metadata.processed = True
-            # Only track the parsed file in successful_files
+            # Track both the original input file path and attachments directory in successful_files
+            self.pipeline.state["disassemble"]["successful_files"].add(str(file_path))
+            if attachments_dir.exists():
+                # Track the output attachments directory
+                self.pipeline.state["disassemble"]["successful_files"].add(str(attachments_dir))
+                # Track the original attachments directory
+                original_attachments_dir = file_path.parent / base_name
+                if original_attachments_dir.exists():
+                    self.pipeline.state["disassemble"]["successful_files"].add(str(original_attachments_dir))
+                # Track the assets directory if it exists
+                assets_dir = file_path.parent / f"{base_name}.assets"
+                if assets_dir.exists():
+                    self.pipeline.state["disassemble"]["successful_files"].add(str(assets_dir))
+
+            # Track the original input file path
             self.pipeline.state["disassemble"]["successful_files"].add(str(file_path))
 
             return metadata

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Type, TypeVar, Union
 
 # Internal imports
 from ..config.manager import ConfigManager
-from ..models.document import DocumentMetadata
+from ..core.metadata import DocumentMetadata
 from .base import BaseHandler, ProcessingResult
 from .document import DocumentHandler
 from .html import HTMLHandler

@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -151,7 +152,7 @@ class TestFileMetadata:
 @pytest.mark.unit
 @pytest.mark.core
 class TestNovaLogger:
-    """Test Nova logger functionality."""
+    """Test NovaLogger functionality."""
 
     def test_logger_configuration(self):
         """Test logger configuration."""
@@ -167,7 +168,7 @@ class TestNovaLogger:
         logging.setLoggerClass(NovaLogger)
 
         formatter = NovaFormatter(config)
-        logger = logging.getLogger(nova.context_processor.test)
+        logger = logging.getLogger("nova.test")
 
         # Remove any existing handlers
         logger.handlers = []
@@ -197,7 +198,7 @@ class TestNovaLogger:
         logging.setLoggerClass(NovaLogger)
 
         formatter = NovaFormatter(config)
-        logger = logging.getLogger(nova.context_processor.test)
+        logger = logging.getLogger("nova.test")
 
         # Remove any existing handlers
         logger.handlers = []

@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
 # Internal imports
 from ..config.manager import ConfigManager
-from ..core.metadata import FileMetadata
+from ..core.metadata import FileMetadata, DocumentMetadata
 from ..handlers.base import BaseHandler
 from ..handlers.registry import HandlerRegistry
-from ..models.document import DocumentMetadata
 from ..phases.base import Phase
 
 if TYPE_CHECKING:

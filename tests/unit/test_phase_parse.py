@@ -13,7 +13,7 @@ from PIL import Image
 from reportlab.pdfgen import canvas
 
 # Internal imports
-from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.config.settings import NovaConfig, CacheConfig, APIConfig, OpenAIConfig
 from nova.context_processor.handlers.document import DocumentHandler
 from nova.context_processor.handlers.image import ImageHandler
 from nova.context_processor.handlers.markdown import MarkdownHandler

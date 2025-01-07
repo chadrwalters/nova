@@ -15,11 +15,11 @@ from reportlab.pdfgen import canvas
 from docx import Document
 
 # Internal imports
-from nova.context_processor.config.settings import CacheConfig, OpenAIConfig
+from nova.context_processor.config.settings import NovaConfig, CacheConfig, OpenAIConfig
 from nova.context_processor.handlers.document import DocumentHandler
 from nova.context_processor.handlers.image import ImageHandler
 from nova.context_processor.handlers.markdown import MarkdownHandler
-from nova.context_processor.models.document import DocumentMetadata
+from nova.context_processor.core.metadata import DocumentMetadata
 
 
 @pytest.fixture
@@ -107,7 +107,7 @@ class TestMarkdownHandler:
         test_file.write_text("# Test\n\nThis is a test.")
 
         # Process file
-        metadata = DocumentMetadata(title="test")
+        metadata = DocumentMetadata.from_file(test_file, handler.name, handler.version)
         output_path = Path(config.output_dir) / "test.md"
         result = await handler.process_impl(test_file, output_path, metadata)
 
@@ -146,7 +146,7 @@ class TestDocumentHandler:
         c.save()
 
         # Process file
-        metadata = DocumentMetadata(title="test")
+        metadata = DocumentMetadata.from_file(test_file, handler.name, handler.version)
         output_path = Path(config.output_dir) / "test.md"
         result = await handler.process_impl(test_file, output_path, metadata)
 
@@ -173,7 +173,7 @@ class TestDocumentHandler:
         doc.save(test_file)
 
         # Process file
-        metadata = DocumentMetadata(title="test")
+        metadata = DocumentMetadata.from_file(test_file, handler.name, handler.version)
         output_path = Path(config.output_dir) / "test.md"
         result = await handler.process_impl(test_file, output_path, metadata)
 
@@ -218,7 +218,7 @@ class TestImageHandler:
         mock_client.chat.completions.create.return_value = mock_response
 
         # Set up config with proper OpenAI config structure
-        nova.context_processor.config.settings APIConfig, OpenAIConfig
+        from nova.context_processor.config.settings import APIConfig, OpenAIConfig
 
         config.apis = APIConfig(openai=OpenAIConfig(api_key="test_key"))
 

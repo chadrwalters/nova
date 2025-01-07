@@ -10,7 +10,7 @@ from typing import Optional
 from bs4 import BeautifulSoup
 
 from ..config.manager import ConfigManager
-from ..models.document import DocumentMetadata
+from ..core.metadata import DocumentMetadata
 from .base import BaseHandler
 
 

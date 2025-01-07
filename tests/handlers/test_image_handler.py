@@ -9,9 +9,9 @@ import pytest
 from PIL import Image
 
 from nova.context_processor.config.manager import ConfigManager
-from nova.context_processor.config.settings import APIConfig, OpenAIConfig
+from nova.context_processor.config.settings import APIConfig, OpenAIConfig, NovaConfig, CacheConfig
 from nova.context_processor.handlers.image import ImageHandler
-from nova.context_processor.models.document import DocumentMetadata
+from nova.context_processor.core.metadata import DocumentMetadata
 
 
 @pytest.fixture
