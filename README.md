@@ -36,6 +36,21 @@ Run Nova with:
 poetry run nova.context_processor.cli --config config/nova.yaml
 ```
 
+### Supported File Types
+
+Nova supports processing of multiple file formats:
+
+- Documents: `.docx`
+- Images: `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`
+- Text: `.txt`
+- Markdown: `.md`
+- Spreadsheets: `.xlsx`, `.xls`
+- Web: `.html`, `.htm`
+- Video: `.mp4`, `.avi`, `.mov`
+- Archives: `.zip`, `.tar`, `.gz`
+
+Each file type is handled by a specialized processor that extracts content and metadata appropriately.
+
 Clean up processing artifacts with:
 ```bash
 poetry run nova.context_processor.cleanup -a

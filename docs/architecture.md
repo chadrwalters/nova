@@ -122,16 +122,49 @@ The system processes documents through multiple phases, each with specific respo
 
 ### Document Handlers
 
-Specialized handlers process different document types:
-- PDF documents (using pypdf)
-- Word documents (using python-docx)
-- Markdown files
-- Images (with gpt-4o Vision API)
-- Text files
-- Spreadsheets (using openpyxl)
-- HTML files (using BeautifulSoup)
+The system includes specialized handlers for different document types, each implementing the BaseHandler interface:
 
-Each handler implements a common interface and provides:
+1. **Document Handler**
+   - Processes Word documents (DOCX)
+   - Uses python-docx for content extraction
+   - Preserves document structure and formatting
+
+2. **Image Handler**
+   - Processes image files (PNG, JPG, JPEG, etc.)
+   - Uses gpt-4o Vision API for image analysis
+   - Extracts visual content descriptions and metadata
+
+3. **Text Handler**
+   - Processes plain text files (TXT)
+   - Handles character encoding detection
+   - Preserves line breaks and formatting
+
+4. **Markdown Handler**
+   - Processes markdown files (MD)
+   - Preserves markdown structure
+   - Handles frontmatter metadata
+
+5. **Spreadsheet Handler**
+   - Processes Excel files (XLSX, XLS)
+   - Uses openpyxl for content extraction
+   - Preserves cell data and formatting
+
+6. **HTML Handler**
+   - Processes HTML files
+   - Uses BeautifulSoup for parsing
+   - Extracts structured content and metadata
+
+7. **Video Handler**
+   - Processes video files
+   - Extracts metadata and basic information
+   - Handles common video formats
+
+8. **Archive Handler**
+   - Processes archive files (ZIP, TAR, etc.)
+   - Extracts contents for processing
+   - Maintains archive structure information
+
+Each handler provides:
 - File type detection
 - Content extraction
 - Metadata parsing
