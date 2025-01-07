@@ -265,36 +265,48 @@ class SplitPhase(Phase):
             # Write or append to consolidated files
             if summary_sections:
                 summary_file = output_dir / "Summary.md"
-                # Read existing content if file exists
                 existing_content = (
                     summary_file.read_text(encoding="utf-8")
                     if summary_file.exists()
                     else ""
                 )
-                # Append new content with a separator
-                full_content = (
-                    existing_content
-                    + ("\n\n" if existing_content else "")
-                    + "\n\n".join(summary_sections)
-                )
-                summary_file.write_text(full_content, encoding="utf-8")
+                existing_parts = [
+                    part.strip()
+                    for part in existing_content.split("\n\n")
+                    if part.strip()
+                ]
+                new_parts = []
+                for section in summary_sections:
+                    section = section.strip()
+                    if section and section not in existing_parts:
+                        new_parts.append(section)
+                if new_parts:
+                    updated_parts = existing_parts + new_parts
+                    combined_content = "\n\n".join(updated_parts)
+                    summary_file.write_text(combined_content, encoding="utf-8")
                 metadata.add_output_file(summary_file)
 
             if raw_notes_sections:
                 raw_notes_file = output_dir / "Raw Notes.md"
-                # Read existing content if file exists
                 existing_content = (
                     raw_notes_file.read_text(encoding="utf-8")
                     if raw_notes_file.exists()
                     else ""
                 )
-                # Append new content with a separator
-                full_content = (
-                    existing_content
-                    + ("\n\n" if existing_content else "")
-                    + "\n\n".join(raw_notes_sections)
-                )
-                raw_notes_file.write_text(full_content, encoding="utf-8")
+                existing_parts = [
+                    part.strip()
+                    for part in existing_content.split("\n\n")
+                    if part.strip()
+                ]
+                new_parts = []
+                for section in raw_notes_sections:
+                    section = section.strip()
+                    if section and section not in existing_parts:
+                        new_parts.append(section)
+                if new_parts:
+                    updated_parts = existing_parts + new_parts
+                    combined_content = "\n\n".join(updated_parts)
+                    raw_notes_file.write_text(combined_content, encoding="utf-8")
                 metadata.add_output_file(raw_notes_file)
 
             if attachments:
