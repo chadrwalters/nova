@@ -34,6 +34,7 @@ class ConfigManager:
             create_dirs: Whether to create configured directories if they don't exist.
         """
         self.logger = logging.getLogger(__name__)
+        self.logger.debug(f"Initializing ConfigManager with config: {config}")
 
         if isinstance(config, NovaConfig):
             self.config = config
@@ -41,7 +42,8 @@ class ConfigManager:
             self.logger.info(f"Using provided NovaConfig instance")
         else:
             self.config_path = self._resolve_config_path(config)
-            self.logger.info(f"Loading config from: {self.config_path}")
+            self.logger.info(f"Config path resolved to: {self.config_path}")
+            self.logger.info(f"Config path exists: {self.config_path.exists()}")
             self.config = self._load_config()
 
         self.logger.info(f"Using input directory: {self.input_dir}")
@@ -104,14 +106,69 @@ class ConfigManager:
         Returns:
             Resolved path to configuration file.
         """
+        self.logger.debug(f"Resolving config path: {config_path}")
+        
+        # First check if a config path was provided
         if config_path:
-            return self._safe_path(config_path)
+            # Try multiple ways to resolve the path
+            try:
+                # First try: Direct Path conversion
+                path = Path(config_path)
+                self.logger.debug(f"Checking path: {path}")
+                if path.exists():
+                    self.logger.info(f"Using config file: {path}")
+                    return path
 
+                # Second try: Resolve the path
+                resolved = path.resolve()
+                self.logger.debug(f"Checking resolved path: {resolved}")
+                if resolved.exists():
+                    self.logger.info(f"Using config file: {resolved}")
+                    return resolved
+
+                # Third try: If not absolute, try relative to cwd
+                if not path.is_absolute():
+                    cwd_path = Path.cwd() / path
+                    self.logger.debug(f"Checking relative to cwd: {cwd_path}")
+                    if cwd_path.exists():
+                        self.logger.info(f"Using config file: {cwd_path}")
+                        return cwd_path
+
+                # Fourth try: Expand user and resolve
+                expanded = Path(os.path.expanduser(str(path))).resolve()
+                self.logger.debug(f"Checking expanded path: {expanded}")
+                if expanded.exists():
+                    self.logger.info(f"Using config file: {expanded}")
+                    return expanded
+
+                self.logger.warning(f"Config file not found: {path}")
+                self.logger.debug("Attempted paths:")
+                self.logger.debug(f"  Direct: {path}")
+                self.logger.debug(f"  Resolved: {resolved}")
+                self.logger.debug(f"  CWD-relative: {Path.cwd() / path}")
+                self.logger.debug(f"  User-expanded: {expanded}")
+            except Exception as e:
+                self.logger.warning(f"Error resolving config path: {e}")
+
+        # Then check environment variable
         env_path = os.environ.get(self.ENV_CONFIG_PATH)
         if env_path:
-            return self._safe_path(env_path)
+            try:
+                path = Path(env_path)
+                self.logger.debug(f"Checking environment path: {path}")
+                if path.exists():
+                    self.logger.info(f"Using environment config: {path}")
+                    return path
+                resolved = path.resolve()
+                if resolved.exists():
+                    self.logger.info(f"Using environment config: {resolved}")
+                    return resolved
+            except Exception as e:
+                self.logger.warning(f"Error resolving environment path: {e}")
 
-        return self._safe_path(self.DEFAULT_CONFIG_PATH)
+        # Finally, use default config
+        self.logger.info(f"Using default config: {self.DEFAULT_CONFIG_PATH}")
+        return self.DEFAULT_CONFIG_PATH
 
     def _load_config(self) -> NovaConfig:
         """Load configuration from file.
@@ -123,20 +180,33 @@ class ConfigManager:
             ValueError: If configuration is invalid.
         """
         try:
-            # Load default config first
-            with open(self.DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
-                default_config = yaml.safe_load(f) or {}
+            self.logger.debug(f"Loading configuration from: {self.config_path}")
+            
+            # Only load default config if we're using a custom config
+            if self.config_path.resolve() != self.DEFAULT_CONFIG_PATH.resolve():
+                self.logger.debug("Loading and merging configurations")
+                self.logger.debug(f"Reading default config: {self.DEFAULT_CONFIG_PATH}")
+                with open(self.DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
+                    default_config = yaml.safe_load(f) or {}
 
-            # Load user config
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                user_config = yaml.safe_load(f) or {}
+                self.logger.debug(f"Reading user config: {self.config_path}")
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    user_config = yaml.safe_load(f) or {}
 
-            self.logger.debug(f"User config APIs: {user_config.get('apis', {})}")
+                # Deep merge configs
+                config_dict = self._deep_merge(default_config, user_config)
+                self.logger.debug("Configurations merged successfully")
+            else:
+                # Just load the default config
+                self.logger.debug("Loading default configuration only")
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config_dict = yaml.safe_load(f) or {}
 
-            # Merge configs (user config overrides default)
-            config_dict = {**default_config, **user_config}
-
-            self.logger.debug(f"Merged config APIs: {config_dict.get('apis', {})}")
+            # Log only non-sensitive parts
+            if "base_dir" in config_dict:
+                self.logger.info(f"Base directory: {config_dict['base_dir']}")
+            if "input_dir" in config_dict:
+                self.logger.info(f"Input directory: {config_dict['input_dir']}")
 
             # Validate required fields before creating NovaConfig
             required_fields = [
@@ -171,9 +241,13 @@ class ConfigManager:
                 matches = re.finditer(pattern, path)
                 for match in matches:
                     var_name = match.group(1)
-                    var_value = os.environ.get(var_name)
+                    # If var_name is base_dir, use the config's base_dir
+                    if var_name == "base_dir" and "base_dir" in config_dict:
+                        var_value = config_dict["base_dir"]
+                    else:
+                        var_value = os.environ.get(var_name)
                     if var_value:
-                        path = path.replace(f"${{{var_name}}}", var_value)
+                        path = path.replace(f"${{{var_name}}}", str(var_value))
                 # Then expand user home
                 return os.path.expanduser(path)
 
@@ -184,65 +258,47 @@ class ConfigManager:
             # Expand other paths, replacing ${base_dir} with actual base_dir
             for key in ["input_dir", "output_dir", "processing_dir"]:
                 if key in config_dict:
-                    path = config_dict[key].replace("${base_dir}", base_dir)
-                    config_dict[key] = expand_path(path)
+                    path = config_dict[key]
+                    if isinstance(path, str):  # Only process if it's a string
+                        config_dict[key] = expand_path(path)
 
             # Handle cache directory
             if "cache" in config_dict and "dir" in config_dict["cache"]:
-                cache_dir = config_dict["cache"]["dir"].replace("${base_dir}", base_dir)
-                config_dict["cache"]["dir"] = expand_path(cache_dir)
+                cache_dir = config_dict["cache"]["dir"]
+                if isinstance(cache_dir, str):  # Only process if it's a string
+                    config_dict["cache"]["dir"] = expand_path(cache_dir)
 
             # Handle logging directory
             if "logging" in config_dict and "log_dir" in config_dict["logging"]:
-                log_dir = config_dict["logging"]["log_dir"].replace(
-                    "${base_dir}", base_dir
-                )
-                config_dict["logging"]["log_dir"] = expand_path(log_dir)
+                log_dir = config_dict["logging"]["log_dir"]
+                if isinstance(log_dir, str):  # Only process if it's a string
+                    config_dict["logging"]["log_dir"] = expand_path(log_dir)
 
-            # Handle API configuration
-            if "apis" in config_dict:
-                self.logger.debug("Found APIs configuration")
-                apis_config = config_dict["apis"]
-                if apis_config and "openai" in apis_config:
-                    self.logger.debug("Found OpenAI configuration")
-                    openai_config = apis_config["openai"]
-                    if openai_config and "api_key" in openai_config:
-                        self.logger.debug("Found OpenAI API key")
-                        api_key = str(
-                            openai_config["api_key"]
-                        ).strip()  # Convert to string and strip whitespace
-                        if api_key:
-                            openai_config["api_key"] = api_key
-                            if api_key:
-                                self.logger.debug(
-                                    f"OpenAI API key loaded: {api_key[:8]}..."
-                                )
-                                self.logger.debug(
-                                    f"OpenAI API key type: {type(api_key)}"
-                                )
-                                self.logger.debug(
-                                    f"OpenAI API key length: {len(api_key)}"
-                                )
-                            else:
-                                self.logger.debug("OpenAI API key is None")
-                        else:
-                            self.logger.debug("OpenAI API key is empty")
-                            openai_config["api_key"] = None
-                    else:
-                        self.logger.debug("No OpenAI API key found in config")
-                else:
-                    self.logger.debug("No OpenAI configuration found")
-            else:
-                self.logger.debug("No APIs configuration found")
-
-            # Create NovaConfig instance which will validate all fields
-            try:
-                return NovaConfig(**config_dict)
-            except Exception as e:
-                raise ValueError(f"Invalid configuration: {str(e)}")
+            return NovaConfig(**config_dict)
 
         except Exception as e:
-            raise ValueError(f"Failed to load configuration: {str(e)}")
+            self.logger.error(f"Failed to load configuration: {e}")
+            raise
+
+    def _deep_merge(self, default: dict, override: dict) -> dict:
+        """Deep merge two dictionaries.
+        
+        Args:
+            default: Default dictionary
+            override: Dictionary to override defaults
+            
+        Returns:
+            Merged dictionary
+        """
+        result = default.copy()
+        
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge(result[key], value)
+            else:
+                result[key] = value
+                
+        return result
 
     def _create_directories(self) -> None:
         """Create configured directories if they don't exist."""

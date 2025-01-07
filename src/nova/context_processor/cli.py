@@ -84,7 +84,8 @@ async def main(args: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--config",
         type=Path,
-        help="Configuration file",
+        required=True,
+        help="Configuration file (required)",
     )
     parser.add_argument(
         "--phases",
@@ -111,8 +112,20 @@ async def main(args: Optional[List[str]] = None) -> int:
     )
 
     try:
+        # Ensure config path exists
+        if not parsed_args.config.exists():
+            logger.error(f"Config file not found: {parsed_args.config}")
+            return 1
+
+        # Convert to absolute path and ensure it's resolved
+        config_path = parsed_args.config.resolve()
+        logger.info(f"Using config file: {config_path}")
+        
+        # Set environment variable for config path
+        os.environ["NOVA_CONFIG_PATH"] = str(config_path)
+        
         # Load configuration
-        config = ConfigManager(parsed_args.config)
+        config = ConfigManager(str(config_path))
 
         # Create pipeline
         if config.pipeline is None:

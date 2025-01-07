@@ -74,29 +74,26 @@ class SplitPhase(Phase):
         ext = Path(path).suffix.lower()
         return self.TYPE_MAP.get(ext, "OTHER")
 
-    def _make_reference(self, path: str, is_note: bool = False) -> str:
-        """Create a reference marker for a path.
+    def _make_reference(self, file_path: str) -> str:
+        """Create a reference marker for an attachment.
 
         Args:
-            path: Path to create reference for
-            is_note: Whether this is a note reference
+            file_path: Path to the attachment file
 
         Returns:
-            Reference marker string
+            Reference marker in the format [ATTACH:TYPE:ID]
         """
-        # Extract name without any extensions
-        name = Path(path).stem
-        # Remove .parsed extension if present
-        if name.endswith(".parsed"):
-            name = name[:-7]
+        # Get file type from extension
+        file_ext = Path(file_path).suffix.lower()
+        file_type = self.TYPE_MAP.get(file_ext, "OTHER")
 
-        # If it's a note, use [NOTE:name] format
-        if is_note:
-            return f"[NOTE:{name}]"
+        # Get base name without extension
+        base_name = Path(file_path).stem
+        if base_name.endswith(".parsed"):
+            base_name = base_name[:-7]  # Remove '.parsed'
 
-        # For attachments, use [ATTACH:TYPE:name] format
-        file_type = self._get_file_type(path)
-        return f"[ATTACH:{file_type}:{name}]"
+        # Create reference marker
+        return f"[ATTACH:{file_type}:{base_name}]"
 
     def _extract_attachments(self, file_path: Path) -> List[Dict]:
         """Extract attachments from a file."""
@@ -219,9 +216,10 @@ class SplitPhase(Phase):
             elif base_name.endswith(".rawnotes"):
                 base_name = base_name[:-9]  # Remove '.rawnotes'
 
-            # Look for related files in the same directory
-            summary_file = file_path.parent / f"{base_name}.summary.md"
-            raw_notes_file = file_path.parent / f"{base_name}.rawnotes.md"
+            # Look for related files in the disassemble phase directory
+            disassemble_dir = self.pipeline.config.processing_dir / "phases" / "disassemble"
+            summary_file = disassemble_dir / f"{base_name}.summary.md"
+            raw_notes_file = disassemble_dir / f"{base_name}.rawnotes.md"
 
             # Process summary file if it exists
             if summary_file.exists():
@@ -240,39 +238,29 @@ class SplitPhase(Phase):
             if parent_dir not in attachments:
                 attachments[parent_dir] = []
 
-            # Get attachments from parse phase
-            parse_dir = self.pipeline.config.processing_dir / "phases" / "parse"
-            if parse_dir.exists():
-                # Look for files in the same directory as the input file
-                input_dir = file_path.parent
-                for file_path in input_dir.glob("*.*"):
-                    if file_path.is_file() and not file_path.name.endswith(
-                        (".summary.md", ".rawnotes.md")
-                    ):
+            # Get attachments from pipeline state
+            if "attachments" in self.pipeline.state["disassemble"]:
+                for parent_dir, dir_attachments in self.pipeline.state["disassemble"]["attachments"].items():
+                    if parent_dir not in attachments:
+                        attachments[parent_dir] = []
+                    for attachment in dir_attachments:
                         # Get file type from extension
+                        file_path = Path(attachment["path"])
                         file_ext = file_path.suffix.lower()
                         file_type = self.TYPE_MAP.get(file_ext, "OTHER")
 
                         # Create reference marker
                         ref = self._make_reference(str(file_path))
 
-                        attachment = {
+                        # Add attachment info
+                        attachments[parent_dir].append({
                             "path": str(file_path),
                             "id": file_path.stem,
                             "type": file_type,
                             "name": file_path.stem,
                             "ref": ref,
-                            "content": (
-                                f"Binary file: {file_path.name}"
-                                if file_type
-                                in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
-                                or file_path.name.startswith(
-                                    "."
-                                )  # Skip hidden files like .DS_Store
-                                else file_path.read_text(encoding="utf-8")
-                            ),
-                        }
-                        attachments[parent_dir].append(attachment)
+                            "content": attachment.get("content", f"Binary file: {file_path.name}"),
+                        })
 
             # Write or append to consolidated files
             if summary_sections:
@@ -402,7 +390,12 @@ class SplitPhase(Phase):
             for file_type, type_attachments in sorted(by_type.items()):
                 content.append(f"\n### {file_type} Files\n")
                 for attachment in sorted(type_attachments, key=lambda x: x["name"]):
-                    content.append(f"- {attachment['ref']}")
+                    # Create reference marker
+                    ref = f"[ATTACH:{file_type}:{attachment['name']}]"
+                    content.append(f"- {ref}")
+                    # Add content if available
+                    if "content" in attachment:
+                        content.append(f"  - Content: {attachment['content']}")
 
         # Write content to file
         attachments_file.write_text("\n".join(content), encoding="utf-8")

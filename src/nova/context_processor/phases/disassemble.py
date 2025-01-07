@@ -79,24 +79,26 @@ class DisassemblyPhase(Phase):
         Returns:
             Number of attachments copied
         """
-        attachment_count = 0
+        # Track processed files to avoid duplicates
+        processed_files = set()
+        total_copied = 0
+
+        # Create attachments subdirectory in destination
+        dest_attachments = dest_dir / "attachments"
+        dest_attachments.mkdir(parents=True, exist_ok=True)
 
         # Check for attachments directory named after the base file in parse output
         attachments_dir = src_dir / base_name
         if attachments_dir.exists() and attachments_dir.is_dir():
             try:
-                # Create base name directory in destination
-                dest_attachments = dest_dir / base_name
-                if dest_attachments.exists():
-                    shutil.rmtree(dest_attachments)
-
-                # Create the destination directory
-                dest_attachments.mkdir(parents=True, exist_ok=True)
-
                 # Copy all files from the directory
                 for file_path in attachments_dir.iterdir():
-                    if file_path.is_file():
-                        attachment_count += 1
+                    if file_path.is_file() and not file_path.name.startswith('.'):
+                        # Skip if already processed
+                        if file_path.name in processed_files:
+                            continue
+                        processed_files.add(file_path.name)
+
                         # Get the base name without .parsed.md
                         if file_path.name.endswith(".parsed.md"):
                             attachment_base = file_path.stem.replace(".parsed", "")
@@ -106,22 +108,13 @@ class DisassemblyPhase(Phase):
                             # Add to pipeline state for tracking
                             if "attachments" not in self.pipeline.state["disassemble"]:
                                 self.pipeline.state["disassemble"]["attachments"] = {}
-                            if (
-                                base_name
-                                not in self.pipeline.state["disassemble"]["attachments"]
-                            ):
-                                self.pipeline.state["disassemble"]["attachments"][
-                                    base_name
-                                ] = []
-                            self.pipeline.state["disassemble"]["attachments"][
-                                base_name
-                            ].append(
-                                {
-                                    "path": dest_path,
-                                    "type": "DOC",
-                                    "content": file_path.read_text(encoding="utf-8"),
-                                }
-                            )
+                            if base_name not in self.pipeline.state["disassemble"]["attachments"]:
+                                self.pipeline.state["disassemble"]["attachments"][base_name] = []
+                            self.pipeline.state["disassemble"]["attachments"][base_name].append({
+                                "path": dest_path,
+                                "type": "DOC",
+                                "content": file_path.read_text(encoding="utf-8"),
+                            })
                         else:
                             # Copy other files (images, etc.) as is
                             dest_path = dest_attachments / file_path.name
@@ -129,13 +122,8 @@ class DisassemblyPhase(Phase):
                             # Add to pipeline state for tracking
                             if "attachments" not in self.pipeline.state["disassemble"]:
                                 self.pipeline.state["disassemble"]["attachments"] = {}
-                            if (
-                                base_name
-                                not in self.pipeline.state["disassemble"]["attachments"]
-                            ):
-                                self.pipeline.state["disassemble"]["attachments"][
-                                    base_name
-                                ] = []
+                            if base_name not in self.pipeline.state["disassemble"]["attachments"]:
+                                self.pipeline.state["disassemble"]["attachments"][base_name] = []
                             # Get file type from extension
                             file_ext = file_path.suffix.lower()
                             file_type = {
@@ -157,66 +145,43 @@ class DisassemblyPhase(Phase):
                             try:
                                 content = (
                                     file_path.read_text(encoding="utf-8")
-                                    if file_type
-                                    not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
-                                    and not file_path.name.startswith(
-                                        "."
-                                    )  # Skip hidden files like .DS_Store
+                                    if file_type not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
                                     else f"Binary file: {file_path.name}"
                                 )
                             except UnicodeDecodeError:
                                 content = f"Binary file: {file_path.name}"
-                            # Use just the file name as the key
-                            attachment_key = file_path.name
-                            if attachment_key.endswith(".parsed"):
-                                attachment_key = attachment_key[:-7]
-                            self.pipeline.state["disassemble"]["attachments"][
-                                base_name
-                            ].append(
-                                {
-                                    "path": dest_path,
-                                    "type": file_type,
-                                    "content": content,
-                                    "id": attachment_key,
-                                }
-                            )
+                            self.pipeline.state["disassemble"]["attachments"][base_name].append({
+                                "path": dest_path,
+                                "type": file_type,
+                                "content": content,
+                                "id": file_path.name,
+                            })
+                        total_copied += 1
 
-                self.pipeline.state["disassemble"]["stats"]["attachments"][
-                    "copied"
-                ] += attachment_count
-                logger.debug(
-                    f"Copied {attachment_count} attachments from {attachments_dir}"
-                )
+                logger.debug(f"Copied {total_copied} attachments from {attachments_dir}")
             except Exception as e:
-                self.pipeline.state["disassemble"]["stats"]["attachments"][
-                    "failed"
-                ] += 1
+                self.pipeline.state["disassemble"]["stats"]["attachments"]["failed"] += 1
                 logger.error(f"Failed to copy attachments: {str(e)}")
 
         # Check for .assets directory
         assets_dir = src_dir / f"{base_name}.assets"
         if assets_dir.exists():
             try:
-                # Create attachments directory if it doesn't exist
-                dest_attachments = dest_dir / base_name
-                dest_attachments.mkdir(parents=True, exist_ok=True)
-
                 # Copy all files from assets to attachments
                 for asset in assets_dir.iterdir():
-                    if asset.is_file():
-                        attachment_count += 1
+                    if asset.is_file() and not asset.name.startswith('.'):
+                        # Skip if already processed
+                        if asset.name in processed_files:
+                            continue
+                        processed_files.add(asset.name)
+
                         dest_path = dest_attachments / asset.name
                         shutil.copy2(asset, dest_path)
                         # Add to pipeline state for tracking
                         if "attachments" not in self.pipeline.state["disassemble"]:
                             self.pipeline.state["disassemble"]["attachments"] = {}
-                        if (
-                            base_name
-                            not in self.pipeline.state["disassemble"]["attachments"]
-                        ):
-                            self.pipeline.state["disassemble"]["attachments"][
-                                base_name
-                            ] = []
+                        if base_name not in self.pipeline.state["disassemble"]["attachments"]:
+                            self.pipeline.state["disassemble"]["attachments"][base_name] = []
                         # Get file type from extension
                         file_ext = asset.suffix.lower()
                         file_type = {
@@ -238,41 +203,29 @@ class DisassemblyPhase(Phase):
                         try:
                             content = (
                                 asset.read_text(encoding="utf-8")
-                                if file_type
-                                not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
-                                and not asset.name.startswith(
-                                    "."
-                                )  # Skip hidden files like .DS_Store
+                                if file_type not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
                                 else f"Binary file: {asset.name}"
                             )
                         except UnicodeDecodeError:
                             content = f"Binary file: {asset.name}"
-                        # Use just the file name as the key
-                        attachment_key = asset.name
-                        if attachment_key.endswith(".parsed"):
-                            attachment_key = attachment_key[:-7]
-                        self.pipeline.state["disassemble"]["attachments"][
-                            base_name
-                        ].append(
-                            {
-                                "path": dest_path,
-                                "type": file_type,
-                                "content": content,
-                                "id": attachment_key,
-                            }
-                        )
+                        self.pipeline.state["disassemble"]["attachments"][base_name].append({
+                            "path": dest_path,
+                            "type": file_type,
+                            "content": content,
+                            "id": asset.name,
+                        })
+                        total_copied += 1
 
-                self.pipeline.state["disassemble"]["stats"]["attachments"][
-                    "copied"
-                ] += attachment_count
-                logger.info(f"Copied {attachment_count} assets from {assets_dir}")
+                logger.debug(f"Copied {total_copied} assets from {assets_dir}")
             except Exception as e:
-                self.pipeline.state["disassemble"]["stats"]["attachments"][
-                    "failed"
-                ] += 1
+                self.pipeline.state["disassemble"]["stats"]["attachments"]["failed"] += 1
                 logger.error(f"Failed to copy assets: {str(e)}")
 
-        return attachment_count
+        # Update stats only once with total copied
+        if total_copied > 0:
+            self.pipeline.state["disassemble"]["stats"]["attachments"]["copied"] = total_copied
+
+        return total_copied
 
     def _print_summary(self) -> None:
         """Print phase summary."""
@@ -283,23 +236,30 @@ class DisassemblyPhase(Phase):
         # Get stats
         stats = self.pipeline.state["disassemble"]["stats"]
 
-        # Count actual input files (excluding metadata)
-        input_files = len(
-            [
-                f
-                for f in self.pipeline.state["disassemble"].get(
-                    "successful_files", set()
-                )
-                if not f.name.endswith(".metadata.json")
-            ]
-        )
+        # Get the original input files by looking at the base names of processed files
+        processed_files = self.pipeline.state["disassemble"].get("successful_files", set())
+        unique_files = set()
+        for f in processed_files:
+            if str(f).endswith(".parsed.md"):
+                # Get the original file path by removing .parsed.md
+                original_file = str(f).replace(".parsed.md", "")
+                # Skip metadata files
+                if original_file.endswith(".metadata.json"):
+                    continue
+                # Skip files that start with . (like .DS_Store)
+                if Path(original_file).name.startswith('.'):
+                    continue
+                # Add the full path to handle duplicates in different directories
+                unique_files.add(original_file)
+
+        input_files = len(unique_files)
 
         table.add_row("Input Files", str(input_files))
         table.add_row(
             "Output Files",
             f"{stats['summary_files']['created']} summaries, {stats['raw_notes_files']['created']} raw notes",
         )
-        table.add_row("Total Sections", str(stats["total_sections"]))
+        table.add_row("Total Sections", str(stats.get("total_sections", 0)))
         table.add_row(
             "Summary Files",
             f"{stats['summary_files']['created']} created, {stats['summary_files']['empty']} empty",
@@ -350,23 +310,9 @@ class DisassemblyPhase(Phase):
             Updated metadata if successful, None if failed
         """
         try:
-            # Skip non-parsed markdown files
-            if not str(file_path).endswith(".parsed.md"):
+            # Skip non-parsed markdown files and metadata files
+            if not str(file_path).endswith(".parsed.md") or ".metadata.json" in str(file_path):
                 return metadata
-
-            # Initialize metadata if not provided
-            if metadata is None:
-                metadata = FileMetadata.from_file(
-                    file_path=file_path,
-                    handler_name="disassemble",
-                    handler_version="1.0",
-                )
-
-            # Read content
-            content = file_path.read_text(encoding="utf-8")
-
-            # Split content into summary and raw notes
-            summary_content, raw_notes_content = self._split_content(content)
 
             # Get base name without .parsed.md extension
             base_name = file_path.stem.replace(".parsed", "")
@@ -384,14 +330,39 @@ class DisassemblyPhase(Phase):
             # Create output directory
             output_subdir.mkdir(parents=True, exist_ok=True)
 
+            # Create a subdirectory for attachments
+            attachments_dir = output_subdir / f"{base_name}.attachments"
+            attachments_dir.mkdir(parents=True, exist_ok=True)
+
+            # Load metadata from parse phase if not provided
+            if metadata is None:
+                metadata_file = file_path.with_suffix(".metadata.json")
+                if metadata_file.exists():
+                    metadata = FileMetadata.from_json_file(metadata_file)
+                else:
+                    metadata = FileMetadata.from_file(
+                        file_path=file_path,
+                        handler_name="disassemble",
+                        handler_version="1.0",
+                    )
+
+            # Read content
+            content = file_path.read_text(encoding="utf-8")
+
+            # Split content into summary and raw notes
+            summary_content, raw_notes_content = self._split_content(content)
+
             # Initialize section count for this file
             section_count = 0
+            metadata.metadata["sections"] = {
+                "summary": False,
+                "raw_notes": False,
+                "attachments": [],
+                "total_sections": 0,
+            }
 
             logger.debug(
                 f"Processing {base_name} - Initial section_count = {section_count}"
-            )
-            logger.debug(
-                f"Current total sections: {self.pipeline.state['disassemble']['stats'].get('total_sections', 0)}"
             )
 
             # Write summary file
@@ -399,6 +370,7 @@ class DisassemblyPhase(Phase):
                 summary_file = output_subdir / f"{base_name}.summary.md"
                 summary_file.write_text(summary_content, encoding="utf-8")
                 metadata.add_output_file(summary_file)
+                metadata.metadata["sections"]["summary"] = True
                 self.pipeline.state["disassemble"]["stats"]["summary_files"][
                     "created"
                 ] += 1
@@ -407,18 +379,17 @@ class DisassemblyPhase(Phase):
                 logger.debug(
                     f"Created summary file for {base_name}, section_count = {section_count}"
                 )
-                logger.debug(f"Summary content length: {len(summary_content)}")
             else:
                 self.pipeline.state["disassemble"]["stats"]["summary_files"][
                     "empty"
                 ] += 1
-                logger.debug(f"No summary content for {base_name}")
 
             # Write raw notes file if it exists
             if raw_notes_content:
                 raw_notes_file = output_subdir / f"{base_name}.rawnotes.md"
                 raw_notes_file.write_text(raw_notes_content, encoding="utf-8")
                 metadata.add_output_file(raw_notes_file)
+                metadata.metadata["sections"]["raw_notes"] = True
                 self.pipeline.state["disassemble"]["stats"]["raw_notes_files"][
                     "created"
                 ] += 1
@@ -427,16 +398,14 @@ class DisassemblyPhase(Phase):
                 logger.debug(
                     f"Created raw notes file for {base_name}, section_count = {section_count}"
                 )
-                logger.debug(f"Raw notes content length: {len(raw_notes_content)}")
             else:
                 self.pipeline.state["disassemble"]["stats"]["raw_notes_files"][
                     "empty"
                 ] += 1
-                logger.debug(f"No raw notes content for {base_name}")
 
             # Copy attachments if they exist
             attachment_count = self._copy_attachments(
-                file_path.parent, output_subdir, base_name
+                file_path.parent, attachments_dir, base_name
             )
             if attachment_count > 0:
                 # Initialize total_attachments if not present
@@ -448,41 +417,39 @@ class DisassemblyPhase(Phase):
                 self.pipeline.state["disassemble"]["stats"][
                     "total_attachments"
                 ] += attachment_count
-                logger.debug(f"Added {attachment_count} attachments for {base_name}")
+                
+                # Update metadata with attachment info
+                if attachments_dir.exists():
+                    for file_path in attachments_dir.iterdir():
+                        if file_path.is_file() and not file_path.name.startswith('.'):
+                            metadata.metadata["sections"]["attachments"].append(
+                                str(file_path.relative_to(attachments_dir))
+                            )
 
-            # Update total sections count
-            if "total_sections" not in self.pipeline.state["disassemble"]["stats"]:
-                self.pipeline.state["disassemble"]["stats"]["total_sections"] = 0
-            current_total = self.pipeline.state["disassemble"]["stats"][
-                "total_sections"
-            ]
-            self.pipeline.state["disassemble"]["stats"][
-                "total_sections"
-            ] += section_count
-            new_total = self.pipeline.state["disassemble"]["stats"]["total_sections"]
-            logger.debug(
-                f"Updated total sections for {base_name}: {current_total} + {section_count} = {new_total}"
-            )
+            # Update total sections in metadata
+            metadata.metadata["sections"]["total_sections"] = section_count
+            self.pipeline.state["disassemble"]["stats"]["total_sections"] += section_count
 
-            # Update pipeline state
-            self.pipeline.state["disassemble"]["successful_files"].add(file_path)
-            self.pipeline.state["disassemble"]["stats"]["total_processed"] += 1
+            # Save metadata in processing directory, not output directory
+            metadata_file = self.pipeline.config.processing_dir / "phases" / "disassemble" / "metadata" / f"{base_name}.metadata.json"
+            metadata_file.parent.mkdir(parents=True, exist_ok=True)
+            metadata.save(metadata_file)
 
+            # Mark as processed
             metadata.processed = True
+            # Only track the parsed file in successful_files
+            self.pipeline.state["disassemble"]["successful_files"].add(str(file_path))
+
             return metadata
 
         except Exception as e:
-            error_msg = f"{str(e)}\n{traceback.format_exc()}"
-            self.logger.error(f"Failed to process file {file_path}: {error_msg}")
-            self.pipeline.state["disassemble"]["failed_files"].add(file_path)
-            self.pipeline.state["disassemble"]["_file_errors"][file_path] = error_msg
+            error_msg = f"Failed to process file {file_path}: {str(e)}"
+            logger.error(error_msg)
+            logger.debug(traceback.format_exc())
             if metadata:
-                metadata.add_error("DisassemblyPhase", error_msg)
-            # Update failed stats
-            self.pipeline.state["disassemble"]["stats"]["summary_files"]["failed"] += 1
-            self.pipeline.state["disassemble"]["stats"]["raw_notes_files"][
-                "failed"
-            ] += 1
+                metadata.add_error(self.name, error_msg)
+                metadata.processed = False
+            self.pipeline.state["disassemble"]["failed_files"].add(str(file_path))
             return metadata
 
     def finalize(self) -> None:

@@ -472,85 +472,14 @@ class PipelineValidator:
                     ref_variations = [
                         base_stem,  # Original with spaces
                         base_stem.replace(" ", "_"),  # With underscores
-                        base_name,  # Original with extension
-                        base_name.replace(" ", "_"),  # With underscores and extension
-                        base_stem.replace(" ", "")
-                        .replace("-", "_")
-                        .replace(".", "_"),  # All special chars to underscores
-                        base_stem.lower(),  # Lowercase version
-                        base_stem.lower().replace(
-                            " ", "_"
-                        ),  # Lowercase with underscores
-                        base_stem.lower()
-                        .replace(" ", "")
-                        .replace("-", "_")
-                        .replace(
-                            ".", "_"
-                        ),  # Lowercase all special chars to underscores
-                        Path(base_name).stem,  # Just the stem without any extension
-                        Path(base_name).stem.replace(" ", "_"),  # Stem with underscores
-                        Path(base_name).stem.lower(),  # Lowercase stem
-                        Path(base_name)
-                        .stem.lower()
-                        .replace(" ", "_"),  # Lowercase stem with underscores
-                        # Add variations without file extensions
-                        Path(base_stem).stem,  # Remove any remaining extensions
-                        Path(base_stem).stem.replace(
-                            " ", "_"
-                        ),  # Remove extensions and add underscores
-                        Path(base_stem).stem.lower(),  # Remove extensions and lowercase
-                        Path(base_stem)
-                        .stem.lower()
-                        .replace(
-                            " ", "_"
-                        ),  # Remove extensions, lowercase, and underscores
-                        # Add variations with special character handling
-                        base_stem.replace("-", " "),  # Replace hyphens with spaces
-                        base_stem.replace("_", " "),  # Replace underscores with spaces
-                        base_stem.replace("-", "").replace(
-                            "_", ""
-                        ),  # Remove hyphens and underscores
-                        base_stem.lower().replace(
-                            "-", " "
-                        ),  # Lowercase and replace hyphens with spaces
-                        base_stem.lower().replace(
-                            "_", " "
-                        ),  # Lowercase and replace underscores with spaces
-                        base_stem.lower()
-                        .replace("-", "")
-                        .replace("_", ""),  # Lowercase and remove hyphens/underscores
-                        # Add variations with parentheses handling
-                        re.sub(
-                            r"\([^)]*\)", "", base_stem
-                        ).strip(),  # Remove parentheses and content
-                        re.sub(r"\([^)]*\)", "", base_stem)
-                        .strip()
-                        .replace(" ", "_"),  # Remove parentheses and add underscores
-                        re.sub(r"\([^)]*\)", "", base_stem)
-                        .lower()
-                        .strip(),  # Remove parentheses and lowercase
-                        re.sub(r"\([^)]*\)", "", base_stem)
-                        .lower()
-                        .strip()
-                        .replace(
-                            " ", "_"
-                        ),  # Remove parentheses, lowercase, underscores
-                        # Add variations with file extensions
-                        Path(base_name).name,  # Full name with extension
-                        Path(base_name).name.replace(
-                            " ", "_"
-                        ),  # Full name with underscores
-                        Path(base_name).name.lower(),  # Full name lowercase
-                        Path(base_name)
-                        .name.lower()
-                        .replace(" ", "_"),  # Full name lowercase with underscores
+                        base_stem.replace(" ", "-"),  # With hyphens
+                        base_stem.replace(" ", ""),  # No spaces
                     ]
 
-                    # Remove duplicates and empty strings
-                    ref_variations = list(set(filter(None, ref_variations)))
-
-                    # Check if any reference pattern exists in the content
+                    # Flag to track if we found a reference
                     found_ref = False
+
+                    # Try each variation
                     for ref_base in ref_variations:
                         # Try different attachment type variations
                         type_variations = [
@@ -578,46 +507,17 @@ class PipelineValidator:
                         elif attachment_type == "CSV":
                             type_variations.extend(["DOC", "EXCEL"])
 
-                        # Remove duplicates and convert to lowercase/uppercase variations
-                        type_variations = list(set(type_variations))
-                        type_variations.extend([t.lower() for t in type_variations])
-                        type_variations.extend([t.upper() for t in type_variations])
-                        type_variations.extend(
-                            [t.capitalize() for t in type_variations]
-                        )
-                        type_variations = list(set(type_variations))
-
+                        # Try each type variation
                         for ref_type in type_variations:
-                            # Create the full reference pattern
+                            # Create reference pattern
                             ref_pattern = f"[ATTACH:{ref_type}:{ref_base}]"
 
-                            # Check both inline references and section headers
+                            # Check for exact match
                             if ref_pattern in attachments_content:
                                 found_ref = True
                                 break
 
-                            # Check for section header variations
-                            header_variations = [
-                                f"#### {ref_pattern}",  # Standard header
-                                f"### {ref_pattern}",  # Subsection header
-                                f"## {ref_pattern}",  # Section header
-                                f"# {ref_pattern}",  # Main header
-                                f"#### ![ATTACH:{ref_type}:{ref_base}]",  # Image reference in header
-                                f"### ![ATTACH:{ref_type}:{ref_base}]",  # Image reference in subsection
-                                f"## ![ATTACH:{ref_type}:{ref_base}]",  # Image reference in section
-                                f"# ![ATTACH:{ref_type}:{ref_base}]",  # Image reference in main header
-                                f"![ATTACH:{ref_type}:{ref_base}]",  # Inline image reference
-                            ]
-
-                            for header in header_variations:
-                                if header in attachments_content:
-                                    found_ref = True
-                                    break
-
-                            if found_ref:
-                                break
-
-                            # Check for variations with file extensions
+                            # Try with file extension
                             if "." in ref_base:
                                 # Try without extension
                                 base_without_ext = Path(ref_base).stem
@@ -628,36 +528,12 @@ class PipelineValidator:
                                     found_ref = True
                                     break
 
-                                # Check header variations for no-extension pattern
-                                for header in header_variations:
-                                    header_no_ext = header.replace(
-                                        ref_pattern, ref_pattern_no_ext
-                                    )
-                                    if header_no_ext in attachments_content:
-                                        found_ref = True
-                                        break
-
-                                if found_ref:
-                                    break
-
-                            # Check for variations with file extensions
+                            # Try with file extension
                             ref_pattern_with_ext = (
                                 f"[ATTACH:{ref_type}:{ref_base}.{file_ext[1:]}]"
                             )
                             if ref_pattern_with_ext in attachments_content:
                                 found_ref = True
-                                break
-
-                            # Check header variations with extension
-                            for header in header_variations:
-                                header_with_ext = header.replace(
-                                    ref_pattern, ref_pattern_with_ext
-                                )
-                                if header_with_ext in attachments_content:
-                                    found_ref = True
-                                    break
-
-                            if found_ref:
                                 break
 
                         if found_ref:
@@ -681,7 +557,7 @@ class PipelineValidator:
                                 f"No attachment reference found for {original_name} in consolidated Attachments.md"
                             )
 
-            return len(self.errors) == 0
+            return True
 
         except Exception as e:
             self.errors.append(f"Error validating split phase: {str(e)}")

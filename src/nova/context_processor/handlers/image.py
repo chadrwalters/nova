@@ -6,7 +6,7 @@ import io
 import mimetypes
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 # External dependencies
 import cairosvg
@@ -50,14 +50,8 @@ class ImageHandler(BaseHandler):
         try:
             if self.config.apis and self.config.apis.openai:
                 self.logger.debug("Found OpenAI config")
-                self.logger.debug(f"Raw API key: {self.config.apis.openai.api_key}")
-                api_key = self.config.apis.openai.get_key()
-                self.logger.debug(f"Processed API key: {api_key}")
-                self.logger.debug(
-                    f"API key valid: {self.config.apis.openai.has_valid_key}"
-                )
-                if api_key:
-                    self.vision_client = OpenAI(api_key=api_key)
+                if self.config.apis.openai.has_valid_key:
+                    self.vision_client = OpenAI(api_key=self.config.apis.openai.get_key())
                     self.logger.info("OpenAI vision client initialized successfully")
                 else:
                     self.logger.warning(
@@ -112,7 +106,7 @@ class ImageHandler(BaseHandler):
             self.logger.error(f"Failed to encode image {file_path}: {str(e)}")
             raise
 
-    async def process_file_impl(
+    def _process_image(
         self,
         file_path: Path,
         output_path: Path,
@@ -121,7 +115,7 @@ class ImageHandler(BaseHandler):
         """Process an image file.
 
         Args:
-            file_path: Path to image file.
+            file_path: Path to the image file.
             output_path: Path to write output.
             metadata: Document metadata.
 
@@ -129,39 +123,18 @@ class ImageHandler(BaseHandler):
             Document metadata.
         """
         try:
-            # Validate image file
-            try:
-                if file_path.suffix.lower() == ".svg":
-                    # For SVG files, try to read and parse with cairosvg
-                    try:
-                        # Create a temporary PNG file to verify SVG is valid
-                        temp_png = file_path.parent / f"{file_path.stem}.temp.png"
-                        try:
-                            cairosvg.svg2png(url=str(file_path), write_to=str(temp_png))
-                        finally:
-                            # Clean up temporary file
-                            if temp_png.exists():
-                                temp_png.unlink()
-                    except Exception as e:
-                        raise ValueError(f"Invalid SVG file: {str(e)}")
-                else:
-                    # For other image types, use PIL
-                    with Image.open(file_path) as img:
-                        img.verify()
-            except Exception as e:
-                error_msg = f"Invalid image file {file_path}: {str(e)}"
-                self.logger.error(error_msg)
-                metadata.add_error(self.name, error_msg)
-                metadata.processed = False
-                return metadata
+            # Log basic image info without the content
+            self.logger.debug(f"Processing image: {file_path.name}")
+            
+            # Convert image to base64
+            image_data = self._encode_image(file_path)
+            self.logger.debug("Image converted successfully")
 
             # Generate image description if vision client is available
             description = ""
             if self.vision_client:
                 try:
-                    # Encode image
-                    base64_image = self._encode_image(file_path)
-
+                    self.logger.debug(f"Sending image to OpenAI vision API: {file_path.name}")
                     # Call Vision API
                     response = self.vision_client.chat.completions.create(
                         model=self.config.apis.openai.model,
@@ -176,7 +149,7 @@ class ImageHandler(BaseHandler):
                                     {
                                         "type": "image_url",
                                         "image_url": {
-                                            "url": f"data:image/jpeg;base64,{base64_image}"
+                                            "url": f"data:image/jpeg;base64,{image_data}"
                                         },
                                     },
                                 ],
@@ -184,6 +157,7 @@ class ImageHandler(BaseHandler):
                         ],
                         max_tokens=300,
                     )
+                    self.logger.debug("OpenAI vision API request completed")
 
                     description = response.choices[0].message.content
 
@@ -230,4 +204,56 @@ class ImageHandler(BaseHandler):
             if metadata:
                 metadata.add_error(self.name, error_msg)
                 metadata.processed = False
+            return metadata
+
+    async def process_file_impl(
+        self,
+        file_path: Path,
+        output_path: Path,
+        metadata: DocumentMetadata,
+    ) -> Optional[DocumentMetadata]:
+        """Process an image file.
+
+        Args:
+            file_path: Path to image file.
+            output_path: Path to write output.
+            metadata: Document metadata.
+
+        Returns:
+            Document metadata.
+        """
+        try:
+            # Validate image file
+            try:
+                if file_path.suffix.lower() == ".svg":
+                    # For SVG files, try to read and parse with cairosvg
+                    try:
+                        # Create a temporary PNG file to verify SVG is valid
+                        temp_png = file_path.parent / f"{file_path.stem}.temp.png"
+                        try:
+                            cairosvg.svg2png(url=str(file_path), write_to=str(temp_png))
+                        finally:
+                            # Clean up temporary file
+                            if temp_png.exists():
+                                temp_png.unlink()
+                    except Exception as e:
+                        raise ValueError(f"Invalid SVG file: {str(e)}")
+                else:
+                    # For other image types, use PIL
+                    with Image.open(file_path) as img:
+                        img.verify()
+            except Exception as e:
+                error_msg = f"Invalid image file {file_path}: {str(e)}"
+                self.logger.error(error_msg)
+                metadata.add_error(self.name, error_msg)
+                metadata.processed = False
+                return metadata
+
+            # Process the image
+            return self._process_image(file_path, output_path, metadata)
+        except Exception as e:
+            error_msg = f"Failed to process image {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            metadata.add_error(self.name, error_msg)
+            metadata.processed = False
             return metadata

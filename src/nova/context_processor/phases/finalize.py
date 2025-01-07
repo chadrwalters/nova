@@ -115,7 +115,8 @@ class FinalizePhase(Phase):
             if finalize_dir.exists():
                 # Walk through all files in finalize directory
                 for file_path in finalize_dir.rglob("*"):
-                    if file_path.is_file():
+                    # Only copy Markdown files
+                    if file_path.is_file() and file_path.suffix.lower() == '.md':
                         # Get relative path from finalize dir
                         rel_path = file_path.relative_to(finalize_dir)
                         # Create output path
@@ -157,6 +158,6 @@ class FinalizePhase(Phase):
 
         # Get all files from split phase
         for file_path in split_dir.rglob("*"):
-            if file_path.is_file():
+            if file_path.is_file() and not file_path.name.endswith(".metadata.json"):
                 output_dir = self.pipeline.get_phase_output_dir("finalize")
                 await self.process_file(file_path, output_dir)
