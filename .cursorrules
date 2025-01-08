@@ -17,13 +17,28 @@ When I submit a command to you, you MUST follow the procedure outlined in the co
         2. "Extract relevant updates from conversation"
         3. "Apply any relevant and useful updates"
 
+- "create plan":
+    - procedure:
+        1. "If there is a plan, you MUST delete it"
+        2. "Create a new plan in .Plan in cursorplan format"
+        3. "You must include status markers for each step, along with milestones where we should run and get the tests to work"
+        4. "Extract relevant updates from conversation"
+        5. "Apply any relevant and useful parts of conversation to the plan"
+
+- "update plan":
+    - procedure:
+        1. "You must read the plan in .Plan"
+        2. "Extract relevant updates from conversation and make appropriate changes to the plan"
+        3. "You must update status markers for each step, along with milestones where we should run and get the tests to work"
+        4. "Apply any relevant and useful parts of conversation to the plan"
+
 - "update rules":
     - procedure:
         1. "Parse .cursorrules file"
         2. "Extract rule updates from conversation"
         3. "Apply any relevant and useful updates"
 
-- "capture thoughts":
+- "update thoughts":
     - procedure:
         1. "You MUST read the .cursorscratchpad file"
         2. "Extract relevant insights from current context"
@@ -31,7 +46,7 @@ When I submit a command to you, you MUST follow the procedure outlined in the co
         4. "You MUST write your thoughts in the <SCRATCHPAD> buffer"
         5. "Consolidate your thoughts as necessary, grouping related thoughts together"
 
-- "update cursornotes":
+- "update note":
     - procedure:
         1. "You MUST read the .cursornotes and .cursorscratchpad files"
         2. "Consolidate previous thoughts from <SCRATCHPAD>"

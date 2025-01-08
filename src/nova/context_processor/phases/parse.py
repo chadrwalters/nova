@@ -4,11 +4,12 @@
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
+import re
 
 # Internal imports
 from ..config.manager import ConfigManager
 from ..core.metadata import FileMetadata, DocumentMetadata
-from ..handlers.base import BaseHandler
+from ..handlers.base import BaseHandler, ProcessingStatus
 from ..handlers.registry import HandlerRegistry
 from ..phases.base import Phase
 
@@ -29,7 +30,7 @@ class ParsePhase(Phase):
             pipeline: Pipeline instance
         """
         super().__init__("parse", config, pipeline)
-        self.handler_registry = HandlerRegistry(config)
+        self.handler_registry = HandlerRegistry(config, pipeline)
         self.stats: Dict[str, Dict] = {}
 
     def _get_handler(self, file_path: Path) -> Optional[BaseHandler]:
@@ -55,9 +56,38 @@ class ParsePhase(Phase):
         Returns:
             DocumentMetadata if successful, None if skipped
         """
-        # Convert to Path objects
-        file_path = Path(file_path)
-        output_dir = Path(output_dir)
+        # Convert to Path objects and resolve
+        file_path = Path(file_path).resolve()
+        output_dir = Path(output_dir).resolve()
+
+        # Skip files that are referenced in markdown files
+        parent_dir = file_path.parent
+        if parent_dir.name.startswith("20") and len(parent_dir.name) >= 8:
+            # This is a dated directory, check if this file is referenced in the parent markdown file
+            parent_md = parent_dir.parent / f"{parent_dir.name}.md"
+            if parent_md.exists():
+                try:
+                    with open(parent_md, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        # Check if this file is referenced in the markdown
+                        file_name = str(file_path.relative_to(parent_dir))
+                        if file_name in content:
+                            logger.debug(f"Found reference to {file_name} in {parent_md}")
+                            # Create metadata for the referenced file
+                            metadata = DocumentMetadata.from_file(
+                                file_path=file_path,
+                                handler_name="reference",
+                                handler_version="0.1.0",
+                            )
+                            metadata.processed = True
+                            metadata.metadata["referenced_in"] = str(parent_md)
+                            metadata.metadata["reference_type"] = "attachment"
+                            # Update successful files count
+                            self.pipeline.state[self.name]["successful_files"].add(file_path)
+                            return metadata
+                except Exception as e:
+                    logger.error(f"Error checking references in {parent_md}: {str(e)}")
+                    return None
 
         # Get handler for file type
         handler = self._get_handler(file_path)
@@ -76,43 +106,43 @@ class ParsePhase(Phase):
             )
 
             # Get relative path from input directory
+            input_dir = Path(self.config.input_dir).resolve()
             try:
-                rel_path = file_path.relative_to(self.config.input_dir)
+                rel_path = file_path.relative_to(input_dir)
             except ValueError:
-                # If not under input_dir, try to find a parent directory that matches
-                # Look for common parent directories like "Format Test" or "Format Test 3"
-                parts = file_path.parts
-                for i in range(len(parts) - 1, -1, -1):
-                    if "Format Test" in parts[i]:
-                        rel_path = Path(*parts[i:])
+                # If file is not under input directory, try to find a parent directory
+                # that matches the input directory pattern
+                for parent in file_path.parents:
+                    if re.search(r"\d{8}", str(parent)):
+                        # Use the path relative to this parent
+                        remaining_path = file_path.relative_to(parent)
+                        # Include the parent directory name in the relative path
+                        rel_path = Path(parent.name) / remaining_path
                         break
                 else:
-                    # If no match found, use just the filename
+                    # If no parent with date found, use just the filename
+                    logger.warning(f"File {file_path} is not under input directory {input_dir}")
                     rel_path = Path(file_path.name)
 
-            # Get output path using output manager
-            output_path = self.pipeline.output_manager.get_output_path_for_phase(
-                rel_path, "parse", ".parsed.md"
+            # Get output path preserving directory structure
+            output_path = (
+                self.pipeline.output_manager.get_phase_dir("parse")
+                / rel_path.parent
+                / f"{rel_path.stem}.parsed.md"
             )
 
             # Process file and update metadata
-            metadata = await handler.process_impl(file_path, output_path, metadata)
-            if metadata and metadata.processed:
+            result = await handler.process(file_path, metadata, output_path)
+            if result.status == ProcessingStatus.COMPLETED:
                 logger.info(f"Successfully processed {file_path}")
                 self._update_stats(
                     file_path.suffix.lower(), "successful", handler.__class__.__name__
                 )
-
-                # Save metadata file in parse phase output directory
-                metadata_path = self.pipeline.output_manager.get_output_path_for_phase(
-                    rel_path, "parse", ".metadata.json"
-                )
-                metadata_path.parent.mkdir(parents=True, exist_ok=True)
-                metadata.save(metadata_path)
-
-                return metadata
+                # Update successful files count
+                self.pipeline.state[self.name]["successful_files"].add(file_path)
+                return result.metadata
             else:
-                logger.error(f"Failed to process {file_path}")
+                logger.error(f"Failed to process {file_path}: {result.error}")
                 self._update_stats(
                     file_path.suffix.lower(), "failed", handler.__class__.__name__
                 )

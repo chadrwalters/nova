@@ -3,14 +3,18 @@
 # Standard library
 import os
 import re
+import logging
 from pathlib import Path
-from typing import Dict, List, Match, Optional, Union
+from typing import Dict, List, Match, Optional, Union, Tuple
 
 # Internal imports
 from ..config.manager import ConfigManager
 from ..core.markdown import MarkdownWriter
 from ..core.metadata import DocumentMetadata
 from .base import BaseHandler, ProcessingResult, ProcessingStatus
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 class MarkdownHandler(BaseHandler):
@@ -29,120 +33,192 @@ class MarkdownHandler(BaseHandler):
         super().__init__(config)
         self.markdown_writer = MarkdownWriter()
 
-    def _update_links(self, content: str) -> str:
-        """Update links to use simple reference markers.
+    def _update_links(self, content: str, file_path: Path) -> str:
+        """Update links in markdown content.
 
         Args:
-            content: Original markdown content.
+            content: Markdown content to update
+            file_path: Path to file being processed
 
         Returns:
-            Updated markdown content.
+            Updated markdown content
         """
-        # First remove any existing HTML comments
-        content = re.sub(r"<!--.*?-->", "", content)
+        # Get parent directory of file
+        parent_dir = file_path.parent
 
-        def replace_link(match: Match[str]) -> str:
-            """Replace markdown links with reference markers.
+        # Find all links in content
+        link_pattern = r'\[([^\]]*)\]\(([^)]*)\)'
+        matches = re.finditer(link_pattern, content)
 
-            Args:
-                match: Regex match object containing link components
+        # Process each link
+        for match in matches:
+            link_text = match.group(1)
+            link_url = match.group(2)
 
-            Returns:
-                Reference marker string
-            """
-            full_match = match.group(0)
-            is_image = full_match.startswith("!")
-            text = match.group(2)
-            path = match.group(3)
+            # Skip if it's an external link
+            if link_url.startswith(('http://', 'https://', 'ftp://', 'mailto:')):
+                continue
 
-            # Skip if it's not a file link
-            if path.startswith(("http://", "https://", "#", "/")):
-                return full_match
+            # Convert to Path object
+            link_path = Path(link_url)
 
-            # Get file type from extension
-            ext = Path(path).suffix.lower()
-            type_map = {
-                ".pdf": "PDF",
-                ".doc": "DOC",
-                ".docx": "DOC",
-                ".jpg": "IMAGE",
-                ".jpeg": "IMAGE",
-                ".png": "IMAGE",
-                ".heic": "IMAGE",
-                ".xlsx": "EXCEL",
-                ".xls": "EXCEL",
-                ".csv": "EXCEL",
-                ".txt": "TXT",
-                ".json": "JSON",
-                ".html": "DOC",
-                ".md": "DOC",
-            }
-            file_type = type_map.get(ext, "OTHER")
+            # If link is relative, make it absolute using parent directory
+            if not link_path.is_absolute():
+                link_path = (parent_dir / link_path).resolve()
 
-            # Create reference marker
-            filename = Path(path).stem
-            ref = f"[ATTACH:{file_type}:{filename}]"
+            # Get relative path from input directory
+            input_dir = Path(self.config.input_dir).resolve()
+            try:
+                rel_path = link_path.relative_to(input_dir)
+            except ValueError:
+                # If file is not under input directory, try to find a parent directory
+                # that matches the input directory pattern
+                for parent in link_path.parents:
+                    if re.search(r"\d{8}", str(parent)):
+                        # Use the path relative to this parent
+                        remaining_path = link_path.relative_to(parent)
+                        # Include the parent directory name in the relative path
+                        rel_path = Path(parent.name) / remaining_path
+                        break
+                else:
+                    # If no parent with date found, use just the filename
+                    logger.warning(f"File {link_path} is not under input directory {input_dir}")
+                    rel_path = Path(link_path.name)
 
-            # For images, preserve the ! prefix
-            if is_image:
-                ref = "!" + ref
-
-            # Return the reference marker
-            return ref
-
-        # Update all links using the pattern
-        link_pattern = r"(!?\[([^\]]*)\]\(([^)]+)\))"
-        content = re.sub(link_pattern, replace_link, content)
+            # Replace link with reference marker
+            content = content.replace(
+                match.group(0),
+                f'[{link_text}]({rel_path})'
+            )
 
         return content
 
     async def process_file_impl(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
+        self, file_path: Union[str, Path], output_path: Union[str, Path], metadata: DocumentMetadata
     ) -> Optional[DocumentMetadata]:
         """Process a markdown file.
 
         Args:
-            file_path: Path to markdown file.
-            output_path: Path to write output.
-            metadata: Document metadata.
+            file_path: Path to file to process
+            output_path: Path to write output to
+            metadata: Metadata for file
 
         Returns:
-            Document metadata.
+            DocumentMetadata if successful, None if failed
         """
+        # Convert to Path objects and resolve
+        file_path = Path(file_path).resolve()
+        output_path = Path(output_path).resolve()
+
         try:
             # Read markdown file
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
+            # Process embedded documents
+            content, embedded_files = await self._process_embedded_documents(content, file_path)
+            
+            # Store embedded files in metadata but don't process them separately
+            metadata.embedded_files = embedded_files
+            metadata.metadata["embedded_files"] = [str(f) for f in embedded_files]
+
             # Update links in content
-            content = self._update_links(content)
+            content = self._update_links(content, file_path)
+
+            # Ensure parent directories exist
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
 
             # Update metadata
-            metadata.title = file_path.stem
             metadata.processed = True
+            metadata.output_path = output_path
+            metadata.content_type = "text/markdown"
 
-            # Write markdown using MarkdownWriter
-            markdown_content = self.markdown_writer.write_document(
-                title=metadata.title,
-                content=content,
-                metadata=metadata.metadata,
-                file_path=file_path,
-                output_path=output_path,
-            )
-
-            # Write the file
-            self._safe_write_file(output_path, markdown_content)
-
-            metadata.add_output_file(output_path)
             return metadata
 
         except Exception as e:
-            error_msg = f"Failed to process markdown file {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            if metadata:
-                metadata.add_error(self.name, error_msg)
-                metadata.processed = False
+            logger.error(f"Failed to process {file_path}: {str(e)}")
             return None
+
+    async def _process_embedded_documents(
+        self, content: str, file_path: Path
+    ) -> Tuple[str, List[Path]]:
+        """Process embedded documents in markdown content.
+
+        Args:
+            content: Markdown content to process
+            file_path: Path to file being processed
+
+        Returns:
+            Tuple of (updated content, list of embedded file paths)
+        """
+        # Get parent directory of file
+        parent_dir = file_path.parent
+
+        # Find all embedded documents and attachments
+        embed_pattern = r'\[([^\]]*)\]\(([^)]*)\)\s*(?:<!--\s*{"embed":\s*"true"[^}]*}\s*-->)?'
+        matches = list(re.finditer(embed_pattern, content))
+        embedded_files = []
+
+        # Process each embedded document or attachment
+        for match in matches:
+            link_text = match.group(1)
+            link_url = match.group(2)
+            is_embed = '{"embed": "true"}' in (match.group(0) if len(match.groups()) > 2 else '')
+
+            # Convert to Path object
+            link_path = Path(link_url)
+
+            # If link is relative, make it absolute using parent directory
+            if not link_path.is_absolute():
+                link_path = (parent_dir / link_path).resolve()
+
+            # Get relative path from input directory
+            input_dir = Path(self.config.input_dir).resolve()
+            try:
+                rel_path = link_path.relative_to(input_dir)
+            except ValueError:
+                # If file is not under input directory, try to find a parent directory
+                # that matches the input directory pattern
+                for parent in link_path.parents:
+                    if re.search(r"\d{8}", str(parent)):
+                        # Use the path relative to this parent
+                        remaining_path = link_path.relative_to(parent)
+                        # Include the parent directory name in the relative path
+                        rel_path = Path(parent.name) / remaining_path
+                        break
+                else:
+                    # If no parent with date found, use just the filename
+                    logger.warning(f"File {link_path} is not under input directory {input_dir}")
+                    rel_path = Path(link_path.name)
+
+            # Add to list of embedded files
+            embedded_files.append(rel_path)
+
+            # If this is an embedded document, try to embed its content
+            if is_embed:
+                try:
+                    with open(link_path, "r", encoding="utf-8") as f:
+                        embedded_content = f.read()
+                        
+                    # Create a section for the embedded content
+                    section = f"\n\n## Embedded Document: {link_text}\n\n{embedded_content}\n\n"
+                    
+                    # Replace the embed marker with the actual content
+                    content = content.replace(match.group(0), section)
+                except Exception as e:
+                    logger.error(f"Failed to embed document {link_path}: {str(e)}")
+                    # Keep the original link if we can't embed
+                    content = content.replace(
+                        match.group(0),
+                        f'[{link_text}]({rel_path}) (Failed to embed: {str(e)})'
+                    )
+            else:
+                # This is a regular attachment, just update the link path
+                content = content.replace(
+                    match.group(0),
+                    f'[{link_text}]({rel_path})'
+                )
+
+        return content, embedded_files

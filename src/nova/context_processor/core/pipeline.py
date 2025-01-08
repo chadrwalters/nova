@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import traceback
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Type, Union
 
@@ -114,9 +115,62 @@ class NovaPipeline:
             List of file paths
         """
         files = []
+        # First, find all markdown files at the root level
+        markdown_files = []
+        referenced_files = set()
+        for file_path in directory.glob("*.md"):
+            markdown_files.append(file_path)
+            # Check for referenced files in the markdown
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    # Find all embedded file references
+                    matches = re.finditer(r'\[([^\]]*)\]\(([^)]*)\)', content)
+                    for match in matches:
+                        link_url = match.group(2)
+                        # Convert to Path object
+                        link_path = Path(link_url)
+                        # If link is relative, make it absolute using parent directory
+                        if not link_path.is_absolute():
+                            link_path = (file_path.parent / link_path).resolve()
+                            referenced_files.add(link_path)
+            except Exception as e:
+                self.logger.error(f"Failed to read markdown file {file_path}: {str(e)}")
+
+        # Add markdown files first
+        files.extend(markdown_files)
+
+        # Then add any files that aren't referenced in markdown files
         for file_path in directory.rglob("*"):
             if file_path.is_file():
+                # Skip markdown files (already added)
+                if file_path in markdown_files:
+                    continue
+                # Skip referenced files
+                if file_path in referenced_files:
+                    continue
+                # Skip .DS_Store files
+                if file_path.name == ".DS_Store":
+                    continue
+                # Skip files in dated directories that have a parent markdown file
+                parent_dir = file_path.parent
+                if parent_dir.name.startswith("20") and len(parent_dir.name) >= 8:
+                    parent_md = parent_dir.parent / f"{parent_dir.name}.md"
+                    if parent_md.exists():
+                        # Check if this file is referenced in the markdown
+                        try:
+                            with open(parent_md, "r", encoding="utf-8") as f:
+                                content = f.read()
+                                if str(file_path.relative_to(parent_dir)) in content:
+                                    continue
+                        except Exception as e:
+                            self.logger.error(f"Failed to read markdown file {parent_md}: {str(e)}")
+                            continue
+                    else:
+                        # No parent markdown file, treat this as a standalone file
+                        self.logger.debug(f"No parent markdown file found for {file_path}, treating as standalone")
                 files.append(file_path)
+
         return files
 
     def get_phase_output_dir(self, phase_name: str) -> Path:
@@ -322,6 +376,15 @@ class NovaPipeline:
                 failed = len(failed_files)
                 skipped = len(skipped_files)
                 unchanged = len(unchanged_files)
+
+                # For parse phase, include referenced files in successful count
+                if phase_name == "parse":
+                    referenced_files = {
+                        f
+                        for f in successful_files
+                        if isinstance(f, Path) and f.parent.name.startswith("20") and len(f.parent.name) >= 8
+                    }
+                    successful = len(successful_files) + len(referenced_files)
 
                 status = "✓" if failed == 0 else "✗"
                 style = "green" if failed == 0 else "red"

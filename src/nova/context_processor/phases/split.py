@@ -379,7 +379,9 @@ class SplitPhase(Phase):
                 for attachment in sorted(type_attachments, key=lambda x: x["name"]):
                     # Add the reference and file info
                     content.append(f"\n#### {attachment['name']}\n")
-                    content.append(f"- Reference: {attachment['ref']}")
+                    # Generate the attachment reference in the format [ATTACH:TYPE:name]
+                    ref = f"[ATTACH:{file_type}:{attachment['name']}]"
+                    content.append(f"- Reference: {ref}")
                     
                     # Add content only for markdown files
                     if "content" in attachment and attachment["type"] == "DOC":

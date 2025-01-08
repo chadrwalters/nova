@@ -111,10 +111,10 @@ def main() -> int:
         config = ConfigManager(args.config)
 
         success = True
-        if args.all or args.processing:
-            success = success and clean_processing(config)
         if args.all or args.cache:
             success = success and clean_cache(config)
+        if args.all or args.processing:
+            success = success and clean_processing(config)
         if args.all or args.output:
             success = success and clean_output(config)
 

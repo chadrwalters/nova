@@ -221,6 +221,74 @@ class DisassemblyPhase(Phase):
                 self.pipeline.state["disassemble"]["stats"]["attachments"]["failed"] += 1
                 logger.error(f"Failed to copy assets: {str(e)}")
 
+        # Check for standalone files in dated directories
+        if src_dir.name.startswith("20") and len(src_dir.name) >= 8:
+            try:
+                # Copy all files from the directory
+                for file_path in src_dir.iterdir():
+                    if file_path.is_file() and not file_path.name.startswith('.'):
+                        # Skip if already processed
+                        if file_path.name in processed_files:
+                            continue
+                        processed_files.add(file_path.name)
+
+                        # Skip markdown files that have a parent markdown file
+                        if file_path.suffix.lower() == '.md':
+                            parent_md = src_dir.parent / f"{src_dir.name}.md"
+                            if parent_md.exists():
+                                continue
+
+                        # Copy file to attachments directory
+                        dest_path = dest_attachments / file_path.name
+                        shutil.copy2(file_path, dest_path)
+
+                        # Add to pipeline state for tracking
+                        if "attachments" not in self.pipeline.state["disassemble"]:
+                            self.pipeline.state["disassemble"]["attachments"] = {}
+                        if base_name not in self.pipeline.state["disassemble"]["attachments"]:
+                            self.pipeline.state["disassemble"]["attachments"][base_name] = []
+
+                        # Get file type from extension
+                        file_ext = file_path.suffix.lower()
+                        file_type = {
+                            ".pdf": "PDF",
+                            ".doc": "DOC",
+                            ".docx": "DOC",
+                            ".xls": "EXCEL",
+                            ".xlsx": "EXCEL",
+                            ".csv": "EXCEL",
+                            ".txt": "TXT",
+                            ".json": "JSON",
+                            ".png": "IMAGE",
+                            ".jpg": "IMAGE",
+                            ".jpeg": "IMAGE",
+                            ".heic": "IMAGE",
+                            ".svg": "IMAGE",
+                            ".gif": "IMAGE",
+                        }.get(file_ext, "OTHER")
+
+                        try:
+                            content = (
+                                file_path.read_text(encoding="utf-8")
+                                if file_type not in ["IMAGE", "PDF", "EXCEL", "DOC", "OTHER"]
+                                else f"Binary file: {file_path.name}"
+                            )
+                        except UnicodeDecodeError:
+                            content = f"Binary file: {file_path.name}"
+
+                        self.pipeline.state["disassemble"]["attachments"][base_name].append({
+                            "path": dest_path,
+                            "type": file_type,
+                            "content": content,
+                            "id": file_path.name,
+                        })
+                        total_copied += 1
+
+                logger.debug(f"Copied {total_copied} standalone files from {src_dir}")
+            except Exception as e:
+                self.pipeline.state["disassemble"]["stats"]["attachments"]["failed"] += 1
+                logger.error(f"Failed to copy standalone files: {str(e)}")
+
         # Update stats only once with total copied
         if total_copied > 0:
             self.pipeline.state["disassemble"]["stats"]["attachments"]["copied"] = total_copied

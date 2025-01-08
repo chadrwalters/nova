@@ -27,13 +27,15 @@ class HandlerRegistry:
     # Files to ignore
     IGNORED_FILES = {".DS_Store"}
 
-    def __init__(self, config: ConfigManager) -> None:
+    def __init__(self, config: ConfigManager, pipeline=None) -> None:
         """Initialize registry.
 
         Args:
             config: Nova configuration manager.
+            pipeline: Optional pipeline instance.
         """
         self.config = config
+        self.pipeline = pipeline
         self.handlers: Dict[str, BaseHandler] = {}
         self.logger = logging.getLogger(__name__)
         self._register_default_handlers()
@@ -45,6 +47,7 @@ class HandlerRegistry:
             handler_class: Concrete handler class to register.
         """
         handler = handler_class(self.config)
+        handler.pipeline = self.pipeline  # Set the pipeline instance
         for file_type in handler.file_types:
             self.logger.debug(f"Registering {handler.name} for file type: {file_type}")
             self.handlers[file_type] = handler
@@ -131,37 +134,30 @@ class HandlerRegistry:
         """Process a file.
 
         Args:
-            file_path: Path to file to process.
-            output_dir: Optional output directory. If not provided,
-                will use configured output directory.
+            file_path: Path to file to process
+            output_dir: Directory to write output to
 
         Returns:
-            Document metadata, or None if file is ignored or processing fails.
+            Document metadata
         """
         try:
-            # Log initial file path info
-            self.logger.debug(
-                f"process_file called with file_path: {file_path} (type: {type(file_path)})"
-            )
+            # Convert to Path object and resolve
+            file_path_obj = Path(file_path).resolve()
+            self.logger.debug(f"Processing file: {file_path_obj}")
 
-            # Convert to Path if needed
-            file_path_obj = Path(file_path)
-
-            self.logger.debug(f"File path after conversion: {file_path_obj}")
-            self.logger.debug(f"File exists: {file_path_obj.exists()}")
-            self.logger.debug(f"File is file: {file_path_obj.is_file()}")
-            self.logger.debug(f"File suffix: {file_path_obj.suffix}")
-            self.logger.debug(f"File name: {file_path_obj.name}")
-
-            # Skip ignored files without creating metadata
-            if file_path_obj.name in self.IGNORED_FILES:
-                self.logger.debug(f"Silently ignoring file: {file_path_obj.name}")
+            # Skip if file doesn't exist
+            if not file_path_obj.exists():
+                self.logger.warning(f"File does not exist: {file_path_obj}")
                 return None
 
-            # Get handler for file
-            self.logger.debug(
-                f"Looking up handler for file type: {file_path_obj.suffix}"
-            )
+            # Check if this file is an embedded document by looking at its parent directory
+            parent_dir = file_path_obj.parent
+            if any(parent.name.startswith("20") and len(parent.name) >= 8 for parent in file_path_obj.parents):
+                # This is likely an embedded document, skip processing it directly
+                self.logger.debug(f"Skipping embedded document: {file_path_obj}")
+                return None
+
+            # Get handler for file type
             handler = self.get_handler(file_path_obj)
             self.logger.debug(
                 f"Handler lookup result: {handler.name if handler else None}"

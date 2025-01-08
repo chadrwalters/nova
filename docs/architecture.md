@@ -83,6 +83,11 @@ The system processes documents through multiple phases, each with specific respo
 - **Output Location**: `processing_dir/phases/parse`
 - **Output Files**: `{filename}.parsed.md` for each input file
 - **State Management**: Tracks processed files, errors, and file type statistics
+- **Attachment Handling**:
+  - Files in dated directories (e.g., `20240107/`) are treated as attachments if referenced in a parent markdown file
+  - Referenced attachments are tracked in metadata but not processed independently
+  - Files in dated directories without parent markdown references are treated as standalone documents
+  - Embedded documents are processed as part of their parent document
 
 #### 2. Disassemble Phase
 **Responsibility**: Split parsed markdown files into summary and raw notes sections
@@ -179,6 +184,16 @@ The pipeline orchestrates document processing:
 3. Execute processing phases
 4. Track progress and errors
 5. Generate output files
+
+#### File Processing Logic
+- Files are processed based on their relationship to other documents:
+  - Standalone files are processed independently
+  - Referenced attachments (in dated directories) are tracked but not processed separately
+  - Embedded documents are processed as part of their parent document
+- File counts in pipeline statistics include:
+  - Successfully processed standalone files
+  - Referenced attachments (counted with their parent document)
+  - Failed or skipped files
 
 ### Logging and Debugging
 

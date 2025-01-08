@@ -6,6 +6,7 @@ import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+import re
 
 # Internal imports
 from ..config.manager import ConfigManager
@@ -62,6 +63,7 @@ class BaseHandler(ABC):
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
         self.markdown_writer = MarkdownWriter()
         self.output_manager = OutputManager(config)
+        self.pipeline = None  # Will be set by HandlerRegistry
 
     def supports_file(self, file_path: Path) -> bool:
         """Check if handler supports file type.
@@ -75,13 +77,14 @@ class BaseHandler(ABC):
         return file_path.suffix.lstrip(".").lower() in self.file_types
 
     async def process(
-        self, file_path: Path, metadata: DocumentMetadata
+        self, file_path: Path, metadata: DocumentMetadata, output_path: Optional[Path] = None
     ) -> ProcessingResult:
         """Process a file.
 
         Args:
             file_path: Path to file
             metadata: Document metadata
+            output_path: Optional output path. If not provided, will be calculated.
 
         Returns:
             Processing result
@@ -99,9 +102,12 @@ class BaseHandler(ABC):
                     error=f"Cannot access file: {file_path}",
                 )
 
-            # Get output path
+            # Get relative path from input directory
             rel_path = self._get_relative_path(file_path)
-            output_path = self._get_output_path(rel_path, "parse", ".md")
+
+            # Use provided output path or calculate it
+            if output_path is None:
+                output_path = self._get_output_path(rel_path, "parse", ".parsed.md")
 
             # Process the file
             updated_metadata = await self.process_impl(file_path, output_path, metadata)
@@ -121,17 +127,18 @@ class BaseHandler(ABC):
                     error=str(first_error),
                 )
 
+            # Save metadata using relative path
+            self._save_metadata(file_path, rel_path, updated_metadata)
+
             return ProcessingResult(
                 status=ProcessingStatus.COMPLETED, metadata=updated_metadata
             )
 
         except Exception as e:
-            error_msg = f"Failed to process file {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            if metadata:
-                metadata.add_error(self.name, error_msg)
+            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
             return ProcessingResult(
-                status=ProcessingStatus.FAILED, metadata=metadata, error=error_msg
+                status=ProcessingStatus.FAILED,
+                error=f"Failed to process file {file_path}: {str(e)}",
             )
 
     def _get_relative_path(self, file_path: Path) -> Path:
@@ -143,43 +150,67 @@ class BaseHandler(ABC):
         Returns:
             Relative path from input directory
         """
+        # Convert to Path objects and resolve
+        file_path = Path(file_path).resolve()
+        input_dir = Path(self.config.input_dir).resolve()
+
         try:
-            # Convert to absolute path if not already
-            abs_path = file_path if file_path.is_absolute() else file_path.resolve()
-
-            # Get relative path from input directory
-            rel_path = abs_path.relative_to(self.config.input_dir)
-
-            return rel_path
+            # Try to get relative path from input directory
+            rel_path = file_path.relative_to(input_dir)
         except ValueError:
-            # If not under input directory, try to find a parent directory that matches
-            # Look for common parent directories like "Format Test" or "Format Test 3"
-            parts = file_path.parts
-            for i in range(len(parts) - 1, -1, -1):
-                if "Format Test" in parts[i]:
-                    return Path(*parts[i:])
+            # If file is not under input directory, try to find a parent directory
+            # that matches the input directory pattern
+            for parent in file_path.parents:
+                if re.search(r"\d{8}", str(parent)):
+                    # Get the path relative to this parent
+                    remaining_path = file_path.relative_to(parent)
+                    # Include the parent directory name in the relative path
+                    rel_path = Path(parent.name) / remaining_path
+                    break
+            else:
+                # If no parent with date found, use just the filename
+                self.logger.warning(f"File {file_path} is not under input directory {input_dir}")
+                rel_path = Path(file_path.name)
 
-            # If no match found, use just the filename
-            return Path(file_path.name)
+        return rel_path
 
-    def _get_output_path(self, file_path: Path, phase: str, suffix: str) -> Path:
+    def _get_output_path(self, rel_path: Path, phase: str, suffix: str) -> Path:
         """Get output path for a file.
 
         Args:
-            file_path: Path to file
-            phase: Phase name
+            rel_path: Relative path from input directory
+            phase: Pipeline phase
             suffix: File suffix
 
         Returns:
             Output path
         """
-        # Get relative path from input directory
-        rel_path = self._get_relative_path(file_path)
+        # Get parent directory structure
+        parent_dirs = rel_path.parent
 
-        # Get output path using output manager
-        output_path = self.output_manager.get_output_path_for_phase(
-            rel_path, phase, suffix
-        )
+        # Build output path under phase directory
+        output_path = Path(self.pipeline.output_manager.get_phase_dir(phase))
+
+        # Add parent directories if they exist
+        if str(parent_dirs) != ".":
+            # Extract date directory if it exists (format: YYYYMMDD)
+            date_match = re.search(r"(\d{8})", str(parent_dirs))
+            if date_match:
+                # Find the directory containing the date
+                date_dir = next((p for p in parent_dirs.parts if date_match.group(1) in p), None)
+                if date_dir:
+                    # Use the entire directory name containing the date
+                    output_path = output_path / date_dir
+                    # Add any remaining subdirectories after the date directory
+                    remaining_parts = list(parent_dirs.parts)
+                    date_dir_index = remaining_parts.index(date_dir)
+                    if date_dir_index + 1 < len(remaining_parts):
+                        output_path = output_path.joinpath(*remaining_parts[date_dir_index + 1:])
+            else:
+                output_path = output_path / parent_dirs
+
+        # Add filename with suffix
+        output_path = output_path / f"{rel_path.stem}{suffix}"
 
         return output_path
 
@@ -247,10 +278,32 @@ class BaseHandler(ABC):
             relative_path: Relative path from input directory
             metadata: Document metadata
         """
-        # Get output path for metadata
-        metadata_path = self.output_manager.get_output_path_for_phase(
-            relative_path, "parse", ".metadata.json"
-        )
+        # Get parent directory structure from relative path
+        parent_dirs = relative_path.parent
+
+        # Build output path under phase directory
+        output_path = Path(self.output_manager.get_phase_dir("parse"))
+
+        # Add parent directories if they exist
+        if str(parent_dirs) != ".":
+            # Extract date directory if it exists (format: YYYYMMDD)
+            date_match = re.search(r"(\d{8})", str(parent_dirs))
+            if date_match:
+                # Find the directory containing the date
+                date_dir = next((p for p in parent_dirs.parts if date_match.group(1) in p), None)
+                if date_dir:
+                    # Use the entire directory name containing the date
+                    output_path = output_path / date_dir
+                    # Add any remaining subdirectories after the date directory
+                    remaining_parts = list(parent_dirs.parts)
+                    date_dir_index = remaining_parts.index(date_dir)
+                    if date_dir_index + 1 < len(remaining_parts):
+                        output_path = output_path.joinpath(*remaining_parts[date_dir_index + 1:])
+            else:
+                output_path = output_path / parent_dirs
+
+        # Add filename with metadata suffix
+        metadata_path = output_path / f"{relative_path.stem}.metadata.json"
 
         # Ensure parent directories exist
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
