@@ -323,6 +323,28 @@ class ProcessingError(NovaError):
         )
 
 
+class IndexError(NovaError):
+    """Error in search index operations."""
+
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+        recovery_hint: Optional[str] = None,
+        original_error: Optional[Exception] = None,
+    ) -> None:
+        super().__init__(
+            ErrorContext(
+                category=ErrorCategory.SYSTEM,
+                severity=ErrorSeverity.ERROR,
+                message=message,
+                details=details,
+                recovery_hint=recovery_hint,
+                original_error=original_error,
+            )
+        )
+
+
 def wrap_error(
     error: Exception,
     message: str,

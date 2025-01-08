@@ -1,28 +1,24 @@
-"""Base handler for file processing."""
+"""Base handler for document processing."""
 
-# Standard library
 import logging
-import os
-from abc import ABC, abstractmethod
+from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Union
-import re
+from typing import Optional, Set
 
-# Internal imports
-from ..config.manager import ConfigManager
-from ..core.markdown import MarkdownWriter
-from ..core.metadata import DocumentMetadata
-from ..utils.output_manager import OutputManager
-from ..utils.path_utils import ensure_parent_dirs, get_safe_path
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.core.metadata.models.base import BaseMetadata
+from nova.context_processor.core.metadata.models.factory import MetadataFactory
+from nova.context_processor.utils.file_utils import calculate_file_hash
+
+logger = logging.getLogger(__name__)
 
 
-class ProcessingStatus:
+class ProcessingStatus(Enum):
     """Status of file processing."""
 
-    COMPLETED = "completed"
-    FAILED = "failed"
+    SUCCESS = "success"
+    FAILURE = "failure"
     SKIPPED = "skipped"
-    UNCHANGED = "unchanged"
 
 
 class ProcessingResult:
@@ -30,307 +26,239 @@ class ProcessingResult:
 
     def __init__(
         self,
-        status: str,
-        metadata: Optional[DocumentMetadata] = None,
+        file_path: Path,
+        status: ProcessingStatus,
+        metadata: Optional[BaseMetadata] = None,
         error: Optional[str] = None,
-    ):
+    ) -> None:
         """Initialize result.
 
         Args:
+            file_path: Path to processed file
             status: Processing status
-            metadata: Document metadata
-            error: Error message if any
+            metadata: Optional metadata
+            error: Optional error message
         """
+        self.file_path = file_path
         self.status = status
         self.metadata = metadata
         self.error = error
 
+    def __str__(self) -> str:
+        """String representation of result."""
+        return f"ProcessingResult(file={self.file_path}, status={self.status})"
 
-class BaseHandler(ABC):
-    """Base class for file handlers."""
 
-    name = "base"
-    version = "0.1.0"
-    file_types: List[str] = []
+class BaseHandler:
+    """Base handler for document processing."""
 
     def __init__(self, config: ConfigManager) -> None:
         """Initialize handler.
 
         Args:
-            config: Nova configuration manager.
+            config: Nova configuration
         """
         self.config = config
-        self.logger = logging.getLogger(f"{__name__}.{self.name}")
-        self.markdown_writer = MarkdownWriter()
-        self.output_manager = OutputManager(config)
-        self.pipeline = None  # Will be set by HandlerRegistry
+        self.name = self.__class__.__name__.lower().replace("handler", "")
+        self.version = "1.0.0"
+        self.supported_extensions: Set[str] = set()
+        self.mime_types: Set[str] = set()
 
-    def supports_file(self, file_path: Path) -> bool:
-        """Check if handler supports file type.
-
-        Args:
-            file_path: Path to file
-
-        Returns:
-            True if handler supports file type
-        """
-        return file_path.suffix.lstrip(".").lower() in self.file_types
-
-    async def process(
-        self, file_path: Path, metadata: DocumentMetadata, output_path: Optional[Path] = None
-    ) -> ProcessingResult:
+    async def process_file(self, file_path: Path) -> Optional[BaseMetadata]:
         """Process a file.
 
         Args:
             file_path: Path to file
-            metadata: Document metadata
-            output_path: Optional output path. If not provided, will be calculated.
 
         Returns:
-            Processing result
+            Optional[BaseMetadata]: Metadata if successful, None otherwise
         """
         try:
-            # Check if file exists and is readable
-            if not file_path.exists():
-                return ProcessingResult(
-                    status=ProcessingStatus.FAILED, error=f"File not found: {file_path}"
-                )
+            # Calculate file hash
+            file_hash = calculate_file_hash(file_path)
+            if not file_hash:
+                logger.error(f"Failed to calculate hash for {file_path}")
+                return None
 
-            if not os.access(file_path, os.R_OK):
-                return ProcessingResult(
-                    status=ProcessingStatus.FAILED,
-                    error=f"Cannot access file: {file_path}",
-                )
-
-            # Get relative path from input directory
-            rel_path = self._get_relative_path(file_path)
-
-            # Use provided output path or calculate it
-            if output_path is None:
-                output_path = self._get_output_path(rel_path, "parse", ".parsed.md")
-
-            # Process the file
-            updated_metadata = await self.process_impl(file_path, output_path, metadata)
-
-            if updated_metadata is None:
-                return ProcessingResult(
-                    status=ProcessingStatus.FAILED,
-                    error=f"Failed to process file: {file_path}",
-                )
-
-            if updated_metadata.errors:
-                # Get the first error message from the errors dictionary
-                first_error = next(iter(updated_metadata.errors.values()))
-                return ProcessingResult(
-                    status=ProcessingStatus.FAILED,
-                    metadata=updated_metadata,
-                    error=str(first_error),
-                )
-
-            # Save metadata using relative path
-            self._save_metadata(file_path, rel_path, updated_metadata)
-
-            return ProcessingResult(
-                status=ProcessingStatus.COMPLETED, metadata=updated_metadata
+            # Create metadata
+            metadata = MetadataFactory.create(
+                file_path=file_path,
+                handler_name=self.name,
+                handler_version=self.version,
+                file_type=file_path.suffix.lower(),
+                file_hash=file_hash
             )
 
-        except Exception as e:
-            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
-            return ProcessingResult(
-                status=ProcessingStatus.FAILED,
-                error=f"Failed to process file {file_path}: {str(e)}",
-            )
+            # Process file
+            if await self._process_file(file_path, metadata):
+                return metadata
 
-    def _get_relative_path(self, file_path: Path) -> Path:
-        """Get relative path from input directory.
-
-        Args:
-            file_path: Path to file
-
-        Returns:
-            Relative path from input directory
-        """
-        # Convert to Path objects and resolve
-        file_path = Path(file_path).resolve()
-        input_dir = Path(self.config.input_dir).resolve()
-
-        try:
-            # Try to get relative path from input directory
-            rel_path = file_path.relative_to(input_dir)
-        except ValueError:
-            # If file is not under input directory, try to find a parent directory
-            # that matches the input directory pattern
-            for parent in file_path.parents:
-                if re.search(r"\d{8}", str(parent)):
-                    # Get the path relative to this parent
-                    remaining_path = file_path.relative_to(parent)
-                    # Include the parent directory name in the relative path
-                    rel_path = Path(parent.name) / remaining_path
-                    break
-            else:
-                # If no parent with date found, use just the filename
-                self.logger.warning(f"File {file_path} is not under input directory {input_dir}")
-                rel_path = Path(file_path.name)
-
-        return rel_path
-
-    def _get_output_path(self, rel_path: Path, phase: str, suffix: str) -> Path:
-        """Get output path for a file.
-
-        Args:
-            rel_path: Relative path from input directory
-            phase: Pipeline phase
-            suffix: File suffix
-
-        Returns:
-            Output path
-        """
-        # Get parent directory structure
-        parent_dirs = rel_path.parent
-
-        # Build output path under phase directory
-        output_path = Path(self.pipeline.output_manager.get_phase_dir(phase))
-
-        # Add parent directories if they exist
-        if str(parent_dirs) != ".":
-            # Extract date directory if it exists (format: YYYYMMDD)
-            date_match = re.search(r"(\d{8})", str(parent_dirs))
-            if date_match:
-                # Find the directory containing the date
-                date_dir = next((p for p in parent_dirs.parts if date_match.group(1) in p), None)
-                if date_dir:
-                    # Use the entire directory name containing the date
-                    output_path = output_path / date_dir
-                    # Add any remaining subdirectories after the date directory
-                    remaining_parts = list(parent_dirs.parts)
-                    date_dir_index = remaining_parts.index(date_dir)
-                    if date_dir_index + 1 < len(remaining_parts):
-                        output_path = output_path.joinpath(*remaining_parts[date_dir_index + 1:])
-            else:
-                output_path = output_path / parent_dirs
-
-        # Add filename with suffix
-        output_path = output_path / f"{rel_path.stem}{suffix}"
-
-        return output_path
-
-    async def process_impl(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
-    ) -> Optional[DocumentMetadata]:
-        """Process a file implementation.
-
-        Args:
-            file_path: Path to file
-            output_path: Path to output file
-            metadata: Document metadata
-
-        Returns:
-            Updated document metadata
-        """
-        try:
-            # Get relative path from input directory
-            rel_path = self._get_relative_path(file_path)
-
-            # Process file and update metadata
-            metadata = await self.process_file_impl(file_path, output_path, metadata)
-            if metadata:
-                # Save metadata using relative path
-                self._save_metadata(file_path, rel_path, metadata)
-
-            return metadata
-
-        except Exception as e:
-            self.logger.error(f"Failed to process file {file_path}: {str(e)}")
-            if metadata:
-                metadata.add_error(self.name, str(e))
-                metadata.processed = False
             return None
 
-    @abstractmethod
-    async def process_file_impl(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
-    ) -> Optional[DocumentMetadata]:
-        """Process a file implementation.
+        except Exception as e:
+            logger.error(f"Failed to process {file_path}: {e}")
+            return None
+
+    async def parse_file(self, file_path: Path) -> Optional[BaseMetadata]:
+        """Parse a file.
 
         Args:
             file_path: Path to file
-            output_path: Path to write output
-            metadata: Document metadata
 
         Returns:
-            Updated document metadata
-        """
-        raise NotImplementedError("Subclasses must implement process_file_impl")
-
-    def _save_metadata(
-        self, file_path: Path, relative_path: Path, metadata: DocumentMetadata
-    ) -> None:
-        """Save metadata for a file.
-
-        Args:
-            file_path: Path to file
-            relative_path: Relative path from input directory
-            metadata: Document metadata
-        """
-        # Get parent directory structure from relative path
-        parent_dirs = relative_path.parent
-
-        # Build output path under phase directory
-        output_path = Path(self.output_manager.get_phase_dir("parse"))
-
-        # Add parent directories if they exist
-        if str(parent_dirs) != ".":
-            # Extract date directory if it exists (format: YYYYMMDD)
-            date_match = re.search(r"(\d{8})", str(parent_dirs))
-            if date_match:
-                # Find the directory containing the date
-                date_dir = next((p for p in parent_dirs.parts if date_match.group(1) in p), None)
-                if date_dir:
-                    # Use the entire directory name containing the date
-                    output_path = output_path / date_dir
-                    # Add any remaining subdirectories after the date directory
-                    remaining_parts = list(parent_dirs.parts)
-                    date_dir_index = remaining_parts.index(date_dir)
-                    if date_dir_index + 1 < len(remaining_parts):
-                        output_path = output_path.joinpath(*remaining_parts[date_dir_index + 1:])
-            else:
-                output_path = output_path / parent_dirs
-
-        # Add filename with metadata suffix
-        metadata_path = output_path / f"{relative_path.stem}.metadata.json"
-
-        # Ensure parent directories exist
-        metadata_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write metadata
-        metadata.save(metadata_path)
-
-    def _safe_write_file(self, file_path: Path, content: str) -> bool:
-        """Write content to file safely.
-
-        Args:
-            file_path: Path to file
-            content: Content to write
-
-        Returns:
-            True if successful, False otherwise
+            Optional[BaseMetadata]: Metadata if successful, None otherwise
         """
         try:
-            # Ensure parent directories exist
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+            # Calculate file hash
+            file_hash = calculate_file_hash(file_path)
+            if not file_hash:
+                logger.error(f"Failed to calculate hash for {file_path}")
+                return None
 
-            # Write content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            # Create metadata
+            metadata = MetadataFactory.create(
+                file_path=file_path,
+                handler_name=self.name,
+                handler_version=self.version,
+                file_type=file_path.suffix.lower(),
+                file_hash=file_hash
+            )
 
-            return True
+            # Parse file
+            if await self._parse_file(file_path, metadata):
+                return metadata
+
+            return None
 
         except Exception as e:
-            self.logger.error(f"Failed to write file {file_path}: {str(e)}")
-            return False
+            logger.error(f"Failed to parse {file_path}: {e}")
+            return None
+
+    async def disassemble_file(self, file_path: Path) -> Optional[BaseMetadata]:
+        """Disassemble a file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Optional[BaseMetadata]: Metadata if successful, None otherwise
+        """
+        try:
+            # Calculate file hash
+            file_hash = calculate_file_hash(file_path)
+            if not file_hash:
+                logger.error(f"Failed to calculate hash for {file_path}")
+                return None
+
+            # Create metadata
+            metadata = MetadataFactory.create(
+                file_path=file_path,
+                handler_name=self.name,
+                handler_version=self.version,
+                file_type=file_path.suffix.lower(),
+                file_hash=file_hash
+            )
+
+            # Disassemble file
+            if await self._disassemble_file(file_path, metadata):
+                return metadata
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to disassemble {file_path}: {e}")
+            return None
+
+    async def split_file(self, file_path: Path) -> Optional[BaseMetadata]:
+        """Split a file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Optional[BaseMetadata]: Metadata if successful, None otherwise
+        """
+        try:
+            # Calculate file hash
+            file_hash = calculate_file_hash(file_path)
+            if not file_hash:
+                logger.error(f"Failed to calculate hash for {file_path}")
+                return None
+
+            # Create metadata
+            metadata = MetadataFactory.create(
+                file_path=file_path,
+                handler_name=self.name,
+                handler_version=self.version,
+                file_type=file_path.suffix.lower(),
+                file_hash=file_hash
+            )
+
+            # Split file
+            if await self._split_file(file_path, metadata):
+                return metadata
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to split {file_path}: {e}")
+            return None
+
+    async def _process_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
+        """Process a file and update metadata.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether processing was successful
+        """
+        raise NotImplementedError("Subclasses must implement _process_file")
+
+    async def _parse_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
+        """Parse a file and update metadata.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether parsing was successful
+        """
+        raise NotImplementedError("Subclasses must implement _parse_file")
+
+    async def _disassemble_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
+        """Disassemble a file and update metadata.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether disassembly was successful
+        """
+        raise NotImplementedError("Subclasses must implement _disassemble_file")
+
+    async def _split_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
+        """Split a file and update metadata.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether splitting was successful
+        """
+        raise NotImplementedError("Subclasses must implement _split_file")
+
+    def can_handle(self, file_path: Path) -> bool:
+        """Check if handler can process file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            bool: Whether handler can process file
+        """
+        return file_path.suffix.lower() in self.supported_extensions

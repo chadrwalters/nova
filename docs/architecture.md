@@ -74,107 +74,80 @@ apis:
 
 ### Document Processing
 
-The system processes documents through multiple phases, each with specific responsibilities and boundaries:
+The system processes documents through multiple phases, each with specific responsibilities and boundaries. For detailed information about each phase's implementation, features, and processing flow, see [Phases Documentation](phases.md).
 
-#### 1. Parse Phase
-**Responsibility**: Convert input documents from various formats into standardized markdown
-- **Input Location**: `input_dir` (User's input directory)
-- **Input Files**: Any supported document type (PDF, DOCX, MD, Images, etc.)
-- **Output Location**: `processing_dir/phases/parse`
-- **Output Files**: `{filename}.parsed.md` for each input file
-- **State Management**: Tracks processed files, errors, and file type statistics
-- **Attachment Handling**:
-  - Files in dated directories (e.g., `20240107/`) are treated as attachments if referenced in a parent markdown file
-  - Referenced attachments are tracked in metadata but not processed independently
-  - Files in dated directories without parent markdown references are treated as standalone documents
-  - Embedded documents are processed as part of their parent document
+### Metadata System
 
-#### 2. Disassemble Phase
-**Responsibility**: Split parsed markdown files into summary and raw notes sections
-- **Input Location**: `processing_dir/phases/parse`
-- **Input Files**: `*.parsed.md` files from Parse Phase
-- **Output Location**: `processing_dir/phases/disassemble`
-- **Output Files**: 
-  - `{filename}.summary.md`: Contains content before the `--==RAW NOTES==--` marker
-  - `{filename}.rawnotes.md`: Contains content after the marker
-- **State Management**: Tracks split statistics and section counts
+The metadata system provides comprehensive validation and tracking across processing phases:
 
-#### 3. Split Phase
-**Responsibility**: Organize and consolidate disassembled files into core document structure
-- **Input Location**: `processing_dir/phases/disassemble`
-- **Input Files**: 
-  - `*.summary.md` files
-  - `*.rawnotes.md` files
-  - Any attachments referenced in the content
-- **Output Location**: `processing_dir/phases/split`
-- **Output Files**:
-  - `Summary.md`: Consolidated summary content
-  - `Raw Notes.md`: Consolidated raw notes
-  - `Attachments.md`: Organized attachment references and metadata
-- **State Management**: Tracks file consolidation and attachment organization
+#### Metadata Validation
 
-#### 4. Finalize Phase
-**Responsibility**: Generate final output with complete metadata and structure
-- **Input Location**: `processing_dir/phases/split`
-- **Input Files**: The three core files (Summary, Raw Notes, Attachments)
-- **Output Location**: `output_dir`
-- **Output Files**: 
-  - Final document structure with metadata
-  - Table of contents
-  - Cross-referenced attachments
-  - Metadata files
-- **State Management**: Tracks output generation and metadata completion
+The system includes a robust validation framework with multiple validation layers:
+
+1. **Schema Validation**
+   - Type-specific validation rules
+   - Required field checks
+   - Value range validation
+   - Format consistency checks
+
+2. **Cross-Phase Validation**
+   - Version progression tracking
+   - Immutable field consistency
+   - Phase-specific requirements
+   - State transition validation
+
+3. **Related Metadata Validation**
+   - Embedded file references
+   - Archive content validation
+   - Link integrity checks
+   - Resource availability verification
+
+#### Type-Specific Validation
+
+Each file type has specialized validation rules:
+
+1. **Image Metadata**
+   - Dimension validation
+   - DPI verification
+   - Color mode consistency
+   - Alpha channel validation
+
+2. **Document Metadata**
+   - Page count validation
+   - Word count verification
+   - Section structure checks
+   - Content integrity validation
+
+3. **Markdown Metadata**
+   - Heading structure validation
+   - Link integrity checks
+   - Embedded file validation
+   - Reference verification
+
+4. **Archive Metadata**
+   - File count validation
+   - Size consistency checks
+   - Content structure validation
+   - Compression integrity
+
+#### Version Control
+
+The metadata system tracks versions across processing phases:
+
+1. **Version Components**
+   - Major version: Significant structural changes
+   - Minor version: Content updates and refinements
+   - Phase markers: Processing stage indicators
+
+2. **Version Progression**
+   - Monotonic version increases
+   - Phase-appropriate version changes
+   - Change tracking and history
+   - Rollback prevention
 
 ### Document Handlers
 
-The system includes specialized handlers for different document types, each implementing the BaseHandler interface:
-
-1. **Document Handler**
-   - Processes Word documents (DOCX)
-   - Uses python-docx for content extraction
-   - Preserves document structure and formatting
-
-2. **Image Handler**
-   - Processes image files (PNG, JPG, JPEG, etc.)
-   - Uses gpt-4o Vision API for image analysis
-   - Extracts visual content descriptions and metadata
-
-3. **Text Handler**
-   - Processes plain text files (TXT)
-   - Handles character encoding detection
-   - Preserves line breaks and formatting
-
-4. **Markdown Handler**
-   - Processes markdown files (MD)
-   - Preserves markdown structure
-   - Handles frontmatter metadata
-
-5. **Spreadsheet Handler**
-   - Processes Excel files (XLSX, XLS)
-   - Uses openpyxl for content extraction
-   - Preserves cell data and formatting
-
-6. **HTML Handler**
-   - Processes HTML files
-   - Uses BeautifulSoup for parsing
-   - Extracts structured content and metadata
-
-7. **Video Handler**
-   - Processes video files
-   - Extracts metadata and basic information
-   - Handles common video formats
-
-8. **Archive Handler**
-   - Processes archive files (ZIP, TAR, etc.)
-   - Extracts contents for processing
-   - Maintains archive structure information
-
-Each handler provides:
-- File type detection
-- Content extraction
-- Metadata parsing
-- Format conversion
-- Error handling
+The system includes specialized handlers for different document types, each implementing the BaseHandler interface. For detailed information about each handler's implementation, features, and processing flow, see [Handlers Documentation](handlers.md).
 
 ### Pipeline Management
 

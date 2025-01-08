@@ -191,6 +191,7 @@ class NovaConfig(BaseModel):
     pipeline: Optional[PipelineConfig] = PipelineConfig()
     logging: Optional[LoggingConfig] = LoggingConfig()
     debug: Optional[DebugConfig] = DebugConfig()
+    input_patterns: List[str] = ["*"]  # Default to all files
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

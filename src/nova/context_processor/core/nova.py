@@ -1,246 +1,135 @@
-"""Core Nova document processing system."""
-import asyncio
-import json
-import logging
-import os
-import shutil
-import tempfile
-import time
-import traceback
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Union
+"""Nova document processor core."""
 
-from nova.context_processor.config.manager import ConfigManager
-from nova.context_processor.core.logging import LoggingManager
-from nova.context_processor.core.metadata import FileMetadata
-from nova.context_processor.core.pipeline import NovaPipeline
+import logging
+from pathlib import Path
+from typing import Optional, Union
+
+from ..config.manager import ConfigManager
+from ..phases import (
+    Phase,
+    ParsePhase,
+    DisassemblyPhase,
+    SplitPhase,
+    FinalizePhase,
+)
+from .metadata import (
+    BaseMetadata,
+    MetadataFactory,
+    MetadataStore,
+)
+from .pipeline import NovaPipeline
+
+logger = logging.getLogger(__name__)
 
 
 class Nova:
-    """Main Nova document processing system."""
+    """Nova document processor."""
 
-    def __init__(
-        self,
-        config_path: Optional[Union[str, Path]] = None,
-        create_dirs: bool = True,
-    ) -> None:
-        """Initialize Nova system.
+    def __init__(self, config: ConfigManager):
+        """Initialize Nova processor.
 
         Args:
-            config_path: Path to configuration file. If not provided, will check
-                environment variable NOVA_CONFIG_PATH, then fall back to default.
-            create_dirs: Whether to create configured directories if they don't exist.
+            config: Configuration manager
         """
-        self.config = ConfigManager(config_path, create_dirs)
+        self.config = config
+        self.pipeline = NovaPipeline(config)
+        
+        # Initialize metadata stores for each phase
+        self.metadata_stores = {}
+        for phase_name in ["parse", "disassembly", "split", "finalize"]:
+            store_dir = config.base_dir / "_NovaProcessing" / "metadata" / phase_name
+            self.metadata_stores[phase_name] = MetadataStore(store_dir=store_dir)
 
-        # Initialize logging
-        self.logging_manager = LoggingManager(self.config.config.logging)
-        self.logger = self.logging_manager.get_logger("nova")
+        # Initialize phases
+        self.parse_phase = ParsePhase(config, self.metadata_stores["parse"])
+        self.disassemble_phase = DisassemblyPhase(config, self.metadata_stores["disassembly"])
+        self.split_phase = SplitPhase(config, self.metadata_stores["split"])
+        self.finalize_phase = FinalizePhase(config, self.metadata_stores["finalize"])
 
-        # Initialize pipeline
-        self.pipeline = NovaPipeline(config=self.config)
-        self.output_manager = self.pipeline.output_manager
+        # Add phases in order
+        self.phases = [
+            self.parse_phase,
+            self.disassemble_phase,
+            self.split_phase,
+            self.finalize_phase,
+        ]
 
-        self.logger.info(
-            "Nova system initialized",
-            extra={
-                "context": {
-                    "config_path": str(config_path) if config_path else "default",
-                    "input_dir": str(self.config.input_dir),
-                    "output_dir": str(self.config.output_dir),
-                }
-            },
-        )
-
-    def _save_metadata(self, metadata: Dict, output_dir: Path) -> None:
-        """Save metadata to file.
-
-        Args:
-            metadata: Metadata to save.
-            output_dir: Output directory.
-        """
-        try:
-            # Get metadata file path using OutputManager
-            file_path = Path(metadata["file_path"])
-            metadata_file = self.output_manager.get_output_path_for_phase(
-                file_path, "parse", ".metadata.json"
-            )
-
-            # Save metadata
-            with open(metadata_file, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=2, default=str)
-
-        except Exception as e:
-            self.logger.error(f"Failed to save metadata: {str(e)}")
-
-    def _safe_path(self, path: Union[str, Path]) -> Path:
-        """Convert path to Path object safely.
+    async def process_file(self, file_path: Union[str, Path]) -> Optional[BaseMetadata]:
+        """Process a file through the pipeline.
 
         Args:
-            path: Path to convert.
+            file_path: Path to file to process
 
         Returns:
-            Path object.
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
-        if path is None:
-            return None
-
         try:
-            # If already a Path, convert to string first
-            path_str = str(path)
+            # Convert to Path
+            file_path = Path(file_path)
 
-            # Handle Windows encoding
-            safe_str = path_str.encode("cp1252", errors="replace").decode("cp1252")
+            # Update total files count
+            self.pipeline.stats["total_files"] += 1
 
-            # Convert back to Path
-            return Path(safe_str)
-        except Exception:
-            # If all else fails, use the path as is
-            return Path(path)
-
-    async def process_file(
-        self, file_path: Path, output_dir: Path
-    ) -> Optional[FileMetadata]:
-        """Process a single file through the pipeline."""
-        try:
-            # Create a temporary directory for this file
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp_dir_path = Path(temp_dir)
-
-                # Create input directory and copy file
-                input_dir = temp_dir_path / "input"
-                input_dir.mkdir(parents=True)
-                shutil.copy2(file_path, input_dir / file_path.name)
-
-                # Process the directory
-                await self.pipeline.process_directory(input_dir)
-
-                # Copy the output files to the output directory
-                output_dir.mkdir(parents=True, exist_ok=True)
-                for phase_dir in (temp_dir_path / "processing" / "phases").glob("*"):
-                    phase_output_dir = output_dir / phase_dir.name
-                    phase_output_dir.mkdir(parents=True, exist_ok=True)
-                    for output_file in phase_dir.rglob("*"):
-                        if output_file.is_file():
-                            relative_path = output_file.relative_to(phase_dir)
-                            dest_path = phase_output_dir / relative_path
-                            dest_path.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(output_file, dest_path)
-
-                # Return metadata from the last processed file
-                metadata_file = (
-                    list(temp_dir_path.rglob("*.metadata.json"))[-1]
-                    if list(temp_dir_path.rglob("*.metadata.json"))
-                    else None
-                )
-                if metadata_file:
-                    with open(metadata_file, "r") as f:
-                        return FileMetadata.parse_raw(f.read())
-
+            # Silently ignore .DS_Store files
+            if file_path.name == ".DS_Store":
+                self.pipeline.stats["skipped_files"] += 1
                 return None
+
+            # Process through each phase
+            metadata = None
+            for phase in self.phases:
+                # Create phase output directory for processed files
+                output_dir = self.config.base_dir / "_NovaProcessing" / "phases" / phase.name
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                # Process file in phase
+                metadata = await phase.process_file(file_path, output_dir, metadata)
+                if not metadata:
+                    logger.error(f"Failed to process {file_path} in phase {phase.name}")
+                    self.pipeline.stats["failed_files"] += 1
+                    self.pipeline.stats["errors"].append({
+                        "file": str(file_path),
+                        "phase": phase.name,
+                        "error": f"Failed to process in {phase.name} phase"
+                    })
+                    return None
+
+            # Update success count
+            self.pipeline.stats["processed_files"] += 1
+            return metadata
+
         except Exception as e:
-            self.logger.error(f"Failed to process file: {file_path}")
-            self.logger.error(traceback.format_exc())
+            logger.error(f"Failed to process file {file_path}: {str(e)}")
+            self.pipeline.stats["failed_files"] += 1
+            self.pipeline.stats["errors"].append({
+                "file": str(file_path),
+                "error": str(e)
+            })
             return None
 
-    async def process_directory(
-        self,
-        input_dir: Optional[Union[str, Path]] = None,
-        output_dir: Optional[Union[str, Path]] = None,
-        recursive: bool = True,
-    ) -> List[FileMetadata]:
-        """Process all files in directory.
+    async def process_phase(self, phase: Phase) -> bool:
+        """Process files in phase.
 
         Args:
-            input_dir: Input directory. If not provided,
-                will use configured input directory.
-            output_dir: Output directory. If not provided,
-                will use configured output directory.
-            recursive: Whether to process subdirectories.
+            phase: Phase to process
 
         Returns:
-            List of metadata about processed documents.
+            bool: True if successful, False otherwise
         """
-        # Start timing
-        start_time = time.time()
-
-        # Convert paths safely
-        input_dir = self._safe_path(input_dir or self.config.input_dir)
-        output_dir = self._safe_path(
-            output_dir or self.config.processing_dir / "phases" / "parse"
-        )
-
-        self.logger.info(f"Processing directory: {input_dir}")
-
-        results = []
-        errors = []
-        pattern = "**/*" if recursive else "*"
-
         try:
-            for file_path in input_dir.glob(pattern):
-                if file_path.is_file():
-                    try:
-                        # Get relative path from input dir to maintain directory structure
-                        # but skip the _NovaInput part if it exists
-                        try:
-                            rel_path = file_path.relative_to(input_dir)
-                            # Always skip _NovaInput from the path parts
-                            rel_path = Path(
-                                *[p for p in rel_path.parts if p != "_NovaInput"]
-                            )
-                        except ValueError:
-                            # If not under input_dir, just use the filename
-                            rel_path = Path(file_path.name)
-
-                        # If the input directory is named "test_files", preserve its structure
-                        if input_dir.name == "test_files":
-                            file_output_dir = output_dir / rel_path.parent
-                        else:
-                            # Otherwise, organize by file type and preserve subdirectories
-                            ext = file_path.suffix.lower()
-                            if ext in [".pdf", ".docx", ".doc", ".rtf", ".odt", ".txt"]:
-                                category = "Documents"
-                            elif ext in [".jpg", ".jpeg", ".png", ".gif", ".heic"]:
-                                category = "Images"
-                            elif ext in [".md"]:
-                                category = "Notes"
-                            else:
-                                category = "Other"
-
-                            # Create output directory preserving subdirectories but skip _NovaInput
-                            if len(rel_path.parts) > 1:
-                                file_output_dir = (
-                                    output_dir / category / rel_path.parent
-                                )
-                            else:
-                                file_output_dir = output_dir / category
-
-                        metadata = await self.process_file(file_path, file_output_dir)
-                        if metadata is not None:
-                            results.append(metadata)
-                    except Exception as e:
-                        self.logger.error(f"Error processing {file_path}: {str(e)}")
-                        errors.append(str(file_path))
-                        continue
-
-            self.logger.info(f"Processed {len(results)} files")
-
-            if errors:
-                self.logger.warning(f"Failed to process {len(errors)} files:")
-                for error in errors:
-                    self.logger.warning(f"  - {error}")
-
-            return results
+            # Process files
+            return await phase.process()
 
         except Exception as e:
-            self.logger.error(f"Failed to process directory: {str(e)}")
-            return []
+            logger.error(f"Failed to process phase {phase.__class__.__name__}: {e}")
+            return False
 
-    def get_supported_formats(self) -> List[str]:
-        """Get list of supported file formats.
+    def finalize(self) -> None:
+        """Run finalization steps."""
+        try:
+            # Run finalization
+            self.pipeline.finalize()
 
-        Returns:
-            List of supported file extensions.
-        """
-        return self.pipeline.get_supported_formats()
+        except Exception as e:
+            logger.error(f"Finalization failed: {e}")
+            raise

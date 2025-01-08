@@ -1,141 +1,197 @@
-"""Spreadsheet file handler."""
+"""Spreadsheet handler for processing spreadsheet files."""
 
+import logging
 import mimetypes
-import os
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Optional, Dict, Any
+from io import StringIO
 
 import pandas as pd
 
-from ..config.manager import ConfigManager
-from ..core.markdown import MarkdownWriter
-from ..core.metadata import DocumentMetadata
-from .base import BaseHandler, ProcessingResult, ProcessingStatus
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.core.metadata.models.types import SpreadsheetMetadata
+from nova.context_processor.handlers.base import BaseHandler
+from nova.context_processor.utils.file_utils import calculate_file_hash
+
+logger = logging.getLogger(__name__)
 
 
 class SpreadsheetHandler(BaseHandler):
     """Handler for spreadsheet files."""
 
-    name = "spreadsheet"
-    version = "0.1.0"
-    file_types = ["xlsx", "xls", "csv"]
-
-    def __init__(self, config: ConfigManager) -> None:
-        """Initialize spreadsheet handler.
+    def __init__(self, config: ConfigManager):
+        """Initialize handler.
 
         Args:
-            config: Nova configuration manager.
+            config: Configuration manager
         """
         super().__init__(config)
+        self.supported_extensions = {".xlsx", ".xls", ".csv"}
 
-    def _extract_excel_text(self, file_path: Path) -> str:
-        """Extract text from Excel file.
+    async def _extract_info(self, file_path: Path) -> Optional[Dict[str, Any]]:
+        """Extract information from a spreadsheet file.
 
         Args:
-            file_path: Path to Excel file.
+            file_path: Path to file
 
         Returns:
-            Markdown table representation of Excel file.
+            Optional[Dict[str, Any]]: Spreadsheet information if successful, None if failed
         """
         try:
-            # Read Excel file
-            df = pd.read_excel(file_path)
+            extension = file_path.suffix.lower()
+            info = {
+                "sheet_count": 0,
+                "total_rows": 0,
+                "total_columns": 0,
+                "sheets": {},
+                "has_formulas": False,
+                "has_macros": False,
+            }
 
-            # Convert to markdown table
-            return df.to_markdown(index=False)
+            if extension == ".csv":
+                # Try different encodings
+                encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+                df = None
+                
+                for encoding in encodings:
+                    try:
+                        df = pd.read_csv(file_path, encoding=encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                        
+                if df is None:
+                    raise ValueError(f"Could not decode CSV file with any of the encodings: {encodings}")
+                    
+                info["sheet_count"] = 1
+                info["total_rows"] = len(df)
+                info["total_columns"] = len(df.columns)
+                info["sheets"] = {
+                    "Sheet1": {
+                        "rows": len(df),
+                        "columns": len(df.columns),
+                    }
+                }
+            else:
+                # Read Excel file
+                excel = pd.ExcelFile(file_path)
+                info["sheet_count"] = len(excel.sheet_names)
+                info["total_rows"] = 0
+                info["total_columns"] = 0
+                info["sheets"] = {}
+
+                # Process each sheet
+                for sheet_name in excel.sheet_names:
+                    df = pd.read_excel(excel, sheet_name)
+                    info["total_rows"] += len(df)
+                    info["total_columns"] = max(info["total_columns"], len(df.columns))
+                    info["sheets"][sheet_name] = {
+                        "rows": len(df),
+                        "columns": len(df.columns),
+                    }
+
+            return info
 
         except Exception as e:
-            return f"Error converting Excel to markdown: {str(e)}"
+            logger.error(f"Failed to extract spreadsheet information: {str(e)}")
+            return None
 
-    def _extract_csv_text(self, file_path: Path) -> str:
-        """Extract text from CSV file.
-
-        Args:
-            file_path: Path to CSV file.
-
-        Returns:
-            Markdown table representation of CSV file.
-        """
-        encodings = ["utf-8", "utf-8-sig", "latin1", "cp1252", "iso-8859-1"]
-        last_error = None
-
-        for encoding in encodings:
-            try:
-                # Read CSV file with specific encoding
-                df = pd.read_csv(file_path, encoding=encoding)
-
-                # Convert to markdown table
-                return df.to_markdown(index=False)
-
-            except UnicodeDecodeError as e:
-                last_error = e
-                continue
-            except Exception as e:
-                return f"Error converting CSV to markdown: {str(e)}"
-
-        return f"Error converting CSV to markdown: Failed to decode with encodings {encodings}. Last error: {str(last_error)}"
-
-    async def process_file_impl(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
-    ) -> Optional[DocumentMetadata]:
+    async def _process_file(self, file_path: Path, metadata: SpreadsheetMetadata) -> bool:
         """Process a spreadsheet file.
 
         Args:
-            file_path: Path to spreadsheet file.
-            output_path: Path to write output.
-            metadata: Document metadata.
+            file_path: Path to file
+            metadata: Metadata to update
 
         Returns:
-            Document metadata.
+            bool: Whether processing was successful
         """
         try:
-            # Extract content based on file type
-            if file_path.suffix.lower() in [".xlsx", ".xls"]:
-                content = self._extract_excel_text(file_path)
-            elif file_path.suffix.lower() == ".csv":
-                content = self._extract_csv_text(file_path)
-            else:
-                raise ValueError(f"Unsupported spreadsheet type: {file_path.suffix}")
+            # Extract spreadsheet information
+            info = await self._extract_info(file_path)
+            if not info:
+                return False
 
             # Update metadata
-            metadata.title = file_path.stem
-            metadata.processed = True
-            metadata.metadata.update(
-                {
-                    "file_type": mimetypes.guess_type(file_path)[0]
-                    or f"application/{file_path.suffix.lstrip('.')}",
-                    "file_size": os.path.getsize(file_path),
-                }
-            )
+            metadata.sheet_count = info["sheet_count"]
+            metadata.total_rows = info["total_rows"]
+            metadata.total_columns = info["total_columns"]
+            metadata.has_formulas = info["has_formulas"]
+            metadata.has_macros = info["has_macros"]
 
-            # Create spreadsheet marker
-            sheet_type = (
-                "EXCEL" if file_path.suffix.lower() in [".xlsx", ".xls"] else "CSV"
-            )
-            sheet_marker = f"[ATTACH:{sheet_type}:{file_path.stem}]"
-
-            # Write markdown using MarkdownWriter
-            markdown_content = self.markdown_writer.write_document(
-                title=metadata.title,
-                content=f"{sheet_marker}\n\n{content}",
-                metadata=metadata.metadata,
-                file_path=file_path,
-                output_path=output_path,
-            )
-
-            # Write the file
-            self._safe_write_file(output_path, markdown_content)
-
-            metadata.add_output_file(output_path)
-            return metadata
+            return True
 
         except Exception as e:
-            error_msg = f"Failed to process spreadsheet {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            if metadata:
-                metadata.add_error(self.name, error_msg)
-                metadata.processed = False
-            return metadata
+            logger.error(f"Failed to process spreadsheet {file_path}: {e}")
+            return False
+
+    async def _parse_file(self, file_path: Path, metadata: SpreadsheetMetadata) -> bool:
+        """Parse a spreadsheet file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether parsing was successful
+        """
+        try:
+            # Extract spreadsheet information
+            info = await self._extract_info(file_path)
+            if not info:
+                return False
+
+            # Update metadata
+            metadata.sheet_count = info["sheet_count"]
+            metadata.total_rows = info["total_rows"]
+            metadata.total_columns = info["total_columns"]
+            metadata.has_formulas = info["has_formulas"]
+            metadata.has_macros = info["has_macros"]
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to parse spreadsheet {file_path}: {e}")
+            return False
+
+    async def _disassemble_file(self, file_path: Path, metadata: SpreadsheetMetadata) -> bool:
+        """Disassemble a spreadsheet file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether disassembly was successful
+        """
+        try:
+            # For now, just copy the file
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to disassemble spreadsheet {file_path}: {e}")
+            return False
+
+    async def _split_file(self, file_path: Path, metadata: SpreadsheetMetadata) -> bool:
+        """Split a spreadsheet file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether splitting was successful
+        """
+        try:
+            # For now, just copy the file
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to split spreadsheet {file_path}: {e}")
+            return False

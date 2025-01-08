@@ -1,212 +1,157 @@
-"""Registry for document handlers."""
+"""Handler registry for document processing."""
 
-# Standard library
 import logging
+import mimetypes
 from pathlib import Path
-from typing import Dict, List, Optional, Type, TypeVar, Union
+from typing import Dict, Optional, Type, TYPE_CHECKING
 
-# Internal imports
-from ..config.manager import ConfigManager
-from ..core.metadata import DocumentMetadata
-from .base import BaseHandler, ProcessingResult
+from ..core.metadata import BaseMetadata, MetadataFactory
+from .archive import ArchiveHandler
+from .audio import AudioHandler
+from .base import BaseHandler
 from .document import DocumentHandler
 from .html import HTMLHandler
 from .image import ImageHandler
 from .markdown import MarkdownHandler
 from .spreadsheet import SpreadsheetHandler
-from .text import TextHandler
 from .video import VideoHandler
 
-# Type variable for concrete handler classes
-H = TypeVar("H", bound=BaseHandler)
+if TYPE_CHECKING:
+    from ..config.manager import ConfigManager
+    from ..core.pipeline import NovaPipeline
+
+logger = logging.getLogger(__name__)
 
 
 class HandlerRegistry:
-    """Registry for document handlers."""
+    """Registry of document handlers."""
 
-    # Files to ignore
-    IGNORED_FILES = {".DS_Store"}
-
-    def __init__(self, config: ConfigManager, pipeline=None) -> None:
-        """Initialize registry.
-
+    def __init__(self, config: "ConfigManager", pipeline: "NovaPipeline"):
+        """Initialize handler registry.
+        
         Args:
-            config: Nova configuration manager.
-            pipeline: Optional pipeline instance.
+            config: Configuration manager
+            pipeline: Pipeline instance
         """
         self.config = config
         self.pipeline = pipeline
-        self.handlers: Dict[str, BaseHandler] = {}
-        self.logger = logging.getLogger(__name__)
+        self.handlers: Dict[str, Type[BaseHandler]] = {}
         self._register_default_handlers()
-
-    def register_handler(self, handler_class: Type[H]) -> None:
-        """Register a new handler.
-
-        Args:
-            handler_class: Concrete handler class to register.
-        """
-        handler = handler_class(self.config)
-        handler.pipeline = self.pipeline  # Set the pipeline instance
-        for file_type in handler.file_types:
-            self.logger.debug(f"Registering {handler.name} for file type: {file_type}")
-            self.handlers[file_type] = handler
 
     def _register_default_handlers(self) -> None:
         """Register default handlers."""
-        default_handlers: List[Type[BaseHandler]] = [
-            DocumentHandler,
-            ImageHandler,
-            TextHandler,
-            MarkdownHandler,
-            SpreadsheetHandler,
-            HTMLHandler,
-            VideoHandler,
-        ]
+        # Register handlers by file extension
+        self.register_handler(".md", MarkdownHandler)
+        self.register_handler(".txt", DocumentHandler)
+        self.register_handler(".docx", DocumentHandler)
+        self.register_handler(".doc", DocumentHandler)
+        self.register_handler(".rtf", DocumentHandler)
+        self.register_handler(".odt", DocumentHandler)
+        self.register_handler(".pdf", DocumentHandler)
+        
+        # Image handlers
+        self.register_handler(".jpg", ImageHandler)
+        self.register_handler(".jpeg", ImageHandler)
+        self.register_handler(".png", ImageHandler)
+        self.register_handler(".gif", ImageHandler)
+        self.register_handler(".heic", ImageHandler)
+        self.register_handler(".webp", ImageHandler)
+        
+        # Audio handlers
+        self.register_handler(".mp3", AudioHandler)
+        self.register_handler(".wav", AudioHandler)
+        self.register_handler(".m4a", AudioHandler)
+        self.register_handler(".ogg", AudioHandler)
+        
+        # Video handlers
+        self.register_handler(".mp4", VideoHandler)
+        self.register_handler(".mov", VideoHandler)
+        self.register_handler(".avi", VideoHandler)
+        self.register_handler(".mkv", VideoHandler)
+        
+        # Spreadsheet handlers
+        self.register_handler(".xlsx", SpreadsheetHandler)
+        self.register_handler(".xls", SpreadsheetHandler)
+        self.register_handler(".csv", SpreadsheetHandler)
+        
+        # HTML handlers
+        self.register_handler(".html", HTMLHandler)
+        self.register_handler(".htm", HTMLHandler)
+        
+        # Archive handlers
+        self.register_handler(".zip", ArchiveHandler)
+        self.register_handler(".tar", ArchiveHandler)
+        self.register_handler(".gz", ArchiveHandler)
+        self.register_handler(".7z", ArchiveHandler)
 
-        for handler_class in default_handlers:
-            self.register_handler(handler_class)
-
-    def get_handler(self, file_path: Union[str, Path]) -> Optional[BaseHandler]:
-        """Get handler for file.
+    def register_handler(self, extension: str, handler_class: Type[BaseHandler]) -> None:
+        """Register a handler for a file extension.
 
         Args:
-            file_path: Path to file.
+            extension: File extension (with dot)
+            handler_class: Handler class to register
+        """
+        self.handlers[extension.lower()] = handler_class
+
+    def get_handler_for_file(self, file_path: Path) -> Optional[BaseHandler]:
+        """Get appropriate handler for a file.
+
+        Args:
+            file_path: Path to file
 
         Returns:
-            Handler for file type, or None if no handler found.
+            Handler instance if found, None otherwise
         """
-        try:
-            file_path = Path(file_path)
-            self.logger.debug(f"Getting handler for file: {file_path}")
-            self.logger.debug(f"File exists: {file_path.exists()}")
-            self.logger.debug(f"File is file: {file_path.is_file()}")
+        extension = file_path.suffix.lower()
+        handler_class = self.handlers.get(extension)
+        
+        if handler_class:
+            return handler_class(self.config, self.pipeline)
+            
+        return None
 
-            # Skip ignored files
-            if file_path.name in self.IGNORED_FILES:
-                self.logger.debug(f"Skipping ignored file: {file_path.name}")
-                return None
-
-            # Try to get file type normally
-            file_type = file_path.suffix.lstrip(".").lower()
-            self.logger.debug(f"Looking for handler for file type: {file_type}")
-            self.logger.debug(f"Available handlers: {list(self.handlers.keys())}")
-            self.logger.debug(f"File path: {file_path}")
-            self.logger.debug(f"File suffix: {file_path.suffix}")
-            self.logger.debug(f"File type: {file_type}")
-            self.logger.debug(f"File name: {file_path.name}")
-            self.logger.debug(f"File stem: {file_path.stem}")
-
-            # Get handler for file type
-            handler = self.handlers.get(file_type)
-            if handler is None:
-                self.logger.debug(f"No handler found for file type: {file_type}")
-            else:
-                self.logger.debug(
-                    f"Found handler {handler.name} for file type: {file_type}"
-                )
-            return handler
-
-        except UnicodeError:
-            # If that fails, try to handle paths with non-UTF-8 characters
-            try:
-                # Convert path to string with replacement of invalid chars
-                file_str = (
-                    str(file_path).encode("utf-8", errors="replace").decode("utf-8")
-                )
-                file_type = Path(file_str).suffix.lstrip(".").lower()
-                self.logger.debug(
-                    f"Looking for handler for file type (after unicode handling): {file_type}"
-                )
-                return self.handlers.get(file_type)
-            except Exception as e:
-                self.logger.error(f"Failed to get file type from path: {str(e)}")
-                return None
-        except Exception as e:
-            self.logger.error(f"Failed to get handler for file: {str(e)}")
-            return None
-
-    async def process_file(
+    def process_file(
         self,
-        file_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None,
-    ) -> Optional[DocumentMetadata]:
-        """Process a file.
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[BaseMetadata] = None,
+    ) -> Optional[BaseMetadata]:
+        """Process a file with the appropriate handler.
 
         Args:
             file_path: Path to file to process
-            output_dir: Directory to write output to
+            output_dir: Output directory
+            metadata: Optional metadata from previous processing
 
         Returns:
-            Document metadata
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Convert to Path object and resolve
-            file_path_obj = Path(file_path).resolve()
-            self.logger.debug(f"Processing file: {file_path_obj}")
+            # Get file type
+            mime_type, _ = mimetypes.guess_type(str(file_path))
+            if not mime_type:
+                mime_type = "application/octet-stream"
 
-            # Skip if file doesn't exist
-            if not file_path_obj.exists():
-                self.logger.warning(f"File does not exist: {file_path_obj}")
+            # Get handler
+            handler = self.get_handler_for_file(file_path)
+            if not handler:
+                logger.warning(f"No handler found for {file_path}")
                 return None
 
-            # Check if this file is an embedded document by looking at its parent directory
-            parent_dir = file_path_obj.parent
-            if any(parent.name.startswith("20") and len(parent.name) >= 8 for parent in file_path_obj.parents):
-                # This is likely an embedded document, skip processing it directly
-                self.logger.debug(f"Skipping embedded document: {file_path_obj}")
-                return None
-
-            # Get handler for file type
-            handler = self.get_handler(file_path_obj)
-            self.logger.debug(
-                f"Handler lookup result: {handler.name if handler else None}"
-            )
-
-            if handler is None:
-                # Create metadata for unsupported files
-                self.logger.debug(f"No handler found, creating error metadata")
-                metadata = DocumentMetadata.from_file(
-                    file_path=file_path_obj,
-                    handler_name="registry",
-                    handler_version="0.1.0",
+            # Create metadata if not provided
+            if not metadata:
+                metadata = MetadataFactory.create(
+                    file_path=file_path,
+                    file_type=mime_type,
+                    handler_name=handler.__class__.__name__,
+                    handler_version=handler.version,
                 )
-                metadata.processed = False
-                metadata.add_error(
-                    "registry",
-                    f"No handler found for file type: {file_path_obj.suffix}",
-                )
-                return metadata
-
-            self.logger.info(f"Using {handler.name} handler for file: {file_path_obj}")
-
-            # Create initial metadata
-            metadata = DocumentMetadata.from_file(
-                file_path=file_path_obj,
-                handler_name=handler.name,
-                handler_version=handler.version,
-            )
 
             # Process file
-            try:
-                result = await handler.process(file_path_obj, metadata)
-                self.logger.debug(f"Handler process result: {result}")
-                return result.metadata
-            except Exception as e:
-                self.logger.exception(
-                    f"Handler {handler.name} failed to process file: {file_path_obj}"
-                )
-                metadata.processed = False
-                metadata.add_error(handler.name, str(e))
-                return metadata
+            return handler.process_file(file_path, output_dir, metadata)
 
         except Exception as e:
-            self.logger.exception(f"Failed to process file {file_path}: {str(e)}")
-            metadata = DocumentMetadata.from_file(
-                file_path=Path(file_path),
-                handler_name="registry",
-                handler_version="0.1.0",
-            )
-            metadata.processed = False
-            metadata.add_error("registry", str(e))
-            return metadata
+            logger.error(f"Failed to process {file_path}: {str(e)}")
+            if metadata:
+                metadata.add_error("HandlerRegistry", str(e))
+            return None

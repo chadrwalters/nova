@@ -78,45 +78,44 @@ class OutputManager:
     def get_output_path_for_phase(
         self, rel_path: Union[str, Path], phase: str, suffix: str = ""
     ) -> Path:
-        """Get output path for a phase.
+        """Get output path for a file in a phase.
 
         Args:
             rel_path: Relative path from input directory
             phase: Phase to get output path for
-            suffix: Optional suffix to add to output path
+            suffix: Optional suffix to add to filename
 
         Returns:
-            Output path for phase
+            Output path for file
         """
         # Convert to Path object
         rel_path = Path(rel_path)
 
-        # Get parent directory structure from relative path
-        parent_dirs = rel_path.parent
+        # Get phase directory
+        phase_dir = self.get_phase_dir(phase)
 
-        # Build output path under phase directory
-        output_path = Path(self.get_phase_dir(phase))
+        # Create output directory preserving structure
+        output_path = phase_dir / rel_path.parent
 
-        # Add parent directories if they exist
-        if str(parent_dirs) != ".":
-            # Extract date directory if it exists (format: YYYYMMDD)
-            date_match = re.search(r"(\d{8})", str(parent_dirs))
-            if date_match:
-                # Find the directory containing the date
-                date_dir = next((p for p in parent_dirs.parts if date_match.group(1) in p), None)
-                if date_dir:
-                    # Use the entire directory name containing the date
-                    output_path = output_path / date_dir
-                    # Add any remaining subdirectories after the date directory
-                    remaining_parts = list(parent_dirs.parts)
-                    date_dir_index = remaining_parts.index(date_dir)
-                    if date_dir_index + 1 < len(remaining_parts):
-                        output_path = output_path.joinpath(*remaining_parts[date_dir_index + 1:])
-            else:
-                output_path = output_path / parent_dirs
+        # Get the stem without any existing extensions
+        stem = rel_path.stem
+        while "." in stem:
+            stem = stem.rsplit(".", 1)[0]
 
-        # Add filename with suffix
-        output_path = output_path / f"{rel_path.stem}{suffix}"
+        # Clean up the stem
+        stem = re.sub(r'[<>:"/\\|?*!@#$%^&(){}\[\]]', "_", stem)
+        stem = re.sub(r"[\s_]+", "_", stem)
+        stem = stem.strip(". _")
+
+        # Add filename with suffix and .md extension
+        if suffix and not suffix.startswith("."):
+            suffix = "." + suffix
+
+        # Create a sanitized output path
+        output_path = output_path / f"{stem}{suffix}.md"
+
+        # Ensure parent directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         return output_path
 

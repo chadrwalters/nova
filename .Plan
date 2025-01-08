@@ -1,30 +1,149 @@
-# Goal
-Successfully run the “clean run” command after moving all files from src/nova/ to src/nova/context_processor.
+# Nova Parse Phase Cleanup Plan
 
-# Plan
+## Overview
+This plan outlines the steps to fix issues identified in the Nova parse phase processing.
 
-1. Update Imports
-   - Search for all references to src/nova and change them to src/nova/context_processor.
-   - Verify that relative imports and package references are consistent throughout the code.
+## Milestones and Tasks
 
-2. Adjust pyproject.toml
-   - Update any scripts, entry points, or references that still point to the old src/nova location.
-   - Double-check the project’s package name and ensure that the new context_processor folder is recognized as the primary package.
+### 1. File Structure and Naming Standardization [COMPLETED]
+- [x] Create file naming convention rules
+  - Handle spaces, parentheses, and special characters
+  - Define date format standards
+  - Establish consistent extension patterns
+- [x] Implement path preservation in parse phase
+  - Maintain input directory structure
+  - Create relative path handling
+  - Update metadata tracking
+- [x] Add file name sanitization
+  - Remove problematic characters
+  - Standardize date formats
+  - Clean extension handling
 
-3. Confirm CLI Modules
-   - If previously calling poetry run python -m nova.cli, replace it with poetry run python -m nova.context_processor.cli or a similarly updated path.
-   - Do the same for your cleanup scripts (nova.cleanup → nova.context_processor.cleanup).
+### 2. Image Processing Optimization [NOT_STARTED]
 
-4. Verify “Clean Run”
-   - Execute:
-     poetry run python -m nova.context_processor.cleanup -a && poetry run python -m nova.context_processor.cli --config config/nova.yaml
-   - Confirm that all phases complete without errors.
+### 3. File Processing Enhancement [IN_PROGRESS]
+- [x] Fix duplicate file handling
+  - [x] Add hash-based deduplication
+  - [x] Implement version tracking
+  - [ ] Update file references
+- [x] Enhance error handling
+  - [x] Add detailed error logging
+  - [x] Implement retry logic
+  - [x] Create error reports
+- [x] Add validation checks
+  - [x] Verify file contents
+    - [x] Basic file validation
+    - [x] MIME type checking
+    - [x] Encoding validation
+    - [x] Size verification
+  - [x] Check metadata integrity
+    - [x] Required fields validation
+    - [x] Timestamp validation
+    - [x] Version history checks
+    - [x] Output file validation
+  - [x] Validate references
+    - [x] Note reference validation
+    - [x] Attachment reference checks
+    - [x] Circular reference detection
+    - [x] Reference format validation
 
-5. Test and Validate
-   - Run:
-     poetry run pytest
-   - Ensure that all pre-commit hooks (black, isort, mypy, bandit, flake8, etc.) pass and that commit messages adhere to the conventional commits format.
+### 4. Metadata System Implementation [COMPLETED]
+- [x] Design metadata schema
+  - [x] Define required fields
+  - [x] Add relationship tracking
+  - [x] Include processing history
+- [x] Implement metadata storage
+  - [x] Create metadata files
+  - [x] Add version control
+  - [x] Implement search indexing
+- [x] Add metadata validation
+  - [x] Check required fields
+  - [x] Validate relationships
+  - [x] Verify integrity
 
-6. Document and Commit
-   - Update relevant documentation (README, architecture notes) to reference the new directory structure.
-   - Commit these changes using a conventional commit message (e.g., “refactor(context_processor): restructure code into context_processor folder”). 
+### 5. Clean Run Issues [IN_PROGRESS]
+- [x] Fix directory structure issues
+  - [x] Create required subdirectories in _NovaProcessing
+    - [x] Add cache directory (cache/)
+    - [x] Add metadata directory (metadata/)
+    - [x] Add index directory (index/)
+    - [x] Add notes directory (notes/)
+    - [x] Add attachments directory (attachments/)
+  - [x] Add directory validation on startup
+    - [x] Verify all required directories exist
+    - [x] Check directory permissions
+    - [x] Validate against config paths
+  - [x] Implement recursive directory cleanup
+    - [x] Clean cache directory
+    - [x] Clean metadata directory
+    - [x] Clean index directory
+    - [x] Clean notes directory
+    - [x] Clean attachments directory
+- [x] Handle special files
+  - [x] Skip .DS_Store files
+  - [x] Handle hidden files appropriately
+  - [x] Add file exclusion patterns
+  - [x] Handle iCloud Drive placeholders
+- [x] Improve error handling
+  - [x] Add detailed logging for cleanup operations
+  - [x] Handle iCloud Drive sync issues
+  - [x] Add recovery procedures for failed cleanups
+  - [x] Handle permission errors
+- [x] Add cleanup validation
+  - [x] Verify directory emptiness
+  - [x] Check directory permissions
+  - [x] Validate directory structure after cleanup
+  - [x] Verify config path consistency
+- [x] Enhance cleanup reporting
+  - [x] Add detailed cleanup statistics
+  - [x] Report skipped files
+  - [x] Show cleanup duration
+  - [x] Report directory sizes before/after
+
+### 6. Testing and Verification [NOT_STARTED]
+- [ ] Create test suite
+  - Add unit tests
+  - Implement integration tests
+  - Create validation scripts
+- [ ] Run test scenarios
+  - Test file processing
+  - Verify image handling
+  - Check metadata integrity
+- [ ] Document results
+  - Create test reports
+  - Track issue resolution
+  - Update documentation
+
+## Success Criteria
+1. All files follow naming conventions
+2. Directory structure is preserved
+3. Images are properly referenced
+4. No duplicate files exist
+5. Complete metadata tracking
+6. All tests passing
+
+## Notes
+- Each milestone should be tested independently
+- Run full test suite after each milestone
+- Document all changes and updates
+- Keep backup of original files
+- Fixed issues with metadata model_dump and from_dict methods
+- Added file hash field to BaseMetadata for deduplication
+- Implemented retry logic in BaseHandler for error handling
+- Enhanced error logging with detailed context
+- Added comprehensive error reporting system with JSON and Markdown reports
+- Integrated error reporting into pipeline and handlers
+- Added recovery hints to error messages
+- Implemented content validation with MIME type and encoding checks
+- Added metadata validation with required fields and relationship checks
+- Created reference validation system with circular reference detection
+- Added search indexing with Whoosh for efficient metadata search
+- Implemented metadata versioning and relationship tracking
+- Added comprehensive metadata validation system
+- Clean run improvements:
+  1. Added DirectoryManager for centralized directory management
+  2. Implemented comprehensive directory validation
+  3. Added recursive directory cleanup with file exclusions
+  4. Enhanced error handling with recovery hints
+  5. Added detailed cleanup reporting with statistics
+  6. Improved handling of special files and permissions

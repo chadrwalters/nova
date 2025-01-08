@@ -15,7 +15,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from nova.context_processor.core.progress import FileProgress, ProgressStatus
+from nova.context_processor.core.progress import FileProgress, PhaseProgress, ProgressStatus
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +78,16 @@ class ProgressDisplay:
                 )
 
     def stop(self) -> None:
-        """Stop the progress display."""
+        """Stop progress display."""
         self.progress.stop()
+
+    def __enter__(self) -> "ProgressDisplay":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit context manager."""
+        self.stop()
 
     async def print_summary(
         self,

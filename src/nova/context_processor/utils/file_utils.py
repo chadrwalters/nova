@@ -1,68 +1,117 @@
-"""File utility functions."""
+"""File utilities for Nova document processor."""
 
-# Standard library
+import hashlib
 import logging
-import shutil
+import re
 from pathlib import Path
-from typing import Union
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def safe_write_file(
-    file_path: Union[str, Path], content: str, encoding: str = "utf-8"
-) -> bool:
-    """Write content to file only if it has changed.
+def calculate_file_hash(file_path: Path) -> Optional[str]:
+    """Calculate SHA-256 hash of file contents.
 
     Args:
-        file_path: Path to file.
-        content: Content to write.
-        encoding: File encoding.
+        file_path: Path to file
 
     Returns:
-        True if file was written, False if unchanged.
+        Optional[str]: Hash string if successful, None otherwise
     """
     try:
-        # Convert to Path object
-        file_path = Path(file_path)
+        # Create hash object
+        hasher = hashlib.sha256()
 
-        logger.debug(f"Writing file: {file_path}")
-        logger.debug(f"Content length: {len(content)}")
-        logger.debug(f"Parent directory: {file_path.parent}")
+        # Read file in chunks
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hasher.update(chunk)
 
-        # Check if file exists and content matches
-        if file_path.exists():
-            try:
-                current_content = file_path.read_text(encoding=encoding)
-                if current_content == content:
-                    logger.debug("Content unchanged, skipping write")
-                    return False
-            except Exception as e:
-                logger.debug(f"Error reading existing file: {str(e)}")
-                pass  # If reading fails, write the file
-
-        # Create parent directory if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.debug(f"Created parent directory: {file_path.parent}")
-
-        # Create a temporary file in the same directory
-        temp_path = file_path.parent / f"{file_path.name}.tmp"
-        logger.debug(f"Writing to temporary file: {temp_path}")
-
-        # Write content to temporary file
-        temp_path.write_text(content, encoding=encoding)
-        logger.debug("Successfully wrote content to temporary file")
-
-        # Use shutil.copy2 to preserve timestamps when moving to final location
-        shutil.copy2(temp_path, file_path)
-        logger.debug(f"Copied temporary file to final location: {file_path}")
-
-        # Clean up temporary file
-        temp_path.unlink()
-        logger.debug("Cleaned up temporary file")
-
-        return True
+        # Return hex digest
+        return hasher.hexdigest()
 
     except Exception as e:
-        logger.error(f"Failed to write file {file_path}: {str(e)}")
-        raise
+        logger.error(f"Failed to calculate hash for {file_path}: {e}")
+        return None
+
+
+def standardize_filename(filename: str) -> str:
+    """Standardize filename by removing invalid characters and spaces.
+
+    Args:
+        filename: Original filename
+
+    Returns:
+        str: Standardized filename
+    """
+    # Remove invalid characters
+    filename = re.sub(r'[<>:"/\\|?*!@#$%^&(){}\[\]]', "_", filename)
+    
+    # Replace spaces and multiple underscores with single underscore
+    filename = re.sub(r"[\s_]+", "_", filename)
+    
+    # Remove leading/trailing dots and underscores
+    filename = filename.strip(". _")
+    
+    return filename
+
+
+def get_parsed_output_path(input_path: Path, output_dir: Path, suffix: str = "") -> Path:
+    """Get output path for parsed file.
+
+    Args:
+        input_path: Input file path
+        output_dir: Output directory
+        suffix: Optional suffix to add to filename
+
+    Returns:
+        Path: Output file path
+    """
+    # Get stem without extensions
+    stem = input_path.stem
+    while "." in stem:
+        stem = stem.rsplit(".", 1)[0]
+    
+    # Standardize filename
+    stem = standardize_filename(stem)
+    
+    # Add suffix if provided
+    if suffix and not suffix.startswith("."):
+        suffix = "." + suffix
+    
+    # Create output path
+    output_path = output_dir / f"{stem}{suffix}.md"
+    
+    # Ensure parent directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    return output_path
+
+
+def preserve_relative_path(file_path: Path, base_dir: Path, output_dir: Path) -> Path:
+    """Preserve relative path structure when copying files.
+
+    Args:
+        file_path: Path to file
+        base_dir: Base directory
+        output_dir: Output directory
+
+    Returns:
+        Path: Output path preserving relative structure
+    """
+    try:
+        # Get relative path from base directory
+        relative_path = file_path.relative_to(base_dir)
+        
+        # Create output path preserving structure
+        output_path = output_dir / relative_path
+        
+        # Ensure parent directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        return output_path
+    
+    except ValueError:
+        # If file is not under base directory, use filename only
+        logger.warning(f"File {file_path} is not under base directory {base_dir}")
+        return output_dir / file_path.name

@@ -1,163 +1,159 @@
-"""Finalize phase implementation."""
+"""Finalize phase for processing documents."""
 
-# Standard library
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
-# External dependencies
-from rich.console import Console
-from rich.table import Table
-
-from ..config.manager import ConfigManager
-
-# Internal imports
-from ..core.metadata import FileMetadata
-from ..phases.base import Phase
-from ..validation.pipeline_validator import PipelineValidator
-
-if TYPE_CHECKING:
-    from ..core.pipeline import NovaPipeline
+from nova.context_processor.core.config import NovaConfig
+from nova.context_processor.core.metadata import BaseMetadata
+from nova.context_processor.core.metadata.store.manager import MetadataStore
+from nova.context_processor.handlers.factory import HandlerFactory
+from nova.context_processor.phases.base import Phase
 
 logger = logging.getLogger(__name__)
 
 
 class FinalizePhase(Phase):
-    """Finalize phase that processes split files and moves them to output directory."""
+    """Phase for finalizing document processing."""
 
-    def __init__(self, config: ConfigManager, pipeline: "NovaPipeline") -> None:
+    def __init__(self, config: NovaConfig, metadata_store: MetadataStore):
         """Initialize finalize phase.
 
         Args:
-            config: Configuration manager
-            pipeline: Pipeline instance
+            config: Nova configuration
+            metadata_store: Metadata store instance
         """
-        super().__init__("finalize", config, pipeline)
-        self.validator = PipelineValidator(pipeline)
+        super().__init__(config, metadata_store)
+        self.name = "finalize"
+        self.version = "1.0.0"
+        self.handler_factory = HandlerFactory(config)
 
-    async def process_impl(
-        self, file_path: Path, output_dir: Path, metadata: Optional[FileMetadata] = None
-    ) -> Optional[FileMetadata]:
+    async def process(self) -> bool:
+        """Process files in finalize phase.
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Get input files
+            input_files = self._get_files(self.config.input_dir)
+            if not input_files:
+                logger.warning("No files found in input directory")
+                return True
+
+            # Get output directory
+            output_dir = self.config.base_dir / "_NovaProcessing" / "phases" / self.name
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Process each file
+            for file_path in input_files:
+                try:
+                    # Check if file should be processed
+                    if not self.config.should_process_file(file_path):
+                        logger.debug(f"Skipping {file_path}")
+                        self.skipped_files.add(file_path)
+                        continue
+
+                    # Get metadata from previous phase
+                    metadata = self._get_metadata(file_path)
+                    
+                    # Process file
+                    metadata = await self.process_file(file_path, output_dir, metadata)
+                    if metadata:
+                        # Save metadata
+                        if self._save_metadata(file_path, metadata):
+                            self.processed_files.add(file_path)
+                            continue
+
+                    # If we get here, processing failed
+                    logger.error(f"Failed to process {file_path}")
+                    self.failed_files.add(file_path)
+
+                except Exception as e:
+                    logger.error(f"Error processing {file_path}: {e}")
+                    self.failed_files.add(file_path)
+
+            # Run finalization steps
+            self.finalize()
+            return True
+
+        except Exception as e:
+            logger.error(f"Finalize phase failed: {e}")
+            return False
+
+    async def process_file(
+        self,
+        file_path: Path,
+        output_dir: Path,
+        metadata: Optional[BaseMetadata] = None,
+    ) -> Optional[BaseMetadata]:
         """Process a file in the finalize phase.
 
         Args:
             file_path: Path to file to process
-            output_dir: Directory to write output to (this will be the finalize phase dir)
-            metadata: Optional metadata from previous phase
+            output_dir: Output directory
+            metadata: Optional metadata from previous processing
 
         Returns:
-            FileMetadata if successful, None if failed
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            logger.info(f"Processing file in finalize phase: {file_path}")
-            logger.info(f"Output directory is: {output_dir}")
+            # Skip non-parsed markdown files
+            if not str(file_path).endswith(".parsed.md"):
+                return metadata
 
-            # Get relative path from split directory
-            split_dir = self.pipeline.config.processing_dir / "phases" / "split"
-            try:
-                rel_path = file_path.relative_to(split_dir)
-                logger.info(f"Got relative path: {rel_path}")
-            except ValueError:
-                # If not under split_dir, use just the filename
-                rel_path = Path(file_path.name)
-                logger.info(f"Using filename as relative path: {rel_path}")
-
-            # Create output path in finalize directory using provided output_dir
-            output_path = output_dir / rel_path
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Copy file to finalize directory
-            shutil.copy2(file_path, output_path)
-            logger.info(f"Copied {file_path} to {output_path}")
-
-            # Create or update metadata
-            if metadata is None:
-                metadata = FileMetadata.from_file(
-                    file_path=file_path, handler_name="finalize", handler_version="1.0"
+            # Create metadata if not provided
+            if not metadata:
+                metadata = MetadataFactory.create(
+                    file_path=file_path,
+                    handler_name=self.__class__.__name__,
+                    handler_version=self.version,
                 )
+
+            # Update base metadata
+            self._update_base_metadata(file_path, metadata)
+
+            # Create output directory structure
+            base_name = file_path.stem.replace(".parsed", "")
+            final_dir = output_dir / base_name
+            final_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy all output files from previous phases
+            changes = []
+            for output_file in metadata.output_files:
+                output_path = Path(output_file)
+                if output_path.exists():
+                    dest_path = final_dir / output_path.name
+                    shutil.copy2(output_path, dest_path)
+                    changes.append(f"Copied {output_path.name} to final directory")
+
+            # Update metadata
+            metadata.metadata["final_dir"] = str(final_dir)
             metadata.processed = True
-            metadata.add_output_file(output_path)
-
-            # Save metadata file
-            metadata_path = output_dir / f"{file_path.stem}.metadata.json"
-            metadata.save(metadata_path)
-            logger.info(f"Saved metadata to {metadata_path}")
-
-            # Update pipeline state
-            self.pipeline.state[self.name]["successful_files"].add(file_path)
+            metadata.add_version(
+                phase=self.name,
+                changes=changes,
+            )
 
             return metadata
 
         except Exception as e:
-            logger.error(f"Failed to finalize {file_path}: {str(e)}")
+            logger.error(f"Failed to process file {file_path}: {str(e)}")
             if metadata:
-                metadata.add_error("finalize", str(e))
-                metadata.processed = False
-
-            # Update pipeline state
-            self.pipeline.state[self.name]["failed_files"].add(file_path)
-
+                metadata.add_error(self.__class__.__name__, str(e))
             return None
 
     def finalize(self) -> None:
-        """Run pipeline validation and move files to output directory."""
+        """Run finalization steps."""
         try:
-            # Run validation
-            validation_passed = self.validator.validate()
-            if not validation_passed:
-                logger.error("Pipeline validation failed. Aborting finalization.")
-                self.pipeline.state[self.name]["failed_files"].add("validation")
-                return
+            # Get output directory
+            output_dir = self.config.base_dir / "_NovaProcessing" / "phases" / self.name
 
-            # Move files from finalize directory to output directory
-            finalize_dir = self.pipeline.config.processing_dir / "phases" / "finalize"
-            if finalize_dir.exists():
-                # Walk through all files in finalize directory
-                for file_path in finalize_dir.rglob("*"):
-                    # Only copy Markdown files
-                    if file_path.is_file() and file_path.suffix.lower() == '.md':
-                        # Get relative path from finalize dir
-                        rel_path = file_path.relative_to(finalize_dir)
-                        # Create output path
-                        output_path = self.config.output_dir / rel_path
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
-                        # Copy file to output
-                        shutil.copy2(file_path, output_path)
-                        logger.info(f"Moved {file_path} to {output_path}")
-                        self.pipeline.state[self.name]["successful_files"].add(
-                            output_path
-                        )
-
-            # Update stats
-            self.pipeline.state[self.name].update(
-                {
-                    "total_files": len(
-                        self.pipeline.state[self.name]["successful_files"]
-                    ),
-                    "failed_files_count": len(
-                        self.pipeline.state[self.name]["failed_files"]
-                    ),
-                    "completed": True,
-                    "success": validation_passed,
-                }
-            )
+            # Log summary
+            logger.info(f"\nFinalized documents")
+            logger.info(f"Output directory: {output_dir}")
 
         except Exception as e:
-            logger.error(f"Error in finalize phase: {str(e)}")
-            self.pipeline.state[self.name]["failed_files"].add("finalize")
-            self.pipeline.state[self.name].update({"completed": True, "success": False})
+            logger.error(f"Finalization failed: {str(e)}")
             raise
-
-    async def process_files(self) -> None:
-        """Process all files from the split phase."""
-        split_dir = self.pipeline.config.processing_dir / "phases" / "split"
-        if not split_dir.exists():
-            logger.warning("Split phase directory does not exist")
-            return
-
-        # Get all files from split phase
-        for file_path in split_dir.rglob("*"):
-            if file_path.is_file() and not file_path.name.endswith(".metadata.json"):
-                output_dir = self.pipeline.get_phase_output_dir("finalize")
-                await self.process_file(file_path, output_dir)

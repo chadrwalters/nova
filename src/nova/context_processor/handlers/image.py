@@ -1,259 +1,194 @@
 """Image file handler."""
 
-# Standard library
-import base64
-import io
-import mimetypes
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Optional, Tuple
+import base64
 
-# External dependencies
+from PIL import Image, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 import cairosvg
-import pillow_heif
-from openai import OpenAI
-from PIL import Image
+import io
 
-# Internal imports
-from ..config.manager import ConfigManager
-from ..core.markdown import MarkdownWriter
-from ..core.metadata import DocumentMetadata
-from .base import BaseHandler, ProcessingResult, ProcessingStatus
+from nova.context_processor.config.manager import ConfigManager
+from nova.context_processor.core.metadata.models.types import ImageMetadata
+from nova.context_processor.handlers.base import BaseHandler
+from nova.context_processor.utils.file_utils import calculate_file_hash
+
+logger = logging.getLogger(__name__)
+
+# Register HEIF/HEIC support
+register_heif_opener()
 
 
 class ImageHandler(BaseHandler):
     """Handler for image files."""
 
-    name = "image"
-    version = "0.1.0"
-    file_types = ["jpg", "jpeg", "png", "heic", "svg"]
-
-    def __init__(self, config: ConfigManager) -> None:
-        """Initialize image handler.
+    def __init__(self, config: ConfigManager):
+        """Initialize handler.
 
         Args:
-            config: Nova configuration manager.
+            config: Configuration manager
         """
         super().__init__(config)
-        self.markdown_writer = MarkdownWriter()
+        self.supported_extensions = {
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", 
+            ".tiff", ".webp", ".heic", ".heif", ".svg"
+        }
 
-        # Set PIL cache directory to be within processing directory
-        os.environ["PILLOW_CACHE_DIR"] = str(
-            Path(self.config.processing_dir) / "image_cache"
-        )
-
-        # Register HEIF format with Pillow
-        pillow_heif.register_heif_opener()
-
-        # Initialize OpenAI client if API key is configured
-        self.vision_client = None
-        try:
-            if self.config.apis and self.config.apis.openai:
-                self.logger.debug("Found OpenAI config")
-                if self.config.apis.openai.has_valid_key:
-                    self.vision_client = OpenAI(api_key=self.config.apis.openai.get_key())
-                    self.logger.info("OpenAI vision client initialized successfully")
-                else:
-                    self.logger.warning(
-                        "OpenAI API key not configured, image descriptions will be disabled"
-                    )
-            else:
-                self.logger.warning(
-                    "OpenAI API key not configured, image descriptions will be disabled"
-                )
-        except Exception as e:
-            self.logger.error(f"Failed to initialize OpenAI client: {str(e)}")
-
-    def _encode_image(self, file_path: Path) -> str:
-        """Encode image file as base64.
+    async def _convert_to_jpeg(self, file_path: Path) -> Tuple[Optional[bytes], Optional[dict]]:
+        """Convert image to JPEG format.
 
         Args:
-            file_path: Path to image file.
+            file_path: Path to input file
 
         Returns:
-            Base64 encoded image data.
+            Tuple of (JPEG bytes, image info)
         """
+        image_info = {}
+
         try:
-            # Handle SVG files by converting to PNG first
-            if file_path.suffix.lower() == ".svg":
-                # Create a temporary PNG file
-                temp_png = file_path.parent / f"{file_path.stem}.temp.png"
-                try:
-                    # Convert SVG to PNG
-                    cairosvg.svg2png(url=str(file_path), write_to=str(temp_png))
-                    # Read the PNG file and encode it
-                    with open(temp_png, "rb") as f:
-                        png_data = f.read()
-                    return base64.b64encode(png_data).decode("utf-8")
-                finally:
-                    # Clean up temporary file
-                    if temp_png.exists():
-                        temp_png.unlink()
+            if file_path.suffix.lower() == '.svg':
+                # Convert SVG to PNG first, then to JPEG
+                png_data = cairosvg.svg2png(url=str(file_path))
+                img = Image.open(io.BytesIO(png_data))
+            else:
+                img = Image.open(file_path)
 
-            # Handle other image formats
-            with Image.open(file_path) as img:
-                # Convert to RGB if needed (e.g., for HEIC)
-                if img.mode not in ("RGB", "RGBA"):
-                    img = img.convert("RGB")
+            # Extract image info
+            image_info = {
+                'width': img.width,
+                'height': img.height,
+                'mode': img.mode,
+                'format': img.format,
+                'has_alpha': img.mode.endswith('A'),
+            }
+            
+            try:
+                image_info['dpi'] = img.info.get('dpi')
+            except Exception:
+                pass
 
-                # Save as JPEG in memory
-                buffer = io.BytesIO()
-                img.save(buffer, format="JPEG", quality=85)
-                img_bytes = buffer.getvalue()
+            # Convert to RGB if needed
+            if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[3])
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
 
-                return base64.b64encode(img_bytes).decode("utf-8")
+            # Save as JPEG to bytes
+            jpeg_bytes = io.BytesIO()
+            img.save(jpeg_bytes, format='JPEG', quality=95)
+            return jpeg_bytes.getvalue(), image_info
+
         except Exception as e:
-            self.logger.error(f"Failed to encode image {file_path}: {str(e)}")
-            raise
+            logger.error(f"Failed to convert image {file_path}: {str(e)}")
+            return None, None
 
-    def _process_image(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
-    ) -> Optional[DocumentMetadata]:
+    async def _process_file(self, file_path: Path, metadata: ImageMetadata) -> bool:
         """Process an image file.
 
         Args:
-            file_path: Path to the image file.
-            output_path: Path to write output.
-            metadata: Document metadata.
+            file_path: Path to file
+            metadata: Metadata to update
 
         Returns:
-            Document metadata.
+            bool: Whether processing was successful
         """
         try:
-            # Log basic image info without the content
-            self.logger.debug(f"Processing image: {file_path.name}")
-            
-            # Convert image to base64
-            image_data = self._encode_image(file_path)
-            self.logger.debug("Image converted successfully")
-
-            # Generate image description if vision client is available
-            description = ""
-            if self.vision_client:
-                try:
-                    self.logger.debug(f"Sending image to OpenAI vision API: {file_path.name}")
-                    # Call Vision API
-                    response = self.vision_client.chat.completions.create(
-                        model=self.config.apis.openai.model,
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": "Please describe this image in detail.",
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/jpeg;base64,{image_data}"
-                                        },
-                                    },
-                                ],
-                            }
-                        ],
-                        max_tokens=300,
-                    )
-                    self.logger.debug("OpenAI vision API request completed")
-
-                    description = response.choices[0].message.content
-
-                except Exception as e:
-                    self.logger.error(f"Failed to generate image description: {str(e)}")
-                    description = "Failed to generate image description"
-            else:
-                description = (
-                    "Failed to generate image description: OpenAI API not configured"
-                )
+            # Convert image and get info
+            jpeg_bytes, image_info = await self._convert_to_jpeg(file_path)
+            if not jpeg_bytes or not image_info:
+                return False
 
             # Update metadata
-            metadata.title = file_path.stem
-            metadata.processed = True
-            metadata.metadata.update(
-                {
-                    "description": description,
-                    "file_type": mimetypes.guess_type(file_path)[0]
-                    or f"image/{file_path.suffix.lstrip('.').lower()}",
-                }
-            )
+            metadata.width = image_info['width']
+            metadata.height = image_info['height']
+            metadata.format = image_info['format']
+            metadata.color_space = image_info['mode']
+            metadata.has_alpha = image_info['has_alpha']
+            if 'dpi' in image_info:
+                metadata.dpi = image_info['dpi']
 
-            # Create a unique marker for the image
-            image_marker = f"[ATTACH:IMAGE:{file_path.stem}]"
-
-            # Write markdown using MarkdownWriter
-            markdown_content = self.markdown_writer.write_document(
-                title=metadata.title,
-                content=f"!{image_marker}\n\n{description}",
-                metadata=metadata.metadata,
-                file_path=file_path,
-                output_path=output_path,
-            )
-
-            # Write the file
-            self._safe_write_file(output_path, markdown_content)
-
-            metadata.add_output_file(output_path)
-            return metadata
+            return True
 
         except Exception as e:
-            error_msg = f"Failed to process image {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            if metadata:
-                metadata.add_error(self.name, error_msg)
-                metadata.processed = False
-            return metadata
+            logger.error(f"Failed to process image {file_path}: {e}")
+            return False
 
-    async def process_file_impl(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
-    ) -> Optional[DocumentMetadata]:
-        """Process an image file.
+    async def _parse_file(self, file_path: Path, metadata: ImageMetadata) -> bool:
+        """Parse an image file.
 
         Args:
-            file_path: Path to image file.
-            output_path: Path to write output.
-            metadata: Document metadata.
+            file_path: Path to file
+            metadata: Metadata to update
 
         Returns:
-            Document metadata.
+            bool: Whether parsing was successful
         """
         try:
-            # Validate image file
-            try:
-                if file_path.suffix.lower() == ".svg":
-                    # For SVG files, try to read and parse with cairosvg
-                    try:
-                        # Create a temporary PNG file to verify SVG is valid
-                        temp_png = file_path.parent / f"{file_path.stem}.temp.png"
-                        try:
-                            cairosvg.svg2png(url=str(file_path), write_to=str(temp_png))
-                        finally:
-                            # Clean up temporary file
-                            if temp_png.exists():
-                                temp_png.unlink()
-                    except Exception as e:
-                        raise ValueError(f"Invalid SVG file: {str(e)}")
-                else:
-                    # For other image types, use PIL
-                    with Image.open(file_path) as img:
-                        img.verify()
-            except Exception as e:
-                error_msg = f"Invalid image file {file_path}: {str(e)}"
-                self.logger.error(error_msg)
-                metadata.add_error(self.name, error_msg)
-                metadata.processed = False
-                return metadata
+            # Convert image and get info
+            jpeg_bytes, image_info = await self._convert_to_jpeg(file_path)
+            if not jpeg_bytes or not image_info:
+                return False
 
-            # Process the image
-            return self._process_image(file_path, output_path, metadata)
+            # Update metadata
+            metadata.width = image_info['width']
+            metadata.height = image_info['height']
+            metadata.format = image_info['format']
+            metadata.color_space = image_info['mode']
+            metadata.has_alpha = image_info['has_alpha']
+            if 'dpi' in image_info:
+                metadata.dpi = image_info['dpi']
+
+            return True
+
         except Exception as e:
-            error_msg = f"Failed to process image {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            metadata.add_error(self.name, error_msg)
-            metadata.processed = False
-            return metadata
+            logger.error(f"Failed to parse image {file_path}: {e}")
+            return False
+
+    async def _disassemble_file(self, file_path: Path, metadata: ImageMetadata) -> bool:
+        """Disassemble an image file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether disassembly was successful
+        """
+        try:
+            # For now, just copy the file
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to disassemble image {file_path}: {e}")
+            return False
+
+    async def _split_file(self, file_path: Path, metadata: ImageMetadata) -> bool:
+        """Split an image file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether splitting was successful
+        """
+        try:
+            # For now, just copy the file
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to split image {file_path}: {e}")
+            return False

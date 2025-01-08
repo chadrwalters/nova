@@ -88,6 +88,22 @@ class NovaFormatter(logging.Formatter):
         self.config = config
         self.datefmt = config.date_format
 
+        # Define color styles
+        self.level_styles = {
+            "DEBUG": "dim",
+            "INFO": "white",
+            "WARNING": "yellow bold",  # Make warnings bold and yellow
+            "ERROR": "red bold",
+            "CRITICAL": "red bold reverse",
+        }
+        self.context_styles = {
+            "phase": "cyan",
+            "handler": "blue",
+            "file": "dim",
+            "duration": "yellow",
+            "progress": "green",
+        }
+
     def format(self, record: LogRecord) -> str:
         """Format log record with phase and timing info.
 
@@ -104,39 +120,32 @@ class NovaFormatter(logging.Formatter):
         message = record.getMessage()
         message = message.encode("utf-8", errors="replace").decode("utf-8")
 
-        # Format level with color
-        level_colors = {
-            "DEBUG": "[dim]",
-            "INFO": "[white]",
-            "WARNING": "[yellow]",
-            "ERROR": "[red]",
-            "CRITICAL": "[red bold]",
-        }
-        level_color = level_colors.get(record.levelname, "")
-        level_str = f"{level_color}[{record.levelname}][/]"
+        # Format level with style
+        level_style = self.level_styles.get(record.levelname, "")
+        level_str = f"[{level_style}][{record.levelname}][/]"
 
         # Build context information if enabled
         context_info = ""
         if self.config.include_context:
             # Add phase info if available
             if hasattr(record, "phase") and record.phase:
-                context_info += f"[cyan][{record.phase}][/cyan] "
+                context_info += f"[{self.context_styles['phase']}][{record.phase}][/] "
 
             # Add handler info if available
             if hasattr(record, "handler") and record.handler:
-                context_info += f"[blue]({record.handler})[/blue] "
+                context_info += f"[{self.context_styles['handler']}]({record.handler})[/] "
 
             # Add file info if available
             if hasattr(record, "file_path") and record.file_path:
-                context_info += f"[dim]<{record.file_path}>[/dim] "
+                context_info += f"[{self.context_styles['file']}]<{record.file_path}>[/] "
 
             # Add timing info if available
             if hasattr(record, "duration") and record.duration is not None:
-                context_info += f"[yellow]({record.duration:.2f}s)[/yellow] "
+                context_info += f"[{self.context_styles['duration']}]({record.duration:.2f}s)[/] "
 
             # Add progress info if available
             if hasattr(record, "progress") and record.progress:
-                context_info += f"[green][{record.progress}][/green] "
+                context_info += f"[{self.context_styles['progress']}][{record.progress}][/] "
 
         # Build final message
         if record.exc_info:
@@ -144,7 +153,7 @@ class NovaFormatter(logging.Formatter):
                 record.exc_text = self.formatException(record.exc_info)
             message = f"{message}\n{record.exc_text}"
 
-        # Return formatted message
+        # Return formatted message with proper color escaping
         return f"{record.asctime} {level_str} {context_info}{message}"
 
 

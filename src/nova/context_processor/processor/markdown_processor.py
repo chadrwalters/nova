@@ -14,10 +14,44 @@ from ..core.reference_manager import ReferenceManager
 class MarkdownProcessor:
     """Processor for markdown content."""
 
-    def __init__(self) -> None:
-        """Initialize the markdown processor."""
+    def __init__(self, reference_manager: ReferenceManager):
+        """Initialize markdown processor.
+
+        Args:
+            reference_manager: Reference manager instance
+        """
+        self.reference_manager = reference_manager
         self.logger = logging.getLogger(__name__)
-        self.reference_manager = ReferenceManager()
+
+    def _format_note_reference(self, ref_id: str) -> str:
+        """Format a note reference for display.
+
+        Args:
+            ref_id: Reference ID (possibly encoded)
+
+        Returns:
+            Formatted note reference
+        """
+        # Decode the reference ID to display the original form with spaces
+        decoded_id = self.reference_manager._decode_ref_id(ref_id)
+        return f"[NOTE:{decoded_id}]"
+
+    def _process_note_references(self, content: str) -> str:
+        """Process note references in content.
+
+        Args:
+            content: Content to process
+
+        Returns:
+            Processed content with properly formatted note references
+        """
+        def replace_note_ref(match: re.Match) -> str:
+            ref_id = match.group(1)
+            return self._format_note_reference(ref_id)
+
+        # Find and replace note references
+        note_pattern = r'\[NOTE:([^\]]+)\]'
+        return re.sub(note_pattern, replace_note_ref, content)
 
     def _is_text_file(self, path: str) -> bool:
         """Check if a file is a text file based on extension."""
@@ -77,9 +111,17 @@ class MarkdownProcessor:
         return attachments
 
     def _extract_date(self, file_path: str) -> str:
-        """Extract date from file path if available."""
+        """Extract date from file path.
+
+        Args:
+            file_path: Path to extract date from
+
+        Returns:
+            Extracted date string or empty string if not found
+        """
+        # Look for YYYYMMDD pattern in path
         match = re.search(r"(\d{8})", str(file_path))
-        return match.group(1) if match else "unknown"
+        return match.group(1) if match else ""
 
     def _get_file_type(self, path: str) -> str:
         """Get standardized file type from path."""
@@ -141,8 +183,10 @@ class MarkdownProcessor:
                     # Add context if available
                     if attachment["context"]:
                         content.append("Context:")
+                        # Process note references in context
+                        processed_context = self._process_note_references(attachment["context"])
                         # Context is already processed by ReferenceManager
-                        for line in attachment["context"].split("\n"):
+                        for line in processed_context.split("\n"):
                             content.append(f"> {line}")
                         content.append("")  # Add a blank line after context
 
@@ -157,3 +201,17 @@ class MarkdownProcessor:
                     content.append(f"Source: {', '.join(source_info)}\n")
 
         return "\n".join(content)
+
+    def process_content(self, content: str) -> str:
+        """Process markdown content.
+
+        Args:
+            content: Content to process
+
+        Returns:
+            Processed content
+        """
+        # Process note references
+        content = self._process_note_references(content)
+
+        return content

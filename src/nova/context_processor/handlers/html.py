@@ -1,158 +1,178 @@
-"""HTML handler for Nova pipeline."""
+"""HTML handler for Nova document processor."""
 
 import logging
-import mimetypes
-import os
-import shutil
 from pathlib import Path
-from typing import Optional
 
 from bs4 import BeautifulSoup
 
-from ..config.manager import ConfigManager
-from ..core.metadata import DocumentMetadata
-from .base import BaseHandler
+from nova.context_processor.core.metadata.models.types import HTMLMetadata
+from nova.context_processor.handlers.base import BaseHandler
+from nova.context_processor.utils.file_utils import calculate_file_hash
+
+logger = logging.getLogger(__name__)
 
 
 class HTMLHandler(BaseHandler):
-    """HTML handler for Nova pipeline."""
+    """Handler for HTML files."""
 
-    name = "html"
-    version = "0.1.0"
-    file_types = ["html", "htm"]
-
-    def __init__(self, config: ConfigManager) -> None:
-        """Initialize HTML handler.
+    def __init__(self, config):
+        """Initialize handler.
 
         Args:
-            config: Nova configuration manager.
+            config: Nova configuration
         """
         super().__init__(config)
-        self.logger = logging.getLogger("nova.context_processor.handlers.html")
+        self.supported_extensions = {
+            ".html",
+            ".htm",
+        }
 
-    async def _process_content(self, file_path: Path) -> str:
-        """Process HTML content.
-
-        Args:
-            file_path: Path to HTML file.
-
-        Returns:
-            Processed content as markdown.
-        """
-        try:
-            # Read HTML file
-            with open(file_path, "r", encoding="utf-8") as f:
-                html = f.read()
-
-            # Convert to markdown
-            return self._convert_html_to_markdown(html)
-
-        except Exception as e:
-            raise ValueError(f"Failed to process HTML content: {str(e)}")
-
-    def _write_markdown(
-        self, output_path: Path, title: str, file_path: Path, content: str
-    ) -> bool:
-        """Write markdown file with HTML content.
-
-        Args:
-            output_path: Path to write markdown file.
-            title: Title for markdown file.
-            file_path: Path to original file.
-            content: Processed content.
-
-        Returns:
-            True if file was written, False if unchanged.
-        """
-        markdown_content = f"""# {title}
-
-## Content
-
-{content}
-"""
-        return self._safe_write_file(output_path, markdown_content)
-
-    async def process_file_impl(
-        self,
-        file_path: Path,
-        output_path: Path,
-        metadata: DocumentMetadata,
-    ) -> Optional[DocumentMetadata]:
+    async def _process_file(self, file_path: Path, metadata: HTMLMetadata) -> bool:
         """Process an HTML file.
 
         Args:
-            file_path: Path to HTML file.
-            output_path: Path to write output.
-            metadata: Document metadata.
+            file_path: Path to file
+            metadata: Metadata to update
 
         Returns:
-            Document metadata.
+            bool: Whether processing was successful
         """
         try:
-            # Process HTML content
-            content = await self._process_content(file_path)
+            # Read HTML content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
 
-            # Update metadata
-            metadata.title = file_path.stem
-            metadata.processed = True
-            metadata.metadata.update(
-                {
-                    "file_type": mimetypes.guess_type(file_path)[0] or "text/html",
-                    "file_size": os.path.getsize(file_path),
-                }
-            )
+            # Parse HTML
+            soup = BeautifulSoup(content, "html.parser")
 
-            # Create HTML marker
-            html_marker = f"[ATTACH:DOC:{file_path.stem}]"
+            # Extract metadata
+            metadata.title = soup.title.string if soup.title else file_path.stem
+            metadata.content = soup.get_text()
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
 
-            # Write markdown using MarkdownWriter
-            markdown_content = self.markdown_writer.write_document(
-                title=metadata.title,
-                content=f"{html_marker}\n\n{content}",
-                metadata=metadata.metadata,
-                file_path=file_path,
-                output_path=output_path,
-            )
+            # Extract links
+            metadata.links = {str(a.get("href")) for a in soup.find_all("a") if a.get("href")}
 
-            # Write the file
-            self._safe_write_file(output_path, markdown_content)
+            # Extract images
+            metadata.images = {str(img.get("src")) for img in soup.find_all("img") if img.get("src")}
 
-            metadata.add_output_file(output_path)
-            return metadata
+            # Extract scripts
+            metadata.scripts = {str(script.get("src")) for script in soup.find_all("script") if script.get("src")}
+
+            # Extract styles
+            metadata.styles = {str(link.get("href")) for link in soup.find_all("link", rel="stylesheet") if link.get("href")}
+
+            # Extract charset
+            charset_meta = soup.find("meta", charset=True)
+            if charset_meta:
+                metadata.charset = charset_meta.get("charset")
+            else:
+                content_meta = soup.find("meta", {"http-equiv": "Content-Type"})
+                if content_meta:
+                    content = content_meta.get("content", "")
+                    if "charset=" in content:
+                        metadata.charset = content.split("charset=")[-1]
+
+            return True
 
         except Exception as e:
-            error_msg = f"Failed to process HTML {file_path}: {str(e)}"
-            self.logger.error(error_msg)
-            if metadata:
-                metadata.add_error(self.name, error_msg)
-                metadata.processed = False
-            return metadata
+            logger.error(f"Failed to process HTML file {file_path}: {e}")
+            return False
 
-    def _convert_html_to_markdown(self, html: str) -> str:
-        """Convert HTML to markdown.
+    async def _parse_file(self, file_path: Path, metadata: HTMLMetadata) -> bool:
+        """Parse an HTML file.
 
         Args:
-            html: HTML content.
+            file_path: Path to file
+            metadata: Metadata to update
 
         Returns:
-            Markdown representation of HTML content.
+            bool: Whether parsing was successful
         """
         try:
+            # Read HTML content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
             # Parse HTML
-            soup = BeautifulSoup(html, "html.parser")
+            soup = BeautifulSoup(content, "html.parser")
 
-            # Extract text
-            text = soup.get_text()
+            # Extract metadata
+            metadata.title = soup.title.string if soup.title else file_path.stem
+            metadata.content = soup.get_text()
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
 
-            # Clean up text
-            lines = []
-            for line in text.split("\n"):
-                line = line.strip()
-                if line:
-                    lines.append(line)
+            # Extract links
+            metadata.links = {str(a.get("href")) for a in soup.find_all("a") if a.get("href")}
 
-            # Join lines back together
-            return "\n".join(lines)
+            # Extract images
+            metadata.images = {str(img.get("src")) for img in soup.find_all("img") if img.get("src")}
+
+            # Extract scripts
+            metadata.scripts = {str(script.get("src")) for script in soup.find_all("script") if script.get("src")}
+
+            # Extract styles
+            metadata.styles = {str(link.get("href")) for link in soup.find_all("link", rel="stylesheet") if link.get("href")}
+
+            # Extract charset
+            charset_meta = soup.find("meta", charset=True)
+            if charset_meta:
+                metadata.charset = charset_meta.get("charset")
+            else:
+                content_meta = soup.find("meta", {"http-equiv": "Content-Type"})
+                if content_meta:
+                    content = content_meta.get("content", "")
+                    if "charset=" in content:
+                        metadata.charset = content.split("charset=")[-1]
+
+            return True
 
         except Exception as e:
-            return f"Error converting HTML to markdown: {str(e)}"
+            logger.error(f"Failed to parse HTML file {file_path}: {e}")
+            return False
+
+    async def _disassemble_file(self, file_path: Path, metadata: HTMLMetadata) -> bool:
+        """Disassemble an HTML file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether disassembly was successful
+        """
+        try:
+            # For now, just copy the file
+            metadata.title = file_path.stem
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to disassemble HTML file {file_path}: {e}")
+            return False
+
+    async def _split_file(self, file_path: Path, metadata: HTMLMetadata) -> bool:
+        """Split an HTML file.
+
+        Args:
+            file_path: Path to file
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether splitting was successful
+        """
+        try:
+            # For now, just copy the file
+            metadata.title = file_path.stem
+            metadata.file_size = file_path.stat().st_size
+            metadata.file_hash = calculate_file_hash(file_path)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to split HTML file {file_path}: {e}")
+            return False

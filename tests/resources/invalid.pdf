@@ -1,2 +1,0 @@
-This is not a valid PDF file.
-It should cause the PDF handler to fail gracefully. 

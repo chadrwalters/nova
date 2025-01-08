@@ -1,172 +1,144 @@
-"""Nova command line interface."""
+"""Command-line interface for Nova document processor."""
+
 import argparse
 import asyncio
 import logging
 import os
-import sys
-import traceback
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-from nova.context_processor.config.manager import ConfigManager
-from nova.context_processor.config.settings import LoggingConfig, PipelineConfig
-from nova.context_processor.core.logging import NovaFormatter, print_summary
-from nova.context_processor.core.pipeline import NovaPipeline
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-logger = logging.getLogger("nova")
+from .config.manager import ConfigManager
+from .core.nova import Nova
+
+logger = logging.getLogger(__name__)
+console = Console()
 
 
-def configure_logging(debug: bool = False, no_color: bool = False) -> None:
-    """Configure logging.
-
-    Args:
-        debug: Whether to enable debug logging.
-        no_color: Whether to disable colored output.
-    """
-    # Get log level from environment variable or fallback to debug/warning
-    log_level = os.getenv("NOVA_LOG_LEVEL", "DEBUG" if debug else "WARNING")
-
-    # Create basic logging config
-    config = LoggingConfig(
-        level=log_level,
-        console_level=log_level,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        date_format="%Y-%m-%d %H:%M:%S",
-        handlers=["console"],
+def setup_logging() -> None:
+    """Set up logging configuration."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True)],
     )
 
-    # Create handler with custom formatter
-    handler = logging.StreamHandler()
-    handler.setFormatter(NovaFormatter(config))
 
-    # Configure root logger
-    root = logging.getLogger()
-    root.addHandler(handler)
-    root.setLevel(getattr(logging, log_level))
-
-    # Configure nova logger (using module-level logger)
-    nova_logger = logging.getLogger("nova")
-    nova_logger.setLevel(getattr(logging, log_level))
-
-    # Configure specific loggers to reduce verbosity
-    for logger_name in logging.root.manager.loggerDict:
-        if logger_name.startswith("nova"):
-            current_logger = logging.getLogger(logger_name)
-            current_logger.setLevel(getattr(logging, log_level))
-            # Only show file skipping messages in debug mode
-            if log_level != "DEBUG" and "unchanged since last processing" in str(
-                current_logger.handlers
-            ):
-                current_logger.handlers = []
-
-
-async def main(args: Optional[List[str]] = None) -> int:
-    """Run Nova pipeline.
-
-    Args:
-        args: Command line arguments.
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments.
 
     Returns:
-        Exit code.
+        Parsed arguments
     """
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="Nova document processing pipeline")
+    parser = argparse.ArgumentParser(description="Nova document processor")
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to configuration file",
+        default=os.environ.get("NOVA_CONFIG_PATH"),
+    )
     parser.add_argument(
         "--input-dir",
-        type=Path,
+        type=str,
         help="Input directory",
+        default=None,
     )
     parser.add_argument(
         "--output-dir",
-        type=Path,
+        type=str,
         help="Output directory",
+        default=None,
     )
     parser.add_argument(
-        "--config",
-        type=Path,
-        required=True,
-        help="Configuration file (required)",
-    )
-    parser.add_argument(
-        "--phases",
-        nargs="+",
-        help="Override phases from config",
-    )
-    parser.add_argument(
-        "--debug",
+        "--recursive",
         action="store_true",
-        help="Enable debug logging",
+        help="Process directories recursively",
+        default=True,
     )
-    parser.add_argument(
-        "--no-color",
-        action="store_true",
-        help="Disable colored output",
-    )
+    return parser.parse_args()
 
-    parsed_args = parser.parse_args(args)
 
-    # Configure logging
-    configure_logging(
-        debug=parsed_args.debug,
-        no_color=parsed_args.no_color,
-    )
+def count_processable_files(directory: Path) -> int:
+    """Count files that should be processed.
 
+    Args:
+        directory: Directory to count files in
+
+    Returns:
+        int: Number of processable files
+    """
+    count = 0
+    for file_path in directory.rglob("*"):
+        if file_path.is_file() and file_path.name != ".DS_Store":
+            count += 1
+    return count
+
+
+async def main() -> None:
+    """Main entry point."""
     try:
-        # Ensure config path exists
-        if not parsed_args.config.exists():
-            logger.error(f"Config file not found: {parsed_args.config}")
-            return 1
+        # Set up logging
+        setup_logging()
 
-        # Convert to absolute path and ensure it's resolved
-        config_path = parsed_args.config.resolve()
-        logger.info(f"Using config file: {config_path}")
-        
-        # Set environment variable for config path
-        os.environ["NOVA_CONFIG_PATH"] = str(config_path)
-        
-        # Load configuration
-        config = ConfigManager(str(config_path))
+        # Parse arguments
+        args = parse_args()
 
-        # Create pipeline
-        if config.pipeline is None:
-            config.pipeline = PipelineConfig()
-        pipeline = NovaPipeline(config=config)
+        # Initialize config
+        config = ConfigManager(args.config)
 
-        # Get input directory
-        input_dir = parsed_args.input_dir if parsed_args.input_dir else config.input_dir
-        if not input_dir:
-            logger.error("No input directory specified")
-            return 1
+        # Initialize Nova
+        nova = Nova(config)
 
-        # Get output directory
-        output_dir = (
-            parsed_args.output_dir if parsed_args.output_dir else config.output_dir
-        )
-        if not output_dir:
-            logger.error("No output directory specified")
-            return 1
+        # Process input directory
+        input_dir = Path(args.input_dir) if args.input_dir else config.input_dir
+        output_dir = Path(args.output_dir) if args.output_dir else config.output_dir
 
-        # Get phases from config or command line override
-        phases = (
-            config.pipeline.phases
-            if hasattr(config.pipeline, "phases")
-            else ["parse", "split"]
-        )
-        if parsed_args.phases:
-            logger.info("Overriding phases from config with command line arguments")
-            phases = parsed_args.phases
+        # Count processable files
+        total_files = count_processable_files(input_dir)
 
-        # Process directory
-        await pipeline.process_directory(input_dir, phases)
+        # Process files with progress bar
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        ) as progress:
+            # Create overall progress
+            overall_task = progress.add_task(
+                "[cyan]Processing files",
+                total=total_files
+            )
 
-        return 0
+            # Process each file
+            for file_path in input_dir.rglob("*"):
+                if file_path.is_file():
+                    # Skip .DS_Store files silently
+                    if file_path.name == ".DS_Store":
+                        continue
+
+                    # Update progress description
+                    progress.update(
+                        overall_task,
+                        description=f"[cyan]Processing {file_path.name}"
+                    )
+
+                    # Process file
+                    await nova.process_file(file_path)
+
+                    # Update progress
+                    progress.advance(overall_task)
+
+        # Run finalization
+        nova.finalize()
 
     except Exception as e:
         logger.error(f"Pipeline failed: {str(e)}")
-        if parsed_args.debug:
-            logger.error(traceback.format_exc())
-        return 1
+        raise
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    asyncio.run(main())

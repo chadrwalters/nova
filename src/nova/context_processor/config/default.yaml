@@ -5,6 +5,30 @@ input_dir: ${base_dir}/_NovaInput
 output_dir: ${base_dir}/_Nova
 processing_dir: ${base_dir}/_NovaProcessing
 
+# Input file patterns to process
+input_patterns:
+  - "*.md"
+  - "*.txt"
+  - "*.docx"
+  - "*.pdf"
+  - "*.jpg"
+  - "*.jpeg"
+  - "*.png"
+  - "*.gif"
+  - "*.webp"
+  - "*.heic"
+  - "*.svg"
+  - "*.xlsx"
+  - "*.xls"
+  - "*.html"
+  - "*.htm"
+  - "*.mp4"
+  - "*.avi"
+  - "*.mov"
+  - "*.zip"
+  - "*.tar"
+  - "*.gz"
+
 cache:
   dir: ${base_dir}/_NovaCache
   enabled: true
