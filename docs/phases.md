@@ -20,18 +20,21 @@ The `Phase` base class (`src/nova/context_processor/phases/base.py`) provides th
 
 #### Phase Lifecycle
 Each phase follows a standard lifecycle:
-1. Initialization with configuration and pipeline
+1. Initialization with configuration and metadata store
 2. File processing
 3. Metadata updates
 4. Output generation
-5. Finalization (optional)
+5. Finalization
 
 #### Base Methods
 
 - `process_file`: Processes individual files
-- `process_directory`: Handles directory-level processing
+- `process`: Handles batch processing
 - `finalize`: Runs cleanup and finalization steps
 - `_update_base_metadata`: Updates core metadata fields
+- `_save_metadata`: Saves metadata to store
+- `_get_metadata`: Retrieves metadata from store
+- `_get_files`: Gets files from directory
 
 ## Processing Phases
 
@@ -53,6 +56,16 @@ The `ParsePhase` is the initial processing phase that converts input documents i
 4. Generates parsed markdown output
 5. Stores phase-specific metadata
 
+#### Output Structure
+```
+_NovaProcessing/
+└── phases/
+    └── parse/
+        └── {filename}/
+            ├── {filename}.parsed.md
+            └── attachments/
+```
+
 ### 2. Disassembly Phase
 
 The `DisassemblyPhase` breaks down parsed documents into logical components.
@@ -66,15 +79,21 @@ The `DisassemblyPhase` breaks down parsed documents into logical components.
 
 #### Processing Flow
 1. Validates input markdown
-2. Splits content at `--==RAW NOTES==--` marker
-3. Creates summary and raw notes sections
+2. Splits content at section markers
+3. Creates component files
 4. Processes attachments
 5. Updates section metadata
 
-#### Content Limits
-- Summary content: 1MB limit
-- Raw notes content: 5MB limit
-- Content exceeding limits is truncated
+#### Output Structure
+```
+_NovaProcessing/
+└── phases/
+    └── disassembly/
+        └── {filename}/
+            ├── content.md
+            ├── metadata.json
+            └── attachments/
+```
 
 ### 3. Split Phase
 
@@ -92,12 +111,18 @@ The `SplitPhase` organizes content into standardized sections.
 - Notes
 - References
 
-#### Processing Flow
-1. Reads parsed content
-2. Identifies section markers
-3. Distributes content to appropriate sections
-4. Creates section-specific files
-5. Updates metadata with section information
+#### Output Structure
+```
+_NovaProcessing/
+└── phases/
+    └── split/
+        └── {filename}/
+            ├── summary.md
+            ├── details.md
+            ├── notes.md
+            ├── references.md
+            └── metadata.json
+```
 
 ### 4. Finalize Phase
 
@@ -109,12 +134,20 @@ The `FinalizePhase` completes document processing and prepares final output.
 - Metadata finalization
 - Directory structure creation
 
-#### Processing Flow
-1. Creates final directory structure
-2. Copies processed files to output location
-3. Consolidates metadata
-4. Generates processing summary
-5. Performs cleanup operations
+#### Output Structure
+```
+_NovaProcessing/
+└── phases/
+    └── finalize/
+        └── {filename}/
+            ├── content/
+            │   ├── summary.md
+            │   ├── details.md
+            │   ├── notes.md
+            │   └── references.md
+            ├── attachments/
+            └── metadata.json
+```
 
 ## Metadata Management
 
@@ -127,14 +160,14 @@ Each phase maintains its own metadata store with:
 - Error tracking
 - Output file references
 
-### Metadata Versioning
-
-Phases track changes through versioned metadata:
-```python
-metadata.add_version(
-    phase=self.name,
-    changes=["Change description"],
-)
+### Metadata Storage
+```
+_NovaProcessing/
+└── metadata/
+    ├── parse/
+    ├── disassembly/
+    ├── split/
+    └── finalize/
 ```
 
 ### Error Handling
@@ -148,34 +181,6 @@ except Exception as e:
     if metadata:
         metadata.add_error(self.__class__.__name__, str(e))
     return None
-```
-
-## Directory Structure
-
-The phase system maintains a structured output directory:
-
-```
-_NovaProcessing/
-├── phases/
-│   ├── parse/
-│   │   └── {filename}.parsed.md
-│   ├── disassemble/
-│   │   ├── {filename}.summary.md
-│   │   └── {filename}.raw_notes.md
-│   ├── split/
-│   │   ├── {filename}.summary.md
-│   │   ├── {filename}.details.md
-│   │   ├── {filename}.notes.md
-│   │   └── {filename}.references.md
-│   └── finalize/
-│       └── {filename}/
-│           ├── summary.md
-│           ├── details.md
-│           ├── notes.md
-│           └── references.md
-└── metadata/
-    └── {phase}/
-        └── {filename}.metadata.json
 ```
 
 ## Best Practices
@@ -207,4 +212,4 @@ _NovaProcessing/
 3. Handle file permissions
 4. Clean up temporary files
 5. Validate output structure
-``` 
+```

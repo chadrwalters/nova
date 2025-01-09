@@ -365,6 +365,11 @@ class ConfigManager:
         return self._safe_path(self.config.processing_dir)
 
     @property
+    def temp_dir(self) -> Path:
+        """Get temporary directory path."""
+        return self._safe_path(self.config.temp_dir)
+
+    @property
     def cache_dir(self) -> Path:
         """Get cache directory path."""
         return self._safe_path(self.config.cache.dir)

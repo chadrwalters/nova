@@ -72,6 +72,16 @@ class HTMLMetadata(BaseMetadata):
 class MarkdownMetadata(BaseMetadata):
     """Metadata for Markdown files."""
 
+    line_count: Optional[int] = Field(None, description="Number of lines")
+    word_count: Optional[int] = Field(None, description="Number of words")
+    char_count: Optional[int] = Field(None, description="Number of characters")
+    has_frontmatter: Optional[bool] = Field(None, description="Whether file has frontmatter")
+    has_links: Optional[bool] = Field(None, description="Whether file has links")
+    has_images: Optional[bool] = Field(None, description="Whether file has images")
+    has_code_blocks: Optional[bool] = Field(None, description="Whether file has code blocks")
+    has_tables: Optional[bool] = Field(None, description="Whether file has tables")
+    has_math: Optional[bool] = Field(None, description="Whether file has math")
+    has_html: Optional[bool] = Field(None, description="Whether file has HTML")
     links: Set[str] = Field(default_factory=set, description="External links")
     images: Set[str] = Field(default_factory=set, description="Image references")
     headings: Set[str] = Field(default_factory=set, description="Heading text")

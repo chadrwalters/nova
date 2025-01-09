@@ -44,6 +44,9 @@ class HandlerFactory:
             ".bmp": ImageHandler,
             ".tiff": ImageHandler,
             ".webp": ImageHandler,
+            ".heic": ImageHandler,
+            ".heif": ImageHandler,
+            ".svg": ImageHandler,
         }
 
     def get_handler(self, file_path: Path) -> Optional[BaseHandler]:

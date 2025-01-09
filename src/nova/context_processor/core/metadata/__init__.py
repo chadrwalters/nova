@@ -2,6 +2,7 @@
 
 from nova.context_processor.core.metadata.models.base import BaseMetadata
 from nova.context_processor.core.metadata.models.factory import MetadataFactory
+from nova.context_processor.core.metadata.store import MetadataStore
 from nova.context_processor.core.metadata.models.types import (
     ArchiveMetadata,
     AudioMetadata,
@@ -13,12 +14,13 @@ from nova.context_processor.core.metadata.models.types import (
     TextMetadata,
     VideoMetadata,
 )
-from nova.context_processor.core.metadata.store.manager import MetadataStore
 
 __all__ = [
+    "BaseMetadata",
+    "MetadataFactory",
+    "MetadataStore",
     "ArchiveMetadata",
     "AudioMetadata",
-    "BaseMetadata",
     "DocumentMetadata",
     "HTMLMetadata",
     "ImageMetadata",
@@ -26,6 +28,4 @@ __all__ = [
     "SpreadsheetMetadata",
     "TextMetadata",
     "VideoMetadata",
-    "MetadataFactory",
-    "MetadataStore",
 ] 

@@ -3,13 +3,14 @@
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set
 from io import StringIO
 
 import pandas as pd
 
 from nova.context_processor.config.manager import ConfigManager
 from nova.context_processor.core.metadata.models.types import SpreadsheetMetadata
+from nova.context_processor.core.metadata import BaseMetadata
 from nova.context_processor.handlers.base import BaseHandler
 from nova.context_processor.utils.file_utils import calculate_file_hash
 
@@ -46,6 +47,7 @@ class SpreadsheetHandler(BaseHandler):
                 "sheets": {},
                 "has_formulas": False,
                 "has_macros": False,
+                "content": "",
             }
 
             if extension == ".csv":
@@ -72,6 +74,9 @@ class SpreadsheetHandler(BaseHandler):
                         "columns": len(df.columns),
                     }
                 }
+
+                # Convert to markdown table
+                info["content"] = df.to_markdown(index=False)
             else:
                 # Read Excel file
                 excel = pd.ExcelFile(file_path)
@@ -79,6 +84,7 @@ class SpreadsheetHandler(BaseHandler):
                 info["total_rows"] = 0
                 info["total_columns"] = 0
                 info["sheets"] = {}
+                info["content"] = ""
 
                 # Process each sheet
                 for sheet_name in excel.sheet_names:
@@ -89,6 +95,11 @@ class SpreadsheetHandler(BaseHandler):
                         "rows": len(df),
                         "columns": len(df.columns),
                     }
+
+                    # Add sheet content
+                    info["content"] += f"\n## {sheet_name}\n\n"
+                    info["content"] += df.to_markdown(index=False)
+                    info["content"] += "\n\n"
 
             return info
 
@@ -113,6 +124,7 @@ class SpreadsheetHandler(BaseHandler):
                 return False
 
             # Update metadata
+            metadata.content = info["content"]
             metadata.sheet_count = info["sheet_count"]
             metadata.total_rows = info["total_rows"]
             metadata.total_columns = info["total_columns"]
@@ -142,6 +154,7 @@ class SpreadsheetHandler(BaseHandler):
                 return False
 
             # Update metadata
+            metadata.content = info["content"]
             metadata.sheet_count = info["sheet_count"]
             metadata.total_rows = info["total_rows"]
             metadata.total_columns = info["total_columns"]
@@ -195,3 +208,34 @@ class SpreadsheetHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to split spreadsheet {file_path}: {e}")
             return False
+
+    async def parse_file(self, file_path: Path) -> Optional[BaseMetadata]:
+        """Parse a spreadsheet file.
+
+        Args:
+            file_path: Path to spreadsheet file
+
+        Returns:
+            Optional[BaseMetadata]: Metadata if successful, None if failed
+        """
+        try:
+            # Create metadata
+            metadata = SpreadsheetMetadata(
+                file_path=str(file_path),
+                file_name=file_path.name,
+                file_type=file_path.suffix.lstrip('.'),
+                file_size=file_path.stat().st_size,
+                file_hash=calculate_file_hash(file_path),
+                created_at=file_path.stat().st_ctime,
+                modified_at=file_path.stat().st_mtime,
+            )
+
+            # Process file
+            if await self._process_file(file_path, metadata):
+                return metadata
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to parse spreadsheet file {file_path}: {str(e)}")
+            return None

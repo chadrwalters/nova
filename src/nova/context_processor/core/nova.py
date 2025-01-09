@@ -33,26 +33,7 @@ class Nova:
         """
         self.config = config
         self.pipeline = NovaPipeline(config)
-        
-        # Initialize metadata stores for each phase
-        self.metadata_stores = {}
-        for phase_name in ["parse", "disassembly", "split", "finalize"]:
-            store_dir = config.base_dir / "_NovaProcessing" / "metadata" / phase_name
-            self.metadata_stores[phase_name] = MetadataStore(store_dir=store_dir)
-
-        # Initialize phases
-        self.parse_phase = ParsePhase(config, self.metadata_stores["parse"])
-        self.disassemble_phase = DisassemblyPhase(config, self.metadata_stores["disassembly"])
-        self.split_phase = SplitPhase(config, self.metadata_stores["split"])
-        self.finalize_phase = FinalizePhase(config, self.metadata_stores["finalize"])
-
-        # Add phases in order
-        self.phases = [
-            self.parse_phase,
-            self.disassemble_phase,
-            self.split_phase,
-            self.finalize_phase,
-        ]
+        self.phases = self.pipeline.phases
 
     async def process_file(self, file_path: Union[str, Path]) -> Optional[BaseMetadata]:
         """Process a file through the pipeline.
@@ -107,29 +88,6 @@ class Nova:
             })
             return None
 
-    async def process_phase(self, phase: Phase) -> bool:
-        """Process files in phase.
-
-        Args:
-            phase: Phase to process
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            # Process files
-            return await phase.process()
-
-        except Exception as e:
-            logger.error(f"Failed to process phase {phase.__class__.__name__}: {e}")
-            return False
-
     def finalize(self) -> None:
         """Run finalization steps."""
-        try:
-            # Run finalization
-            self.pipeline.finalize()
-
-        except Exception as e:
-            logger.error(f"Finalization failed: {e}")
-            raise
+        self.pipeline.finalize()

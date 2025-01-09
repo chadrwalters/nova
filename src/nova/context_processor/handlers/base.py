@@ -50,43 +50,39 @@ class ProcessingResult:
 
 
 class BaseHandler:
-    """Base handler for document processing."""
+    """Base class for all handlers."""
 
-    def __init__(self, config: ConfigManager) -> None:
+    def __init__(self, config: ConfigManager):
         """Initialize handler.
 
         Args:
-            config: Nova configuration
+            config: Configuration manager
         """
         self.config = config
-        self.name = self.__class__.__name__.lower().replace("handler", "")
-        self.version = "1.0.0"
-        self.supported_extensions: Set[str] = set()
-        self.mime_types: Set[str] = set()
+        self.temp_dir = Path(config.temp_dir)
+        if not self.temp_dir.exists():
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.supported_extensions = set()
 
-    async def process_file(self, file_path: Path) -> Optional[BaseMetadata]:
-        """Process a file.
+    async def parse_file(self, file_path: Path) -> Optional[BaseMetadata]:
+        """Parse a file.
 
         Args:
-            file_path: Path to file
+            file_path: Path to file to parse
 
         Returns:
-            Optional[BaseMetadata]: Metadata if successful, None otherwise
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Calculate file hash
-            file_hash = calculate_file_hash(file_path)
-            if not file_hash:
-                logger.error(f"Failed to calculate hash for {file_path}")
-                return None
-
             # Create metadata
-            metadata = MetadataFactory.create(
-                file_path=file_path,
-                handler_name=self.name,
-                handler_version=self.version,
-                file_type=file_path.suffix.lower(),
-                file_hash=file_hash
+            metadata = BaseMetadata(
+                file_path=str(file_path),
+                file_name=file_path.name,
+                file_type=file_path.suffix.lstrip('.'),
+                file_size=file_path.stat().st_size,
+                file_hash=self._calculate_file_hash(file_path),
+                created_at=file_path.stat().st_ctime,
+                modified_at=file_path.stat().st_mtime,
             )
 
             # Process file
@@ -96,169 +92,157 @@ class BaseHandler:
             return None
 
         except Exception as e:
-            logger.error(f"Failed to process {file_path}: {e}")
+            logger.error(f"Failed to parse file {file_path}: {str(e)}")
             return None
 
-    async def parse_file(self, file_path: Path) -> Optional[BaseMetadata]:
-        """Parse a file.
+    async def _process_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
+        """Process a file.
+
+        Args:
+            file_path: Path to file to process
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether processing was successful
+        """
+        try:
+            # Create output file path preserving original extension
+            output_file = self.temp_dir / file_path.name
+
+            # Copy file to temp directory
+            with open(file_path, 'rb') as src, open(output_file, 'wb') as dst:
+                dst.write(src.read())
+
+            metadata.output_files.add(str(output_file))
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to process file {file_path}: {str(e)}")
+            return False
+
+    def _calculate_file_hash(self, file_path: Path) -> str:
+        """Calculate file hash.
 
         Args:
             file_path: Path to file
 
         Returns:
-            Optional[BaseMetadata]: Metadata if successful, None otherwise
+            str: File hash
         """
-        try:
-            # Calculate file hash
-            file_hash = calculate_file_hash(file_path)
-            if not file_hash:
-                logger.error(f"Failed to calculate hash for {file_path}")
-                return None
-
-            # Create metadata
-            metadata = MetadataFactory.create(
-                file_path=file_path,
-                handler_name=self.name,
-                handler_version=self.version,
-                file_type=file_path.suffix.lower(),
-                file_hash=file_hash
-            )
-
-            # Parse file
-            if await self._parse_file(file_path, metadata):
-                return metadata
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Failed to parse {file_path}: {e}")
-            return None
+        import hashlib
+        with open(file_path, 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()
 
     async def disassemble_file(self, file_path: Path) -> Optional[BaseMetadata]:
         """Disassemble a file.
 
         Args:
-            file_path: Path to file
+            file_path: Path to file to disassemble
 
         Returns:
-            Optional[BaseMetadata]: Metadata if successful, None otherwise
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Calculate file hash
-            file_hash = calculate_file_hash(file_path)
-            if not file_hash:
-                logger.error(f"Failed to calculate hash for {file_path}")
-                return None
-
             # Create metadata
-            metadata = MetadataFactory.create(
-                file_path=file_path,
-                handler_name=self.name,
-                handler_version=self.version,
-                file_type=file_path.suffix.lower(),
-                file_hash=file_hash
+            metadata = BaseMetadata(
+                file_path=str(file_path),
+                file_name=file_path.name,
+                file_type=file_path.suffix.lstrip('.'),
+                file_size=file_path.stat().st_size,
+                file_hash=self._calculate_file_hash(file_path),
+                created_at=file_path.stat().st_ctime,
+                modified_at=file_path.stat().st_mtime,
             )
 
-            # Disassemble file
+            # Process file
             if await self._disassemble_file(file_path, metadata):
                 return metadata
 
             return None
 
         except Exception as e:
-            logger.error(f"Failed to disassemble {file_path}: {e}")
+            logger.error(f"Failed to disassemble file {file_path}: {str(e)}")
             return None
 
-    async def split_file(self, file_path: Path) -> Optional[BaseMetadata]:
+    async def _disassemble_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
+        """Disassemble a file.
+
+        Args:
+            file_path: Path to file to disassemble
+            metadata: Metadata to update
+
+        Returns:
+            bool: Whether disassembly was successful
+        """
+        try:
+            # Create output file path preserving original extension
+            output_file = self.temp_dir / file_path.name
+
+            # Copy file to temp directory
+            with open(file_path, 'rb') as src, open(output_file, 'wb') as dst:
+                dst.write(src.read())
+
+            metadata.output_files.add(str(output_file))
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to disassemble file {file_path}: {str(e)}")
+            return False
+
+    async def split_file(self, file_path: Path, metadata: Optional[BaseMetadata] = None) -> Optional[BaseMetadata]:
         """Split a file.
 
         Args:
-            file_path: Path to file
+            file_path: Path to file to split
+            metadata: Optional metadata to update
 
         Returns:
-            Optional[BaseMetadata]: Metadata if successful, None otherwise
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Calculate file hash
-            file_hash = calculate_file_hash(file_path)
-            if not file_hash:
-                logger.error(f"Failed to calculate hash for {file_path}")
-                return None
+            # Create metadata if not provided
+            if not metadata:
+                metadata = BaseMetadata(
+                    file_path=str(file_path),
+                    file_name=file_path.name,
+                    file_type=file_path.suffix.lstrip('.'),
+                    file_size=file_path.stat().st_size,
+                    file_hash=calculate_file_hash(file_path),
+                    created_at=file_path.stat().st_ctime,
+                    modified_at=file_path.stat().st_mtime,
+                )
 
-            # Create metadata
-            metadata = MetadataFactory.create(
-                file_path=file_path,
-                handler_name=self.name,
-                handler_version=self.version,
-                file_type=file_path.suffix.lower(),
-                file_hash=file_hash
-            )
-
-            # Split file
+            # Process file
             if await self._split_file(file_path, metadata):
                 return metadata
 
             return None
 
         except Exception as e:
-            logger.error(f"Failed to split {file_path}: {e}")
+            logger.error(f"Failed to split file {file_path}: {str(e)}")
             return None
 
-    async def _process_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
-        """Process a file and update metadata.
-
-        Args:
-            file_path: Path to file
-            metadata: Metadata to update
-
-        Returns:
-            bool: Whether processing was successful
-        """
-        raise NotImplementedError("Subclasses must implement _process_file")
-
-    async def _parse_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
-        """Parse a file and update metadata.
-
-        Args:
-            file_path: Path to file
-            metadata: Metadata to update
-
-        Returns:
-            bool: Whether parsing was successful
-        """
-        raise NotImplementedError("Subclasses must implement _parse_file")
-
-    async def _disassemble_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
-        """Disassemble a file and update metadata.
-
-        Args:
-            file_path: Path to file
-            metadata: Metadata to update
-
-        Returns:
-            bool: Whether disassembly was successful
-        """
-        raise NotImplementedError("Subclasses must implement _disassemble_file")
-
     async def _split_file(self, file_path: Path, metadata: BaseMetadata) -> bool:
-        """Split a file and update metadata.
+        """Split a file.
 
         Args:
-            file_path: Path to file
+            file_path: Path to file to split
             metadata: Metadata to update
 
         Returns:
             bool: Whether splitting was successful
         """
-        raise NotImplementedError("Subclasses must implement _split_file")
+        try:
+            # Create output file path preserving original extension
+            output_file = self.temp_dir / file_path.name
 
-    def can_handle(self, file_path: Path) -> bool:
-        """Check if handler can process file.
+            # Copy file to temp directory
+            with open(file_path, 'rb') as src, open(output_file, 'wb') as dst:
+                dst.write(src.read())
 
-        Args:
-            file_path: Path to file
+            metadata.output_files.add(str(output_file))
+            return True
 
-        Returns:
-            bool: Whether handler can process file
-        """
-        return file_path.suffix.lower() in self.supported_extensions
+        except Exception as e:
+            logger.error(f"Failed to split file {file_path}: {str(e)}")
+            return False

@@ -4,6 +4,7 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Optional
+import json
 
 from nova.context_processor.core.config import NovaConfig
 from nova.context_processor.core.metadata import BaseMetadata
@@ -99,43 +100,63 @@ class FinalizePhase(Phase):
             Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Skip non-parsed markdown files
-            if not str(file_path).endswith(".parsed.md"):
-                return metadata
-
-            # Create metadata if not provided
+            # Get metadata from previous phase
             if not metadata:
-                metadata = MetadataFactory.create(
-                    file_path=file_path,
-                    handler_name=self.__class__.__name__,
-                    handler_version=self.version,
-                )
+                metadata = self._get_metadata(file_path)
+                if not metadata:
+                    logger.warning(f"No metadata found for {file_path}")
+                    return None
 
             # Update base metadata
             self._update_base_metadata(file_path, metadata)
 
             # Create output directory structure
-            base_name = file_path.stem.replace(".parsed", "")
+            base_name = file_path.stem
+            if base_name.endswith(".parsed"):
+                base_name = base_name[:-7]  # Remove .parsed suffix
             final_dir = output_dir / base_name
             final_dir.mkdir(parents=True, exist_ok=True)
 
+            # Create content directory
+            content_dir = final_dir / "content"
+            content_dir.mkdir(exist_ok=True)
+
+            # Create attachments directory
+            attachments_dir = final_dir / "attachments"
+            attachments_dir.mkdir(exist_ok=True)
+
             # Copy all output files from previous phases
             changes = []
+            new_output_files = set()
             for output_file in metadata.output_files:
                 output_path = Path(output_file)
                 if output_path.exists():
-                    dest_path = final_dir / output_path.name
+                    # Determine target directory based on file type
+                    if output_path.suffix == ".md":
+                        target_dir = content_dir
+                    else:
+                        target_dir = attachments_dir
+
+                    # Copy file to appropriate directory
+                    dest_path = target_dir / output_path.name
                     shutil.copy2(output_path, dest_path)
-                    changes.append(f"Copied {output_path.name} to final directory")
+                    changes.append(f"Copied {output_path.name} to {target_dir}")
+                    new_output_files.add(str(dest_path))
+
+            # Create metadata file
+            metadata_file = final_dir / "metadata.json"
+            try:
+                with open(metadata_file, "w", encoding="utf-8") as f:
+                    json.dump(metadata.to_dict(), f, indent=2)
+                new_output_files.add(str(metadata_file))
+                changes.append("Created metadata.json")
+            except Exception as e:
+                logger.error(f"Failed to write metadata file {metadata_file}: {e}")
+                return None
 
             # Update metadata
-            metadata.metadata["final_dir"] = str(final_dir)
-            metadata.processed = True
-            metadata.add_version(
-                phase=self.name,
-                changes=changes,
-            )
-
+            metadata.output_files = new_output_files
+            metadata.changes.extend(changes)
             return metadata
 
         except Exception as e:

@@ -165,8 +165,12 @@ class OutputManager:
                     # If no parent is under input_dir, use just the filename
                     relative_path = Path(input_file.name)
 
-        # Remove any existing .parsed or .metadata suffix from the stem
+        # Get the base name without any extensions
         stem = relative_path.stem
+        while "." in stem:
+            stem = stem.rsplit(".", 1)[0]
+
+        # Remove any existing .parsed or .metadata suffix from the stem
         while True:
             if stem.endswith(".parsed"):
                 stem = stem[:-7]  # Remove '.parsed' suffix
@@ -175,11 +179,79 @@ class OutputManager:
             else:
                 break
 
-        # Construct the output directory path preserving directory structure
-        output_dir = output_base / relative_path.parent / stem
+        # Clean up the stem
+        stem = re.sub(r'[<>:"/\\|?*!@#$%^&(){}\[\]]', "_", stem)
+        stem = re.sub(r"[\s_]+", "_", stem)
+        stem = stem.strip(". _")
 
+        # Construct the output directory path preserving directory structure
+        # If the file is in a subdirectory, use that structure
+        if relative_path.parent != Path("."):
+            # Clean up parent directory names
+            clean_parent = str(relative_path.parent)
+            clean_parent = re.sub(r'[<>:"/\\|?*!@#$%^&(){}\[\]]', "_", clean_parent)
+            clean_parent = re.sub(r"[\s_]+", "_", clean_parent)
+            clean_parent = clean_parent.strip(". _")
+            output_dir = output_base / clean_parent / stem
+        else:
+            output_dir = output_base / stem
+
+        # Check for existing directories with the same base name
         if create:
-            output_dir.mkdir(parents=True, exist_ok=True)
+            # Look for existing directories with the same base name
+            existing_dirs = []
+            for item in output_base.glob(f"**/{stem}*"):
+                if item.is_dir():
+                    # Check if this is a variant directory
+                    item_stem = item.name
+                    while "." in item_stem:
+                        item_stem = item_stem.rsplit(".", 1)[0]
+                    if item_stem == stem:
+                        existing_dirs.append(item)
+
+            if existing_dirs:
+                # If there are existing directories, merge them into one
+                target_dir = output_dir
+                target_dir.mkdir(parents=True, exist_ok=True)
+                
+                for existing_dir in existing_dirs:
+                    if existing_dir != target_dir:
+                        try:
+                            # Move all files from existing directory to target
+                            for item in existing_dir.glob("**/*"):
+                                if item.is_file():
+                                    # Get relative path from existing directory
+                                    rel_path = item.relative_to(existing_dir)
+                                    # Create target path
+                                    target_path = target_dir / rel_path
+                                    # Ensure parent directory exists
+                                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                                    # Move file if it doesn't exist or has different content
+                                    if not target_path.exists():
+                                        item.rename(target_path)
+                                    else:
+                                        # Compare file contents
+                                        with open(item, 'rb') as src, open(target_path, 'rb') as dst:
+                                            import hashlib
+                                            src_hash = hashlib.md5(src.read()).hexdigest()
+                                            dst_hash = hashlib.md5(dst.read()).hexdigest()
+                                            if src_hash != dst_hash:
+                                                # Files are different, keep both with unique names
+                                                counter = 1
+                                                while True:
+                                                    new_path = target_path.parent / f"{target_path.stem}_{counter}{target_path.suffix}"
+                                                    if not new_path.exists():
+                                                        item.rename(new_path)
+                                                        break
+                                                    counter += 1
+                            # Remove empty directory
+                            import shutil
+                            shutil.rmtree(existing_dir)
+                        except Exception as e:
+                            logger.warning(f"Failed to merge directory {existing_dir}: {e}")
+            else:
+                # Create new directory
+                output_dir.mkdir(parents=True, exist_ok=True)
 
         return output_dir
 

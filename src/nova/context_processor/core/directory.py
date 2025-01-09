@@ -1,4 +1,4 @@
-"""Directory management for Nova document processor."""
+"""Directory management for Nova."""
 
 import logging
 import os
@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from ..config.manager import ConfigManager
-from .errors import ResourceError
+from ..core.errors import ResourceError
 
 logger = logging.getLogger(__name__)
 
 
 class DirectoryManager:
-    """Manager for Nova directory structure."""
+    """Manager for directory operations."""
 
     # Required subdirectories in processing directory
     PROCESSING_SUBDIRS = {
@@ -25,17 +25,66 @@ class DirectoryManager:
         "attachments": "attachments/",
     }
 
-    # Files to exclude from cleanup
-    EXCLUDE_PATTERNS = {
+    # Patterns to exclude from cleanup
+    EXCLUDE_PATTERNS = [
+        ".gitkeep",
+        ".git",
+        "__pycache__",
+        "*.pyc",
+        "*.pyo",
+        "*.pyd",
         ".DS_Store",
-        "*.icloud",
-        "._.DS_Store",
-        "._*",
-        ".Spotlight-*",
-        ".Trashes",
-        "desktop.ini",
-        "Thumbs.db",
-    }
+        ".env",
+        ".venv",
+        "venv",
+        "ENV",
+    ]
+
+    # Patterns for temporary files to clean
+    TEMP_PATTERNS = [
+        "*.parsed.md",
+        "*.parsed",
+        "*.metadata",
+        "*.png.png",  # Duplicate image conversions
+        "*.svg.png.png",
+        "*.jpg.png",
+        "*.jpeg.png",
+        "*.svg.png",  # Additional image conversion patterns
+        "*.svg.jpg",
+        "*.png.jpg",
+        "*.jpg.jpg",
+        "*.jpeg.jpg",
+        "*.heic.jpg",
+        "*.heic.png",
+        "*.webp.jpg",
+        "*.webp.png",
+        "*.bmp.jpg",
+        "*.bmp.png",
+        "*.tiff.jpg",
+        "*.tiff.png",
+        "*.gif.jpg",
+        "*.gif.png",
+        "*.tmp",  # Temporary files
+        "*.temp",
+        "*.bak",
+        "~*",  # Backup files
+        "*.swp",  # Vim swap files
+        "*.swo",
+        "*.swn",
+        "*.swm",
+        "*.swl",
+        "*.swk",
+        "*.swj",
+        "*.swi",
+        "*.swh",
+        "*.swg",
+        "*.swf",
+        "*.swe",
+        "*.swd",
+        "*.swc",
+        "*.swb",
+        "*.swa",
+    ]
 
     def __init__(self, config: ConfigManager):
         """Initialize directory manager.
@@ -99,10 +148,59 @@ class DirectoryManager:
             stats_before = self._get_directory_stats(path)
             total_files_removed = 0
 
-            # Remove files (including .DS_Store)
+            # Remove temporary files first
             files_removed = 0
+            for pattern in self.TEMP_PATTERNS:
+                for item in path.glob("**/" + pattern if recursive else pattern):
+                    if item.is_file() and not self._should_exclude(item):
+                        item.unlink()
+                        files_removed += 1
+                        total_files_removed += 1
+                        logger.debug(f"Removed temporary file: {item}")
+
+            # Remove empty .parsed.md directories
+            if recursive:
+                for parsed_dir in path.glob("**/*.parsed.md"):
+                    if parsed_dir.is_dir() and not any(parsed_dir.iterdir()):
+                        parsed_dir.rmdir()
+                        logger.debug(f"Removed empty parsed directory: {parsed_dir}")
+
+            # Remove duplicate directories
+            if recursive:
+                seen_names = set()
+                for subdir in path.glob("**/*"):
+                    if subdir.is_dir() and not self._should_exclude(subdir):
+                        # Get the base name without any extensions
+                        base_name = subdir.name
+                        while "." in base_name:
+                            base_name = base_name.rsplit(".", 1)[0]
+
+                        # If we've seen this base name before, it's a duplicate
+                        if base_name in seen_names:
+                            try:
+                                # Move any files to the original directory
+                                original_dir = next(path.glob(f"**/{base_name}"))
+                                if original_dir != subdir:  # Don't try to move to itself
+                                    for item in subdir.iterdir():
+                                        if item.is_file():
+                                            try:
+                                                item.rename(original_dir / item.name)
+                                            except OSError:
+                                                # If rename fails (e.g., file exists), just remove it
+                                                item.unlink()
+                                                files_removed += 1
+                                                total_files_removed += 1
+                                    # Remove the empty duplicate directory
+                                    subdir.rmdir()
+                                    logger.debug(f"Removed duplicate directory: {subdir}")
+                            except Exception as e:
+                                logger.warning(f"Failed to clean up duplicate directory {subdir}: {e}")
+                        else:
+                            seen_names.add(base_name)
+
+            # Remove regular files
             for item in path.iterdir():
-                if item.is_file():
+                if item.is_file() and not self._should_exclude(item):
                     item.unlink()
                     files_removed += 1
                     total_files_removed += 1
@@ -110,7 +208,7 @@ class DirectoryManager:
             if recursive:
                 # Clean subdirectories
                 for subdir in path.iterdir():
-                    if subdir.is_dir():
+                    if subdir.is_dir() and not self._should_exclude(subdir):
                         success, sub_stats = self.clean_directory(subdir, f"{name}/{subdir.name}")
                         if not success:
                             return False, {}
@@ -118,6 +216,16 @@ class DirectoryManager:
 
             # Get directory stats after cleanup
             stats_after = self._get_directory_stats(path)
+
+            # Remove empty directories (except excluded ones)
+            if recursive:
+                for subdir in reversed(list(path.glob("**/*"))):
+                    if subdir.is_dir() and not self._should_exclude(subdir) and not any(subdir.iterdir()):
+                        try:
+                            subdir.rmdir()
+                            logger.debug(f"Removed empty directory: {subdir}")
+                        except OSError:
+                            pass  # Directory not empty or permission denied
 
             # Prepare stats
             stats = {

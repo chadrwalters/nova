@@ -15,6 +15,7 @@ from ..phases import (
     FinalizePhase,
 )
 from .error_report import ErrorReport
+from .metadata import MetadataStore
 
 if TYPE_CHECKING:
     from ..core.metadata import BaseMetadata
@@ -43,11 +44,18 @@ class NovaPipeline:
         }
         self.error_report = ErrorReport(config.base_dir)
 
+        # Initialize metadata stores for each phase
+        self.metadata_stores = {}
+        for phase_name in ["parse", "disassembly", "split", "finalize"]:
+            store_dir = config.base_dir / "_NovaProcessing" / "metadata" / phase_name
+            store_dir.mkdir(parents=True, exist_ok=True)
+            self.metadata_stores[phase_name] = MetadataStore(store_dir=store_dir)
+
         # Initialize phases
-        self.parse_phase = ParsePhase(config, self)
-        self.disassemble_phase = DisassemblyPhase(config, self)
-        self.split_phase = SplitPhase(config, self)
-        self.finalize_phase = FinalizePhase(config, self)
+        self.parse_phase = ParsePhase(config, self.metadata_stores["parse"])
+        self.disassemble_phase = DisassemblyPhase(config, self.metadata_stores["disassembly"])
+        self.split_phase = SplitPhase(config, self.metadata_stores["split"])
+        self.finalize_phase = FinalizePhase(config, self.metadata_stores["finalize"])
 
         # Add phases in order
         self.phases.extend([
@@ -82,6 +90,22 @@ class NovaPipeline:
             # Create output directory
             output_dir.mkdir(parents=True, exist_ok=True)
 
+            # Get base name without any extensions
+            base_name = file_path.stem
+            while "." in base_name:
+                base_name = base_name.rsplit(".", 1)[0]
+
+            # Check if this is a variant of an already processed file
+            for phase in self.phases:
+                phase_output_dir = output_dir / phase.name
+                if phase_output_dir.exists():
+                    existing_dirs = list(phase_output_dir.glob(f"{base_name}*"))
+                    if existing_dirs:
+                        # This is a variant, skip processing
+                        logger.info(f"Skipping variant file: {file_path}")
+                        self.stats["skipped_files"] += 1
+                        return None
+
             # Update stats
             self.stats["total_files"] += 1
 
@@ -112,38 +136,7 @@ class NovaPipeline:
                     )
 
                     # Process file in phase
-                    result = await phase.process_file(file_path, phase_output_dir, metadata)
-                    
-                    # Handle different processing results
-                    if isinstance(result, ProcessingResult):
-                        if result.status == ProcessingStatus.DUPLICATE:
-                            logger.info(f"Duplicate file found: {file_path} -> {result.duplicate_of}")
-                            self.stats["duplicate_files"] += 1
-                            return result.metadata
-                        elif result.status == ProcessingStatus.FAILED:
-                            logger.error(f"Failed to process {file_path} in phase {phase.name}: {result.error}")
-                            self.stats["failed_files"] += 1
-                            error_details = {
-                                "file": str(file_path),
-                                "phase": phase.name,
-                                "error": result.error or "Phase processing failed"
-                            }
-                            self.stats["errors"].append(error_details)
-                            if result.error:
-                                self.error_report.add_error(
-                                    error=result.error,
-                                    phase=phase.name,
-                                    handler=result.metadata.handler_name if result.metadata else None
-                                )
-                            return None
-                        elif result.status == ProcessingStatus.SKIPPED:
-                            logger.info(f"Skipped file: {file_path}")
-                            self.stats["skipped_files"] += 1
-                            return result.metadata
-                        metadata = result.metadata
-                    else:
-                        metadata = result
-
+                    metadata = await phase.process_file(file_path, phase_output_dir, metadata)
                     if not metadata:
                         logger.error(f"Failed to process {file_path} in phase {phase.name}")
                         self.stats["failed_files"] += 1

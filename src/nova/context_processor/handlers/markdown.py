@@ -5,7 +5,7 @@ import os
 import re
 import logging
 from pathlib import Path
-from typing import Dict, List, Match, Optional, Union, Tuple, Any
+from typing import Dict, List, Match, Optional, Union, Tuple, Any, Set
 
 # Internal imports
 from nova.context_processor.config.manager import ConfigManager
@@ -13,6 +13,8 @@ from nova.context_processor.core.metadata.models.types import DocumentMetadata
 from nova.context_processor.core.markdown.writer import MarkdownWriter
 from nova.context_processor.handlers.base import BaseHandler
 from nova.context_processor.utils.file_utils import calculate_file_hash
+from nova.context_processor.core.metadata import BaseMetadata
+from nova.context_processor.core.metadata.models.types import MarkdownMetadata
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -107,6 +109,7 @@ class MarkdownHandler(BaseHandler):
 
             # Extract basic information
             info = {
+                "content": content,
                 "line_count": len(content.splitlines()),
                 "word_count": len(content.split()),
                 "char_count": len(content),
@@ -142,6 +145,7 @@ class MarkdownHandler(BaseHandler):
                 return False
 
             # Update metadata
+            metadata.content = info["content"]
             metadata.line_count = info["line_count"]
             metadata.word_count = info["word_count"]
             metadata.char_count = info["char_count"]
@@ -176,6 +180,7 @@ class MarkdownHandler(BaseHandler):
                 return False
 
             # Update metadata
+            metadata.content = info["content"]
             metadata.line_count = info["line_count"]
             metadata.word_count = info["word_count"]
             metadata.char_count = info["char_count"]
@@ -234,3 +239,34 @@ class MarkdownHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to split markdown {file_path}: {e}")
             return False
+
+    async def parse_file(self, file_path: Path) -> Optional[BaseMetadata]:
+        """Parse a markdown file.
+
+        Args:
+            file_path: Path to markdown file
+
+        Returns:
+            Optional[BaseMetadata]: Metadata if successful, None if failed
+        """
+        try:
+            # Create metadata
+            metadata = MarkdownMetadata(
+                file_path=str(file_path),
+                file_name=file_path.name,
+                file_type=file_path.suffix.lstrip('.'),
+                file_size=file_path.stat().st_size,
+                file_hash=calculate_file_hash(file_path),
+                created_at=file_path.stat().st_ctime,
+                modified_at=file_path.stat().st_mtime,
+            )
+
+            # Parse file
+            if await self._parse_file(file_path, metadata):
+                return metadata
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to parse markdown {file_path}: {str(e)}")
+            return None

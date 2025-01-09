@@ -4,6 +4,7 @@ base_dir: ~/nova
 input_dir: ${base_dir}/_NovaInput
 output_dir: ${base_dir}/_Nova
 processing_dir: ${base_dir}/_NovaProcessing
+temp_dir: ${base_dir}/_NovaTemp
 
 # Input file patterns to process
 input_patterns:

@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Optional
+import json
 
 from nova.context_processor.core.config import NovaConfig
 from nova.context_processor.core.metadata import BaseMetadata
@@ -34,7 +35,7 @@ class SplitPhase(Phase):
         output_dir: Path,
         metadata: Optional[BaseMetadata] = None,
     ) -> Optional[BaseMetadata]:
-        """Process a file in the split phase.
+        """Process a file.
 
         Args:
             file_path: Path to file to process
@@ -45,25 +46,37 @@ class SplitPhase(Phase):
             Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Get handler for file
+            # Create metadata if not provided
+            if not metadata:
+                metadata = BaseMetadata(
+                    file_path=str(file_path),
+                    file_name=file_path.name,
+                    file_type=file_path.suffix.lstrip('.'),
+                    file_size=file_path.stat().st_size,
+                    file_hash=calculate_file_hash(file_path),
+                    created_at=file_path.stat().st_ctime,
+                    modified_at=file_path.stat().st_mtime,
+                )
+
+            # Get handler
             handler = self.handler_factory.get_handler(file_path)
             if not handler:
                 logger.warning(f"No handler found for {file_path}")
                 return None
 
-            # Split file
-            metadata = await handler.split_file(file_path)
-            if metadata:
-                # Update base metadata
-                self._update_base_metadata(file_path, metadata)
+            # Create output directory
+            file_output_dir = output_dir / file_path.stem
+            if not file_output_dir.exists():
+                file_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Process file
+            if await handler.split_file(file_path, metadata):
                 return metadata
 
             return None
 
         except Exception as e:
             logger.error(f"Failed to process file {file_path}: {str(e)}")
-            if metadata:
-                metadata.add_error(self.__class__.__name__, str(e))
             return None
 
     def finalize(self) -> None:
@@ -93,6 +106,10 @@ class SplitPhase(Phase):
                 logger.warning("No files found in input directory")
                 return True
 
+            # Get output directory
+            output_dir = self.config.base_dir / "_NovaProcessing" / "phases" / self.name
+            output_dir.mkdir(parents=True, exist_ok=True)
+
             # Process each file
             for file_path in input_files:
                 try:
@@ -109,20 +126,20 @@ class SplitPhase(Phase):
                         self.skipped_files.add(file_path)
                         continue
 
-                    # Split file
-                    metadata = await handler.split_file(file_path)
+                    # Process file
+                    metadata = await self.process_file(file_path, output_dir)
                     if metadata:
                         # Save metadata
                         if self._save_metadata(file_path, metadata):
                             self.processed_files.add(file_path)
                             continue
 
-                    # If we get here, splitting failed
-                    logger.error(f"Failed to split {file_path}")
+                    # If we get here, processing failed
+                    logger.error(f"Failed to process {file_path}")
                     self.failed_files.add(file_path)
 
                 except Exception as e:
-                    logger.error(f"Error splitting {file_path}: {e}")
+                    logger.error(f"Error processing {file_path}: {e}")
                     self.failed_files.add(file_path)
 
             return True

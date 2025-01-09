@@ -48,6 +48,7 @@ opencv-python = "^4.9.0.80"
 mutagen = "^1.47.0"
 markitdown = {git = "https://github.com/microsoft/markitdown.git"}
 whoosh = "^2.7.4"
+pymupdf = "^1.25.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

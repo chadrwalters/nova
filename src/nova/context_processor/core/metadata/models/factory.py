@@ -1,6 +1,8 @@
 """Factory for creating metadata instances."""
 
 import logging
+import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Type
 
@@ -17,86 +19,55 @@ logger = logging.getLogger(__name__)
 
 
 class MetadataFactory:
-    """Factory for creating metadata instances."""
+    """Factory for creating metadata objects."""
 
-    _handlers = {
-        ".md": MarkdownMetadata,
-        ".markdown": MarkdownMetadata,
-        ".txt": DocumentMetadata,
-        ".pdf": DocumentMetadata,
-        ".doc": DocumentMetadata,
-        ".docx": DocumentMetadata,
-        ".html": HTMLMetadata,
-        ".htm": HTMLMetadata,
-        ".xls": SpreadsheetMetadata,
-        ".xlsx": SpreadsheetMetadata,
-        ".csv": SpreadsheetMetadata,
-        ".jpg": ImageMetadata,
-        ".jpeg": ImageMetadata,
-        ".png": ImageMetadata,
-        ".gif": ImageMetadata,
-        ".bmp": ImageMetadata,
-        ".tiff": ImageMetadata,
-        ".webp": ImageMetadata,
-    }
-
-    @classmethod
-    def create(
-        cls,
-        file_path: Path,
-        handler_name: str,
-        handler_version: str,
-        file_type: Optional[str] = None,
-        file_hash: Optional[str] = None,
-    ) -> BaseMetadata:
-        """Create metadata instance.
+    @staticmethod
+    def get_metadata_class(file_path: Path) -> Type[BaseMetadata]:
+        """Get metadata class for file type.
 
         Args:
             file_path: Path to file
-            handler_name: Name of handler
-            handler_version: Version of handler
-            file_type: Optional file type
-            file_hash: Optional file hash
 
         Returns:
-            BaseMetadata: Metadata instance
+            Type[BaseMetadata]: Metadata class for file type
         """
-        try:
-            # Get file extension
-            extension = file_path.suffix.lower()
-            
-            # Get metadata class
-            metadata_class = cls._handlers.get(extension, BaseMetadata)
+        extension = file_path.suffix.lower()
 
-            # Create metadata instance
-            metadata = metadata_class(
-                file_path=file_path,
-                file_name=file_path.name,
-                handler_name=handler_name,
-                handler_version=handler_version,
-                file_type=file_type or extension,
-                file_hash=file_hash,
-            )
+        if extension == ".md":
+            return MarkdownMetadata
+        elif extension in {".pdf", ".docx", ".txt"}:
+            return DocumentMetadata
+        elif extension in {".xlsx", ".csv"}:
+            return SpreadsheetMetadata
+        elif extension == ".html":
+            return HTMLMetadata
+        elif extension in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heic", ".heif", ".svg"}:
+            return ImageMetadata
+        else:
+            return BaseMetadata
 
-            return metadata
-
-        except Exception as e:
-            logger.error(f"Failed to create metadata for {file_path}: {e}")
-            return BaseMetadata(
-                file_path=file_path,
-                file_name=file_path.name,
-                handler_name=handler_name,
-                handler_version=handler_version,
-                file_type=file_type or file_path.suffix.lower(),
-                file_hash=file_hash,
-            )
-
-    @classmethod
-    def register_handler(cls, extension: str, metadata_class: Type[BaseMetadata]) -> None:
-        """Register a new metadata handler.
+    @staticmethod
+    def create_metadata(file_path: Path) -> Optional[BaseMetadata]:
+        """Create metadata object for file.
 
         Args:
-            extension: File extension (with dot)
-            metadata_class: Metadata class
+            file_path: Path to file
+
+        Returns:
+            Optional[BaseMetadata]: Metadata object if successful, None if failed
         """
-        cls._handlers[extension.lower()] = metadata_class 
+        try:
+            metadata_class = MetadataFactory.get_metadata_class(file_path)
+            return metadata_class(
+                file_path=str(file_path),
+                file_name=file_path.name,
+                file_type=file_path.suffix.lstrip('.'),
+                file_size=file_path.stat().st_size,
+                file_hash=calculate_file_hash(file_path),
+                created_at=file_path.stat().st_ctime,
+                modified_at=file_path.stat().st_mtime,
+                output_files=set(),
+            )
+        except Exception as e:
+            logger.error(f"Failed to create metadata for {file_path}: {str(e)}")
+            return None 

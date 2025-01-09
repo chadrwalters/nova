@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Optional
+import json
 
 from nova.context_processor.core.config import NovaConfig
 from nova.context_processor.core.metadata import BaseMetadata
@@ -51,11 +52,40 @@ class DisassemblyPhase(Phase):
                 logger.warning(f"No handler found for {file_path}")
                 return None
 
+            # Create output directory structure
+            file_output_dir = output_dir / file_path.stem
+            if not file_output_dir.exists():
+                file_output_dir.mkdir(parents=True, exist_ok=True)
+                # Create attachments directory
+                attachments_dir = file_output_dir / "attachments"
+                attachments_dir.mkdir(exist_ok=True)
+
             # Disassemble file
             metadata = await handler.disassemble_file(file_path)
             if metadata:
                 # Update base metadata
                 self._update_base_metadata(file_path, metadata)
+
+                # Create content file
+                content_file = file_output_dir / "content.md"
+                try:
+                    with open(content_file, "w", encoding="utf-8") as f:
+                        f.write(metadata.content or "")
+                    metadata.output_files.add(str(content_file))
+                except Exception as e:
+                    logger.error(f"Failed to write content file {content_file}: {e}")
+                    return None
+
+                # Create metadata file
+                metadata_file = file_output_dir / "metadata.json"
+                try:
+                    with open(metadata_file, "w", encoding="utf-8") as f:
+                        json.dump(metadata.to_dict(), f, indent=2)
+                    metadata.output_files.add(str(metadata_file))
+                except Exception as e:
+                    logger.error(f"Failed to write metadata file {metadata_file}: {e}")
+                    return None
+
                 return metadata
 
             return None

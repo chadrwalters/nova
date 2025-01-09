@@ -2,9 +2,11 @@
 
 import logging
 from pathlib import Path
+from typing import Optional, Set
 
 from bs4 import BeautifulSoup
 
+from nova.context_processor.core.metadata import BaseMetadata
 from nova.context_processor.core.metadata.models.types import HTMLMetadata
 from nova.context_processor.handlers.base import BaseHandler
 from nova.context_processor.utils.file_utils import calculate_file_hash
@@ -80,58 +82,36 @@ class HTMLHandler(BaseHandler):
             logger.error(f"Failed to process HTML file {file_path}: {e}")
             return False
 
-    async def _parse_file(self, file_path: Path, metadata: HTMLMetadata) -> bool:
+    async def parse_file(self, file_path: Path) -> Optional[BaseMetadata]:
         """Parse an HTML file.
 
         Args:
-            file_path: Path to file
-            metadata: Metadata to update
+            file_path: Path to HTML file
 
         Returns:
-            bool: Whether parsing was successful
+            Optional[BaseMetadata]: Metadata if successful, None if failed
         """
         try:
-            # Read HTML content
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            # Create metadata
+            metadata = HTMLMetadata(
+                file_path=str(file_path),
+                file_name=file_path.name,
+                file_type=file_path.suffix.lstrip('.'),
+                file_size=file_path.stat().st_size,
+                file_hash=calculate_file_hash(file_path),
+                created_at=file_path.stat().st_ctime,
+                modified_at=file_path.stat().st_mtime,
+            )
 
-            # Parse HTML
-            soup = BeautifulSoup(content, "html.parser")
+            # Process file
+            if await self._process_file(file_path, metadata):
+                return metadata
 
-            # Extract metadata
-            metadata.title = soup.title.string if soup.title else file_path.stem
-            metadata.content = soup.get_text()
-            metadata.file_size = file_path.stat().st_size
-            metadata.file_hash = calculate_file_hash(file_path)
-
-            # Extract links
-            metadata.links = {str(a.get("href")) for a in soup.find_all("a") if a.get("href")}
-
-            # Extract images
-            metadata.images = {str(img.get("src")) for img in soup.find_all("img") if img.get("src")}
-
-            # Extract scripts
-            metadata.scripts = {str(script.get("src")) for script in soup.find_all("script") if script.get("src")}
-
-            # Extract styles
-            metadata.styles = {str(link.get("href")) for link in soup.find_all("link", rel="stylesheet") if link.get("href")}
-
-            # Extract charset
-            charset_meta = soup.find("meta", charset=True)
-            if charset_meta:
-                metadata.charset = charset_meta.get("charset")
-            else:
-                content_meta = soup.find("meta", {"http-equiv": "Content-Type"})
-                if content_meta:
-                    content = content_meta.get("content", "")
-                    if "charset=" in content:
-                        metadata.charset = content.split("charset=")[-1]
-
-            return True
+            return None
 
         except Exception as e:
-            logger.error(f"Failed to parse HTML file {file_path}: {e}")
-            return False
+            logger.error(f"Failed to parse HTML file {file_path}: {str(e)}")
+            return None
 
     async def _disassemble_file(self, file_path: Path, metadata: HTMLMetadata) -> bool:
         """Disassemble an HTML file.

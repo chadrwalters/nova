@@ -186,6 +186,7 @@ class NovaConfig(BaseModel):
     input_dir: Path
     output_dir: Path
     processing_dir: Path
+    temp_dir: Path = Field(default_factory=lambda: Path("/tmp/nova"))
     cache: CacheConfig
     apis: Optional[APIConfig] = None
     pipeline: Optional[PipelineConfig] = PipelineConfig()
