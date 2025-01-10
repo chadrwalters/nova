@@ -1,128 +1,165 @@
-# Nova Phase Processing Cleanup Plan
+# Nova Implementation Plan
 
-## Overview
-This plan outlines the steps to fix issues identified in the Nova phase processing system and align it with the documented architecture.
+## Phase 1: Core Infrastructure Setup [Status: COMPLETED]
+1. Initialize Poetry project structure ✅
+   - Set up pyproject.toml with initial dependencies
+   - Configure dev dependencies and build settings
+   - Add pre-commit hooks for mypy and other checks
 
-## Milestones
+2. Create base directory structure ✅
+   - nova/
+     - ingestion/
+     - processing/
+     - rag/
+     - llm/
+     - utils/
+   - tests/
+   - config/
+   - docs/
 
-### 1. Directory Structure Cleanup [IN_PROGRESS]
-- [x] Remove duplicate disassemble.py file
-- [x] Fix parse phase directory structure
-  - [x] Fixed markdown file generation
-  - [x] Proper directory creation
-  - [x] Attachment directory handling
-- [x] Fix directory naming issues
-  - [x] Remove duplicate underscore/space directories
-  - [x] Implement consistent naming convention
-  - [x] Clean up non-standard directory names
-  - [x] Move test files to dedicated test directory
-  - [x] Remove hash-named directories
-  - [x] Enforce date prefix for all content directories
-- [x] Fix output directory structure
-  - [x] Standardize phase outputs
-  - [x] Ensure consistent directory naming
-  - [x] Handle attachments properly
-- [x] Clean up temporary files
-  - [x] Remove .parsed.md directories
-  - [x] Clean up duplicate files (especially image conversions)
-  - [x] Verify file integrity
-  - [x] Implement proper temp file cleanup in handlers
-- [x] Implement content organization
-  - [x] Add type-based subdirectories (documents, images, etc.)
-  - [x] Create standardized attachment structure
-  - [x] Implement date-based organization
-  - [x] Add metadata index for quick lookups
+3. Set up configuration management ✅
+   - Implement NovaConfig class
+   - Create default nova.yaml
+   - Add environment variable handling
 
-### 2. Phase Implementation [IN_PROGRESS]
-- [x] Parse Phase Enhancement
-  - [x] Fix markdown file generation
-  - [x] Implement proper metadata handling
-  - [x] Add content validation
-  - [x] Fix file format preservation
-  - [x] Add has_code_blocks field
-  - [x] Add charset field
-- [ ] Disassembly Phase Implementation
-  - [ ] Add content splitting logic
-  - [ ] Implement attachment handling
-  - [ ] Add size limit enforcement
-  - [ ] Create section metadata
-- [x] Split Phase Implementation
-  - [x] Add section identification
-  - [x] Implement content organization
-  - [x] Create section-specific files
-  - [x] Update metadata handling
-  - [x] Fix argument mismatch in split_file
-- [ ] Finalize Phase Enhancement
-  - [ ] Implement output organization
-  - [ ] Add file consolidation
-  - [ ] Create proper directory structure
-  - [ ] Add metadata finalization
+🔍 MILESTONE 1: Project Structure Test ✅
+- Run poetry install successfully
+- All pre-commit hooks pass
+- Configuration loads correctly
+- Basic CLI runs
 
-### 3. Handler Implementation [IN_PROGRESS]
-- [x] Base Handler Enhancement
-  - [x] Add error handling
-  - [x] Improve metadata creation
-  - [x] Add validation methods
-  - [x] Fix metadata type mismatches
-- [x] Markdown Handler
-  - [x] Fix parsing logic
-  - [x] Add frontmatter support
-  - [x] Handle attachments
-  - [x] Fix metadata type usage
-- [x] Document Handler
-  - [x] Improve text extraction
-  - [x] Handle embedded images
-  - [x] Fix formatting issues
-- [ ] Image Handler
-  - [ ] Add metadata extraction
-  - [ ] Handle different formats
-  - [ ] Implement resizing
-  - [ ] Fix duplicate image conversion files
+## Phase 2: Data Ingestion Layer [Status: COMPLETED]
+1. Implement BearExportHandler ✅
+   - Parse Markdown files
+   - Handle attachments
+   - Maintain metadata
 
-### 4. Metadata System [IN_PROGRESS]
-- [x] Base Metadata
-  - [x] Add validation
-  - [x] Improve error tracking
-  - [x] Add versioning
-  - [x] Add missing fields (has_code_blocks, charset)
-- [ ] Store Implementation
-  - [ ] Add persistence
-  - [ ] Implement caching
-  - [ ] Add query methods
-- [ ] Factory Enhancement
-  - [ ] Add validation
-  - [ ] Improve creation logic
-  - [ ] Add error handling
+2. Integrate Docling Converter ✅
+   - Set up conversion pipeline
+   - Implement fallback mechanisms
+   - Add OCR capabilities
 
-### 5. Testing and Verification [NOT_STARTED]
-- [ ] Create Test Suite
-  - [ ] Add unit tests for phases
-  - [ ] Implement handler tests
-  - [ ] Add integration tests
-  - [ ] Create validation tests
-- [ ] Test Scenarios
-  - [ ] Test file processing
-  - [ ] Verify metadata handling
-  - [ ] Check phase progression
-  - [ ] Validate output structure
-- [ ] Documentation
-  - [ ] Update phase documentation
-  - [ ] Add handler documentation
-  - [ ] Create test documentation
-  - [ ] Update architecture docs
+3. Create unified MarkdownCorpus ✅
+   - Design corpus data structure
+   - Implement metadata preservation
+   - Add validation methods
 
-## Success Criteria
-1. No duplicate phase files or directories
-2. All phases properly implemented and functional
-3. Handlers correctly process all supported file types
-4. Metadata system validates and tracks all changes
-5. Complete test coverage for all components
-6. Documentation reflects actual implementation
+🔍 MILESTONE 2: Ingestion Layer Test ✅
+- Successfully import Bear test export
+- Convert various attachment types
+- Verify metadata preservation
+- Hero test: Import our own notes and verify
+
+## Phase 3: Processing Pipeline [Status: NOT_STARTED]
+1. Build ChunkingEngine
+   - Implement hybrid chunking
+   - Add heading weight support
+   - Create chunk validation
+
+2. Create EmbeddingService
+   - Integrate Sentence Transformers
+   - Add batch processing
+   - Implement caching
+
+3. Develop VectorStore
+   - Set up FAISS integration
+   - Create persistent store
+   - Implement ephemeral store
+   - Add TTL management
+
+🔍 MILESTONE 3: Processing Pipeline Test
+- Chunking produces expected results
+- Embeddings generate correctly
+- Vector stores work with test data
+- Hero test: Process our documentation
+
+## Phase 4: RAG Implementation [Status: NOT_STARTED]
+1. Create RAGOrchestrator
+   - Implement query processing
+   - Add result merging
+   - Create context building
+
+2. Integrate MCP SDK
+   - Set up structured messaging
+   - Implement context blocks
+   - Add ephemeral data handling
+
+3. Build EphemeralDataManager
+   - Create TTL tracking
+   - Implement cleanup
+   - Add isolation logic
+
+🔍 MILESTONE 4: RAG System Test
+- Query processing works end-to-end
+- MCP payloads format correctly
+- Ephemeral data manages correctly
+- Hero test: Query our own documentation
+
+## Phase 5: Claude Integration [Status: NOT_STARTED]
+1. Implement ClaudeClient
+   - Add API integration
+   - Set up response handling
+   - Implement error management
+
+2. Create response processing
+   - Add streaming support
+   - Implement retry logic
+   - Add rate limiting
+
+🔍 MILESTONE 5: Full System Test
+- End-to-end queries work
+- Response streaming functions
+- Error handling works
+- Hero test: Full system usage test
+
+## Phase 6: CLI and Deployment [Status: NOT_STARTED]
+1. Build CLI interface
+   - Add command structure
+   - Implement subcommands
+   - Add configuration options
+
+2. Create deployment scripts
+   - Add local deployment
+   - Create cloud deployment option
+   - Add backup/restore
+
+🔍 FINAL MILESTONE: Production Ready
+- All commands work as expected
+- Deployment scripts function
+- System performs at scale
+- Hero test: Deploy and use in production
 
 ## Notes
-- Each milestone should be tested independently
-- Run full test suite after each milestone
-- Document all changes and updates
-- Keep backup of original files
-- Follow documented architecture guidelines
-- Maintain backward compatibility where possible
+
+### Important Implementation Details
+1. ALWAYS use Poetry for dependency management - direct pip usage is forbidden
+2. Vision model must be "gpt-4o" - no other vision models allowed
+3. Ephemeral data handling is critical - implement strict TTL
+4. Use MCP SDK for all Claude interactions
+5. Implement thorough error handling and logging
+6. Keep security and privacy in mind throughout
+
+### Testing Strategy
+1. Write tests alongside implementation
+2. Use pytest for all testing
+3. Include integration tests at each milestone
+4. Hero testing involves actual usage
+5. Performance testing at each milestone
+
+### Performance Targets
+1. Query response < 5 seconds
+2. Embedding generation < 2 seconds per chunk
+3. Memory usage < 2GB for normal operation
+4. Efficient vector search (< 100ms)
+
+### Security Considerations
+1. No hardcoded credentials
+2. Strict ephemeral data isolation
+3. Minimal logging of sensitive data
+4. Proper API key management
+
+### Future Considerations
+1. Direct Bear DB integration possibility
+2. Multi-LLM support potential
+3. Cloud deployment options
+4. Multi-user capabilities 
