@@ -14,20 +14,24 @@
 ### 2. Data Processing Pipeline
 - **Chunking Engine**
   - Hybrid chunking combining heading-based and semantic segmentation
-  - Configurable chunk sizes (default 300-500 tokens)
+  - Configurable chunk sizes (default 500 characters)
   - Heading weight boosting for improved retrieval
+  - Type-safe implementation with proper annotations
 - **Embedding Service**
   - Local: Sentence Transformers (all-MiniLM-L6-v2)
   - Optional: Cloud-based embeddings
+  - Batch processing support
 - **Vector Store**
   - Dual store architecture:
-    - Persistent store (FAISS/Chroma) for permanent data
-    - Ephemeral store (in-memory FAISS) for temporary data
+    - Persistent store (numpy-based) for permanent data
+    - Ephemeral store for temporary data
+  - L2 distance-based similarity search
   - TTL-based cleanup for ephemeral data
-  - Automatic expiration handling
+  - Type-safe implementation with proper annotations
 
 ### 3. RAG Orchestrator
 - **Query Processing**
+  - Asynchronous query handling
   - Parallel vector similarity search across both stores
   - Smart result merging
   - Automatic expired data filtering
@@ -35,16 +39,17 @@
   - Structured context building
   - Role-based message construction
   - Ephemeral data flagging
-- **Ephemeral Management**
-  - TTL tracking for temporary data
-  - Automatic cleanup of expired entries
-  - Isolation from persistent storage
+- **Async Support**
+  - Async/await pattern for all operations
+  - Streaming query support
+  - Proper coroutine handling
 
 ### 4. LLM Interface
 - **Claude Integration**
-  - Direct API communication
-  - Response processing
-  - Error handling
+  - Asynchronous API communication
+  - Streaming response support
+  - Automatic retry on rate limits
+  - Type-safe implementation
 
 ## Key Technologies
 
@@ -54,8 +59,8 @@
 - Docling ≥0.3.0
 - MCP SDK (modelcontextprotocol)
 - Sentence Transformers ≥2.2.2
-- FAISS/Chroma
-- Anthropic API Client
+- NumPy for vector operations
+- Anthropic API Client (async)
 
 ### Optional Components
 - FastAPI/Flask for API layer
@@ -70,16 +75,16 @@
    - Unified markdown corpus creation
 
 2. **Processing**
-   - Hybrid chunking
-   - Embedding generation
+   - Type-safe hybrid chunking
+   - Batched embedding generation
    - Vector store indexing
 
 3. **Query Flow**
-   - User query reception
-   - Vector similarity search
+   - Async user query reception
+   - Parallel vector similarity search
    - MCP context construction
-   - Claude API interaction
-   - Response delivery
+   - Async Claude API interaction
+   - Streaming response delivery
 
 ## Security & Privacy
 
@@ -87,6 +92,7 @@
 - Minimal authentication
 - In-memory ephemeral data
 - Limited logging
+- Type-safe data handling
 
 ### Cloud Deployment (Optional)
 - Token-based authentication
@@ -96,6 +102,7 @@
 ## Performance Considerations
 
 - Sub-5 second query response time
-- Efficient chunk retrieval
-- Optimized embedding generation
-- Memory-efficient ephemeral data handling 
+- Efficient chunk retrieval with L2 distance
+- Batched embedding generation
+- Memory-efficient ephemeral data handling
+- Async operations for improved throughput 

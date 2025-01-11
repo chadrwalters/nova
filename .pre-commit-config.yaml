@@ -25,4 +25,4 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-PyYAML
-          - types-python-dotenv 
+          - python-dotenv 

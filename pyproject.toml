@@ -13,6 +13,7 @@ sentence-transformers = "^3.3.1"
 faiss-cpu = "^1.9.0.post1"
 pyyaml = "^6.0.2"
 python-dotenv = "^1.0.1"
+pytest-asyncio = "^0.25.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

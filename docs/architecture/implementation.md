@@ -40,83 +40,87 @@ class EmbeddingService:
 class VectorStore:
     def __init__(self, embedding_dim: int = 384):
         """Initialize persistent vector store"""
-        self.index = self._create_index(embedding_dim)
+        self.embedding_dim = embedding_dim
+        self.chunks: Dict[str, Chunk] = {}  # chunk_id -> Chunk
+        self.embeddings: Optional[np.ndarray] = None  # Will be initialized on first add
+        self.chunk_ids: List[str] = []  # Maintains order of chunks
     
-    def add_chunks(self, chunks: list[Chunk], embeddings: np.ndarray):
+    def add_chunks(self, chunks: List[Chunk], embeddings: Optional[np.ndarray] = None):
         """Index chunks and embeddings"""
-        # Ensure no ephemeral chunks in persistent store
-        if any(c.is_ephemeral for c in chunks):
-            raise ValueError("Cannot store ephemeral chunks in persistent store")
-        self._add_to_index(chunks, embeddings)
+        if not chunks:
+            return
+            
+        if embeddings is None:
+            embeddings = np.vstack([c.embedding for c in chunks])
+
+        # Initialize or extend embeddings array
+        if self.embeddings is None:
+            self.embeddings = embeddings
+        else:
+            self.embeddings = np.vstack([self.embeddings, embeddings])
+        
+        # Store chunks
+        for chunk in chunks:
+            self.chunks[chunk.chunk_id] = chunk
+            self.chunk_ids.append(chunk.chunk_id)
+
+    def search(self, query_embedding: np.ndarray, k: int = 5) -> List[SearchResult]:
+        """Search for similar chunks"""
+        if self.embeddings is None or not self.chunk_ids:
+            return []
+            
+        # Compute L2 distances
+        if len(query_embedding.shape) == 1:
+            query_embedding = query_embedding.reshape(1, -1)
+            
+        distances = np.linalg.norm(self.embeddings - query_embedding, axis=1)
+        indices = np.argsort(distances)[:k]
+        
+        # Convert to results
+        results = []
+        for idx in indices:
+            chunk_id = self.chunk_ids[idx]
+            chunk = self.chunks[chunk_id]
+            results.append(SearchResult(
+                chunk=chunk,
+                score=float(distances[idx]),
+                metadata=chunk.metadata.copy()
+            ))
+        
+        return results
 
 class EphemeralVectorStore(VectorStore):
-    def __init__(self, embedding_dim: int = 384):
+    def __init__(self, embedding_dim: int = 384, **kwargs):
         """Initialize in-memory vector store"""
         super().__init__(embedding_dim)
-        self.chunk_registry = {}  # track chunk expiration
-        self._lock = threading.Lock()  # thread safety for registry
+        self.chunk_registry: Dict[str, float] = {}  # chunk_id -> expiration
     
-    def add_chunks(self, chunks: list[Chunk], embeddings: np.ndarray):
+    def add_chunks(self, chunks: List[Chunk], embeddings: Optional[np.ndarray] = None):
         """Store chunks with expiration tracking"""
-        if not all(c.is_ephemeral for c in chunks):
-            raise ValueError("All chunks must be marked ephemeral")
+        if not all(c.is_ephemeral and c.expiration for c in chunks):
+            raise ValueError("All chunks must be ephemeral with expiration time")
         
-        with self._lock:
-            super().add_chunks(chunks, embeddings)
-            for chunk in chunks:
-                # Sanitize metadata before storage
-                chunk.metadata = self._sanitize_metadata(chunk.metadata)
-                self.chunk_registry[chunk.id] = chunk.expiration
-    
-    def search(self, query_embedding: np.ndarray, k: int = 5) -> list[Chunk]:
+        super().add_chunks(chunks, embeddings)
+        for chunk in chunks:
+            if chunk.expiration is not None:
+                self.chunk_registry[chunk.chunk_id] = chunk.expiration
+
+    def search(self, query_embedding: np.ndarray, k: int = 5) -> List[SearchResult]:
         """Search with automatic expiration filtering"""
-        with self._lock:
-            # Pre-filter expired chunks
-            now = time.time()
-            valid_chunks = {
-                chunk_id: exp 
-                for chunk_id, exp in self.chunk_registry.items() 
-                if exp > now
-            }
-            
-            if not valid_chunks:
-                return []
-            
-            # Only search over valid chunks
-            results = self._search_filtered(
-                query_embedding,
-                valid_chunk_ids=list(valid_chunks.keys()),
-                k=k
-            )
-            
-            # Double-check expiration during results processing
-            return [
-                chunk for chunk in results
-                if chunk.id in valid_chunks and 
-                valid_chunks[chunk.id] > time.time()
-            ]
-    
-    def _sanitize_metadata(self, metadata: dict) -> dict:
-        """Remove sensitive fields from metadata"""
-        ALLOWED_KEYS = {'timestamp', 'source', 'type'}
-        return {
-            k: v for k, v in metadata.items() 
-            if k in ALLOWED_KEYS
+        # Clean expired chunks
+        now = time.time()
+        expired = {
+            chunk_id 
+            for chunk_id, expiration in self.chunk_registry.items()
+            if expiration <= now
         }
-    
-    def delete_chunk(self, chunk_id: str):
-        """Remove expired chunk with cleanup"""
-        with self._lock:
-            if chunk_id in self.chunk_registry:
-                # Clean metadata before removal
-                chunk = self._get_chunk(chunk_id)
-                if chunk:
-                    chunk.metadata.clear()
-                    chunk.embedding = None
-                
-                # Remove from index and registry
+        
+        if expired:
+            self.remove_chunks(expired)
+            for chunk_id in expired:
                 del self.chunk_registry[chunk_id]
-                self._remove_from_index(chunk_id)
+                
+        return super().search(query_embedding, k)
 ```
 
 ### RAG Orchestration

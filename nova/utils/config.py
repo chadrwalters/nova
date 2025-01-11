@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import os
 
 import yaml
 from dotenv import load_dotenv
@@ -32,6 +33,14 @@ class RAGConfig:
 class LLMConfig:
     model: str = "claude-2"
     max_tokens: int = 1000
+    api_key: Optional[str] = None
+
+    def validate(self):
+        """Validate LLM configuration."""
+        if not self.api_key:
+            self.api_key = os.getenv("CLAUDE_API_KEY")
+        if not self.api_key:
+            raise ValueError("CLAUDE_API_KEY must be set in environment or config")
 
 
 @dataclass

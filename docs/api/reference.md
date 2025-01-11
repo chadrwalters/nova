@@ -66,47 +66,66 @@ from nova.rag import RAGOrchestrator
 from nova.types import MCPPayload
 
 # Initialize components
-persistent_store = VectorStore()
-ephemeral_store = EphemeralVectorStore()
-ephemeral_manager = EphemeralDataManager(ephemeral_store)
+vector_store = VectorStore(embedding_dim=384)
+ephemeral_store = EphemeralVectorStore(embedding_dim=384)
+embedding_svc = EmbeddingService(model_name="all-MiniLM-L6-v2")
 
 # Initialize orchestrator with both stores
 orchestrator = RAGOrchestrator(
-    persistent_store=persistent_store,
+    vector_store=vector_store,
     ephemeral_store=ephemeral_store,
-    ephemeral_manager=ephemeral_manager
-)
-
-# Process query (automatically handles both stores)
-mcp_payload = orchestrator.process_query(
-    query="What did we decide about Project X?",
+    embedding_service=embedding_svc,
     top_k=5
 )
 
-# Explicitly handle ephemeral data
-ephemeral_manager.store_ephemeral(
-    data=sensitive_chunks,
-    ttl=300
-)
+# Process query (async)
+async def process_query():
+    response = await orchestrator.process_query("What did we decide about Project X?")
+    print(response.content)
 
-# Force cleanup if needed
-ephemeral_manager._cleanup_expired()
+# Process streaming query (async)
+async def process_streaming_query():
+    async for chunk in orchestrator.process_query_streaming("What did we decide about Project X?"):
+        print(chunk, end="", flush=True)
+
+# Run with asyncio
+import asyncio
+asyncio.run(process_query())
 ```
 
 ### Claude API
 
 ```python
 from nova.llm import ClaudeClient
-from nova.types import MCPPayload
+from nova.types import MCPPayload, ClaudeResponse
 
 # Initialize client
-client = ClaudeClient(api_key="your_key_here")
-
-# Get completion
-response = client.complete(
-    mcp_payload=mcp_payload,
-    max_tokens=1000
+client = ClaudeClient(
+    api_key="your_key_here",
+    model="claude-2",
+    max_tokens=1000,
+    temperature=0.7
 )
+
+# Complete prompt (async)
+async def get_completion():
+    response = await client.complete(
+        mcp_payload=mcp_payload,
+        stream=False
+    )
+    print(response.content)
+
+# Stream completion (async)
+async def stream_completion():
+    async for chunk in await client.complete(
+        mcp_payload=mcp_payload,
+        stream=True
+    ):
+        print(chunk, end="", flush=True)
+
+# Run with asyncio
+import asyncio
+asyncio.run(get_completion())
 ```
 
 ## Configuration API
