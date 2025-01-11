@@ -1,54 +1,92 @@
-# Nova
+# Nova Dashboard
 
-Nova is a Personal Knowledge Management System that integrates with Bear.app and uses Claude for intelligent querying.
+A modern monitoring dashboard built with React and Material-UI, focusing on accessibility and user experience.
 
 ## Features
 
-- Bear.app export processing
-- Document conversion with Docling
-- Semantic chunking and embedding
-- RAG pipeline with Claude integration
-- Ephemeral data handling
-- MCP SDK integration
+- Real-time service health monitoring
+- Error metrics tracking with severity filtering
+- Alert management system
+- Responsive design
+- Accessibility compliant
+- Dark/Light theme support
 
-## Installation
+## Getting Started
 
-1. Clone the repository
+### Prerequisites
+
+- Node.js 16+
+- npm or yarn
+- Poetry for Python dependencies
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/nova.git
+   cd nova
+   ```
+
 2. Install dependencies:
+   ```bash
+   poetry install
+   cd src/nova/frontend
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm start
+   ```
+
+## Testing
+
+Run the test suite:
 ```bash
-poetry install
+npm test
 ```
 
-3. Set up pre-commit hooks:
+Run visual regression tests:
 ```bash
-poetry run pre-commit install
+npm run test:visual
 ```
 
-4. Create a `.env` file with your API keys:
+Run accessibility tests:
 ```bash
-ANTHROPIC_API_KEY=your_key_here
+npm run test:a11y
 ```
 
-## Usage
+## Project Structure
 
-Run Nova with the default configuration:
-```bash
-poetry run python -m nova.cli
+```
+src/nova/
+├── frontend/           # Frontend application
+│   ├── src/
+│   │   ├── components/ # React components
+│   │   ├── theme/      # Theme configuration
+│   │   └── App.tsx     # Main application
+│   ├── tests/          # Test suites
+│   └── package.json    # Frontend dependencies
+└── backend/           # Backend services
 ```
 
-Or specify a custom config file:
-```bash
-poetry run python -m nova.cli --config path/to/config.yaml
-```
+## Development Status
 
-## Development
+- ✅ Core components implemented
+- ✅ Basic UI functionality
+- ✅ Accessibility features
+- 🚧 Test coverage (in progress)
+- 📝 Documentation
+- 🔄 Continuous Integration
 
-- Uses Poetry for dependency management
-- Pre-commit hooks for code quality
-- MyPy for type checking
-- Black for code formatting
-- isort for import sorting
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT 
+This project is licensed under the MIT License - see the LICENSE file for details.

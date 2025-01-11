@@ -1,27 +1,70 @@
 [tool.poetry]
 name = "nova"
-version = "0.1.0"
-description = "Nova - Personal Knowledge Management System with Claude Integration"
-authors = ["Chad Walters"]
-readme = "README.md"
+version = "3.0"
+description = "Nova - Personal Knowledge Management System"
+authors = ["Your Name <your.email@example.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.10"
-anthropic = "^0.42.0"
-docling = "^2.15.1"
-sentence-transformers = "^3.3.1"
-faiss-cpu = "^1.9.0.post1"
-pyyaml = "^6.0.2"
-python-dotenv = "^1.0.1"
-pytest-asyncio = "^0.25.2"
+python = "^3.9"
+numpy = "^1.24.0"
+faiss-cpu = "^1.7.4"
+sentence-transformers = "^2.2.2"
+click = "^8.1.7"
+nest-asyncio = "^1.5.8"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.4"
-mypy = "^1.14.1"
-pre-commit = "^4.0.1"
-black = "^24.10.0"
-isort = "^5.13.2"
+pytest = "^7.4.0"
+black = "^23.7.0"
+ruff = "^0.0.284"
+mypy = "^1.5.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+nova = "nova.cli.__init__:cli"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | __pycache__
+  | \.nova
+  | build
+  | dist
+  | \.eggs
+  | \.mypy_cache
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+select = ["E", "F", "B", "I"]
+ignore = []
+exclude = [
+    ".git",
+    "__pycache__",
+    ".nova",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true

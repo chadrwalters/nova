@@ -1,0 +1,18 @@
+staginging is not real. We just are doing this on localhost right now.
+
+should logs be in our root dir? Are they supposed to be someplace else? In our gitignore?
+
+what about playwrite-report?
+
+what about test results?
+
+what about logs
+
+flake8 in gitignore
+
+alerts.db? What is this? What shouold we be doing with it?
+
+playwrite.cofght?
+
+Can we make it so there are fewer dirs in / created in our root and instead have fewer runttime or testtime dirs and use them
+

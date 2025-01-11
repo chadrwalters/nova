@@ -1,256 +1,174 @@
 # Nova Deployment Guide
 
-## Local Development Setup
+## Prerequisites
 
-### Prerequisites
-- Python 3.10+
-- Poetry
-- Anthropic API key
-- Bear.app (for data export)
+1. Python 3.9+
+2. Poetry
+3. OpenAI API key (for default configuration)
+4. Anthropic API key (optional, for Claude)
 
-### Installation Steps
+## Local Deployment
 
-1. Clone the repository
-```bash
-git clone https://github.com/your-org/nova.git
-cd nova
-```
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/nova.git
+   cd nova
+   ```
 
-2. Install dependencies
-```bash
-poetry install
-```
+2. Install dependencies:
+   ```bash
+   poetry install
+   ```
 
-3. Configure environment
-```bash
-# Create .env file
-cat > .env << EOL
-ANTHROPIC_API_KEY=your_key_here
-NOVA_ENV=development
-EOL
-```
+3. Set up environment variables:
+   ```bash
+   # Required for default configuration
+   export OPENAI_API_KEY="your-openai-key-here"
+   
+   # Optional for Claude
+   export ANTHROPIC_API_KEY="your-anthropic-key-here"
+   ```
 
-4. Run tests
-```bash
-poetry run pytest
-```
+4. Create configuration:
+   ```bash
+   cp config/nova.yaml.template config/nova.yaml
+   ```
 
-5. Start Nova
-```bash
-poetry run nova
-```
+5. Run Nova:
+   ```bash
+   poetry run nova query "Your question here?"
+   ```
 
 ## Configuration
 
-### Basic Configuration
-Create `nova.yaml` in your project root:
+The default configuration uses OpenAI's gpt-3.5-turbo-16k for optimal cost/performance:
 
 ```yaml
-ingestion:
-  chunk_size: 500
-  heading_weight: 1.5
-  
-embedding:
-  model: "all-MiniLM-L6-v2"
-  dimension: 384
-  
-vector_store:
-  engine: "faiss"
-  
-rag:
-  top_k: 5
-  
 llm:
+  provider: "openai"
+  api_key: "${OPENAI_API_KEY}"
+  model: "gpt-3.5-turbo-16k"
+  max_tokens: 1000
+  temperature: 0.7
+```
+
+For specialized use cases, you can switch to Claude:
+
+```yaml
+llm:
+  provider: "claude"
+  api_key: "${ANTHROPIC_API_KEY}"
   model: "claude-2"
   max_tokens: 1000
-  
-security:
-  ephemeral_ttl: 300
+  temperature: 0.7
 ```
 
-### Environment-specific Configuration
-```yaml
-# config/development.yaml
-debug: true
-log_level: DEBUG
+## Production Deployment
 
-# config/production.yaml
-debug: false
-log_level: INFO
-```
+For production deployments:
 
-## Cloud Deployment (Optional)
+1. Set up monitoring:
+   ```yaml
+   monitoring:
+     enabled: true
+     metrics_port: 9090
+     memory_update_interval: 60
+     vector_store_update_interval: 300
+     alerting:
+       max_query_latency: 5.0
+       max_error_rate: 0.01
+       max_memory_usage: 4_000_000_000  # 4GB
+       max_vector_store_size: 1_000_000
+       rate_limit_warning_threshold: 0.2
+   ```
 
-### Prerequisites
-- Cloud provider account (AWS/GCP/Azure)
-- SSL certificate
-- Domain name (optional)
+2. Configure logging:
+   ```yaml
+   logging:
+     level: "INFO"
+     file: "logs/nova.log"
+     format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+   ```
 
-### Setup Steps
+3. Set up security:
+   ```yaml
+   security:
+     ephemeral_ttl: 300
+     rate_limit:
+       requests_per_minute: 60
+     tls:
+       cert_file: "/path/to/cert.pem"
+       key_file: "/path/to/key.pem"
+   ```
 
-1. Install cloud dependencies
-```bash
-poetry install --extras cloud
-```
+## Health Checks
 
-2. Configure cloud environment
-```bash
-# Create cloud config
-cat > config/cloud.yaml << EOL
-cloud:
-  provider: aws
-  region: us-west-2
-  instance_type: t3.medium
+Monitor these metrics:
 
-security:
-  auth_token: your_token_here
-  tls_cert: /path/to/cert
-  tls_key: /path/to/key
-EOL
-```
+1. Query Performance:
+   - Average latency < 5s
+   - P95 latency < 10s
+   - Error rate < 1%
 
-3. Deploy
-```bash
-poetry run nova deploy --cloud
-```
+2. Resource Usage:
+   - Memory usage < 4GB
+   - Vector store size < 1M vectors
+   - API rate limits > 20%
 
-## Security Considerations
+3. System Health:
+   - Process uptime
+   - CPU usage
+   - Disk space
 
-### API Key Management
-- Store API keys in environment variables
-- Use secret management service in cloud
-- Rotate keys regularly
+## Backup and Restore
 
-### Data Privacy
-- Enable TLS for all traffic
-- Implement token-based auth
-- Use ephemeral storage for sensitive data
-- Regular security audits
+1. Backup command:
+   ```bash
+   poetry run nova backup create
+   ```
 
-### Logging
-- Avoid logging sensitive data
-- Implement log rotation
-- Use structured logging
-
-## Monitoring
-
-### Health Checks
-```python
-from nova.monitoring import health_check
-
-# Basic health check
-status = health_check()
-```
-
-### Metrics
-- Query latency
-- Embedding generation time
-- Vector search performance
-- Memory usage
-- API rate limits
-
-### Alerting
-- Set up alerts for:
-  - High latency
-  - Error rates
-  - Memory usage
-  - API quota usage
-
-## Backup & Recovery
-
-### Vector Store Backup
-```bash
-# Backup FAISS index
-poetry run nova backup-vectors
-
-# Restore from backup
-poetry run nova restore-vectors --backup-file vectors.backup
-```
-
-### Configuration Backup
-- Regular backups of:
-  - Configuration files
-  - API keys
-  - TLS certificates
-  - Custom scripts
+2. Restore command:
+   ```bash
+   poetry run nova backup restore --backup-dir data/backup/latest
+   ```
 
 ## Troubleshooting
 
-### Common Issues
+Common issues and solutions:
 
-1. Conversion Failures
-```python
-from nova.utils import diagnose_conversion
+1. API Rate Limits:
+   - Implement exponential backoff
+   - Monitor rate limit metrics
+   - Consider upgrading API tier
 
-# Check conversion issues
-issues = diagnose_conversion(file_path)
-```
+2. Memory Usage:
+   - Monitor with Prometheus
+   - Set up alerts
+   - Consider scaling vertically
 
-2. Embedding Errors
-```python
-from nova.utils import validate_embeddings
+3. Performance Issues:
+   - Check vector store size
+   - Monitor query latency
+   - Review context window usage
 
-# Validate embeddings
-validation = validate_embeddings(chunks)
-```
+## Updates and Maintenance
 
-3. API Issues
-```python
-from nova.utils import check_api_health
+1. Update dependencies:
+   ```bash
+   poetry update
+   ```
 
-# Check API status
-api_status = check_api_health()
-```
+2. Run tests:
+   ```bash
+   poetry run pytest
+   ```
 
-### Debug Mode
-```bash
-# Enable debug mode
-poetry run nova --debug
+3. Check types:
+   ```bash
+   poetry run mypy .
+   ```
 
-# View debug logs
-tail -f logs/nova-debug.log
-```
-
-## Maintenance
-
-### Regular Tasks
-1. Update dependencies
-```bash
-poetry update
-```
-
-2. Clean old data
-```bash
-poetry run nova cleanup --older-than 30d
-```
-
-3. Optimize vector store
-```bash
-poetry run nova optimize-vectors
-```
-
-### Performance Tuning
-- Adjust chunk sizes
-- Configure embedding batch size
-- Optimize vector store parameters
-- Monitor and adjust cache sizes
-
-## Migration Guide
-
-### Version Updates
-```bash
-# Check current version
-poetry run nova version
-
-# Update to latest
-poetry update nova
-```
-
-### Data Migration
-```bash
-# Export data
-poetry run nova export-data
-
-# Import to new version
-poetry run nova import-data --file export.json
-``` 
+4. Run pre-commit:
+   ```bash
+   poetry run pre-commit run --all-files
+   ``` 

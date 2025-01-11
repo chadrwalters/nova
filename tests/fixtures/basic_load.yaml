@@ -1,0 +1,75 @@
+# Basic load test scenario
+
+vectors:
+  count: 1000
+  dimension: 384
+  distribution: "random"  # random, uniform, or clustered
+  clusters: 10           # Only used if distribution is "clustered"
+
+queries:
+  - text: "Test query 1"
+    expected_results: 5
+    latency_ms: 100
+    similarity_threshold: 0.8
+  - text: "Test query 2"
+    expected_results: 3
+    latency_ms: 50
+    similarity_threshold: 0.9
+
+documents:
+  - content: |
+      # Test Document 1
+      This is a test document with multiple sections.
+      ## Section 1
+      Content for section 1
+      ## Section 2
+      Content for section 2
+    metadata:
+      source: "test"
+      type: "markdown"
+      created_at: 1234567890
+  - content: |
+      # Test Document 2
+      Another test document.
+      ## Important Section
+      This section contains important information.
+    metadata:
+      source: "test"
+      type: "markdown"
+      created_at: 1234567891
+
+ephemeral_data:
+  - content: "Temporary data 1"
+    ttl: 300
+    metadata:
+      type: "chat"
+      user_id: "test_user"
+  - content: "Temporary data 2"
+    ttl: 600
+    metadata:
+      type: "session"
+      session_id: "test_session"
+
+metrics:
+  vector_store:
+    memory_usage_mb: 100
+    search_latency_ms: 50
+    index_size_mb: 80
+  ephemeral:
+    count: 100
+    memory_usage_mb: 20
+    cleanup_time_ms: 30
+
+errors:
+  - type: "memory_pressure"
+    probability: 0.1
+    message: "Memory usage exceeds threshold"
+  - type: "search_timeout"
+    probability: 0.05
+    message: "Search operation timed out"
+
+performance:
+  cpu_usage: 0.3
+  memory_usage_mb: 500
+  gpu_memory_mb: 200
+  disk_usage_mb: 1000 

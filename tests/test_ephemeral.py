@@ -24,7 +24,8 @@ def test_ephemeral_data_basic(mock_time):
     data = manager.get_data(data_id)
     assert data is not None
     assert data.content == "Test content"
-    assert data.metadata == {"key": "value"}
+    assert "key" in data.metadata and data.metadata["key"] == "value"
+    assert "id" in data.metadata and data.metadata["id"] == data_id
     assert data.expiration == 10  # current_time + ttl
     
     # Advance time but not past expiration
@@ -49,11 +50,11 @@ def test_ephemeral_data_with_embedding(mock_time):
     # Mock time
     mock_time.return_value = 0
     
-    # Create manager
-    manager = EphemeralDataManager()
+    # Create manager with small dimension for stability
+    manager = EphemeralDataManager(embedding_dim=4)
     
     # Add test data with embedding
-    embedding = np.array([1, 0, 0, 0])
+    embedding = np.array([1, 0, 0, 0], dtype=np.float32)
     data_id = manager.add_data(
         content="Test content",
         embedding=embedding
@@ -63,7 +64,7 @@ def test_ephemeral_data_with_embedding(mock_time):
     results = manager.store.search(embedding, k=1)
     assert len(results) == 1
     assert results[0].chunk.content == "Test content"
-    assert results[0].chunk.chunk_id == data_id
+    assert results[0].chunk.metadata["id"] == data_id
 
 
 @patch('time.time')
@@ -72,11 +73,15 @@ def test_ephemeral_data_ttl_extension(mock_time):
     current_time = 0
     mock_time.return_value = current_time
     
-    # Create manager with 10s TTL
-    manager = EphemeralDataManager(ttl=10)
+    # Create manager with 10s TTL and small dimension
+    manager = EphemeralDataManager(ttl=10, embedding_dim=4)
     
-    # Add test data
-    data_id = manager.add_data("Test content")
+    # Add test data with embedding
+    embedding = np.array([1, 0, 0, 0], dtype=np.float32)
+    data_id = manager.add_data(
+        content="Test content",
+        embedding=embedding
+    )
     
     # Advance time close to expiration
     current_time += 9
@@ -98,6 +103,11 @@ def test_ephemeral_data_ttl_extension(mock_time):
     # Verify data still exists
     data = manager.get_data(data_id)
     assert data is not None
+    
+    # Verify search still works
+    results = manager.store.search(embedding, k=1)
+    assert len(results) == 1
+    assert results[0].chunk.content == "Test content"
 
 
 @patch('time.time')
@@ -106,12 +116,15 @@ def test_ephemeral_data_cleanup(mock_time):
     current_time = 0
     mock_time.return_value = current_time
     
-    # Create manager with different TTLs
-    manager = EphemeralDataManager()
+    # Create manager with small dimension
+    manager = EphemeralDataManager(embedding_dim=4)
     
-    # Add test data with different TTLs
-    id1 = manager.add_data("Content 1", ttl=5)
-    id2 = manager.add_data("Content 2", ttl=10)
+    # Add test data with different TTLs and embeddings
+    embedding1 = np.array([1, 0, 0, 0], dtype=np.float32)
+    embedding2 = np.array([0, 1, 0, 0], dtype=np.float32)
+    
+    id1 = manager.add_data("Content 1", ttl=5, embedding=embedding1)
+    id2 = manager.add_data("Content 2", ttl=10, embedding=embedding2)
     
     # Advance time past first expiration
     current_time += 7
@@ -122,4 +135,9 @@ def test_ephemeral_data_cleanup(mock_time):
     
     # Verify first data is cleaned up but second remains
     assert manager.get_data(id1) is None
-    assert manager.get_data(id2) is not None 
+    assert manager.get_data(id2) is not None
+    
+    # Verify search only finds second embedding
+    results = manager.store.search(embedding2, k=2)
+    assert len(results) == 1
+    assert results[0].chunk.content == "Content 2" 

@@ -35,8 +35,39 @@ Respect ephemeral data by isolating or discarding it after usage, ensure minimal
 ### 4. Functional Requirements
 
 ### 4.1 Bear.app Export Handling
-	* 	**Parsing**: Read Markdown notes plus any attachments from the exported folder structure
-	* 	**Attachment Inlining**: Attempt to inline or reference the converted attachments in place, so each note’s context remains intact
+* **Directory Structure**:
+  * Each note has its own Markdown file (`.md`) in the export root
+  * Each note has a corresponding directory with the same name (minus `.md`) containing its attachments
+  * No global `assets` directory is required
+
+* **Note Processing**:
+  * Extracts title from first heading or first non-empty line
+  * Parses Bear-style tags (#tag, #tag/subtag)
+  * Preserves creation and modification timestamps
+  * Handles both inline and heading-based titles
+
+* **Attachment Processing**:
+  * **Images**: Processes `![title](path)` syntax
+    * Supports HEIC, JPEG, PNG, and GIF formats
+    * Handles both titled and untitled images
+    * Preserves original filenames and paths
+
+  * **Embedded Files**: Processes `[title](path)<!-- {"embed":"true"} -->` syntax
+    * Supports common document formats (PDF, DOCX, XLSX, etc.)
+    * Preserves original filenames and metadata
+    * Handles text files (TXT, JSON, etc.)
+
+* **Robustness**:
+  * Gracefully handles missing attachments
+  * Skips invalid note files
+  * Supports notes without attachments
+  * Maintains correct path resolution for attachments
+
+* **Output**:
+  * Returns a `MarkdownCorpus` containing all processed notes
+  * Each note includes its metadata, tags, and processed attachments
+  * Attachments include content type and source information
+  * All paths are properly resolved relative to the export directory
 
 ### 4.2 File Conversion (Docling)
 	* 	**Primary Tool**: [Docling](https://github.com/docling/docling) for PDFs, DOCX, PPTX, images, etc.

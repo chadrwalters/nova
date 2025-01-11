@@ -1,0 +1,42 @@
+# Nova Staging Configuration
+
+ingestion:
+  chunk_size: 500
+  heading_weight: 1.5
+
+embedding:
+  model: "all-MiniLM-L6-v2"
+  dimension: 384
+
+vector_store:
+  engine: "faiss"
+
+rag:
+  top_k: 5
+
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  max_tokens: 500
+  temperature: 0.7
+
+security:
+  ephemeral_ttl: 300
+
+monitoring:
+  enabled: true
+  metrics:
+    port: 8000
+    host: "localhost"
+    memory_update_interval: 60
+    vector_store_update_interval: 300
+  alerting:
+    max_query_latency: 5.0
+    max_error_rate: 0.01
+    max_memory_usage: 4294967296
+    max_vector_store_size: 1000000
+    rate_limit_warning_threshold: 0.2
+  log_path: "logs/nova-staging.log"
+
+debug: false
+log_level: "INFO"

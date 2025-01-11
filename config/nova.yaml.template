@@ -1,0 +1,69 @@
+base_dir: "data"
+input_dir: "${base_dir}/input"
+output_dir: "${base_dir}/output"
+processing_dir: "${base_dir}/processing"
+
+cache:
+  dir: "${base_dir}/cache"
+  ttl: 3600
+
+api:
+  openai_api_key: "${OPENAI_API_KEY}"
+  vision_prompt: |
+    Please analyze this image and provide a detailed description.
+    If it's a screenshot, extract any visible text.
+    If it's a photograph, describe the scene and key elements.
+    Focus on what makes this image relevant in a note-taking context.
+
+handlers:
+  image_formats: ["png", "jpg", "jpeg", "gif"]
+
+logging:
+  level: "INFO"
+  file: "logs/nova.log"
+
+pipeline:
+  phases:
+    - "ingestion"
+    - "embedding"
+    - "vector_store"
+    - "rag"
+    - "llm"
+
+ingestion:
+  chunk_size: 500
+  heading_weight: 1.5
+
+embedding:
+  model: "all-MiniLM-L6-v2"
+  dimension: 384
+
+vector_store:
+  engine: "faiss"
+
+rag:
+  top_k: 5
+
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  max_tokens: 500
+  temperature: 0.7
+
+security:
+  ephemeral_ttl: 300
+
+monitoring:
+  enabled: true
+  metrics:
+    port: 8000
+    host: "localhost"
+    memory_update_interval: 60
+    vector_store_update_interval: 300
+  alerting:
+    max_query_latency: 5.0
+    max_error_rate: 0.01
+    max_memory_usage: 4294967296
+    max_vector_store_size: 1000000
+    rate_limit_warning_threshold: 0.2
+  log_path: "logs/nova.log" 

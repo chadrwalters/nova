@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova - Offline</title>
+  <style>
+    body {
+      font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: #f5f5f5;
+      color: #213547;
+    }
+
+    .container {
+      max-width: 600px;
+      text-align: center;
+      padding: 40px;
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      color: #646cff;
+      margin-bottom: 20px;
+    }
+
+    p {
+      margin-bottom: 30px;
+      line-height: 1.6;
+      color: #4a5568;
+    }
+
+    .button {
+      display: inline-block;
+      padding: 12px 24px;
+      background-color: #646cff;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: background-color 0.3s;
+    }
+
+    .button:hover {
+      background-color: #535bf2;
+    }
+
+    .icon {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #242424;
+        color: rgba(255, 255, 255, 0.87);
+      }
+
+      .container {
+        background-color: #1a1a1a;
+      }
+
+      p {
+        color: #a0aec0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>You're Offline</h1>
+    <p>
+      It looks like you've lost your internet connection. Some features of Nova Dashboard may be limited until you're back online.
+      Don't worry though - any cached data is still available, and any pending changes will sync automatically when you reconnect.
+    </p>
+    <a href="/" class="button">Try Again</a>
+  </div>
+  <script>
+    // Check for online status and redirect if online
+    window.addEventListener('online', () => {
+      window.location.reload();
+    });
+
+    // Add retry button functionality
+    document.querySelector('.button').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.reload();
+    });
+  </script>
+</body>
+</html> 

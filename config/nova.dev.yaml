@@ -1,0 +1,79 @@
+# Nova Development Configuration
+
+# Development mode settings
+dev_mode:
+  enabled: true
+  debug_logging: true
+  hot_reload: true
+  mock_services: true
+  performance_tracking: true
+
+# Core settings
+core:
+  environment: "development"
+  log_level: "DEBUG"
+  temp_dir: ".nova/temp"
+  cache_dir: ".nova/cache"
+
+# Vector store settings
+vector_store:
+  embedding_dim: 384
+  use_gpu: false  # Default to CPU for development
+  n_lists: 10     # Smaller index for faster development
+  n_probe: 3
+  cleanup_interval: 30
+
+# Ephemeral data settings
+ephemeral:
+  default_ttl: 300
+  cleanup_interval: 60
+  max_vectors: 10000  # Limit size in development
+
+# Monitoring settings
+monitoring:
+  enabled: true
+  metrics_port: 8000
+  alert_manager:
+    enabled: true
+    notification_delay: 0  # Immediate notifications in dev
+  memory_monitor:
+    enabled: true
+    check_interval: 30
+    max_memory_mb: 1024
+
+# Development server
+server:
+  host: "localhost"
+  port: 8080
+  cors_origins: ["http://localhost:3000"]
+  reload: true
+  workers: 1
+
+# Mock data
+mocks:
+  enabled: true
+  data_dir: "tests/fixtures"
+  scenarios:
+    - "basic_load"
+    - "high_memory"
+    - "search_latency"
+    - "error_conditions"
+
+# Development tools
+tools:
+  profiler:
+    enabled: true
+    output_dir: ".nova/profiles"
+  debugger:
+    enabled: true
+    port: 5678
+  metrics_ui:
+    enabled: true
+    port: 8001
+
+# Testing
+testing:
+  mock_responses: true
+  disable_rate_limits: true
+  fast_cleanup: true
+  skip_gpu_tests: true 

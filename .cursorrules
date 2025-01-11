@@ -6,9 +6,9 @@
 
 2. Vision Model
    - Use "gpt-4o" model for vision recognition
-   - Do NOT use gpt-4-vision-preview or any other vision models 
+   - Do NOT use gpt-4-vision-preview or any other vision models
 
-3 AI Commands
+3. AI Commands
 When I submit a command to you, you MUST follow the procedure outlined in the command.
 
 - "update docs":
@@ -57,19 +57,84 @@ When I submit a command to you, you MUST follow the procedure outlined in the co
 
 - "run tests":
     - procedure:
-        1. "You MUST poetry run pytest"    
+        1. "You MUST poetry run pytest"
 
 - "clean run":
     - procedure:
-        1. "You MUST ❯ poetry run python -m nova.context_processor.cleanup -a && poetry run python -m nova.context_processor.cli --config config/nova.yaml"   
+        1. "You MUST ❯ poetry run python -m nova.context_processor.cleanup -a && poetry run python -m nova.context_processor.cli --config config/nova.yaml"
 
 - "fix pre-commit":
     - procedure:
-        1. "You MUST poetry run pre-commit run mypy --all-files"  
+        1. "You MUST poetry run pre-commit run mypy --all-files"
         2. "You MUST fix all the errors"
 
+4. Code Style and Linting
 
+### Python
+- Use ruff for linting
+- Use black for formatting
+- Line length: 88 characters
+- Target Python version: 3.9+
+- Exclude patterns:
+  - .git/*
+  - __pycache__/*
+  - .nova/*
+  - build/*
+  - dist/*
+  - *.egg-info/*
 
+### TypeScript/JavaScript
+- Use ESLint with TypeScript parser
+- Use Prettier for formatting
+- Line length: 100 characters
+- Target ECMAScript version: ES2020
+- Exclude patterns:
+  - node_modules/*
+  - dist/*
+  - build/*
+  - coverage/*
 
+### Pre-commit Hooks
+- Run ruff
+- Run black
+- Run mypy
+- Run ESLint
+- Run Prettier
+- Run TypeScript compiler
+- Run tests
 
-❯ 
+### Editor Settings
+- Tab size: 2 spaces for TS/JS/JSON
+- Tab size: 4 spaces for Python
+- Insert final newline: true
+- Trim trailing whitespace: true
+- Auto-format on save: true
+- Auto-organize imports: true
+
+### Type Checking
+- Python: Use mypy with strict mode
+- TypeScript: Use strict mode
+- Enable all strict type checks
+- No implicit any
+- No implicit returns
+- No unused locals
+- No unused parameters
+
+### Testing
+- Use pytest for Python
+- Use Jest for TypeScript/JavaScript
+- Require test coverage > 90%
+- Run tests before commits
+- Run type checks before commits
+
+### Documentation
+- Require docstrings for all public functions
+- Use Google style docstrings for Python
+- Use JSDoc for TypeScript/JavaScript
+- Keep documentation in sync with code
+
+### Version Control
+- Require conventional commit messages
+- Run pre-commit hooks locally
+- Block commits that fail linting/testing
+- Require branch to be up to date before merge
