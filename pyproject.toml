@@ -66,3 +66,7 @@ line_length = 100
 
 [project.scripts]
 nova = "nova.cli.main:main"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # Ignore assert statements in tests
