@@ -32,7 +32,7 @@ class ProcessNotesCommand(NovaCommand):
         try:
             # Process all notes in input directory
             input_path = Path(input_dir)
-            note_files = list(input_path.glob("*.txt"))
+            note_files = list(input_path.glob("*.md"))
             if not note_files:
                 logger.warning(f"No note files found in {input_dir}")
                 return
@@ -40,8 +40,8 @@ class ProcessNotesCommand(NovaCommand):
             # Process each note
             for note_file in note_files:
                 try:
-                    chunks = process_note(note_file, output_path)
-                    logger.info(f"Processed {note_file} into {len(chunks)} chunks")
+                    note = process_note(note_file, output_path)
+                    logger.info(f"Processed note: {note.title}")
                 except Exception as e:
                     logger.error(f"Failed to process note {note_file}: {str(e)}")
                     continue
@@ -51,10 +51,10 @@ class ProcessNotesCommand(NovaCommand):
             raise click.Abort()
 
     def create_command(self) -> click.Command:
-        """Create the command.
+        """Create the Click command.
 
         Returns:
-            Click command object
+            click.Command: The Click command
         """
 
         @click.command(name="process-notes")
@@ -65,7 +65,7 @@ class ProcessNotesCommand(NovaCommand):
             "--output-dir", required=True, help="Output directory for processed notes"
         )
         def command(input_dir: str, output_dir: str) -> None:
-            """Process notes into chunks."""
+            """Process notes from input directory."""
             self.run(input_dir=input_dir, output_dir=output_dir)
 
         return command

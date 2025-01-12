@@ -5,6 +5,7 @@ uses a plugin-based architecture to discover and register commands.
 """
 
 import importlib
+import logging
 import pkgutil
 
 import click
@@ -12,8 +13,21 @@ from rich.console import Console
 
 from nova.cli import commands
 from nova.cli.utils.command import NovaCommand
+from nova.config import load_config
 
 console = Console()
+
+
+def setup_logging() -> None:
+    """Set up logging configuration."""
+    config = load_config()
+    log_file = config.paths.logs_dir / "nova.log"
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(log_file), logging.StreamHandler()],
+    )
 
 
 class NovaCLI:
@@ -47,7 +61,7 @@ class NovaCLI:
         @click.group()
         def cli() -> None:
             """Nova - Your AI-powered note management system."""
-            pass
+            setup_logging()
 
         # Register all discovered commands
         for cmd_class in self.commands.values():

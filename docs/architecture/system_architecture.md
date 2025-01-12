@@ -112,32 +112,31 @@
   - Integration with chunking engine verified
 
 #### Vector Store Integration [IMPLEMENTED]
-- Standalone processing:
-  - Direct text to vector pipeline
-  - Heading-aware chunking
-  - Cached embeddings
-  - Structured output format:
-    - chunk_N.txt: Text chunks with context
-    - embedding_N.npy: NumPy array embeddings
+- Chroma-based vector store:
+  - Persistent storage in .nova/vectors
+  - Metadata preservation with embeddings
+  - Efficient vector operations
+  - Collection-based organization
+  - Automatic ID generation
 - Bear note integration:
-  - Metadata preservation
-  - Tag-aware processing
-  - Source attribution
-  - Per-note organization:
-    - note_title/chunk_N.txt
-    - note_title/embedding_N.npy
+  - Full note content embeddings
+  - Rich metadata storage:
+    - Source file path
+    - Note title and date
+    - Tags
+  - Batch processing support
 - Directory structure:
-  - .nova/vector_store/embeddings
-  - .nova/vector_store/cache
-  - .nova/vector_store/index
+  - .nova/vectors/: Chroma database files
+  - .nova/processing/: Processed notes
+  - .nova/logs/: System logs
 - Current Status:
   - Core functionality verified
   - Test suite passing
   - Bear note integration complete
   - Processing scripts operational
   - CLI modules implemented:
-    - process_vectors: Standalone text processing
-    - process_bear_vectors: Bear note integration
+    - process-bear-vectors: Bear note vector processing
+    - clean-vectors: Vector store cleanup
 
 ### 3. RAG Orchestration Layer
 
@@ -150,16 +149,21 @@
 - Core Commands:
   - process-notes:
     - Bear note processing with configurable paths
-    - OCR handling and metadata generation
+    - Metadata generation and organization
     - Progress tracking with rich output
     - Async note processing with error recovery
     - Configurable input/output paths
-  - process-vectors:
-    - Vector store operations with batch support
-    - Cache management and persistence
-    - Configurable chunking parameters
-    - Numpy-based embedding storage
-    - Structured output format
+  - process-bear-vectors:
+    - Bear note vector processing
+    - Chroma vector store integration
+    - Metadata preservation
+    - Batch processing support
+    - Configurable input/output paths
+  - clean-vectors:
+    - Vector store cleanup
+    - Safe deletion with --force flag
+    - Directory cleanup
+    - Error handling and logging
   - monitor:
     - Health checks and system status
     - Statistics and metrics display

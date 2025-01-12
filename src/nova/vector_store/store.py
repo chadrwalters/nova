@@ -28,7 +28,15 @@ class VectorStore:
 
         # Initialize Chroma client
         self.client = chromadb.PersistentClient(path=str(store_dir))
-        self.collection = self.client.get_or_create_collection("nova")
+
+        # Delete existing collection if it exists
+        try:
+            self.client.delete_collection("nova")
+        except ValueError:
+            pass
+
+        # Create new collection
+        self.collection = self.client.create_collection("nova")
 
     def add_embeddings(
         self,
@@ -51,11 +59,12 @@ class VectorStore:
             dict(m) for m in metadata_dicts
         ]
 
-        # Generate IDs for embeddings
+        # Generate unique IDs for embeddings
         ids = [f"vec_{i}" for i in range(len(embeddings))]
 
         # Add embeddings to collection
         self.collection.add(embeddings=embeddings, metadatas=metadatas, ids=ids)
+        logger.info("Added %d embeddings to vector store", len(embeddings))
 
     def query(
         self,

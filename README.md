@@ -54,24 +54,47 @@ Error Handling:
 - Reports parsing errors with context
 - Maintains partial progress on failure
 
-#### `nova process-vectors`
-Process text into vector embeddings.
+#### `nova process-bear-vectors`
+Process Bear notes into vector embeddings.
 
 ```bash
-# Process text from a file
-nova process-vectors --text "$(cat document.md)" --output-dir vectors/
+# Process notes from default input directory
+nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
 
-# Process text directly
-nova process-vectors --text "Your text here" --output-dir vectors/
+# Process notes from a specific directory
+nova process-bear-vectors --input-dir /path/to/notes --output-dir /path/to/vectors
 ```
 
 Options:
-- `--text`: Input text to process (required)
-- `--output-dir`: Directory for vector output (required)
+- `--input-dir`: Directory containing Bear notes (required)
+- `--output-dir`: Directory for vector store (required)
 
-Output Structure:
-- `chunk_N.txt`: Text chunks with context
-- `embedding_N.npy`: NumPy array embeddings
+Output:
+- Vector embeddings stored in Chroma database
+- Metadata preserved with each embedding:
+  - Source file path
+  - Note title
+  - Creation date
+  - Tags
+
+#### `nova clean-vectors`
+Clean the vector store.
+
+```bash
+# Show warning without deleting
+nova clean-vectors
+
+# Force deletion of vector store
+nova clean-vectors --force
+```
+
+Options:
+- `--force`: Force deletion without confirmation
+
+Warning:
+- This command deletes the entire vector store
+- Operation cannot be undone
+- Requires explicit --force flag
 
 #### `nova monitor`
 Monitor system health and status.
@@ -85,7 +108,6 @@ nova monitor stats
 
 # View recent logs
 nova monitor logs
-nova monitor logs --lines 100  # Show last 100 lines
 ```
 
 Subcommands:
@@ -97,9 +119,7 @@ Subcommands:
   - Vector embedding count
   - Processed note count
   - Log file count
-- `logs`: View recent log entries
-  - Options:
-    - `--lines`: Number of recent lines to show (default: 50)
+- `logs`: View recent log entries (last 50 lines)
 
 ### Common Patterns
 
@@ -111,14 +131,23 @@ nova monitor health
 # Process existing Bear notes
 nova process-notes
 
+# Create vector embeddings
+nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
+
 # Verify processing results
 nova monitor stats
 ```
 
 2. Processing New Content:
 ```bash
+# Clean existing vectors if needed
+nova clean-vectors --force
+
 # Process new notes
 nova process-notes --input-dir new_notes/
+
+# Create new vector embeddings
+nova process-bear-vectors --input-dir new_notes/ --output-dir .nova/vectors
 
 # Check processing status
 nova monitor logs
@@ -133,8 +162,12 @@ nova monitor health
 # View recent errors
 nova monitor logs
 
+# Clean vectors if corrupted
+nova clean-vectors --force
+
 # Retry processing
 nova process-notes
+nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
 ```
 
 ### Error Handling
@@ -164,23 +197,23 @@ The CLI provides consistent error handling across all commands:
 ## Project Structure
 
 - `src/nova/` - Main package directory
-  - `bear_parser/` - Bear note parsing functionality
-    - `parser.py` - Contains BearParser, BearNote, and BearAttachment classes
-    - `ocr.py` - EasyOCR-based text extraction
-    - `exceptions.py` - Custom exception hierarchy
+  - `ingestion/` - Note ingestion functionality
+    - `bear/` - Bear note parsing
+      - `__init__.py` - Contains BearParser and BearNote classes
   - `vector_store/` - Vector store functionality
     - `chunking.py` - Heading-aware document chunking
     - `embedding.py` - Text embedding with caching
+    - `store.py` - Chroma-based vector store
   - `cli/` - Command-line interface modules
     - `commands/` - Individual command implementations
       - `process_notes.py` - Bear note processing
-      - `process_vectors.py` - Vector store operations
+      - `process_bear_vectors.py` - Vector store operations
+      - `clean_vectors.py` - Vector store cleanup
       - `monitor.py` - System monitoring
     - `utils/` - Shared CLI utilities
-- `.nova/` - System directory for processing files, logs, and placeholders
-  - `placeholders/ocr/` - OCR failure placeholders
-  - `processing/ocr/` - OCR processing files
-  - `vector_store/` - Vector embeddings and cache
+- `.nova/` - System directory
+  - `processing/` - Processed notes with metadata
+  - `vectors/` - Vector embeddings (Chroma DB)
   - `logs/` - System logs
 
 ## Usage
@@ -190,57 +223,45 @@ The CLI provides consistent error handling across all commands:
 1. Configure input directory:
 Default: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput`
 
-2. Generate metadata for your Bear notes:
-```bash
-nova generate-metadata
-```
-This creates a metadata.json file containing:
-- Note creation/modification dates
-- Attachment references
-- Initial tag list
-
-3. Process the notes:
+2. Process the notes:
 ```bash
 nova process-notes
 ```
 This will:
 - Parse all notes in the configured input directory
-- Extract tags (including nested #tag/subtag format)
-- Process any image attachments using OCR
-- Generate placeholders for failed OCR attempts
-- Create a structured output in the .nova directory
+- Extract metadata (title, date, tags)
+- Create a structured output in .nova/processing
 
 ### Vector Store Processing
 
-1. Process standalone text:
+1. Process Bear notes with vector store:
 ```bash
-nova process-vectors "Your text here" output_directory
+nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
 ```
-This demonstrates:
-- Heading-aware document chunking
-- Semantic content splitting
-- Embedding generation with caching
-- Structured output:
-  - chunk_N.txt: Text chunks with context
-  - embedding_N.npy: NumPy array embeddings
+This creates:
+- Vector embeddings for each note
+- Metadata including:
+  - Note title and date
+  - Tags
+  - Source file path
 
-2. Process Bear notes with vector store:
+2. Clean vector store if needed:
 ```bash
-nova process-bear-vectors input_directory output_directory
+nova clean-vectors --force
 ```
-This integrates:
-- Bear note parsing with metadata
-- Tag-aware chunking
-- Heading context preservation
-- Per-note organization:
-  - note_title/chunk_N.txt
-  - note_title/embedding_N.npy
+Use this when:
+- Starting fresh
+- Fixing corrupted vectors
+- Changing embedding models
 
 ### Configuration
 
 Default paths:
 - Input directory: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput`
 - System directory: `.nova/`
+  - Processing: `.nova/processing/`
+  - Vectors: `.nova/vectors/`
+  - Logs: `.nova/logs/`
 
 ### OCR Processing
 
@@ -285,7 +306,7 @@ Pre-commit configuration:
   - [x] Bear note integration
   - [x] CLI modules for processing
 - [x] Command Line Interface
-  - [x] Core commands (process-notes, process-vectors, monitor)
+  - [x] Core commands (process-notes, process-bear-vectors, monitor)
   - [x] Rich terminal output with progress tracking
   - [x] Comprehensive error handling
   - [x] System health monitoring

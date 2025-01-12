@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+import chromadb
 from rich.console import Console
 from rich.table import Table
 
@@ -15,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 class MonitorCommand(NovaCommand):
     """Monitor command for system health, stats, and logs."""
+
+    name = "monitor"
 
     def run(self, **kwargs: Any) -> None:
         """Run the command.
@@ -52,7 +55,7 @@ class MonitorCommand(NovaCommand):
         table.add_row(".nova Directory", nova_status, str(nova_dir.absolute()))
 
         # Check vector store
-        vector_store = nova_dir / "vectorstore"
+        vector_store = nova_dir / "vectors"
         vector_status = "✓ OK" if vector_store.exists() else "✗ Missing"
         table.add_row("Vector Store", vector_status, str(vector_store.absolute()))
 
@@ -71,17 +74,22 @@ class MonitorCommand(NovaCommand):
         table.add_column("Value", style="green")
 
         # Count vector embeddings
-        vector_store = Path(".nova/vectorstore")
+        vector_store = Path(".nova/vectors")
         if vector_store.exists():
-            embedding_count = len(list(vector_store.glob("*.npy")))
+            try:
+                client = chromadb.PersistentClient(path=str(vector_store))
+                collection = client.get_collection("nova")
+                embedding_count = collection.count()
+            except Exception:
+                embedding_count = 0
         else:
             embedding_count = 0
         table.add_row("Vector Embeddings", str(embedding_count))
 
         # Count processed notes
-        notes_dir = Path(".nova/notes")
-        if notes_dir.exists():
-            note_count = len(list(notes_dir.glob("*.json")))
+        processing_dir = Path(".nova/processing")
+        if processing_dir.exists():
+            note_count = len(list(processing_dir.glob("*/*.md")))
         else:
             note_count = 0
         table.add_row("Processed Notes", str(note_count))

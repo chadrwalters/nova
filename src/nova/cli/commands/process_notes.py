@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 class ProcessNotesCommand(NovaCommand):
     """Process notes command for nova CLI."""
 
+    name = "process-notes"
+
     def run(self, **kwargs: Any) -> None:
         """Run the process-notes command."""
         config = load_config()

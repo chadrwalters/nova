@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessVectorsCommand(NovaCommand):
-    """Process vectors command implementation."""
+    """Process vectors command."""
+
+    name = "process-vectors"
 
     def run(self, **kwargs: Any) -> None:
         """Run the command.

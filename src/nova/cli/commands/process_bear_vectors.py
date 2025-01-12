@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 class ProcessBearVectorsCommand(NovaCommand):
     """Process Bear vectors command."""
 
+    name = "process-bear-vectors"
+
     def run(self, **kwargs: Any) -> None:
         """Run the command.
 
@@ -46,32 +48,42 @@ class ProcessBearVectorsCommand(NovaCommand):
         vector_store = VectorStore(store_dir=output_path)
 
         # Process notes
-        note_files = list(input_path.glob("*.txt"))
+        note_files = list(input_path.glob("*.md"))
         if not note_files:
             logger.warning("No note files found in %s", input_dir)
             return
 
+        # Process all notes and collect embeddings
+        embeddings = []
+        metadatas = []
         for note_file in note_files:
             try:
-                # Process note into chunks
-                chunks = process_note(note_file)
-                if not chunks:
-                    logger.warning("No chunks created from %s", note_file.name)
+                # Process note
+                note = process_note(note_file)
+                if not note.content:
+                    logger.warning("No content in note %s", note_file.name)
                     continue
 
-                # Create embeddings for each chunk
-                for chunk in chunks:
-                    embedding = embedding_engine.embed_text(chunk)
-                    metadata: dict[str, str | int | float | bool] = {
-                        "source": str(note_file),
-                        "text": chunk,
-                    }
-                    vector_store.add_embeddings([embedding.vector], [metadata])
+                # Create embedding for the note content
+                embedding = embedding_engine.embed_text(note.content)
+                metadata: dict[str, str | int | float | bool] = {
+                    "source": str(note_file),
+                    "text": note.content,
+                    "title": note.title,
+                    "date": note.date.isoformat(),
+                    "tags": ",".join(note.tags),
+                }
 
+                embeddings.append(embedding.vector)
+                metadatas.append(metadata)
                 logger.info("Processed note: %s", note_file.name)
             except Exception as e:
                 logger.error("Failed to process note %s: %s", note_file.name, e)
                 raise
+
+        # Add all embeddings to vector store at once
+        if embeddings:
+            vector_store.add_embeddings(embeddings, metadatas)
 
     def create_command(self) -> click.Command:
         """Create the command.
