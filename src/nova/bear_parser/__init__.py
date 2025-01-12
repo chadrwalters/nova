@@ -1,20 +1,8 @@
-"""Nova Bear Parser Module.
+"""Bear parser module.
 
-This module provides functionality for parsing Bear.app note exports, including:
-- Parsing Bear note markdown files
-- Handling Bear attachments and images
-- Extracting metadata like tags and creation dates
-- OCR processing for images using Docling
+This module provides functionality for parsing Bear.app note exports.
 """
 
-from .parser import BearParser, BearNote, BearAttachment
-from .exceptions import BearParserError, AttachmentError, OCRError
+from .parser import BearParser, BearNote, BearAttachment, BearParserError
 
-__all__ = [
-    "BearParser",
-    "BearNote",
-    "BearAttachment",
-    "BearParserError",
-    "AttachmentError",
-    "OCRError",
-]
+__all__ = ["BearParser", "BearNote", "BearAttachment", "BearParserError"]

@@ -78,38 +78,119 @@ Nova
   - Bear note integration
   - Detailed logging and error handling
 
-### 4.3 MCP Integration with Claude [IN PROGRESS]
-- Official MCP SDK integration
-- Ephemeral data handling in memory only
-- Structured context blocks and system instructions
+### 4.3 CLI Interface [IN PROGRESS]
+- Command-line interface architecture:
+  - Unified command structure with base command class
+  - Plugin-based extensibility with automatic discovery
+  - Rich terminal output and error handling
+  - Standardized logging and progress tracking
+- Core commands:
+  - nova process-notes:
+    - Process Bear exports with configurable paths
+    - Handle OCR conversion and metadata
+    - Track progress with rich output
+    - Validate input and output directories
+  - nova process-vectors:
+    - Vector store operations with batch support
+    - Cache management and persistence
+    - Configurable chunking parameters
+    - Progress tracking for long operations
+  - nova monitor:
+    - Health checks and system status
+    - Statistics and metrics display
+    - Log viewing with filtering
+    - Real-time updates
+- User experience:
+  - Command completion with help text
+  - Rich progress indicators for long operations
+  - Structured error reporting with context
+  - Consistent output formatting
+- Documentation:
+  - Comprehensive command reference
+  - Detailed usage examples
+  - Error handling guidelines
+  - Configuration and setup guide
 
-### 4.4 RAG Orchestrator [IN PROGRESS]
-- Similarity search from vector store
-- MCP payload construction
-- Claude API integration
+### 4.4 MCP Integration with Claude [PLANNED]
+- Official MCP SDK integration:
+  - Dedicated mcp module
+  - Data retrieval interface
+  - MCP adapter implementation
+- Tool definitions:
+  - search_documentation
+  - list_sources
+  - extract_content
+  - remove_documentation
+- Context block handling:
+  - Ephemeral data in memory
+  - Resource block persistence
+  - System instruction management
 
-### 4.5 Monitoring Web App [PLANNED]
-- Read-only dashboard for system metrics
-- Local-first deployment
-- Optional cloud deployment with authentication
+### 4.5 Monitoring System [PLANNED]
+- FastAPI-based web server:
+  - Health check endpoint
+  - Basic metrics display
+  - Recent ingestion stats
+- Structured logging:
+  - structlog integration
+  - Consistent log format
+  - Log rotation
+- Performance metrics:
+  - Vector store statistics
+  - Query performance
+  - System health
+- API endpoints:
+  - /health for system status
+  - /metrics for performance data
+  - /stats for processing statistics
 
 ## 5. Non-Functional Requirements
 
 1. **Performance**
    - Few seconds response time for typical queries
    - Stable performance with thousands of notes
+   - Efficient resource utilization:
+     - Memory management
+     - CPU optimization
+     - Disk space monitoring
 
 2. **Scalability**
    - Handle large note collections efficiently
    - Maintain performance with growing data
+   - Resource-aware processing:
+     - Batch operations
+     - Caching strategies
+     - Async processing
 
 3. **Reliability**
    - Graceful handling of conversion failures
    - Robust ephemeral data management
+   - Error recovery:
+     - Automatic retries
+     - Failure logging
+     - Status tracking
 
 4. **Security**
    - No sensitive data exposure
    - Proper ephemeral data handling
+   - API key management:
+     - Secure storage
+     - Access control
+     - Key rotation
+
+5. **Development**
+   - uv-based environment management:
+     - Dependency locking
+     - Virtual environment isolation
+     - Package versioning
+   - Testing infrastructure:
+     - Unit test coverage
+     - Integration testing
+     - End-to-end validation
+   - Documentation:
+     - Setup guides
+     - API reference
+     - Usage examples
 
 ## 6. Assumptions
 
@@ -117,12 +198,15 @@ Nova
 2. Valid Anthropic API key availability
 3. Official MCP SDK compatibility
 4. Local deployment capability
+5. uv package manager availability
 
 ## 7. Constraints
 
 1. Local-first deployment focus
 2. Optional cloud deployment with security measures
 3. Strict ephemeral data handling
+4. uv-only package management
+5. Python 3.10+ requirement
 
 ## 8. Future Enhancements
 
@@ -130,6 +214,7 @@ Nova
 2. Multi-LLM support
 3. Advanced monitoring features
 4. Multi-user capabilities
+5. Cloud deployment options
 
 ## 9. Success Metrics
 
@@ -137,3 +222,30 @@ Nova
 2. Sub-5-second query performance
 3. Effective monitoring capabilities
 4. Modular and maintainable code
+5. Comprehensive test coverage
+
+## 10. Development Guidelines
+
+1. **Environment Setup**
+   - Install uv package manager
+   - Create virtual environment
+   - Install dependencies
+   - Configure development tools
+
+2. **Testing Requirements**
+   - Run mypy type checking
+   - Execute pytest test suite
+   - Maintain test coverage
+   - Document test cases
+
+3. **Code Quality**
+   - Follow PEP 8 style guide
+   - Use type hints
+   - Document public APIs
+   - Write clear commit messages
+
+4. **Documentation**
+   - Update README.md
+   - Maintain architecture docs
+   - Document API changes
+   - Create usage examples

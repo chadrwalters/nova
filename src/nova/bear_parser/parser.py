@@ -1,214 +1,143 @@
-"""Bear parser module for processing Bear.app note exports."""
+"""Bear note parser implementation."""
 
-import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
 
-from .exceptions import BearParserError, AttachmentError, OCRError
-from .ocr import EasyOcrModel
+logger = logging.getLogger(__name__)
+
+
+class BearParserError(Exception):
+    """Error raised when parsing Bear notes fails."""
 
 
 @dataclass
 class BearAttachment:
-    """Represents an attachment in a Bear note."""
+    """Bear note attachment."""
 
     path: Path
-    ocr_text: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    ocr_model: EasyOcrModel | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize the attachment."""
-        self.ocr_model = EasyOcrModel()
-
-    @property
-    def is_image(self) -> bool:
-        """Check if the attachment is an image."""
-        return self.path.suffix.lower() in {".png", ".jpg", ".jpeg", ".gif", ".bmp"}
-
-    async def process_ocr(self, nova_dir: Path) -> None:
-        """Process OCR for this attachment."""
-        try:
-            if not self.path.exists():
-                raise AttachmentError(f"Attachment file not found: {self.path}")
-
-            if not self.is_image:
-                return
-
-            if self.ocr_model is None:
-                self.ocr_model = EasyOcrModel()
-
-            self.metadata["ocr_status"] = "processing"
-            text, confidence = await self.ocr_model(str(self.path))
-            self.ocr_text = text
-            self.metadata["ocr_confidence"] = confidence
-            self.metadata["ocr_status"] = "success"
-        except Exception as e:
-            self.metadata["ocr_status"] = "failed"
-            self.metadata["error"] = str(e)
-            await self.save_placeholder(nova_dir)
-            if isinstance(e, AttachmentError):
-                raise
-            raise OCRError(f"OCR processing failed for {self.path}: {str(e)}") from e
-
-    async def save_placeholder(self, nova_dir: Path) -> None:
-        """Save a placeholder file for failed OCR."""
-        placeholder_dir = nova_dir / "placeholders" / "ocr"
-        placeholder_dir.mkdir(parents=True, exist_ok=True)
-
-        placeholder = {
-            "type": "ocr_failure",
-            "version": 1,
-            "original_file": str(self.path),
-            "ocr_status": self.metadata.get("ocr_status"),
-            "error": self.metadata.get("error"),
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        placeholder_file = placeholder_dir / f"{self.path.stem}_ocr_failure.json"
-        placeholder_file.write_text(json.dumps(placeholder))
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
 class BearNote:
-    """Represents a Bear note with its content and metadata."""
+    """Bear note."""
 
     title: str
     content: str
-    metadata: dict[str, Any]
-    attachments: list[BearAttachment] = field(default_factory=list)
-    tags: set[str] = field(default_factory=set)
-
-    def __post_init__(self) -> None:
-        """Initialize the note."""
-        pass
+    tags: list[str]
+    attachments: list[BearAttachment]
+    metadata: dict = field(default_factory=dict)
 
 
 class BearParser:
-    """Parser for Bear note markdown files."""
+    """Parser for Bear notes."""
 
-    def __init__(self, notes_dir: Path, nova_dir: Path = Path(".nova")):
-        self.notes_dir = notes_dir
-        self.nova_dir = nova_dir
-        self.metadata_file = notes_dir / "metadata.json"
-        self._setup_nova_directory()
+    def __init__(self, input_dir: Path) -> None:
+        """Initialize the parser.
 
-    def _setup_nova_directory(self) -> None:
-        """Set up the .nova directory structure."""
-        for subdir in ["placeholders/ocr", "processing/ocr", "logs"]:
-            (self.nova_dir / subdir).mkdir(parents=True, exist_ok=True)
+        Args:
+            input_dir: Input directory containing Bear notes
+        """
+        self.input_dir = input_dir
 
-    def _load_metadata(self, note_file: Path) -> dict[str, Any]:
-        """Load metadata for a specific note."""
-        try:
-            with open(self.metadata_file) as f:
-                metadata = json.load(f)
-                if note_file.name in metadata:
-                    return dict[str, Any](metadata[note_file.name])
-                return {}
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+    def parse_directory(self) -> list[BearNote]:
+        """Parse all notes in the input directory.
 
-    async def parse_note(self, note_file: Path) -> BearNote:
-        """Parse a single note file and return a BearNote object."""
-        try:
-            note_metadata = self._load_metadata(note_file)
-            content = note_file.read_text()
-            note = BearNote(
-                title=note_metadata.get("title", ""),
-                content=content,
-                metadata=note_metadata,
-            )
-
-            # Extract tags from content
-            note.tags = self._extract_tags(content, note_metadata.get("tags", []))
-
-            # Process attachments
-            attachments = note_metadata.get("attachments", [])
-            for attachment_info in attachments:
-                if isinstance(attachment_info, str):
-                    filename = attachment_info
-                    metadata = {}
-                else:
-                    filename = attachment_info["filename"]
-                    metadata = {
-                        k: v for k, v in attachment_info.items() if k != "filename"
-                    }
-
-                attachment_path = note_file.parent / filename
-                if not attachment_path.exists():
-                    continue
-
-                attachment = BearAttachment(path=attachment_path, metadata=metadata)
-                note.attachments.append(attachment)
-
-                if attachment.is_image:
-                    await attachment.process_ocr(self.nova_dir)
-
-            return note
-
-        except Exception as e:
-            raise BearParserError(f"Error parsing note {note_file}: {str(e)}") from e
-
-    async def parse_directory(self) -> list[BearNote]:
-        """Parse all notes in the directory."""
+        Returns:
+            List of parsed notes
+        """
         notes = []
-        errors = []
-
-        for note_file in self.notes_dir.glob("*.md"):
+        for note_file in self.input_dir.glob("**/*.md"):
             try:
-                note = await self.parse_note(note_file)
+                note = self.parse_note(note_file)
                 notes.append(note)
-            except BearParserError as e:
-                errors.append(str(e))
-                logging.error(f"Failed to parse {note_file}: {str(e)}")
-
-        if errors:
-            logging.warning(f"Encountered {len(errors)} errors while processing notes")
-
+            except Exception as e:
+                logger.error(f"Failed to parse note {note_file}: {str(e)}")
         return notes
 
-    async def cleanup_placeholders(self, max_age_days: int = 30) -> None:
-        """Clean up old placeholder files."""
-        placeholder_dir = self.nova_dir / "placeholders" / "ocr"
-        if not placeholder_dir.exists():
-            return
+    def parse_note(self, note_file: Path) -> BearNote:
+        """Parse a single note file.
 
-        cutoff_time = datetime.now() - timedelta(days=max_age_days)
-        for placeholder_file in placeholder_dir.glob("*.json"):
-            try:
-                placeholder = json.loads(placeholder_file.read_text())
-                timestamp = datetime.fromisoformat(placeholder["timestamp"])
-                if timestamp < cutoff_time:
-                    placeholder_file.unlink()
-                    logging.info(f"Removed old placeholder: {placeholder_file}")
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                logging.warning(
-                    f"Error processing placeholder file {placeholder_file}: {str(e)}"
-                )
+        Args:
+            note_file: Path to the note file
 
-    def _extract_tags(
-        self, content: str, existing_tags: list[str] | None = None
-    ) -> set[str]:
-        """Extract tags from note content."""
-        if existing_tags is None:
-            existing_tags = []
+        Returns:
+            Parsed note
 
-        # Extract tags from content (e.g., #tag1 #tag2)
-        # Ignore tags inside code blocks
-        tags = set(existing_tags)
-        in_code_block = False
+        Raises:
+            BearParserError: If parsing fails
+        """
+        try:
+            content = note_file.read_text()
+            title = self._extract_title(content)
+            tags = self._extract_tags(content)
+            attachments = self._extract_attachments(content, note_file.parent)
+            return BearNote(
+                title=title, content=content, tags=tags, attachments=attachments
+            )
+        except Exception as e:
+            raise BearParserError(f"Failed to parse note {note_file}: {str(e)}")
+
+    def _extract_title(self, content: str) -> str:
+        """Extract title from note content.
+
+        Args:
+            content: Note content
+
+        Returns:
+            Note title
+        """
+        lines = content.split("\n")
+        for line in lines:
+            if line.startswith("# "):
+                return line[2:].strip()
+        return "Untitled Note"
+
+    def _extract_tags(self, content: str) -> list[str]:
+        """Extract tags from note content.
+
+        Args:
+            content: Note content
+
+        Returns:
+            List of tags
+        """
+        tags = []
         for line in content.split("\n"):
-            if line.startswith("```"):
-                in_code_block = not in_code_block
-                continue
+            if "#" in line:
+                # Extract tags (words starting with #)
+                words = line.split()
+                tags.extend(
+                    [
+                        word[1:]
+                        for word in words
+                        if word.startswith("#") and len(word) > 1
+                    ]
+                )
+        return list(set(tags))
 
-            if not in_code_block:
-                for word in line.split():
-                    if word.startswith("#") and len(word) > 1:
-                        tags.add(word[1:])
+    def _extract_attachments(
+        self, content: str, note_dir: Path
+    ) -> list[BearAttachment]:
+        """Extract attachments from note content.
 
-        return tags
+        Args:
+            content: Note content
+            note_dir: Directory containing the note
+
+        Returns:
+            List of attachments
+        """
+        attachments = []
+        for line in content.split("\n"):
+            if "![" in line and "](" in line:
+                # Extract image path from markdown link
+                path_start = line.find("](") + 2
+                path_end = line.find(")", path_start)
+                if path_start > 1 and path_end > path_start:
+                    path = line[path_start:path_end].strip()
+                    attachment_path = note_dir / path
+                    if attachment_path.exists():
+                        attachments.append(BearAttachment(path=attachment_path))
+        return attachments

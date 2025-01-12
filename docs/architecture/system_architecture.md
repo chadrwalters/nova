@@ -141,22 +141,67 @@
 
 ### 3. RAG Orchestration Layer
 
-#### Query Processor
-- MCP-aware query handling:
-  - Tool-based query decomposition
-  - Context window management
-  - Source attribution tracking
-- Retrieval Strategy:
-  - Hybrid search (semantic + keyword)
-  - Configurable chunk selection
-  - Dynamic context assembly
-- Result Processing:
-  - Source validation
-  - Metadata enrichment
-  - Context relevance scoring
+#### CLI Architecture [COMPLETED]
+- Command Structure:
+  - src/nova/cli/
+    - main.py: Command dispatcher with dynamic command discovery
+    - commands/: Individual command modules with base command class
+    - utils/: Shared CLI utilities and error handling
+- Core Commands:
+  - process-notes:
+    - Bear note processing with configurable paths
+    - OCR handling and metadata generation
+    - Progress tracking with rich output
+    - Async note processing with error recovery
+    - Configurable input/output paths
+  - process-vectors:
+    - Vector store operations with batch support
+    - Cache management and persistence
+    - Configurable chunking parameters
+    - Numpy-based embedding storage
+    - Structured output format
+  - monitor:
+    - Health checks and system status
+    - Statistics and metrics display
+    - Log viewing and filtering
+    - Rich table-based output
+    - Real-time system monitoring
+- Command Registration:
+  - Plugin-based architecture with base command class
+  - Automatic command discovery and registration
+  - Standardized error handling and logging
+  - Type-safe command interfaces
+  - Click-based command creation
+- Console Integration:
+  - pyproject.toml entrypoints for nova command
+  - Shell completion support
+  - Unified error handling with click.Abort
+  - Rich terminal output formatting
+  - Color-coded status indicators
+- Progress Feedback:
+  - Rich progress bars for long operations
+  - Structured status updates
+  - Error reporting with context
+  - Color-coded output formatting
+  - Operation status tracking
+- Error Handling:
+  - Input validation with descriptive messages
+  - Path existence verification
+  - Operation status tracking
+  - Recovery suggestions
+  - Partial progress preservation
+- Testing:
+  - Comprehensive unit test suite
+  - Integration tests for commands
+  - Mock-based testing
+  - Click test runner integration
+  - Help text verification
 
-#### MCP Integration
-- Official MCP Python SDK implementation
+#### MCP Integration [PLANNED]
+- Dedicated MCP module (src/nova/mcp):
+  - Data retrieval interface
+  - MCP adapter implementation
+  - API key configuration
 - Tool Definitions:
   - search_documentation: Vector-based search through notes
   - list_sources: Display available note collections
@@ -175,60 +220,103 @@
   - Clear error messages to Claude
   - Automatic retries for transient issues
 
-#### Claude Interface
-- Anthropic API integration via official SDK
-- MCP-compliant message formatting:
-  - Structured context assembly
-  - Tool result integration
-  - Ephemeral data management
-- Response Handling:
-  - Streaming support for long responses
-  - Rate limit management
-  - Error recovery
-- Session Management:
-  - Conversation context tracking
-  - Tool state persistence
-  - Resource cleanup
-
-### 4. Monitoring System
+### 4. Monitoring System [PLANNED]
 
 #### Backend Services
-- Metrics collection
-- Performance tracking
-- Log aggregation
-- Health checks
+- FastAPI-based server:
+  - Health check endpoint
+  - Basic metrics display
+  - Recent ingestion stats
+- Structured Logging:
+  - structlog integration
+  - Consistent log format
+  - Log rotation and cleanup
+- Metrics Collection:
+  - Vector store statistics
+  - Query performance tracking
+  - System health monitoring
+- API Endpoints:
+  - /health: System status
+  - /metrics: Performance data
+  - /stats: Processing statistics
 
-#### Web Dashboard
-- System metrics display
-- Processing status
-- Error reporting
-- Performance graphs
+#### Performance Monitoring
+- Resource Usage:
+  - Memory consumption
+  - CPU utilization
+  - Disk space tracking
+- Operation Metrics:
+  - Ingestion throughput
+  - Query latency
+  - Vector store performance
+- Error Tracking:
+  - Failure rates
+  - Error patterns
+  - Recovery success
 
 ## Data Flow Architecture
 
 ```mermaid
 sequenceDiagram
     participant User
+    participant CLI
     participant BearHandler
     participant Docling
     participant VectorStore
-    participant RAG
+    participant MCP
     participant Claude
     participant Monitor
 
-    User->>BearHandler: Export Notes
+    User->>CLI: Command
+    CLI->>BearHandler: Process Notes
     BearHandler->>Docling: Convert Attachments
     Docling-->>BearHandler: Converted Content
     BearHandler->>VectorStore: Store Chunks
-    User->>RAG: Query
-    RAG->>VectorStore: Retrieve Context
-    VectorStore-->>RAG: Relevant Chunks
-    RAG->>Claude: MCP Request
-    Claude-->>RAG: Response
-    RAG-->>User: Answer
+    User->>CLI: Query
+    CLI->>MCP: Process Query
+    MCP->>VectorStore: Retrieve Context
+    VectorStore-->>MCP: Relevant Chunks
+    MCP->>Claude: Request
+    Claude-->>MCP: Response
+    MCP-->>User: Answer
     Monitor->>VectorStore: Collect Metrics
-    Monitor->>RAG: Track Performance
+    Monitor->>MCP: Track Performance
 ```
+
+## Development Architecture
+
+### Environment Management
+- uv-based dependency management:
+  - pyproject.toml for package metadata
+  - uv.lock for dependency locking
+  - Virtual environment isolation
+- Setup Process:
+  1. Install uv: `brew install uv` or `pip install uv`
+  2. Initialize environment: `uv venv`
+  3. Install dependencies: `uv sync`
+  4. Activate environment: `source .venv/bin/activate`
+
+### Testing Strategy
+- Test Organization:
+  - tests/unit/: Unit tests by module
+  - tests/integration/: Cross-module tests
+  - tests/e2e/: End-to-end workflows
+- Test Runner:
+  - pytest with verbose output
+  - Type checking with mypy
+  - Command: `uv run mypy src tests && uv run pytest -v`
+
+### Documentation Structure
+- README.md:
+  - Quick start guide
+  - Environment setup
+  - Command reference
+- docs/architecture/: Technical design
+- docs/prd/: Product requirements
+- Developer guide:
+  - Setup instructions
+  - Testing procedures
+  - Contribution guidelines
 
 ## Security Architecture
 

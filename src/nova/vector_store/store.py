@@ -1,221 +1,96 @@
 """Vector store implementation using Chroma."""
-from dataclasses import dataclass
+
+import logging
+from pathlib import Path
 from typing import Any, cast
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+
 import chromadb
-from chromadb.config import Settings
-from chromadb.api.types import QueryResult, Embeddings, Metadatas, IncludeEnum
 import numpy as np
-import numpy.typing as npt
+from chromadb.api.types import Where
+from numpy.typing import NDArray
 
-from .chunking import Chunk
 
-
-@dataclass
-class SearchResult:
-    """Result from a vector store search."""
-
-    chunk: Chunk
-    score: float
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
-    """Vector store for document chunks.
+    """Vector store for embeddings."""
 
-    Features:
-    1. Persistent storage for long-term data
-    2. Ephemeral storage for session-specific data
-    3. Combined search across both stores
-    4. Configurable distance metrics
-    """
-
-    def __init__(
-        self,
-        persistent_path: str,
-        collection_name: str = "nova",
-        distance_func: str = "cosine",
-    ):
+    def __init__(self, store_dir: Path) -> None:
         """Initialize the vector store.
 
         Args:
-            persistent_path: Path to store persistent data
-            collection_name: Name of the collection
-            distance_func: Distance function to use
+            store_dir: Directory to store vectors in
         """
-        self.collection_name = collection_name
-        self.distance_func = distance_func
+        self.store_dir = store_dir
+        self.store_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize persistent client
-        self.persistent_client = chromadb.PersistentClient(
-            path=persistent_path,
-            settings=Settings(anonymized_telemetry=False),
-        )
+        # Initialize Chroma client
+        self.client = chromadb.PersistentClient(path=str(store_dir))
+        self.collection = self.client.get_or_create_collection("nova")
 
-        # Initialize ephemeral client
-        self.ephemeral_client = chromadb.EphemeralClient(
-            Settings(anonymized_telemetry=False)
-        )
-
-        # Create or get collections
-        self.persistent_collection = self.persistent_client.get_or_create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": distance_func},
-        )
-
-        self.ephemeral_collection = self.ephemeral_client.get_or_create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": distance_func},
-        )
-
-    def add_chunks(
+    def add_embeddings(
         self,
-        chunks: list[Chunk],
-        embeddings: list[npt.NDArray[np.float32]],
-        is_ephemeral: bool = False,
+        embedding_vectors: list[NDArray[np.float32]],
+        metadata_dicts: list[dict[str, str | int | float | bool]],
     ) -> None:
-        """Add chunks to the vector store.
+        """Add embeddings to the store.
 
         Args:
-            chunks: List of chunks to add
-            embeddings: Corresponding embeddings
-            is_ephemeral: Whether to add to ephemeral storage
+            embedding_vectors: List of embedding vectors
+            metadata_dicts: List of metadata dictionaries
         """
-        # Convert chunks to IDs and metadata
-        ids = [str(i) for i in range(len(chunks))]
-        metadatas = [self._chunk_to_metadata(chunk) for chunk in chunks]
-        documents = [chunk.content for chunk in chunks]
-        embeddings_list = [cast(Sequence[float], e.tolist()) for e in embeddings]
+        # Convert numpy arrays to lists
+        embeddings: list[Sequence[float]] = [
+            vector.tolist() for vector in embedding_vectors
+        ]
 
-        # Add to appropriate collection
-        collection = (
-            self.ephemeral_collection if is_ephemeral else self.persistent_collection
-        )
-        collection.add(
-            ids=ids,
-            embeddings=cast(Embeddings, embeddings_list),
-            documents=documents,
-            metadatas=cast(Metadatas, metadatas),
-        )
+        # Convert metadata to Mappings
+        metadatas: list[Mapping[str, str | int | float | bool]] = [
+            dict(m) for m in metadata_dicts
+        ]
 
-    def search(
+        # Generate IDs for embeddings
+        ids = [f"vec_{i}" for i in range(len(embeddings))]
+
+        # Add embeddings to collection
+        self.collection.add(embeddings=embeddings, metadatas=metadatas, ids=ids)
+
+    def query(
         self,
-        query_embedding: npt.NDArray[np.float32],
-        limit: int = 5,
-        min_score: float = 0.0,
-        include_ephemeral: bool = True,
-    ) -> list[SearchResult]:
-        """Search for similar chunks.
+        query_vector: NDArray[np.float32],
+        n_results: int = 5,
+        where: Where | None = None,
+    ) -> list[dict[str, Any]]:
+        """Query the vector store.
 
         Args:
-            query_embedding: Query embedding
-            limit: Maximum number of results
-            min_score: Minimum similarity score
-            include_ephemeral: Whether to include ephemeral results
+            query_vector: Query vector
+            n_results: Number of results to return
+            where: Optional filter conditions
 
         Returns:
-            List of search results
+            List of results with metadata
         """
-        results: list[SearchResult] = []
+        # Convert query vector to list
+        query_embedding: Sequence[float] = query_vector.tolist()
 
-        # Search persistent collection
-        persistent_results = self.persistent_collection.query(
-            query_embeddings=cast(
-                Embeddings, [cast(Sequence[float], query_embedding.tolist())]
-            ),
-            n_results=limit,
-            include=[
-                cast(IncludeEnum, "documents"),
-                cast(IncludeEnum, "metadatas"),
-                cast(IncludeEnum, "distances"),
-            ],
+        # Query collection
+        results = self.collection.query(
+            query_embeddings=[query_embedding], n_results=n_results, where=where
         )
-        results.extend(self._process_results(persistent_results))
 
-        # Search ephemeral if requested
-        if include_ephemeral:
-            ephemeral_results = self.ephemeral_collection.query(
-                query_embeddings=cast(
-                    Embeddings, [cast(Sequence[float], query_embedding.tolist())]
-                ),
-                n_results=limit,
-                include=[
-                    cast(IncludeEnum, "documents"),
-                    cast(IncludeEnum, "metadatas"),
-                    cast(IncludeEnum, "distances"),
-                ],
-            )
-            results.extend(self._process_results(ephemeral_results))
+        # Extract metadata from results
+        metadata_list = []
+        metadatas = cast(list[list[dict[str, Any]]], results.get("metadatas"))
+        if metadatas and metadatas[0]:
+            ids = cast(list[list[str]], results["ids"])
+            distances = cast(list[list[float]], results["distances"])
+            for i in range(len(metadatas[0])):
+                metadata = dict(metadatas[0][i])
+                metadata["id"] = ids[0][i]
+                metadata["distance"] = float(distances[0][i])
+                metadata_list.append(metadata)
 
-        # Sort by score and apply minimum score filter
-        results = [r for r in results if r.score >= min_score]
-        results.sort(key=lambda x: x.score, reverse=True)
-
-        return results[:limit]
-
-    def clear_ephemeral(self) -> None:
-        """Clear all ephemeral data."""
-        self.ephemeral_collection.delete(where={})
-
-    def _process_results(self, results: QueryResult) -> list[SearchResult]:
-        """Process raw query results into SearchResults.
-
-        Args:
-            results: Raw query results from Chroma
-
-        Returns:
-            List of processed search results
-        """
-        processed: list[SearchResult] = []
-
-        if not results or not results["ids"]:
-            return processed
-
-        documents = cast(list[list[str]], results["documents"])[0]
-        metadatas = cast(list[list[dict[str, Any]]], results["metadatas"])[0]
-        distances = cast(list[list[float]], results["distances"])[0]
-
-        for doc, meta, dist in zip(documents, metadatas, distances):
-            chunk = self._metadata_to_chunk(doc, meta)
-            # Convert distance to similarity score
-            score = 1.0 - dist if self.distance_func == "cosine" else 1.0 / (1.0 + dist)
-            processed.append(SearchResult(chunk=chunk, score=score))
-
-        return processed
-
-    def _chunk_to_metadata(self, chunk: Chunk) -> dict[str, Any]:
-        """Convert chunk to metadata dictionary.
-
-        Args:
-            chunk: Chunk to convert
-
-        Returns:
-            Metadata dictionary
-        """
-        return {
-            "source": chunk.source_location,
-            "tags": ",".join(chunk.tags),
-            "heading_context": ",".join(chunk.heading_context),
-            "start_line": chunk.start_line,
-            "end_line": chunk.end_line,
-        }
-
-    def _metadata_to_chunk(self, content: str, metadata: dict[str, Any]) -> Chunk:
-        """Convert metadata back to chunk.
-
-        Args:
-            content: Chunk content
-            metadata: Metadata dictionary
-
-        Returns:
-            Reconstructed chunk
-        """
-        return Chunk(
-            content=content,
-            source_location=str(metadata["source"]),
-            tags=str(metadata["tags"]).split(",") if metadata["tags"] else [],
-            heading_context=str(metadata["heading_context"]).split(",")
-            if metadata["heading_context"]
-            else [],
-            start_line=int(metadata["start_line"]),
-            end_line=int(metadata["end_line"]),
-        )
+        return metadata_list

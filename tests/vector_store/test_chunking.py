@@ -1,91 +1,51 @@
 """Tests for the chunking engine."""
-import pytest
-from pytest import FixtureRequest
+
+from pathlib import Path
+
+
 from nova.vector_store.chunking import ChunkingEngine
 
 
-@pytest.fixture(scope="function")
-def sample_markdown(_request: FixtureRequest) -> str:
-    """Sample markdown document for testing."""
-    return """# Main Heading
+def test_chunk_document_basic() -> None:
+    """Test basic document chunking."""
+    engine = ChunkingEngine()
+    text = "This is a test document.\n\nIt has multiple paragraphs."
+    chunks = engine.chunk_document(text)
 
-This is the first paragraph with some content that should be chunked
-appropriately based on semantic meaning and size constraints.
-
-## Sub Heading 1
-
-More content here that continues for a while and should be split into
-multiple chunks if it exceeds the maximum chunk size. We want to make
-sure the chunking preserves the heading context.
-
-### Sub-Sub Heading
-
-Even more content that should maintain its heading hierarchy when chunked.
-This helps ensure proper context is maintained throughout the document.
-
-## Sub Heading 2
-
-Final section with content that should be properly chunked while maintaining
-all the appropriate metadata and context information."""
+    assert len(chunks) == 2
+    assert chunks[0].text == "This is a test document."
+    assert chunks[1].text == "It has multiple paragraphs."
 
 
-@pytest.fixture(scope="function")
-def engine(_request: FixtureRequest) -> ChunkingEngine:
-    """Create a ChunkingEngine instance for testing."""
-    return ChunkingEngine()
+def test_chunk_document_with_headings() -> None:
+    """Test document chunking with headings."""
+    engine = ChunkingEngine()
+    text = "# Heading 1\nParagraph 1\n\n# Heading 2\nParagraph 2"
+    chunks = engine.chunk_document(text)
+
+    assert len(chunks) == 2
+    assert chunks[0].text == "Paragraph 1"
+    assert chunks[0].heading_context == "Heading 1"
+    assert chunks[1].text == "Paragraph 2"
+    assert chunks[1].heading_context == "Heading 2"
 
 
-def test_chunking_engine_initialization() -> None:
-    """Test initialization of ChunkingEngine."""
-    engine = ChunkingEngine(min_chunk_size=100, max_chunk_size=512, overlap_size=50)
-    assert engine.min_chunk_size == 100
-    assert engine.max_chunk_size == 512
-    assert engine.overlap_size == 50
+def test_chunk_document_with_source() -> None:
+    """Test document chunking with source path."""
+    engine = ChunkingEngine()
+    text = "This is a test document."
+    source = Path("test.md")
+    chunks = engine.chunk_document(text, source)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "This is a test document."
+    assert chunks[0].source == source
 
 
-def test_heading_splitting(engine: ChunkingEngine, sample_markdown: str) -> None:
-    """Test splitting content by headings."""
-    splits = engine._split_by_headings(sample_markdown)
-    assert len(splits) == 4  # Main + 2 Sub + 1 Sub-sub sections
+def test_chunk_document_empty() -> None:
+    """Test chunking empty document."""
+    engine = ChunkingEngine()
+    text = ""
+    chunks = engine.chunk_document(text)
 
-    # Check first split
-    first_split = splits[0]
-    assert first_split[0] == ["Main Heading"]
-    assert "first paragraph" in first_split[1]
-
-
-def test_semantic_content_splitting(engine: ChunkingEngine) -> None:
-    """Test splitting content semantically."""
-    content = "A " * 1000  # Content that exceeds max_chunk_size
-    heading_context = ["Test Heading"]
-
-    chunks = engine._split_semantic_content(content, heading_context)
-
-    # Verify chunk sizes
-    for chunk in chunks:
-        assert len(chunk.content) >= engine.min_chunk_size
-        assert len(chunk.content) <= engine.max_chunk_size
-        assert chunk.heading_context == heading_context
-
-
-def test_document_chunking(engine: ChunkingEngine, sample_markdown: str) -> None:
-    """Test complete document chunking process."""
-    chunks = engine.chunk_document(
-        content=sample_markdown, source_location="test.md", tags=["test", "markdown"]
-    )
-
-    # Verify basic chunk properties
-    assert len(chunks) > 0
-    for chunk in chunks:
-        # Size constraints
-        assert len(chunk.content) >= engine.min_chunk_size
-        assert len(chunk.content) <= engine.max_chunk_size
-
-        # Metadata preservation
-        assert chunk.source_location == "test.md"
-        assert chunk.tags == ["test", "markdown"]
-        assert len(chunk.heading_context) > 0
-
-        # Line numbers
-        assert chunk.start_line > 0
-        assert chunk.end_line > chunk.start_line
+    assert len(chunks) == 0

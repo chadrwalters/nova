@@ -5,40 +5,41 @@ build-backend = "hatchling.build"
 [project]
 name = "nova"
 version = "0.1.0"
-description = "Nova - AI-powered note management system"
+description = "AI-powered note management system"
 authors = [
-    { name = "Chad Walters", email = "chad@walters.io" },
+    {name = "Chad Walters", email = "chad@walters.io"},
 ]
 dependencies = [
-    "anthropic",
-    "chromadb",
-    "click",
-    "numpy",
-    "pydantic",
-    "pydantic-settings",
-    "python-dotenv",
-    "sentence-transformers",
-    "tqdm",
+    "click>=8.1.7",
+    "rich>=13.7.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "sentence-transformers>=2.2.2",
+    "faiss-cpu>=1.7.4",
+    "chromadb>=0.4.22",
+    "numpy>=1.26.3",
+    "easyocr>=1.7.1",
+    "docling>=0.5.0",
 ]
 requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
 
 [project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-cov",
-    "pytest-mock",
-]
 dev = [
-    "bandit",
-    "black",
-    "mypy",
-    "pre-commit",
-    "ruff",
+    "pytest>=7.4.4",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23.5",
+    "mypy>=1.8.0",
+    "black>=23.12.1",
+    "isort>=5.13.2",
+    "flake8>=7.0.0",
 ]
 
-[tool.hatch.build]
-packages = ["nova"]
-directory = "src"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "--no-header"
 
 [tool.mypy]
 python_version = "3.10"
@@ -53,48 +54,15 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-ignore_missing_imports = true
-namespace_packages = true
-mypy_path = ["src"]
 
-# Exclude site-packages to avoid double-scanning
-exclude = [
-    ".*site-packages.*",
-    ".*\\.pyi$"
-]
+[tool.black]
+line-length = 100
+target-version = ['py310']
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-asyncio_mode = "auto"
-
-[[tool.mypy.overrides]]
-module = "nova.bear_parser.parser"
-disable_error_code = "unreachable"
-
-[[tool.mypy.overrides]]
-module = "nova.vector_store.embedding"
-disable_error_code = "unreachable"
-
-[[tool.mypy.overrides]]
-module = "chromadb.*"
-ignore_missing_imports = true
-follow_imports = "skip"
-
-[[tool.mypy.overrides]]
-module = "pytest.*"
-ignore_missing_imports = true
-follow_imports = "skip"
-
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_decorators = false
-check_untyped_defs = false
-disable_error_code = ["misc", "no-untyped-def"]
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 100
 
 [project.scripts]
-nova = "nova.__main__:main"
-
-[tool.bandit]
-exclude_dirs = ["tests"]
-skips = ["B101"]
+nova = "nova.cli.main:main"

@@ -94,29 +94,157 @@
   - [x] Performance benchmarks
 [MILESTONE: Run tests for vector store - PASSED]
 
-## Phase 2: RAG and MCP Integration [NOT STARTED]
+## Phase 2: RAG and MCP Integration [IN PROGRESS]
 
-### MCP Integration
+### CLI Consolidation [COMPLETED]
+- [x] Create unified CLI entrypoint
+  - [x] Create src/nova/cli directory structure
+  - [x] Implement nova/cli/main.py dispatcher
+  - [x] Add base command class with error handling
+  - [x] Set up command registration system
+- [x] Implement core commands
+  - [x] process-notes: Bear note processing
+    - [x] Move from process_notes.py
+    - [x] Add command options
+    - [x] Implement progress feedback
+    - [x] Add error handling
+  - [x] process-vectors: Vector operations
+    - [x] Move from process_vectors.py
+    - [x] Add command options
+    - [x] Add batch processing flags
+    - [x] Implement caching
+  - [x] monitor: System monitoring
+    - [x] Add health check command
+    - [x] Add stats command
+    - [x] Add logs command
+- [x] Add console script entrypoints
+  - [x] Update pyproject.toml
+  - [x] Add nova command entrypoint
+  - [x] Configure command discovery
+- [x] Add CLI documentation
+  - [x] Command reference
+  - [x] Usage examples
+  - [x] Error handling
+- [x] Add tests for CLI
+  - [x] Unit tests for commands
+  - [x] Integration tests
+  - [x] Command help tests
+[MILESTONE: Run tests for CLI - PASSED]
+
+### MCP Integration [NOT STARTED]
 - [ ] Set up MCP Python SDK
+  - [ ] Create dedicated mcp module (src/nova/mcp)
+  - [ ] Implement interface for data retrieval
+  - [ ] Add MCP adapter implementation
+  - [ ] Configure API key handling
 - [ ] Implement tool definitions
   - [ ] search_documentation tool
+    - [ ] Vector store integration
+    - [ ] Result formatting
+    - [ ] Context assembly
   - [ ] list_sources tool
+    - [ ] Source enumeration
+    - [ ] Metadata collection
+    - [ ] Status reporting
   - [ ] extract_content tool
+    - [ ] Content retrieval
+    - [ ] Format conversion
+    - [ ] Metadata enrichment
   - [ ] remove_documentation tool
+    - [ ] Safe deletion
+    - [ ] Reference cleanup
+    - [ ] Index updates
 - [ ] Create context block handlers
   - [ ] Ephemeral block management
+    - [ ] Memory-only storage
+    - [ ] Lifecycle tracking
+    - [ ] Cleanup routines
   - [ ] Resource block handling
+    - [ ] Persistent storage
+    - [ ] Version tracking
+    - [ ] Access control
   - [ ] System instruction blocks
+    - [ ] Template management
+    - [ ] Dynamic updates
+    - [ ] Context assembly
 - [ ] Implement transport layer
   - [ ] Local IPC setup
+    - [ ] Socket configuration
+    - [ ] Protocol definition
+    - [ ] Error handling
   - [ ] Async operations
+    - [ ] Task scheduling
+    - [ ] Resource limits
+    - [ ] Timeout handling
   - [ ] Resource management
+    - [ ] Connection pooling
+    - [ ] Memory limits
+    - [ ] Cleanup routines
 - [ ] Add error handling
   - [ ] Failure recovery
+    - [ ] Retry strategies
+    - [ ] Fallback options
+    - [ ] State recovery
   - [ ] Error messaging
+    - [ ] User feedback
+    - [ ] Log integration
+    - [ ] Debug info
   - [ ] Retry logic
+    - [ ] Backoff strategy
+    - [ ] Failure thresholds
+    - [ ] Circuit breaking
 - [ ] Add tests for MCP integration
+  - [ ] Unit tests for MCP adapter
+    - [ ] Tool implementations
+    - [ ] Block handlers
+    - [ ] Transport layer
+  - [ ] Integration tests with vector store
+    - [ ] Search operations
+    - [ ] Content extraction
+    - [ ] Source management
+  - [ ] Mock API tests
+    - [ ] Request mocking
+    - [ ] Response simulation
+    - [ ] Error scenarios
 [MILESTONE: Run tests for MCP integration]
+
+### Monitoring Implementation [NOT STARTED]
+- [ ] Create minimal web app
+  - [ ] FastAPI-based server
+  - [ ] Health check endpoint
+  - [ ] Basic metrics display
+- [ ] Add structured logging
+  - [ ] Configure structlog
+  - [ ] Define log format
+  - [ ] Add log handlers
+- [ ] Implement metrics collection
+  - [ ] Vector store stats
+  - [ ] Query performance
+  - [ ] System health
+- [ ] Create API endpoints
+  - [ ] Health check
+  - [ ] Recent ingestion stats
+  - [ ] Vector store metrics
+- [ ] Add tests for monitoring
+  - [ ] Server tests
+  - [ ] Metrics tests
+  - [ ] Logging tests
+[MILESTONE: Run tests for monitoring]
+
+### Documentation Updates [NOT STARTED]
+- [ ] Update README.md
+  - [ ] Add uv setup instructions
+  - [ ] Include quickstart guide
+  - [ ] Document CLI usage
+- [ ] Update architecture docs
+  - [ ] Add MCP integration details
+  - [ ] Document monitoring approach
+  - [ ] Include performance considerations
+- [ ] Create developer guide
+  - [ ] Environment setup
+  - [ ] Testing procedures
+  - [ ] Contribution guidelines
+[MILESTONE: Documentation review]
 
 ### RAG Implementation
 - [ ] Create query processor
@@ -184,12 +312,29 @@
 [MILESTONE: Run tests for monitoring frontend]
 
 # Current Focus
-1. Begin vector store implementation
-   - Design chunking engine
-   - Create embedding pipeline
-2. Validate Bear parser with real export data
-3. Set up monitoring for OCR processing
+1. Begin MCP Integration
+   - Set up MCP module structure
+   - Design tool interfaces
+   - Plan context block handling
+2. Begin Monitoring Implementation
+   - Design minimal web app structure
+   - Plan metrics collection
+   - Define API endpoints
+3. Begin RAG Implementation
+   - Design query processor
+   - Plan retrieval system
+   - Design result processor
 
 # Blockers
-- Need to validate Bear parser with real export data
-- Need to implement vector store components
+1. MCP Integration
+   - Official MCP SDK compatibility validation needed
+   - Tool interface design decisions pending
+   - Context block handling strategy to be finalized
+2. Monitoring System
+   - Web app framework selection pending
+   - Metrics collection scope to be defined
+   - API endpoint design needed
+3. RAG Implementation
+   - Query decomposition strategy needed
+   - Context assembly approach pending
+   - Source attribution design required

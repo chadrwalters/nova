@@ -51,3 +51,5 @@ output/
 *.json
 config/nova.yaml
 .env
+_repomix-output.txt
+repomix.config.json

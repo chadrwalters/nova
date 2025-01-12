@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""CLI module to process text into vectors using the Nova vector store."""
+"""Process vectors command."""
+
 import logging
 from pathlib import Path
 from typing import Any
@@ -11,12 +11,11 @@ from nova.vector_store.chunking import ChunkingEngine
 from nova.vector_store.embedding import EmbeddingEngine
 from nova.vector_store.store import VectorStore
 
-
 logger = logging.getLogger(__name__)
 
 
 class ProcessVectorsCommand(NovaCommand):
-    """Command for processing vectors."""
+    """Process vectors command implementation."""
 
     def run(self, **kwargs: Any) -> None:
         """Run the command.
@@ -39,6 +38,10 @@ class ProcessVectorsCommand(NovaCommand):
         try:
             # Create chunks
             chunks = chunking_engine.chunk_document(text)
+            if not chunks:
+                logger.warning("No chunks created from input text")
+                return
+
             logger.info(f"Created {len(chunks)} chunks")
 
             # Create embeddings
@@ -52,7 +55,7 @@ class ProcessVectorsCommand(NovaCommand):
                         "text": chunk.text,
                         "source": str(chunk.source) if chunk.source else "",
                         "heading_context": chunk.heading_context,
-                        "tags": chunk.tags,
+                        "tags": ",".join(chunk.tags) if chunk.tags else "",
                     }
                 )
 
@@ -65,10 +68,10 @@ class ProcessVectorsCommand(NovaCommand):
             raise click.Abort()
 
     def create_command(self) -> click.Command:
-        """Create the command.
+        """Create the Click command.
 
         Returns:
-            Click command object
+            click.Command: The Click command
         """
 
         @click.command(name="process-vectors")
@@ -76,13 +79,8 @@ class ProcessVectorsCommand(NovaCommand):
         @click.option(
             "--output-dir", required=True, help="Output directory for vector store"
         )
-        def command(text: str, output_dir: str) -> None:
+        def process_vectors(text: str, output_dir: str) -> None:
             """Process text into vector embeddings."""
             self.run(text=text, output_dir=output_dir)
 
-        return command
-
-
-if __name__ == "__main__":
-    command = ProcessVectorsCommand()
-    command.create_command()()
+        return process_vectors
