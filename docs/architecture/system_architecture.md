@@ -47,18 +47,13 @@
   - Dependencies resolved
   - Placeholder system operational
 
-#### Docling Integration
-- Converts attachments to text/markdown
-- OCR capabilities for images:
-  - TesseractOcrModel integration (implemented)
+#### OCR Integration [IMPLEMENTED]
+- EasyOCR-based text extraction:
   - Confidence scoring with 50% threshold
-  - Multiple OCR configurations:
-    - Default: bitmap_area_threshold=0.1
-    - High-quality: bitmap_area_threshold=0.05
-    - Fast: bitmap_area_threshold=0.2
+  - Multiple OCR configurations for quality/speed tradeoff
   - Async processing with fallback mechanisms
   - Python 3.10 environment required
-  - Proper import path: docling.models.tesseract_ocr_model
+  - Proper import path: nova.bear_parser.ocr
 - Error Handling:
   - Structured OCR errors with detailed messages
   - Placeholder generation for failed OCR:
@@ -77,29 +72,72 @@
   - Dependencies resolved
   - Placeholder system operational
 
-### 2. Vector Store Layer
+### 2. Vector Store Layer [IMPLEMENTED]
 
-#### Chunking Engine
+#### Chunking Engine [IMPLEMENTED]
 - Hybrid chunking strategy:
-  - Heading-based segmentation
-  - Semantic content splitting
-  - Configurable chunk sizes
-- Metadata preservation
-- Content type handling
+  - Heading-based segmentation with hierarchy preservation
+  - Semantic content splitting with word boundary detection
+  - Configurable chunk sizes (min, max, overlap)
+- Metadata preservation:
+  - Source location tracking
+  - Tag inheritance
+  - Heading context maintenance
+- Content type handling:
+  - Markdown-aware processing
+  - Structured text support
+- Current Status:
+  - Core chunking functionality verified
+  - Test suite passing
+  - Python environment configured
+  - Dependencies resolved
 
-#### Embedding Service
-- Sentence transformer integration
-- Batch processing support
-- Embedding caching
-- Vector normalization
+#### Embedding Service [IMPLEMENTED]
+- Sentence transformer integration:
+  - all-MiniLM-L6-v2 model support
+  - 384-dimensional embeddings
+  - MPS acceleration on macOS
+- Batch processing support:
+  - Configurable batch sizes
+  - Memory-efficient processing
+- Embedding caching:
+  - Local cache in .nova/vector_store/cache
+  - Model-specific caching
+  - Cache key generation
+  - NumPy array storage format
+- Current Status:
+  - Core embedding functionality verified
+  - Test suite passing
+  - Caching system operational
+  - Integration with chunking engine verified
 
-#### Vector Store
-- FAISS/Chroma implementation
-- Dual storage architecture:
-  - Persistent store for permanent data
-  - Ephemeral store for temporary data
-- Similarity search optimization
-- Index management
+#### Vector Store Integration [IMPLEMENTED]
+- Standalone processing:
+  - Direct text to vector pipeline
+  - Heading-aware chunking
+  - Cached embeddings
+  - Structured output format:
+    - chunk_N.txt: Text chunks with context
+    - embedding_N.npy: NumPy array embeddings
+- Bear note integration:
+  - Metadata preservation
+  - Tag-aware processing
+  - Source attribution
+  - Per-note organization:
+    - note_title/chunk_N.txt
+    - note_title/embedding_N.npy
+- Directory structure:
+  - .nova/vector_store/embeddings
+  - .nova/vector_store/cache
+  - .nova/vector_store/index
+- Current Status:
+  - Core functionality verified
+  - Test suite passing
+  - Bear note integration complete
+  - Processing scripts operational
+  - CLI modules implemented:
+    - process_vectors: Standalone text processing
+    - process_bear_vectors: Bear note integration
 
 ### 3. RAG Orchestration Layer
 
@@ -306,3 +344,41 @@ Our testing focus is on maintaining functionality through regular local testing 
 2. Enhanced caching
 3. Load balancing
 4. Horizontal scaling
+
+## Command-Line Interface
+
+The system provides a unified command-line interface through the `nova` command with the following subcommands:
+
+### Bear Note Processing
+- `nova generate-metadata`: Generates metadata.json for Bear notes
+  - Creates structured metadata for all notes
+  - Extracts creation/modification dates
+  - Maps attachment references
+  - Builds initial tag list
+
+- `nova process-notes`: Processes Bear notes using the parser
+  - Parses all notes in configured input directory
+  - Extracts tags with nested support
+  - Processes image attachments with OCR
+  - Generates OCR failure placeholders
+  - Creates structured output in .nova directory
+
+### Vector Store Processing
+- `nova process-vectors`: Standalone vector store processing
+  - Input: Raw text and output directory
+  - Performs heading-aware document chunking
+  - Generates embeddings with caching
+  - Saves chunks and embeddings to specified directory
+
+- `nova process-bear-vectors`: Bear note vector store integration
+  - Input: Bear notes directory and output directory
+  - Combines Bear parsing with vector store processing
+  - Preserves metadata through processing pipeline
+  - Creates note-specific output directories
+  - Maintains heading context in chunks
+
+All commands support:
+- Configurable input/output paths
+- Logging with customizable levels
+- Error recovery and reporting
+- Progress tracking for long operations

@@ -5,26 +5,26 @@ A RAG-based system for Bear.app notes with MCP integration.
 ## Requirements
 
 - Python 3.10
-- uv package manager
-- Tesseract OCR (for image processing)
+- uv package manager (pip usage is forbidden)
 - EasyOCR (for text extraction)
 
 ## Installation
 
-1. Install Tesseract:
-```bash
-brew install tesseract
-```
-
-2. Create a Python 3.10 virtual environment:
+1. Create a Python 3.10 virtual environment:
 ```bash
 uv venv .venv
 source .venv/bin/activate
 ```
 
-3. Install dependencies:
+2. Install dependencies:
 ```bash
 uv pip install -e .
+```
+
+3. Install pre-commit hooks:
+```bash
+uv pip install pre-commit
+uv run pre-commit install
 ```
 
 ## Project Structure
@@ -32,13 +32,20 @@ uv pip install -e .
 - `src/nova/` - Main package directory
   - `bear_parser/` - Bear note parsing functionality
     - `parser.py` - Contains BearParser, BearNote, and BearAttachment classes
+    - `ocr.py` - EasyOCR-based text extraction
     - `exceptions.py` - Custom exception hierarchy
-- `scripts/` - Utility scripts
-  - `generate_metadata.py` - Generates metadata.json for Bear notes
-  - `process_notes.py` - Processes Bear notes using the parser
+  - `vector_store/` - Vector store functionality
+    - `chunking.py` - Heading-aware document chunking
+    - `embedding.py` - Text embedding with caching
+  - `cli/` - Command-line interface modules
+    - `generate_metadata.py` - Generates metadata.json for Bear notes
+    - `process_notes.py` - Processes Bear notes using the parser
+    - `process_vectors.py` - Standalone vector store processing
+    - `process_bear_vectors.py` - Bear note vector store integration
 - `.nova/` - System directory for processing files, logs, and placeholders
   - `placeholders/ocr/` - OCR failure placeholders
-  - `processing/` - Temporary processing files
+  - `processing/ocr/` - OCR processing files
+  - `vector_store/` - Vector embeddings and cache
   - `logs/` - System logs
 
 ## Usage
@@ -50,7 +57,7 @@ Default: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaI
 
 2. Generate metadata for your Bear notes:
 ```bash
-uv run python scripts/generate_metadata.py
+nova generate-metadata
 ```
 This creates a metadata.json file containing:
 - Note creation/modification dates
@@ -59,7 +66,7 @@ This creates a metadata.json file containing:
 
 3. Process the notes:
 ```bash
-uv run python scripts/process_notes.py
+nova process-notes
 ```
 This will:
 - Parse all notes in the configured input directory
@@ -67,6 +74,32 @@ This will:
 - Process any image attachments using OCR
 - Generate placeholders for failed OCR attempts
 - Create a structured output in the .nova directory
+
+### Vector Store Processing
+
+1. Process standalone text:
+```bash
+nova process-vectors "Your text here" output_directory
+```
+This demonstrates:
+- Heading-aware document chunking
+- Semantic content splitting
+- Embedding generation with caching
+- Structured output:
+  - chunk_N.txt: Text chunks with context
+  - embedding_N.npy: NumPy array embeddings
+
+2. Process Bear notes with vector store:
+```bash
+nova process-bear-vectors input_directory output_directory
+```
+This integrates:
+- Bear note parsing with metadata
+- Tag-aware chunking
+- Heading context preservation
+- Per-note organization:
+  - note_title/chunk_N.txt
+  - note_title/embedding_N.npy
 
 ### Configuration
 
@@ -90,6 +123,18 @@ Run tests:
 uv run pytest -v
 ```
 
+Run pre-commit checks:
+```bash
+uv run pre-commit run --all-files
+```
+
+Pre-commit configuration:
+- Type checking with mypy
+- Code formatting with ruff
+- Security checks with bandit
+- Docstring formatting
+- Python 3.10+ compatibility
+
 ## Implementation Status
 
 ### Completed
@@ -99,14 +144,15 @@ uv run pytest -v
 - [x] OCR infrastructure
 - [x] Error handling system
 - [x] Placeholder management
+- [x] Vector store implementation
+  - [x] Chunking engine with heading awareness
+  - [x] Embedding pipeline with caching
+  - [x] Bear note integration
+  - [x] CLI modules for processing
 
 ### In Progress
-- [ ] Vector store implementation
-- [ ] Chunking engine
-- [ ] Embedding pipeline
-
-### Planned
 - [ ] MCP integration
 - [ ] RAG implementation
-- [ ] Desktop client
+
+### Planned
 - [ ] Monitoring system

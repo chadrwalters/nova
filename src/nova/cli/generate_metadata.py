@@ -59,7 +59,7 @@ def generate_metadata(notes_dir: Path) -> None:
         logger.error(f"Error generating metadata: {str(e)}", exc_info=True)
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     input_dir = Path(
         "/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"

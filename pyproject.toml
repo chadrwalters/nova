@@ -1,48 +1,100 @@
-[project]
-name = "nova"
-version = "0.1.0"
-description = "A RAG-based system for Bear.app notes with MCP integration"
-authors = [
-    {name = "Chad Walters", email = "chad@example.com"}
-]
-dependencies = [
-    "pyyaml>=6.0.1",
-    "anthropic>=0.3.11",
-    "faiss-cpu>=1.7.4",
-    "chromadb>=0.4.22",
-    "docling==2.15.1",
-    "docling-core[chunking]==2.14.0",
-    "docling-ibm-models==3.1.2",
-    "docling-parse==3.0.0",
-    "sentence-transformers>=2.2.2"
-]
-requires-python = ">=3.10,<3.11"
-
-[project.optional-dependencies]
-test = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.25.0",
-]
-dev = [
-    "mypy>=1.8.0",
-    "types-PyYAML>=6.0.12.12",
-]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-asyncio_mode = "auto"
+[project]
+name = "nova"
+version = "0.1.0"
+description = "Nova - AI-powered note management system"
+authors = [
+    { name = "Chad Walters", email = "chad@walters.io" },
+]
+dependencies = [
+    "anthropic",
+    "chromadb",
+    "click",
+    "numpy",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "sentence-transformers",
+    "tqdm",
+]
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+]
+dev = [
+    "bandit",
+    "black",
+    "mypy",
+    "pre-commit",
+    "ruff",
+]
+
+[tool.hatch.build]
+packages = ["nova"]
+directory = "src"
 
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+disallow_incomplete_defs = true
 check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+ignore_missing_imports = true
+namespace_packages = true
+mypy_path = ["src"]
+
+# Exclude site-packages to avoid double-scanning
+exclude = [
+    ".*site-packages.*",
+    ".*\\.pyi$"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+
+[[tool.mypy.overrides]]
+module = "nova.bear_parser.parser"
+disable_error_code = "unreachable"
+
+[[tool.mypy.overrides]]
+module = "nova.vector_store.embedding"
+disable_error_code = "unreachable"
+
+[[tool.mypy.overrides]]
+module = "chromadb.*"
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "pytest.*"
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_decorators = false
+check_untyped_defs = false
+disable_error_code = ["misc", "no-untyped-def"]
 
 [project.scripts]
 nova = "nova.__main__:main"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]

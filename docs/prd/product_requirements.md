@@ -6,7 +6,7 @@
 Nova
 
 ### Purpose
-- Ingest and unify Bear.app notes and attachments (converted via Docling)
+- Ingest and unify Bear.app notes and attachments (using EasyOCR)
 - Provide a semantic chunking and embedding layer for retrieving relevant data
 - Use Anthropic's Claude with the official Model-Context Protocol (MCP) SDK for structured RAG queries
 - Offer a minimal web interface to monitor or inspect system status (performance, logs, chunk stats)
@@ -44,8 +44,8 @@ Nova
 
 ## 4. Functional Requirements
 
-### 4.1 Bear Export & File Conversion
-- Docling conversion of attachments to Markdown/text with OCR:
+### 4.1 Bear Export & File Conversion [IMPLEMENTED]
+- EasyOCR-based text extraction:
   - Multiple OCR configurations for quality/speed tradeoff
   - Confidence threshold validation (50%)
   - Automatic fallback for low confidence results
@@ -59,21 +59,36 @@ Nova
   - Clear separation of placeholders and logs
   - Configurable cleanup policies
 
-### 4.2 Chunking & Embeddings
-- Hybrid chunking combining heading-based and semantic splits
-- FAISS or Chroma vector store for embeddings
+### 4.2 Vector Store Layer [IMPLEMENTED]
+- Hybrid chunking combining:
+  - Heading-based segmentation with hierarchy preservation
+  - Semantic content splitting with word boundary detection
+  - Configurable chunk sizes (min=100, max=512, overlap=50)
+- Sentence transformer embeddings:
+  - all-MiniLM-L6-v2 model
+  - 384-dimensional vectors
+  - MPS acceleration on macOS
+  - Batch processing (size=32)
+- Local caching system:
+  - Model-specific caching
+  - Cache key generation
+  - Storage in .nova/vector_store/cache
+- Integration scripts:
+  - Standalone vector processing
+  - Bear note integration
+  - Detailed logging and error handling
 
-### 4.3 MCP Integration with Claude
+### 4.3 MCP Integration with Claude [IN PROGRESS]
 - Official MCP SDK integration
 - Ephemeral data handling in memory only
 - Structured context blocks and system instructions
 
-### 4.4 RAG Orchestrator
+### 4.4 RAG Orchestrator [IN PROGRESS]
 - Similarity search from vector store
 - MCP payload construction
 - Claude API integration
 
-### 4.5 Monitoring Web App
+### 4.5 Monitoring Web App [PLANNED]
 - Read-only dashboard for system metrics
 - Local-first deployment
 - Optional cloud deployment with authentication

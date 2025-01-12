@@ -45,7 +45,7 @@ async def process_notes(input_dir: Path, nova_dir: Path) -> None:
         logger.error(f"Error processing notes: {str(e)}", exc_info=True)
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     # Default paths
     input_dir = Path(

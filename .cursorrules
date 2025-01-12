@@ -17,7 +17,8 @@
 4. Testing
    - Use uv run pytest for ALL test runs
    - Tests should run without approval
-   - Test command: uv run pytest -v
+   - Test command: uv run mypy src tests && uv run pytest -v
+   - Type checking MUST be run before tests
 
 5. AI Commands
 When I submit a command to you, you MUST follow the procedure outlined in the command.
