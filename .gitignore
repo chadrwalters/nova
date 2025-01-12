@@ -53,3 +53,33 @@ config/nova.yaml
 .env
 _repomix-output.txt
 repomix.config.json
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# Local development
+*.local
+*.local.*
+.local/
+
+# Temporary files
+*.tmp
+*.temp
+.~*
+*~
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Chroma specific
+.chroma/
+vectors/
+
+# System specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
