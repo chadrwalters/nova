@@ -1,0 +1,279 @@
+# Nova Development Notes
+
+## January 12, 2024 - Project Initialization
+
+### Key Architecture Decisions
+1. System Organization
+   - Local-first design with `.nova` directory for all system files
+   - Configurable input directory (default: ~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput)
+   - Strict separation of input and processing directories
+
+2. Package Management
+   - Using uv exclusively (no pip/poetry)
+   - Core dependencies managed through pyproject.toml
+   - Test and dev extras for development dependencies
+   - Python 3.10 required for Docling compatibility
+     - Initially tried Python 3.13 but faced dependency issues
+     - Docling requires specific torch/torchvision versions
+     - Decision: Use Python 3.10 for better ecosystem compatibility
+
+3. Bear Parser Design
+   - Modular structure with clear separation of concerns:
+     - BearParser: Main parsing logic
+     - BearNote: Data representation
+     - BearAttachment: Attachment handling
+   - Robust error handling with custom exceptions
+   - Tag extraction with code block awareness
+   - Comprehensive test coverage
+   - OCR handling through Docling integration
+     - Considered custom Tesseract implementation
+     - Chose Docling for better feature set and maintenance
+
+4. Vector Store Architecture (Planned)
+   - Dual-store approach:
+     - FAISS for fast similarity search
+     - Chroma for metadata and filtering
+   - Chunking strategy:
+     - Semantic boundaries
+     - Heading-based segmentation
+     - Metadata preservation
+
+5. MCP Integration (Planned)
+   - Official MCP Python SDK
+   - Tool-based architecture:
+     - search_documentation
+     - list_sources
+     - extract_content
+     - remove_documentation
+   - Context block structure:
+     - Ephemeral blocks for sensitive content
+     - Resource blocks for persistent data
+   - Local IPC with async/await patterns
+
+### Technical Decisions & Rationale
+1. Using `.nova` for System Files
+   - Keeps all system writes contained
+   - Clear separation from user data
+   - Easy backup/cleanup
+
+2. Configurable Input Directory
+   - Supports different Bear export locations
+   - Default path optimized for iCloud sync
+   - Maintains user flexibility
+
+3. uv Package Management
+   - Better dependency resolution
+   - Faster installation
+   - More reliable environment management
+
+4. Test-First Development
+   - Local testing focus
+   - No CI/CD complexity
+   - Rapid iteration capability
+
+### Current Challenges
+1. Dependency Management
+   - Docling compatibility issues
+   - sentence-transformers integration pending
+   - Need to resolve Python ABI compatibility
+
+2. Bear Export Processing
+   - Need real export data for validation
+   - OCR pipeline dependencies
+   - Link integrity preservation
+
+### Future Considerations
+1. Performance Optimization
+   - Batch processing for large exports
+   - Caching for frequent queries
+   - Resource cleanup strategies
+
+2. Error Recovery
+   - Graceful degradation
+   - State recovery mechanisms
+   - User notification system
+
+## January 13, 2024 - Bear Parser Implementation
+
+### Key Implementation Details
+1. Tag Extraction System
+   - Code block awareness to ignore tags in code snippets
+   - Metadata validation to only include valid tags
+   - Robust punctuation handling
+   - Test coverage for edge cases
+
+2. Error Handling
+   - Hierarchical error system:
+     - BearParserError as base
+     - AttachmentError for attachment issues
+     - OCRError for OCR processing
+     - ValidationError for metadata validation
+   - Graceful error recovery in directory parsing
+
+3. Attachment Processing
+   - Support for both string and dictionary metadata
+   - Image detection via file extensions
+   - OCR integration with Docling
+   - Confidence scoring for OCR results
+
+4. Testing Strategy
+   - Comprehensive test fixtures
+   - Mock OCR functionality
+   - Edge case coverage
+   - Validation of error conditions
+
+### Technical Decisions & Rationale
+1. Tag Extraction Design
+   - Chose to validate against metadata tags
+   - Implemented code block awareness
+   - Added punctuation cleanup
+   Rationale: Ensures data consistency and prevents invalid tags
+
+2. Error Handling Approach
+   - Created error hierarchy
+   - Added specific error types
+   - Included error context
+   Rationale: Better error reporting and recovery
+
+3. OCR Integration
+   - Used Docling's TesseractOcrModel
+   - Added confidence scoring
+   - Implemented async processing
+   Rationale: Leverages existing OCR capabilities
+
+### Current Status
+1. Completed Features
+   - Tag extraction with validation
+   - Error handling system
+   - Basic OCR integration
+   - Test coverage
+
+2. Next Steps
+   - Complete Docling integration
+   - Add fallback mechanisms
+   - Implement placeholder system
+   - Configure .nova directory output
+
+### Lessons Learned
+1. Testing Approach
+   - Mock fixtures are essential for OCR
+   - Test data should cover edge cases
+   - Error scenarios need explicit tests
+
+2. Error Handling
+   - Specific error types improve debugging
+   - Context in error messages is crucial
+   - Graceful degradation is important
+
+3. Code Organization
+   - Clear separation of concerns
+   - Type hints improve maintainability
+   - Async/await for long operations
+
+## March 19, 2024 - Docling Integration
+
+### Key Implementation Details
+1. Environment Setup
+   - Successfully configured Python 3.10 environment
+   - Installed Docling 2.15.1 with all dependencies
+   - Resolved import path issues for OCR functionality
+
+2. OCR Integration
+   - Implemented TesseractOcrModel from docling.models.tesseract_ocr_model
+   - Verified functionality through test suite
+   - All tests passing including attachment processing
+
+3. Technical Decisions
+   - Using specific Docling version (2.15.1) for stability
+   - Added docling-core[chunking] and docling-ibm-models for full functionality
+   - Maintaining Python 3.10 requirement for compatibility
+
+### Current Status
+1. Completed Features
+   - Python 3.10 environment setup
+   - Docling installation and configuration
+   - OCR model integration
+   - Test suite verification
+
+2. Next Steps
+   - Implement fallback mechanisms
+   - Create placeholder system
+   - Configure .nova directory output
+   - Begin vector store implementation
+
+### Lessons Learned
+1. Package Management
+   - uv provides better dependency resolution
+   - Specific version pinning important for stability
+   - Python version compatibility crucial
+
+2. Testing Strategy
+   - Test suite invaluable for verifying functionality
+   - Mock OCR capabilities working well
+   - Good coverage of error cases
+
+## March 19, 2024 - Docling Integration (Continued)
+
+### Planned Enhancements
+1. OCR Fallback System
+   - Design fallback strategy for OCR failures
+   - Implement alternative processing methods
+   - Preserve metadata when OCR fails
+   - Add confidence threshold handling
+
+2. Placeholder System
+   - Create structured placeholders for failed conversions
+   - Include original file references
+   - Maintain searchability of failed items
+   - Enable future reprocessing
+
+3. .nova Directory Integration
+   - Configure output directory structure
+   - Implement file organization strategy
+   - Add cleanup mechanisms
+   - Enable backup/restore functionality
+
+### Technical Considerations
+1. Fallback Strategy
+   - Multiple OCR attempts with different settings
+   - Alternative image preprocessing approaches
+   - Metadata-only fallback when text extraction fails
+   - Confidence score thresholds for acceptance
+
+2. Placeholder Design
+   - JSON-based placeholder structure
+   - Original file path preservation
+   - Error context inclusion
+   - Reprocessing metadata
+
+3. Directory Structure
+   - Separate processing and output directories
+   - Version control for processed files
+   - Cleanup policies
+   - Backup strategy
+
+### Next Steps
+1. Implementation Order
+   - Fallback mechanism implementation
+   - Placeholder system development
+   - Directory structure setup
+   - Integration testing
+
+2. Testing Strategy
+   - Test cases for OCR failures
+   - Placeholder validation
+   - Directory structure verification
+   - End-to-end testing
+
+### Risk Assessment
+1. Technical Risks
+   - OCR quality variations
+   - Storage space management
+   - Processing performance
+   - Error recovery complexity
+
+2. Mitigation Strategies
+   - Comprehensive error handling
+   - Storage monitoring
+   - Performance optimization
+   - Robust testing

@@ -1,14 +1,25 @@
 # Nova Project Rules
 
 1. Package Management
-   - Use Poetry ONLY
+   - Use uv ONLY
    - Direct pip usage is FORBIDDEN
 
 2. Vision Model
    - Use "gpt-4o" model for vision recognition
-   - Do NOT use gpt-4-vision-preview or any other vision models 
+   - Do NOT use gpt-4-vision-preview or any other vision models
 
-3 AI Commands
+3. File System Organization
+   - All system files MUST be stored in .nova directory
+   - All logs, processing files, and system writes go to .nova
+   - Input files location must be configurable
+   - Default input path: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
+
+4. Testing
+   - Use uv run pytest for ALL test runs
+   - Tests should run without approval
+   - Test command: uv run pytest -v
+
+5. AI Commands
 When I submit a command to you, you MUST follow the procedure outlined in the command.
 
 - "update docs":
@@ -57,19 +68,4 @@ When I submit a command to you, you MUST follow the procedure outlined in the co
 
 - "run tests":
     - procedure:
-        1. "You MUST poetry run pytest"    
-
-- "clean run":
-    - procedure:
-        1. "You MUST ❯ poetry run python -m nova.context_processor.cleanup -a && poetry run python -m nova.context_processor.cli --config config/nova.yaml"   
-
-- "fix pre-commit":
-    - procedure:
-        1. "You MUST poetry run pre-commit run mypy --all-files"  
-        2. "You MUST fix all the errors"
-
-
-
-
-
-❯ 
+        1. "You MUST uv run pytest -v"

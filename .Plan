@@ -1,128 +1,195 @@
-# Nova Phase Processing Cleanup Plan
+# Nova Development Plan
 
-## Overview
-This plan outlines the steps to fix issues identified in the Nova phase processing system and align it with the documented architecture.
+## Phase 1: Vector Store and File Ingestion [IN PROGRESS]
 
-## Milestones
+### Project Setup [COMPLETED]
+- [x] Initialize uv environment
+- [x] Create .nova directory structure
+  - [x] Logs directory
+  - [x] Processing directory
+  - [x] Vector store directory
+  - [x] System state directory
+- [x] Configure input paths
+- [x] Set up core dependencies in pyproject.toml
+- [x] Create virtual environment with test/dev extras
+- [x] Complete configuration system
+  - [x] Create config/nova.yaml
+  - [x] Implement config validation
+  - [x] Add environment variable support
+  - [x] API keys management
+- [x] Set up local test runner
 
-### 1. Directory Structure Cleanup [IN_PROGRESS]
-- [x] Remove duplicate disassemble.py file
-- [x] Fix parse phase directory structure
-  - [x] Fixed markdown file generation
-  - [x] Proper directory creation
-  - [x] Attachment directory handling
-- [x] Fix directory naming issues
-  - [x] Remove duplicate underscore/space directories
-  - [x] Implement consistent naming convention
-  - [x] Clean up non-standard directory names
-  - [x] Move test files to dedicated test directory
-  - [x] Remove hash-named directories
-  - [x] Enforce date prefix for all content directories
-- [x] Fix output directory structure
-  - [x] Standardize phase outputs
-  - [x] Ensure consistent directory naming
-  - [x] Handle attachments properly
-- [x] Clean up temporary files
-  - [x] Remove .parsed.md directories
-  - [x] Clean up duplicate files (especially image conversions)
-  - [x] Verify file integrity
-  - [x] Implement proper temp file cleanup in handlers
-- [x] Implement content organization
-  - [x] Add type-based subdirectories (documents, images, etc.)
-  - [x] Create standardized attachment structure
-  - [x] Implement date-based organization
-  - [x] Add metadata index for quick lookups
-
-### 2. Phase Implementation [IN_PROGRESS]
-- [x] Parse Phase Enhancement
-  - [x] Fix markdown file generation
-  - [x] Implement proper metadata handling
-  - [x] Add content validation
-  - [x] Fix file format preservation
-  - [x] Add has_code_blocks field
-  - [x] Add charset field
-- [ ] Disassembly Phase Implementation
-  - [ ] Add content splitting logic
-  - [ ] Implement attachment handling
-  - [ ] Add size limit enforcement
-  - [ ] Create section metadata
-- [x] Split Phase Implementation
-  - [x] Add section identification
-  - [x] Implement content organization
-  - [x] Create section-specific files
-  - [x] Update metadata handling
-  - [x] Fix argument mismatch in split_file
-- [ ] Finalize Phase Enhancement
-  - [ ] Implement output organization
-  - [ ] Add file consolidation
-  - [ ] Create proper directory structure
-  - [ ] Add metadata finalization
-
-### 3. Handler Implementation [IN_PROGRESS]
-- [x] Base Handler Enhancement
-  - [x] Add error handling
-  - [x] Improve metadata creation
-  - [x] Add validation methods
-  - [x] Fix metadata type mismatches
-- [x] Markdown Handler
-  - [x] Fix parsing logic
-  - [x] Add frontmatter support
+### Bear Export Processing [COMPLETED]
+- [x] Create Bear ingestion module structure
+- [x] Implement BearParser class
+- [x] Add BearNote and BearAttachment data classes
+- [x] Implement core parsing functionality
+  - [x] Configure input directory handling
+  - [x] Process markdown files
   - [x] Handle attachments
-  - [x] Fix metadata type usage
-- [x] Document Handler
-  - [x] Improve text extraction
-  - [x] Handle embedded images
-  - [x] Fix formatting issues
-- [ ] Image Handler
-  - [ ] Add metadata extraction
-  - [ ] Handle different formats
-  - [ ] Implement resizing
-  - [ ] Fix duplicate image conversion files
+  - [x] Maintain link integrity
+- [x] Create test suite
+- [x] Run and validate tests
+- [x] Add error recovery mechanisms
+  - [x] BearParserError hierarchy
+  - [x] Metadata validation
+  - [x] Tag extraction validation
+  - [x] Attachment error handling
+- [x] Implement tag extraction
+  - [x] Code block awareness
+  - [x] Metadata validation
+  - [x] Punctuation handling
+  - [x] Nested tag support
+- [x] Set up Docling integration
+  - [x] Configure Python 3.10 environment
+  - [x] Install Docling dependencies
+  - [x] Implement OCR pipeline
+  - [x] Add fallback mechanisms
+    - [x] Multiple OCR configurations
+    - [x] Confidence thresholds
+    - [x] Error handling
+  - [x] Create placeholder system
+    - [x] Design placeholder format
+    - [x] Implement placeholder generation
+    - [x] Add placeholder tests
+  - [x] Configure processing output to .nova directory
+    - [x] Set up output directory structure
+    - [x] Implement file management
+    - [x] Add cleanup routines
+- [x] Implement logging system
+[MILESTONE: Run tests for export processing - PASSED]
 
-### 4. Metadata System [IN_PROGRESS]
-- [x] Base Metadata
-  - [x] Add validation
-  - [x] Improve error tracking
-  - [x] Add versioning
-  - [x] Add missing fields (has_code_blocks, charset)
-- [ ] Store Implementation
-  - [ ] Add persistence
-  - [ ] Implement caching
-  - [ ] Add query methods
-- [ ] Factory Enhancement
-  - [ ] Add validation
-  - [ ] Improve creation logic
-  - [ ] Add error handling
+### Vector Store Implementation [IN PROGRESS]
+- [ ] Design chunking engine
+  - [ ] Create ChunkingEngine class
+  - [ ] Implement heading-based segmentation
+    - [ ] Parse markdown headings
+    - [ ] Create hierarchical chunks
+    - [ ] Maintain heading context
+  - [ ] Add semantic content splitting
+    - [ ] Implement sentence boundary detection
+    - [ ] Add paragraph analysis
+    - [ ] Configure chunk size limits
+  - [ ] Handle metadata preservation
+    - [ ] Track source locations
+    - [ ] Maintain tag associations
+    - [ ] Link to original notes
+- [ ] Create embedding pipeline
+  - [ ] Set up sentence transformer
+  - [ ] Implement batch processing
+  - [ ] Add caching layer
+  - [ ] Configure embedding options
+- [ ] Set up vector store
+  - [ ] FAISS/Chroma integration
+  - [ ] Implement dual storage
+    - [ ] Persistent store setup
+    - [ ] Ephemeral store handling
+  - [ ] Add index management
+    - [ ] Create indexing strategies
+    - [ ] Implement update mechanisms
+    - [ ] Add cleanup routines
+- [ ] Add vector store tests
+  - [ ] Unit tests for components
+  - [ ] Integration tests
+  - [ ] Performance benchmarks
+[MILESTONE: Run tests for vector store]
 
-### 5. Testing and Verification [NOT_STARTED]
-- [ ] Create Test Suite
-  - [ ] Add unit tests for phases
-  - [ ] Implement handler tests
-  - [ ] Add integration tests
-  - [ ] Create validation tests
-- [ ] Test Scenarios
-  - [ ] Test file processing
-  - [ ] Verify metadata handling
-  - [ ] Check phase progression
-  - [ ] Validate output structure
-- [ ] Documentation
-  - [ ] Update phase documentation
-  - [ ] Add handler documentation
-  - [ ] Create test documentation
-  - [ ] Update architecture docs
+## Phase 2: RAG and MCP Integration [NOT STARTED]
 
-## Success Criteria
-1. No duplicate phase files or directories
-2. All phases properly implemented and functional
-3. Handlers correctly process all supported file types
-4. Metadata system validates and tracks all changes
-5. Complete test coverage for all components
-6. Documentation reflects actual implementation
+### MCP Integration
+- [ ] Set up MCP Python SDK
+- [ ] Implement tool definitions
+  - [ ] search_documentation tool
+  - [ ] list_sources tool
+  - [ ] extract_content tool
+  - [ ] remove_documentation tool
+- [ ] Create context block handlers
+  - [ ] Ephemeral block management
+  - [ ] Resource block handling
+  - [ ] System instruction blocks
+- [ ] Implement transport layer
+  - [ ] Local IPC setup
+  - [ ] Async operations
+  - [ ] Resource management
+- [ ] Add error handling
+  - [ ] Failure recovery
+  - [ ] Error messaging
+  - [ ] Retry logic
+- [ ] Add tests for MCP integration
+[MILESTONE: Run tests for MCP integration]
 
-## Notes
-- Each milestone should be tested independently
-- Run full test suite after each milestone
-- Document all changes and updates
-- Keep backup of original files
-- Follow documented architecture guidelines
-- Maintain backward compatibility where possible
+### RAG Implementation
+- [ ] Create query processor
+  - [ ] Tool-based decomposition
+  - [ ] Context window management
+  - [ ] Source attribution
+- [ ] Implement retrieval system
+  - [ ] Hybrid search functionality
+  - [ ] Chunk selection logic
+  - [ ] Dynamic context assembly
+- [ ] Add result processor
+  - [ ] Source validation
+  - [ ] Metadata enrichment
+  - [ ] Relevance scoring
+- [ ] Create Claude interface
+  - [ ] Anthropic API integration
+  - [ ] Message formatting
+  - [ ] Session management
+- [ ] Add tests for RAG pipeline
+[MILESTONE: Run tests for RAG system]
+
+## Phase 3: Claude Desktop Integration [NOT STARTED]
+
+### Desktop Client Setup
+- [ ] Create desktop client structure
+- [ ] Set up IPC mechanisms
+  - [ ] Local communication
+  - [ ] Resource management
+- [ ] Implement Claude integration
+  - [ ] MCP message handling
+  - [ ] Response streaming
+  - [ ] Error recovery
+- [ ] Add tests for desktop client
+[MILESTONE: Run tests for desktop integration]
+
+### Desktop Features
+- [ ] Create query interface
+- [ ] Implement response display
+- [ ] Add settings management
+  - [ ] API key handling
+  - [ ] Vector store config
+- [ ] Implement error handling
+- [ ] Add tests for desktop features
+[MILESTONE: Run tests for desktop features]
+
+## Phase 4: Monitoring System [NOT STARTED]
+
+### Monitoring Backend
+- [ ] Implement metrics collection
+  - [ ] Vector store stats
+  - [ ] Query performance
+  - [ ] System health
+- [ ] Create logging system
+- [ ] Add performance tracking
+- [ ] Create API endpoints
+- [ ] Add tests for monitoring backend
+[MILESTONE: Run tests for monitoring backend]
+
+### Monitoring Frontend
+- [ ] Create dashboard UI
+- [ ] Implement metrics display
+- [ ] Add log viewer
+- [ ] Create system status page
+- [ ] Add tests for monitoring frontend
+[MILESTONE: Run tests for monitoring frontend]
+
+# Current Focus
+1. Begin vector store implementation
+   - Design chunking engine
+   - Create embedding pipeline
+2. Validate Bear parser with real export data
+3. Set up monitoring for OCR processing
+
+# Blockers
+- Need to validate Bear parser with real export data
+- Need to implement vector store components

@@ -7,5 +7,5 @@ type(scope): summary
 # Optional long description
 #
 # Optional footer
-# BREAKING CHANGE: <description> 
-# Closes #<issue number> 
+# BREAKING CHANGE: <description>
+# Closes #<issue number>

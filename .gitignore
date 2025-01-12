@@ -45,6 +45,7 @@ htmlcov/
 logs/
 cache/
 output/
+.nova/
 *.log
 *.json
 config/nova.yaml
