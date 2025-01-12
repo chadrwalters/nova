@@ -1,7 +1,0 @@
-{metadata}
-
-# {title}
-
-## Content
-
-{content} 

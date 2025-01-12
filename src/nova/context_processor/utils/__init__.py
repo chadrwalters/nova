@@ -1,1 +1,0 @@
-"""Nova utility functions."""

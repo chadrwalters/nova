@@ -1,1 +1,0 @@
-"""Nova models package."""
