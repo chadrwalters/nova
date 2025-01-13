@@ -1,6 +1,13 @@
 """Vector store package for Nova."""
 
-from .chunking import ChunkingEngine, Chunk
+from .chunking import Chunk, ChunkingEngine
 from .embedding import EmbeddingEngine, EmbeddingResult
+from .store import VectorStore
 
-__all__ = ["ChunkingEngine", "Chunk", "EmbeddingEngine", "EmbeddingResult"]
+__all__ = [
+    "ChunkingEngine",
+    "Chunk",
+    "EmbeddingEngine",
+    "EmbeddingResult",
+    "VectorStore",
+]

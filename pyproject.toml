@@ -6,9 +6,7 @@ build-backend = "hatchling.build"
 name = "nova"
 version = "0.1.0"
 description = "AI-powered note management system"
-authors = [
-    {name = "Chad Walters", email = "chad@walters.io"},
-]
+authors = [{ name = "Chad Walters", email = "chad@walters.io" }]
 dependencies = [
     "click>=8.1.7",
     "rich>=13.7.0",
@@ -20,10 +18,11 @@ dependencies = [
     "numpy>=1.26.3",
     "easyocr>=1.7.1",
     "docling>=0.5.0",
+    "aiohttp>=3.9.0",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
-license = {text = "MIT"}
+license = { text = "MIT" }
 
 [project.optional-dependencies]
 dev = [
@@ -69,4 +68,4 @@ nova = "nova.cli.main:main"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B101"]  # Ignore assert statements in tests
+skips = ["B101"]         # Ignore assert statements in tests

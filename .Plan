@@ -1,214 +1,172 @@
 # Nova Development Plan
 
-## Phase 1: Vector Store and File Ingestion [IN PROGRESS]
+## Phase 1: Vector Store and File Ingestion [✓]
 
-### Project Setup [COMPLETED]
-- [x] Initialize uv environment
-- [x] Create .nova directory structure
-  - [x] Logs directory
-  - [x] Processing directory
-  - [x] Vector store directory
-  - [x] System state directory
-- [x] Configure input paths
-- [x] Set up core dependencies in pyproject.toml
-- [x] Create virtual environment with test/dev extras
-- [x] Complete configuration system
-  - [x] Create config/nova.yaml
-  - [x] Implement config validation
-  - [x] Add environment variable support
-  - [x] API keys management
-- [x] Set up local test runner
+### Project Setup [✓]
+- [✓] Initialize environment and dependencies
+- [✓] Create .nova directory structure
+- [✓] Configure input paths and system state
+- [✓] Complete configuration system
+- [✓] Set up local test runner
 
-### Bear Export Processing [COMPLETED]
-- [x] Create Bear ingestion module structure
-- [x] Implement BearParser class
-- [x] Add BearNote and BearAttachment data classes
-- [x] Implement core parsing functionality
-  - [x] Configure input directory handling
-  - [x] Process markdown files
-  - [x] Handle attachments
-  - [x] Maintain link integrity
-- [x] Create test suite
-- [x] Run and validate tests
-- [x] Add error recovery mechanisms
-  - [x] BearParserError hierarchy
-  - [x] Metadata validation
-  - [x] Tag extraction validation
-  - [x] Attachment error handling
-- [x] Implement tag extraction
-  - [x] Code block awareness
-  - [x] Metadata validation
-  - [x] Punctuation handling
-  - [x] Nested tag support
-- [x] Set up Docling integration
-  - [x] Configure Python 3.10 environment
-  - [x] Install Docling dependencies
-  - [x] Implement OCR pipeline
-  - [x] Add fallback mechanisms
-    - [x] Multiple OCR configurations
-    - [x] Confidence thresholds
-    - [x] Error handling
-  - [x] Create placeholder system
-    - [x] Design placeholder format
-    - [x] Implement placeholder generation
-    - [x] Add placeholder tests
-  - [x] Configure processing output to .nova directory
-    - [x] Set up output directory structure
-    - [x] Implement file management
-    - [x] Add cleanup routines
-- [x] Implement logging system
-[MILESTONE: Run tests for export processing - PASSED]
+### Bear Export Processing [✓]
+- [✓] Implement BearParser with full note/attachment support
+- [✓] Add error recovery and validation
+- [✓] Implement tag extraction system
+- [✓] Set up OCR integration with fallbacks
+- [✓] Configure processing pipeline
 
-### Vector Store Implementation [COMPLETED]
-- [x] Design chunking engine
-  - [x] Create ChunkingEngine class
-  - [x] Implement heading-based segmentation
-    - [x] Parse markdown headings
-    - [x] Create hierarchical chunks
-    - [x] Maintain heading context
-  - [x] Add semantic content splitting
-    - [x] Implement word boundary detection
-    - [x] Add chunk size constraints
-    - [x] Configure overlap settings
-  - [x] Handle metadata preservation
-    - [x] Track source locations
-    - [x] Maintain tag associations
-    - [x] Link to original notes
-- [x] Create embedding pipeline
-  - [x] Set up sentence transformer
-  - [x] Implement batch processing
-  - [x] Add caching layer
-  - [x] Configure embedding options
-- [x] Set up vector store
-  - [x] FAISS/Chroma integration
-  - [x] Implement dual storage
-    - [x] Persistent store setup
-    - [x] Ephemeral store handling
-  - [x] Add index management
-    - [x] Create indexing strategies
-    - [x] Implement update mechanisms
-    - [x] Add cleanup routines
-- [x] Add vector store tests
-  - [x] Unit tests for components
-  - [x] Integration tests
-  - [x] Performance benchmarks
-[MILESTONE: Run tests for vector store - PASSED]
+**MILESTONE**: ✅ Run tests for export processing - PASSED
+
+### Vector Store Implementation [✓]
+- [✓] Design and implement chunking engine
+- [✓] Create embedding pipeline with caching
+- [✓] Set up FAISS/Chroma integration
+- [✓] Add comprehensive test suite
+
+**MILESTONE**: ✅ Run tests for vector store - PASSED
 
 ## Phase 2: RAG and MCP Integration [IN PROGRESS]
 
-### CLI Consolidation [COMPLETED]
-- [x] Create unified CLI entrypoint
-  - [x] Create src/nova/cli directory structure
-  - [x] Implement nova/cli/main.py dispatcher
-  - [x] Add base command class with error handling
-  - [x] Set up command registration system
-- [x] Implement core commands
-  - [x] process-notes: Bear note processing
-    - [x] Move from process_notes.py
-    - [x] Add command options
-    - [x] Implement progress feedback
-    - [x] Add error handling
-  - [x] process-vectors: Vector operations
-    - [x] Move from process_vectors.py
-    - [x] Add command options
-    - [x] Add batch processing flags
-    - [x] Implement caching
-  - [x] monitor: System monitoring
-    - [x] Add health check command
-    - [x] Add stats command
-    - [x] Add logs command
-- [x] Add console script entrypoints
-  - [x] Update pyproject.toml
-  - [x] Add nova command entrypoint
-  - [x] Configure command discovery
-- [x] Add CLI documentation
-  - [x] Command reference
-  - [x] Usage examples
-  - [x] Error handling
-- [x] Add tests for CLI
-  - [x] Unit tests for commands
-  - [x] Integration tests
-  - [x] Command help tests
-[MILESTONE: Run tests for CLI - PASSED]
+### CLI Consolidation [✓]
+- [✓] Create unified CLI with core commands
+- [✓] Implement process-notes and process-vectors
+- [✓] Add monitoring commands
+- [✓] Complete documentation and tests
 
-### MCP Integration [NOT STARTED]
-- [ ] Set up MCP Python SDK
-  - [ ] Create dedicated mcp module (src/nova/mcp)
-  - [ ] Implement interface for data retrieval
-  - [ ] Add MCP adapter implementation
-  - [ ] Configure API key handling
-- [ ] Implement tool definitions
-  - [ ] search_documentation tool
-    - [ ] Vector store integration
-    - [ ] Result formatting
-    - [ ] Context assembly
-  - [ ] list_sources tool
-    - [ ] Source enumeration
-    - [ ] Metadata collection
-    - [ ] Status reporting
-  - [ ] extract_content tool
-    - [ ] Content retrieval
-    - [ ] Format conversion
-    - [ ] Metadata enrichment
-  - [ ] remove_documentation tool
-    - [ ] Safe deletion
-    - [ ] Reference cleanup
-    - [ ] Index updates
-- [ ] Create context block handlers
-  - [ ] Ephemeral block management
-    - [ ] Memory-only storage
-    - [ ] Lifecycle tracking
-    - [ ] Cleanup routines
-  - [ ] Resource block handling
-    - [ ] Persistent storage
-    - [ ] Version tracking
-    - [ ] Access control
-  - [ ] System instruction blocks
-    - [ ] Template management
-    - [ ] Dynamic updates
-    - [ ] Context assembly
-- [ ] Implement transport layer
-  - [ ] Local IPC setup
-    - [ ] Socket configuration
-    - [ ] Protocol definition
-    - [ ] Error handling
-  - [ ] Async operations
-    - [ ] Task scheduling
-    - [ ] Resource limits
-    - [ ] Timeout handling
-  - [ ] Resource management
-    - [ ] Connection pooling
-    - [ ] Memory limits
-    - [ ] Cleanup routines
-- [ ] Add error handling
-  - [ ] Failure recovery
-    - [ ] Retry strategies
-    - [ ] Fallback options
-    - [ ] State recovery
-  - [ ] Error messaging
-    - [ ] User feedback
-    - [ ] Log integration
-    - [ ] Debug info
-  - [ ] Retry logic
-    - [ ] Backoff strategy
-    - [ ] Failure thresholds
-    - [ ] Circuit breaking
-- [ ] Add tests for MCP integration
-  - [ ] Unit tests for MCP adapter
-    - [ ] Tool implementations
-    - [ ] Block handlers
-    - [ ] Transport layer
-  - [ ] Integration tests with vector store
-    - [ ] Search operations
-    - [ ] Content extraction
-    - [ ] Source management
-  - [ ] Mock API tests
-    - [ ] Request mocking
-    - [ ] Response simulation
-    - [ ] Error scenarios
-[MILESTONE: Run tests for MCP integration]
+**MILESTONE**: ✅ Run tests for CLI - PASSED
 
-### Monitoring Implementation [NOT STARTED]
+### MCP Integration [IN PROGRESS]
+- [✓] Set up MCP Server
+- [✓] Create nova server module
+- [✓] Implement prompt manager
+  - [✓] Add prompt loading
+  - [✓] Add prompt validation
+  - [✓] Add prompt caching
+  - [✓] Add prompt reloading
+  - [✓] Add prompt error handling
+  - [✓] Add prompt testing
+- [✓] Define JSON Schemas
+  - [✓] Vector store resource schema
+  - [✓] Note resource schema
+  - [✓] Attachment resource schema
+  - [✓] OCR resource schema
+  - [✓] Search tool schema
+  - [✓] List tool schema
+  - [✓] Extract tool schema
+  - [✓] Remove tool schema
+- [✓] Implement Tool Handlers
+  - [✓] Base Tool Handler class
+  - [✓] Search Tool implementation
+  - [✓] List Tool implementation
+  - [✓] Extract Tool implementation
+  - [✓] Remove Tool implementation
+  - [✓] Tool handler tests
+- [IN PROGRESS] Implement Resource Handlers
+  - [✓] Base Resource Handler class
+  - [✓] Vector Store Handler
+    - [✓] Basic implementation
+    - [✓] Add/query/delete operations
+    - [✓] Change notifications
+    - [✓] Unit tests
+  - [✓] Attachment Handler
+    - [✓] File operations
+    - [✓] Metadata handling
+    - [✓] OCR integration
+    - [✓] Change notifications
+    - [✓] Unit tests
+  - [✓] OCR Handler
+    - [✓] Engine configuration
+    - [✓] Processing pipeline
+    - [✓] Result caching
+    - [✓] Change notifications
+    - [✓] Unit tests
+- [✓] Add Protocol Support
+  - [✓] WebSocket server
+  - [✓] HTTP endpoints
+  - [✓] Authentication
+  - [✓] Rate limiting
+- [✓] Add Change Notifications
+  - [✓] WebSocket events
+  - [✓] HTTP webhooks
+  - [✓] Event filtering
+- [✓] Add Error Handling
+  - [✓] Error codes
+  - [✓] Error messages
+  - [✓] Error recovery
+  - [✓] Error logging
+
+### Core Testing Phase [IN PROGRESS]
+- [✓] Set up testing infrastructure
+  - [✓] Add pytest configuration
+  - [✓] Add test utilities
+  - [✓] Add test fixtures
+- [✓] Resource Handler Tests
+  - [✓] Note resource tests
+  - [✓] Vector store tests
+  - [✓] Attachment tests
+    - [✓] Basic functionality tests
+    - [✓] File operations tests
+    - [✓] Metadata handling tests
+    - [✓] Error handling tests
+    - [✓] MIME type handling tests
+    - [✓] Concurrent access tests
+    - [✓] Store operation error tests
+      - [✓] Storage path errors
+      - [✓] File system errors
+      - [✓] Permission errors
+      - [✓] Disk space errors
+      - [✓] Metadata validation errors
+  - [✓] OCR tests
+    - [✓] Basic functionality tests
+    - [✓] Image processing tests
+    - [✓] Cache system tests
+    - [✓] Error handling tests
+    - [✓] Engine error tests
+    - [✓] Confidence value tests
+- [✓] Tool Registry Tests
+  - [✓] Search tool tests
+  - [✓] List tool tests
+  - [✓] Extract tool tests
+  - [✓] Remove tool tests
+- [✓] Change Notification Tests
+  - [✓] Event tests
+  - [✓] Webhook tests
+  - [✓] Filter tests
+- [✓] Error Handling Tests
+  - [✓] Error code tests
+  - [✓] Recovery tests
+  - [✓] Logging tests
+
+**MILESTONE**: Get all existing tests passing with >90% coverage
+
+## Current Focus [IN PROGRESS]
+1. [IN PROGRESS] Test Stabilization
+   - [ ] Fix type errors in OCR handler
+   - [ ] Fix attachment store attribute errors
+   - [ ] Fix notification type compatibility
+   - [ ] Fix tool handler argument errors
+   - [ ] Fix vector store type issues
+   - [ ] Run full test suite until passing
+2. [NOT STARTED] Real-World Usage Preparation
+   - [ ] Create sample Bear notes for testing
+   - [ ] Set up test input directory
+   - [ ] Configure OCR engine with real images
+   - [ ] Test vector store with actual content
+   - [ ] Validate end-to-end workflow
+   - [ ] Document real-world usage patterns
+
+## Blockers [IN PROGRESS]
+1. [✓] Resource Handlers
+   - [✓] OCR engine selection and configuration
+   - [✓] Attachment storage strategy
+     - [✓] Basic file operations
+     - [✓] Metadata handling
+     - [✓] Concurrent access
+     - [✓] Error handling and recovery
+   - [✓] Performance optimization for large files
+
+## Monitoring Implementation [NOT STARTED]
 - [ ] Create minimal web app
   - [ ] FastAPI-based server
   - [ ] Health check endpoint
@@ -229,7 +187,8 @@
   - [ ] Server tests
   - [ ] Metrics tests
   - [ ] Logging tests
-[MILESTONE: Run tests for monitoring]
+
+**MILESTONE**: Run tests for monitoring
 
 ### Documentation Updates [NOT STARTED]
 - [ ] Update README.md
@@ -244,9 +203,10 @@
   - [ ] Environment setup
   - [ ] Testing procedures
   - [ ] Contribution guidelines
-[MILESTONE: Documentation review]
 
-### RAG Implementation
+**MILESTONE**: Documentation review
+
+### RAG Implementation [NOT STARTED]
 - [ ] Create query processor
   - [ ] Tool-based decomposition
   - [ ] Context window management
@@ -264,11 +224,12 @@
   - [ ] Message formatting
   - [ ] Session management
 - [ ] Add tests for RAG pipeline
-[MILESTONE: Run tests for RAG system]
+
+**MILESTONE**: Run tests for RAG system
 
 ## Phase 3: Claude Desktop Integration [NOT STARTED]
 
-### Desktop Client Setup
+### Desktop Client Setup [NOT STARTED]
 - [ ] Create desktop client structure
 - [ ] Set up IPC mechanisms
   - [ ] Local communication
@@ -278,9 +239,10 @@
   - [ ] Response streaming
   - [ ] Error recovery
 - [ ] Add tests for desktop client
-[MILESTONE: Run tests for desktop integration]
 
-### Desktop Features
+**MILESTONE**: Run tests for desktop integration
+
+### Desktop Features [NOT STARTED]
 - [ ] Create query interface
 - [ ] Implement response display
 - [ ] Add settings management
@@ -288,11 +250,12 @@
   - [ ] Vector store config
 - [ ] Implement error handling
 - [ ] Add tests for desktop features
-[MILESTONE: Run tests for desktop features]
+
+**MILESTONE**: Run tests for desktop features
 
 ## Phase 4: Monitoring System [NOT STARTED]
 
-### Monitoring Backend
+### Monitoring Backend [NOT STARTED]
 - [ ] Implement metrics collection
   - [ ] Vector store stats
   - [ ] Query performance
@@ -301,40 +264,14 @@
 - [ ] Add performance tracking
 - [ ] Create API endpoints
 - [ ] Add tests for monitoring backend
-[MILESTONE: Run tests for monitoring backend]
 
-### Monitoring Frontend
+**MILESTONE**: Run tests for monitoring backend
+
+### Monitoring Frontend [NOT STARTED]
 - [ ] Create dashboard UI
 - [ ] Implement metrics display
 - [ ] Add log viewer
 - [ ] Create system status page
 - [ ] Add tests for monitoring frontend
-[MILESTONE: Run tests for monitoring frontend]
 
-# Current Focus
-1. Begin MCP Integration
-   - Set up MCP module structure
-   - Design tool interfaces
-   - Plan context block handling
-2. Begin Monitoring Implementation
-   - Design minimal web app structure
-   - Plan metrics collection
-   - Define API endpoints
-3. Begin RAG Implementation
-   - Design query processor
-   - Plan retrieval system
-   - Design result processor
-
-# Blockers
-1. MCP Integration
-   - Official MCP SDK compatibility validation needed
-   - Tool interface design decisions pending
-   - Context block handling strategy to be finalized
-2. Monitoring System
-   - Web app framework selection pending
-   - Metrics collection scope to be defined
-   - API endpoint design needed
-3. RAG Implementation
-   - Query decomposition strategy needed
-   - Context assembly approach pending
-   - Source attribution design required
+**MILESTONE**: Run tests for monitoring frontend

@@ -54,6 +54,7 @@ class ProcessVectorsCommand(NovaCommand):
                 embeddings.append(embedding.vector)
                 metadata_dicts.append(
                     {
+                        "id": f"doc_{len(metadata_dicts) + 1}",
                         "text": chunk.text,
                         "source": str(chunk.source) if chunk.source else "",
                         "heading_context": chunk.heading_context,

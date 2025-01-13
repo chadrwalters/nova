@@ -202,27 +202,129 @@
   - Help text verification
 
 #### MCP Integration [PLANNED]
-- Dedicated MCP module (src/nova/mcp):
-  - Data retrieval interface
-  - MCP adapter implementation
-  - API key configuration
-- Tool Definitions:
-  - search_documentation: Vector-based search through notes
-  - list_sources: Display available note collections
-  - extract_content: Process and analyze note content
-  - remove_documentation: Delete specific notes/attachments
-- Context Block Structure:
-  - Ephemeral blocks for sensitive content
-  - Resource blocks for persistent data
-  - System instruction blocks for Claude guidance
-- Transport Layer:
-  - Local IPC communication
-  - Async/await pattern for operations
-  - Proper resource cleanup
+- MCP Server Implementation:
+  - Core Components:
+    - NovaServer: MCP protocol server implementation
+      - Protocol version validation
+      - Capability negotiation
+      - Initialize/initialized handshake
+      - Dynamic tool/resource discovery
+    - ResourceManager: File and data access handler
+      - JSON Schema definitions
+      - Resource change notifications
+      - Access control validation
+    - ToolRegistry: Vector store tool definitions
+      - JSON Schema validation
+      - Parameter type checking
+      - Dynamic tool registration
+      - Tool change notifications
+    - PromptManager: Template management system
+      - Template validation
+      - Context assembly
+      - Dynamic updates
+  - Implementation Structure:
+    - src/nova/mcp/
+      - __init__.py: Main entry point
+      - server.py: NovaServer implementation
+      - resources/: Resource handlers
+        - schemas/: JSON Schema definitions
+        - handlers/: Resource implementations
+      - tools/: Tool implementations
+        - schemas/: Tool JSON Schemas
+        - handlers/: Tool implementations
+      - prompts/: Template definitions
+      - errors.py: JSON-RPC error definitions
+- Capability Types:
+  - Resources:
+    - Vector store access:
+      - Schema: VectorStoreResource
+      - Change notifications
+      - Access patterns
+    - Note content retrieval:
+      - Schema: NoteResource
+      - Metadata handling
+      - Content streaming
+    - Attachment handling:
+      - Schema: AttachmentResource
+      - Binary data handling
+      - MIME type support
+    - OCR result access:
+      - Schema: OCRResource
+      - Confidence scoring
+      - Error states
+  - Tools:
+    - search_documentation:
+      - Schema: SearchParams
+      - Result format
+      - Error codes
+    - list_sources:
+      - Schema: ListParams
+      - Collection format
+      - Filter options
+    - extract_content:
+      - Schema: ExtractParams
+      - Format options
+      - Error states
+    - remove_documentation:
+      - Schema: RemoveParams
+      - Safety checks
+      - Rollback support
+  - Prompts:
+    - Search templates:
+      - Schema validation
+      - Variable substitution
+    - Content formatting:
+      - Output validation
+      - Style consistency
+    - Error handling:
+      - Error templates
+      - Recovery hints
+    - System instructions:
+      - Context validation
+      - State tracking
+- Protocol Implementation:
+  - Handshake Protocol:
+    - Version validation
+    - Capability negotiation
+    - Connection setup
+  - Change Notifications:
+    - Tool updates
+    - Resource changes
+    - State transitions
+  - Error Handling:
+    - JSON-RPC error objects
+    - Custom error codes
+    - Error context
+    - Recovery hints
+- Testing Strategy:
+  - MCP Inspector Integration:
+    - Manual protocol testing
+    - Schema validation
+    - Tool invocation
+    - Resource access
+  - Automated Tests:
+    - Protocol compliance
+    - Schema validation
+    - Error handling
+    - Performance metrics
+- Local Transport:
+  - MCP Protocol Implementation:
+    - Standard capability exposure
+    - Local socket communication
+    - Client connection handling
+  - Resource Management:
+    - Connection lifecycle
+    - Memory limits
+    - Cleanup routines
 - Error Handling:
-  - Graceful degradation on failures
-  - Clear error messages to Claude
-  - Automatic retries for transient issues
+  - Standard MCP Error Types:
+    - Resource access errors
+    - Tool execution errors
+    - Protocol errors
+  - Recovery:
+    - Standard retry mechanisms
+    - Error reporting
+    - State recovery
 
 ### 4. Monitoring System [PLANNED]
 

@@ -1,42 +1,141 @@
 """Vector store implementation using Chroma."""
 
 import logging
-from pathlib import Path
-from typing import Any, cast
+import time
 from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any, cast, Union
 
 import chromadb
 import numpy as np
-from chromadb.api.types import Where
+from chromadb.api.types import Where, Embeddings, Metadatas
+from chromadb.config import Settings
 from numpy.typing import NDArray
-
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+# Use a smaller, faster model
+MODEL_NAME = "paraphrase-MiniLM-L3-v2"
+BATCH_SIZE = 32
 
 
 class VectorStore:
     """Vector store for embeddings."""
 
     def __init__(self, store_dir: Path) -> None:
-        """Initialize the vector store.
+        """Initialize vector store.
 
         Args:
-            store_dir: Directory to store vectors in
+            store_dir: Directory for storing vector data
         """
-        self.store_dir = store_dir
-        self.store_dir.mkdir(parents=True, exist_ok=True)
+        self._store_dir = store_dir
+        self._store_dir.mkdir(parents=True, exist_ok=True)
+        self._model: SentenceTransformer | None = None
+        self._embedding_cache: dict[str, NDArray[np.float32]] = {}
+        self._batch_queue: list[tuple[str, str, dict[str, Any]]] = []
 
-        # Initialize Chroma client
-        self.client = chromadb.PersistentClient(path=str(store_dir))
+        # Configure Chroma client with reset enabled for tests
+        settings = Settings(
+            allow_reset=True, is_persistent=True, persist_directory=str(store_dir)
+        )
+        self.client = chromadb.Client(settings)
+        self.collection = self.client.get_or_create_collection("nova")
 
-        # Delete existing collection if it exists
-        try:
-            self.client.delete_collection("nova")
-        except ValueError:
-            pass
+    @property
+    def model(self) -> SentenceTransformer:
+        """Get or initialize the sentence transformer model."""
+        if self._model is None:
+            self._model = SentenceTransformer(MODEL_NAME)
+        return self._model
 
-        # Create new collection
-        self.collection = self.client.create_collection("nova")
+    def add(self, doc_id: str, content: str, metadata: dict[str, Any]) -> None:
+        """Add a document to the store.
+
+        Args:
+            doc_id: Document ID
+            content: Document content
+            metadata: Document metadata
+        """
+        # Add to batch queue
+        self._batch_queue.append((doc_id, content, metadata))
+
+        # Process batch if queue is full
+        if len(self._batch_queue) >= BATCH_SIZE:
+            self._process_batch()
+
+    def _process_batch(self) -> None:
+        """Process queued documents in batch."""
+        if not self._batch_queue:
+            return
+
+        # Generate embeddings in batch
+        contents = [content for _, content, _ in self._batch_queue]
+        vectors = self.model.encode(contents, convert_to_numpy=True)
+        if not isinstance(vectors, np.ndarray):
+            vectors = np.array(vectors)
+        vectors = vectors.astype(np.float32)
+
+        # Prepare metadata
+        metadata_list = []
+        for i, (doc_id, _, metadata) in enumerate(self._batch_queue):
+            self._embedding_cache[doc_id] = vectors[i]
+            md = dict(metadata)
+            md["id"] = doc_id
+            for key, value in md.items():
+                if isinstance(value, list):
+                    md[key] = ", ".join(str(v) for v in value)
+                elif not isinstance(value, (str, int, float, bool)):
+                    md[key] = str(value)
+            metadata_list.append(md)
+
+        # Add embeddings
+        self.add_embeddings(list(vectors), metadata_list)
+        self._batch_queue.clear()
+
+    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search for similar documents.
+
+        Args:
+            query: Query string
+            limit: Maximum number of results
+
+        Returns:
+            List of results with metadata
+        """
+        # Process any remaining documents
+        if self._batch_queue:
+            self._process_batch()
+
+        # Generate query embedding
+        query_vector = self.model.encode([query], convert_to_numpy=True)
+        if not isinstance(query_vector, np.ndarray):
+            query_vector = np.array(query_vector)
+        query_vector = query_vector.astype(np.float32).reshape(-1)
+        return self.query(query_vector, n_results=limit)
+
+    def remove(self, doc_id: str) -> None:
+        """Remove a document from the store.
+
+        Args:
+            doc_id: Document ID to remove
+
+        Raises:
+            ValueError: If document ID doesn't exist
+        """
+        # Process any remaining documents
+        if self._batch_queue:
+            self._process_batch()
+
+        # Check if document exists
+        results = self.collection.get(where={"id": doc_id})
+        if not results["ids"]:
+            raise ValueError(f"Document {doc_id} not found")
+
+        self.collection.delete(where={"id": doc_id})
+        if doc_id in self._embedding_cache:
+            del self._embedding_cache[doc_id]
+        logger.info("Removed document %s", doc_id)
 
     def add_embeddings(
         self,
@@ -50,17 +149,17 @@ class VectorStore:
             metadata_dicts: List of metadata dictionaries
         """
         # Convert numpy arrays to lists
-        embeddings: list[Sequence[float]] = [
-            vector.tolist() for vector in embedding_vectors
-        ]
+        embeddings: Embeddings = [vector.tolist() for vector in embedding_vectors]
 
-        # Convert metadata to Mappings
-        metadatas: list[Mapping[str, str | int | float | bool]] = [
-            dict(m) for m in metadata_dicts
-        ]
-
-        # Generate unique IDs for embeddings
-        ids = [f"vec_{i}" for i in range(len(embeddings))]
+        # Convert metadata to Mappings and extract IDs
+        metadatas: Metadatas = []
+        ids: list[str] = []
+        for metadata in metadata_dicts:
+            md = dict(metadata)
+            if "id" not in md:
+                raise ValueError("Metadata must contain 'id' field")
+            ids.append(str(md["id"]))
+            metadatas.append(cast(Mapping[str, Union[str, int, float, bool]], md))
 
         # Add embeddings to collection
         self.collection.add(embeddings=embeddings, metadatas=metadatas, ids=ids)
@@ -81,7 +180,14 @@ class VectorStore:
 
         Returns:
             List of results with metadata
+
+        Raises:
+            ValueError: If query vector has wrong dimensions
         """
+        # Check query vector dimensions
+        if query_vector.shape != (384,):
+            raise ValueError("Query vector must have 384 dimensions")
+
         # Convert query vector to list
         query_embedding: Sequence[float] = query_vector.tolist()
 
@@ -98,8 +204,30 @@ class VectorStore:
             distances = cast(list[list[float]], results["distances"])
             for i in range(len(metadatas[0])):
                 metadata = dict(metadatas[0][i])
-                metadata["id"] = ids[0][i]
-                metadata["distance"] = float(distances[0][i])
-                metadata_list.append(metadata)
+                result = {
+                    "id": metadata.get("id", ids[0][i]),  # Use stored ID if available
+                    "distance": float(distances[0][i]),
+                    "metadata": metadata,  # Include original metadata
+                }
+                metadata_list.append(result)
 
         return metadata_list
+
+    def get_metadata(self) -> dict[str, Any]:
+        """Get vector store metadata.
+
+        Returns:
+            Dictionary containing vector store metadata
+        """
+        # Get total vectors
+        results = self.collection.get()
+        total_vectors = len(results["ids"]) if results["ids"] else 0
+
+        return {
+            "id": "vector_store",
+            "name": "Vector Store",
+            "version": "1.0.0",
+            "modified": time.time(),
+            "total_vectors": total_vectors,
+            "store_dir": str(self._store_dir),
+        }

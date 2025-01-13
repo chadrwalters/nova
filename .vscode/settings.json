@@ -103,7 +103,8 @@
     "*.yaml": "yaml",
     "*.yml": "yaml",
     "*.toml": "toml",
-    "*.md": "markdown"
+    "*.md": "markdown",
+    ".Plan": "markdown"
   },
   // Search settings
   "search.exclude": {
