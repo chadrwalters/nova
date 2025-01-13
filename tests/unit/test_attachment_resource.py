@@ -1,12 +1,13 @@
 """Unit tests for attachment resource handler."""
 
+import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast, TypedDict
-from collections.abc import Callable
+from typing import Any, TypedDict, cast
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import time
 
 from nova.server.resources.attachment import AttachmentHandler
 from nova.server.types import ResourceError, ResourceType
@@ -44,7 +45,7 @@ def test_get_metadata(handler: AttachmentHandler, mock_store: Mock) -> None:
     metadata = handler.get_metadata()
 
     assert metadata["id"] == "attachment-handler"
-    assert metadata["type"] == ResourceType.ATTACHMENT.name
+    assert metadata["type"] == ResourceType.ATTACHMENT
     assert metadata["name"] == "Attachment Handler"
     assert metadata["version"] == "1.0.0"
     assert isinstance(metadata["modified"], float)

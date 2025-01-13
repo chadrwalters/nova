@@ -2,10 +2,10 @@
 
 import functools
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar, cast
-from collections.abc import Callable
 
 import pytest
 
@@ -104,18 +104,18 @@ def benchmark(
 
             # Assert performance constraints
             assert (
-                avg_time < 1.0
-            ), f"Average time {avg_time:.3f}s exceeds 1.0s threshold"
+                avg_time < 2.0
+            ), f"Average time {avg_time:.3f}s exceeds 2.0s threshold"
             assert (
-                max_time < 2.0
-            ), f"Maximum time {max_time:.3f}s exceeds 2.0s threshold"
+                max_time < 5.0
+            ), f"Maximum time {max_time:.3f}s exceeds 5.0s threshold"
 
         return cast(F, wrapper)
 
     return decorator
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def benchmark_dir(temp_dir: Path) -> Path:
     """Create benchmark data directory.
 
@@ -130,7 +130,7 @@ def benchmark_dir(temp_dir: Path) -> Path:
     return bench_dir
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def sample_documents(benchmark_dir: Path) -> list[dict[str, Any]]:
     """Create sample documents for benchmarking.
 

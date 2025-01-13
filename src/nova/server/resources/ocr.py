@@ -1,19 +1,18 @@
 """OCR resource handler implementation."""
 
 import json
+import os
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypedDict
-from collections.abc import Callable
-import time
-import os
-
 
 from nova.server.types import (
+    OCRResult,
     ResourceError,
     ResourceHandler,
     ResourceMetadata,
     ResourceType,
-    OCRResult,
 )
 
 

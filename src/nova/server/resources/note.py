@@ -1,18 +1,16 @@
 """Note resource handler implementation."""
 
-import time
-from typing import Any, TypedDict
+import json
 from collections.abc import Callable
 from pathlib import Path
-import json
+from typing import Any, TypedDict
 
+from nova.bear_parser.parser import BearNote, BearParser
 from nova.server.types import (
     ResourceError,
-    ResourceMetadata,
     ResourceHandler,
-    ResourceType,
+    ResourceMetadata,
 )
-from nova.bear_parser.parser import BearNote, BearParser
 
 
 class NoteAttributes(TypedDict):
@@ -67,18 +65,15 @@ class NoteHandler(ResourceHandler):
         Returns:
             Resource metadata
         """
-        metadata = {
-            "id": "notes",
-            "type": ResourceType.NOTE,
-            "name": "Note Store",
-            "version": "0.1.0",
-            "modified": time.time(),
-            "attributes": {
-                "total_notes": self._store.count_notes(),
-                "total_tags": self._store.count_tags(),
-            },
-        }
-        return metadata
+        return ResourceMetadata(
+            id=self.id,
+            type="note",
+            name=self.name,
+            created=self.created,
+            modified=self.modified,
+            size=self.size,
+            metadata=self.metadata,
+        )
 
     def validate_access(self, operation: str) -> bool:
         """Validate access for operation.

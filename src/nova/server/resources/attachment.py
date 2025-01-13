@@ -1,13 +1,12 @@
 """Attachment resource handler implementation."""
 
 import json
-from pathlib import Path
-from typing import Any, TypedDict, cast
-from collections.abc import Callable
 import mimetypes
 import threading
 import time
-
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypedDict, cast
 
 from nova.server.attachments import AttachmentStore
 from nova.server.types import (
@@ -297,3 +296,24 @@ class AttachmentHandler(ResourceHandler):
             return results
         except Exception as e:
             raise ResourceError(f"Failed to list attachments: {str(e)}")
+
+    def get_results(self) -> list[AttachmentResult]:
+        """Get attachment results.
+
+        Returns:
+            List of attachment results
+        """
+        results = []
+        for attachment in self._attachments:
+            results.append(
+                AttachmentResult(
+                    id=attachment["id"],
+                    name=attachment["name"],
+                    type=attachment["type"],
+                    size=attachment["size"],
+                    created=attachment["created"],
+                    modified=attachment["modified"],
+                    metadata=attachment["metadata"],
+                )
+            )
+        return results

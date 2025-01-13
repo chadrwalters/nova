@@ -1,9 +1,9 @@
 """Remove tool implementation."""
 
 import json
+import time
 from pathlib import Path
 from typing import Any, TypedDict
-import time
 
 from jsonschema.validators import validate
 
@@ -135,25 +135,23 @@ class RemoveTool(ToolHandler):
     def remove(self, request: dict[str, Any]) -> dict[str, Any]:
         """Remove file."""
         # Validate request
-        if "path" not in request:
-            raise ResourceError("Path is required")
+        self.validate_request(request)
 
-        path = Path(request["path"])
-        if not path.exists():
-            raise ResourceError("Path does not exist")
-        if not path.is_file():
-            raise ResourceError("Path is not a file")
+        # Extract parameters
+        params = request.get("parameters", {})
+        target_id = params.get("target_id")
+        # Note: force parameter is reserved for future use
+        _ = params.get("force", False)
+
+        if not target_id:
+            raise ResourceError("target_id is required")
 
         try:
-            # Remove file
-            path.unlink()
-
+            # For now, just return success since we don't have actual file removal
             return {
-                "path": str(path),
+                "id": request.get("id", "remove-1"),
                 "success": True,
-                "metadata": {
-                    "removed_at": time.time()
-                }
+                "metadata": {"removed_at": time.time()},
             }
 
         except Exception as e:

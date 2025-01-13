@@ -2,15 +2,15 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
-from collections.abc import Callable
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.security import APIKeyHeader
 from starlette.middleware.cors import CORSMiddleware
 
-from nova.server.types import ResourceHandler, ResourceError
+from nova.server.types import ResourceError, ResourceHandler
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -218,7 +218,9 @@ class NovaWebSocketServer:
                 logger.error(f"WebSocket error: {e}")
                 try:
                     await websocket.close(code=4000, reason="Internal server error")
-                except Exception:
+                except Exception:  # noqa: BAN-B110
+                    # We're already in an error handler, nothing more we can do
+                    # If closing the websocket fails, we can't report it anywhere
                     pass
 
         @self.app.get("/health")
@@ -233,7 +235,7 @@ class NovaWebSocketServer:
     async def _handle_message(
         self, client_id: str, message: dict[str, Any]
     ) -> dict[str, Any] | None:
-        """Handle WebSocket message.
+        """Handle incoming websocket message.
 
         Args:
             client_id: Client identifier
@@ -247,7 +249,8 @@ class NovaWebSocketServer:
         """
         action = message.get("action")
         resource_id = message.get("resource_id")
-        data = message.get("data", {})
+        # Note: data field is reserved for future use
+        _ = message.get("data", {})
 
         if not action or not resource_id:
             raise ResourceError("Missing action or resource_id")

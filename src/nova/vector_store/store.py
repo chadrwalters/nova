@@ -4,11 +4,11 @@ import logging
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast, Union
+from typing import Any, Union, cast
 
 import chromadb
 import numpy as np
-from chromadb.api.types import Where, Embeddings, Metadatas
+from chromadb.api.types import Embeddings, Metadatas, Where
 from chromadb.config import Settings
 from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
@@ -65,32 +65,23 @@ class VectorStore:
             self._process_batch()
 
     def _process_batch(self) -> None:
-        """Process queued documents in batch."""
+        """Process batched documents."""
         if not self._batch_queue:
             return
 
-        # Generate embeddings in batch
-        contents = [content for _, content, _ in self._batch_queue]
-        vectors = self.model.encode(contents, convert_to_numpy=True)
-        if not isinstance(vectors, np.ndarray):
-            vectors = np.array(vectors)
-        vectors = vectors.astype(np.float32)
+        # Convert documents to embeddings
+        texts = [doc["content"] for doc in self._batch_queue]
+        embeddings = self.model.encode(texts)
 
-        # Prepare metadata
-        metadata_list = []
-        for i, (doc_id, _, metadata) in enumerate(self._batch_queue):
-            self._embedding_cache[doc_id] = vectors[i]
-            md = dict(metadata)
-            md["id"] = doc_id
-            for key, value in md.items():
-                if isinstance(value, list):
-                    md[key] = ", ".join(str(v) for v in value)
-                elif not isinstance(value, (str, int, float, bool)):
-                    md[key] = str(value)
-            metadata_list.append(md)
+        # Add to Chroma collection
+        self.collection.add(
+            embeddings=embeddings,
+            documents=[doc["content"] for doc in self._batch_queue],
+            metadatas=[doc["metadata"] for doc in self._batch_queue],
+            ids=[doc["id"] for doc in self._batch_queue],
+        )
 
-        # Add embeddings
-        self.add_embeddings(list(vectors), metadata_list)
+        # Clear batch
         self._batch_queue.clear()
 
     def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:

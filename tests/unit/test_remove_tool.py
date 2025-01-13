@@ -38,13 +38,18 @@ def test_remove(tmp_path: Path) -> None:
     # Initialize tool
     tool = RemoveTool(schema_path)
 
+    # Create test file
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("This is a test file")
+
     # Test valid request
     request = {
-        "path": str(tmp_path / "test.txt"),
-        "filters": {
-            "type": "file",
-            "extension": ".txt"
-        }
+        "id": "remove-1",
+        "type": "remove",
+        "name": "Remove Test",
+        "version": "1.0.0",
+        "parameters": {"target_id": "test123", "force": True},
+        "capabilities": ["remove"],
     }
     result = tool.remove(request)
     assert isinstance(result, dict)

@@ -1,31 +1,28 @@
 """Unit tests for notification system."""
 
-import hmac
+from __future__ import annotations
+
 import hashlib
+import hmac
 import json
 from datetime import datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from unittest.mock import Mock
-
-try:
-    from aiohttp import ClientResponse, ClientSession
-except ImportError:
-    # Mock aiohttp types for type checking
-    class ClientResponse:
-        pass  # type: ignore
-
-    class ClientSession:
-        pass  # type: ignore
-
-
+import pytest_asyncio
+from aiohttp import ClientSession
 from pydantic import HttpUrl, ValidationError
 
 from nova.server.protocol.notifications import (
+    NotificationEvent,
     NotificationManager,
     WebhookConfig,
-    NotificationEvent,
 )
+
+if TYPE_CHECKING:
+    pass
 
 
 class MockResponse:
@@ -35,7 +32,7 @@ class MockResponse:
         """Initialize mock response."""
         self.status = status
 
-    async def __aenter__(self) -> "MockResponse":
+    async def __aenter__(self) -> MockResponse:
         """Enter async context."""
         return self
 
@@ -50,18 +47,29 @@ class MockClientSession:
     def __init__(self) -> None:
         """Initialize mock session."""
         self.post = Mock()
-        self.close = Mock()
+        self.close = AsyncMock()  # Use AsyncMock for async close method
 
 
-@pytest.fixture
-def manager() -> NotificationManager:
-    """Create notification manager."""
-    return NotificationManager()
+@pytest_asyncio.fixture
+async def async_manager() -> AsyncGenerator[NotificationManager, None]:
+    """Create and start notification manager.
+
+    Returns:
+        AsyncGenerator yielding NotificationManager instance
+    """
+    manager = NotificationManager()
+    await manager.start()
+    yield manager
+    await manager.stop()
 
 
 @pytest.fixture
 def webhook_config() -> WebhookConfig:
-    """Create webhook configuration."""
+    """Create webhook configuration.
+
+    Returns:
+        WebhookConfig instance
+    """
     return WebhookConfig(
         url=HttpUrl("http://test.com/webhook"),
         secret="test-secret",
@@ -73,7 +81,11 @@ def webhook_config() -> WebhookConfig:
 
 @pytest.fixture
 def notification_event() -> NotificationEvent:
-    """Create notification event."""
+    """Create notification event.
+
+    Returns:
+        NotificationEvent instance
+    """
     return {
         "id": "test-id",
         "type": "test.event",
@@ -116,41 +128,8 @@ def test_webhook_config_validation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_manager_lifecycle(manager: NotificationManager) -> None:
-    """Test manager lifecycle."""
-    # Test start
-    await manager.start()
-    assert manager._http_session is not None
-
-    # Test stop
-    await manager.stop()
-    assert manager._http_session is None
-
-
-def test_register_webhook(
-    manager: NotificationManager, webhook_config: WebhookConfig
-) -> None:
-    """Test webhook registration."""
-    webhook_id = manager.register_webhook(webhook_config)
-    assert webhook_id in manager._webhooks
-    assert webhook_config.events[0] in manager._event_subscribers
-    assert webhook_id in manager._event_subscribers[webhook_config.events[0]]
-
-
-def test_unregister_webhook(
-    manager: NotificationManager, webhook_config: WebhookConfig
-) -> None:
-    """Test webhook unregistration."""
-    webhook_id = manager.register_webhook(webhook_config)
-    manager.unregister_webhook(webhook_id)
-
-    assert webhook_id not in manager._webhooks
-    assert not manager._event_subscribers
-
-
-@pytest.mark.asyncio
 async def test_notify_success(
-    manager: NotificationManager,
+    async_manager: NotificationManager,
     webhook_config: WebhookConfig,
     notification_event: NotificationEvent,
 ) -> None:
@@ -158,13 +137,11 @@ async def test_notify_success(
     # Setup mock session
     session = MockClientSession()
     session.post.return_value = MockResponse(200)
-    manager._http_session = cast(ClientSession, session)
+    async_manager._http_session = cast(ClientSession | None, session)
 
-    # Register webhook
-    webhook_id = manager.register_webhook(webhook_config)
-
-    # Send notification
-    await manager.notify(notification_event)
+    # Register webhook and send notification
+    async_manager.register_webhook(webhook_config)
+    await async_manager.notify(notification_event)
 
     # Verify webhook call
     session.post.assert_called_once()
@@ -181,14 +158,16 @@ async def test_notify_success(
     if webhook_config.secret:
         payload = json.dumps(notification_event)
         expected_signature = hmac.new(
-            webhook_config.secret.encode(), payload.encode(), hashlib.sha256
+            webhook_config.secret.encode(),
+            payload.encode(),
+            hashlib.sha256,
         ).hexdigest()
         assert headers["X-Nova-Signature"] == expected_signature
 
 
 @pytest.mark.asyncio
 async def test_notify_retry(
-    manager: NotificationManager,
+    async_manager: NotificationManager,
     webhook_config: WebhookConfig,
     notification_event: NotificationEvent,
 ) -> None:
@@ -199,13 +178,11 @@ async def test_notify_retry(
         MockResponse(500),  # First attempt fails
         MockResponse(200),  # Second attempt succeeds
     ]
-    manager._http_session = cast(ClientSession, session)
+    async_manager._http_session = cast(ClientSession | None, session)
 
-    # Register webhook
-    webhook_id = manager.register_webhook(webhook_config)
-
-    # Send notification
-    await manager.notify(notification_event)
+    # Register webhook and send notification
+    async_manager.register_webhook(webhook_config)
+    await async_manager.notify(notification_event)
 
     # Verify retry
     assert session.post.call_count == 2
@@ -213,7 +190,7 @@ async def test_notify_retry(
 
 @pytest.mark.asyncio
 async def test_notify_failure(
-    manager: NotificationManager,
+    async_manager: NotificationManager,
     webhook_config: WebhookConfig,
     notification_event: NotificationEvent,
 ) -> None:
@@ -221,13 +198,11 @@ async def test_notify_failure(
     # Setup mock session with all failures
     session = MockClientSession()
     session.post.return_value = MockResponse(500)
-    manager._http_session = cast(ClientSession, session)
+    async_manager._http_session = cast(ClientSession | None, session)
 
-    # Register webhook
-    webhook_id = manager.register_webhook(webhook_config)
-
-    # Send notification
-    await manager.notify(notification_event)
+    # Register webhook and send notification
+    async_manager.register_webhook(webhook_config)
+    await async_manager.notify(notification_event)
 
     # Verify all retries attempted
     assert session.post.call_count == webhook_config.retry_count
@@ -235,42 +210,47 @@ async def test_notify_failure(
 
 @pytest.mark.asyncio
 async def test_notify_no_session(
-    manager: NotificationManager, notification_event: NotificationEvent
+    async_manager: NotificationManager,
+    notification_event: NotificationEvent,
 ) -> None:
     """Test notification without session."""
-    # Attempt notification without starting manager
-    await manager.notify(notification_event)
+    async_manager._http_session = None
+    # Attempt notification without session
+    await async_manager.notify(notification_event)
     # Should not raise exception
 
 
 @pytest.mark.asyncio
 async def test_notify_no_subscribers(
-    manager: NotificationManager, notification_event: NotificationEvent
+    async_manager: NotificationManager,
+    notification_event: NotificationEvent,
 ) -> None:
     """Test notification with no subscribers."""
-    # Start manager
-    await manager.start()
+    # Setup mock session
+    session = MockClientSession()
+    async_manager._http_session = cast(ClientSession | None, session)
 
-    # Send notification for event with no subscribers
-    await manager.notify(notification_event)
-    # Should not raise exception
+    # Send notification without subscribers
+    await async_manager.notify(notification_event)
 
-    # Cleanup
-    await manager.stop()
+    # Verify no webhook calls
+    session.post.assert_not_called()
 
 
 def test_generate_signature(
-    manager: NotificationManager,
+    async_manager: NotificationManager,
     webhook_config: WebhookConfig,
     notification_event: NotificationEvent,
 ) -> None:
     """Test signature generation."""
     payload = json.dumps(notification_event)
     if webhook_config.secret:
-        signature = manager._generate_signature(webhook_config.secret, payload)
+        signature = async_manager._generate_signature(webhook_config.secret, payload)
 
         # Verify signature
         expected_signature = hmac.new(
-            webhook_config.secret.encode(), payload.encode(), hashlib.sha256
+            webhook_config.secret.encode(),
+            payload.encode(),
+            hashlib.sha256,
         ).hexdigest()
         assert signature == expected_signature

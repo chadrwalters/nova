@@ -1,6 +1,7 @@
 """Extract tool implementation."""
 
 import json
+import time
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -147,25 +148,38 @@ class ExtractTool(ToolHandler):
     def extract(self, request: dict[str, Any]) -> dict[str, Any]:
         """Extract text from file."""
         # Validate request
-        if "path" not in request:
-            raise ResourceError("Path is required")
+        self.validate_request(request)
 
-        path = Path(request["path"])
+        # Extract parameters
+        params = request.get("parameters", {})
+        source_id = params.get("source_id")
+        target_path = params.get("target_path")
+
+        if not source_id:
+            raise ResourceError("source_id is required")
+        if not target_path:
+            raise ResourceError("target_path is required")
+
+        path = Path(target_path)
         if not path.exists():
-            raise ResourceError("Path does not exist")
+            raise ResourceError("Target path does not exist")
         if not path.is_file():
-            raise ResourceError("Path is not a file")
+            raise ResourceError("Target path is not a file")
 
         try:
             # Extract text from file
             text = self._extract_text(path)
 
             return {
-                "path": str(path),
-                "text": text,
+                "id": request.get("id", "extract-1"),
+                "success": True,
                 "metadata": {
-                    "total_chars": len(text)
-                }
+                    "source": source_id,
+                    "target": str(path),
+                    "created": time.time(),
+                    "modified": time.time(),
+                    "total_chars": len(text),
+                },
             }
 
         except Exception as e:
@@ -202,7 +216,7 @@ class ExtractTool(ToolHandler):
             ResourceError: If text extraction fails
         """
         try:
-            with open(path, 'r') as f:
+            with open(path) as f:
                 return f.read()
         except Exception as e:
             raise ResourceError(f"Failed to extract text: {str(e)}")

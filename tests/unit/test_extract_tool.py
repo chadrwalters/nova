@@ -39,13 +39,18 @@ def test_extract(tmp_path: Path) -> None:
     # Initialize tool
     tool = ExtractTool(schema_path)
 
+    # Create test file
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("This is a test file")
+
     # Test valid request
     request = {
-        "path": str(tmp_path / "test.txt"),
-        "filters": {
-            "type": "file",
-            "extension": ".txt"
-        }
+        "id": "extract-1",
+        "type": "extract",
+        "name": "Extract Test",
+        "version": "1.0.0",
+        "parameters": {"source_id": "test123", "target_path": str(test_file)},
+        "capabilities": ["extract"],
     }
     result = tool.extract(request)
     assert isinstance(result, dict)

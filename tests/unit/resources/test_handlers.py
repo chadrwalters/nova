@@ -1,15 +1,15 @@
 """Test resource handlers."""
 
-from pathlib import Path
-from typing import Any
 import threading
 import time
+from pathlib import Path
+from typing import Any
 
-from nova.bear_parser.parser import BearNote, BearParser
 from nova.bear_parser.ocr import EasyOcrModel
+from nova.bear_parser.parser import BearNote, BearParser
 from nova.server.attachments import AttachmentStore
-from nova.server.resources.note import NoteHandler
 from nova.server.resources.attachment import AttachmentHandler
+from nova.server.resources.note import NoteHandler
 from nova.server.resources.ocr import OCRHandler
 from nova.server.types import ResourceError, ResourceType
 
@@ -137,7 +137,7 @@ def test_attachment_handler() -> None:
     # Test metadata
     metadata = handler.get_metadata()
     assert metadata["id"] == "attachment-handler"
-    assert metadata["type"] == ResourceType.ATTACHMENT.name
+    assert metadata["type"] == ResourceType.ATTACHMENT
     assert metadata["version"] == "1.0.0"
     assert "modified" in metadata
     assert "attributes" in metadata
@@ -155,7 +155,7 @@ def test_ocr_handler() -> None:
     # Test metadata
     metadata = handler.get_metadata()
     assert metadata["id"] == "ocr-handler"
-    assert metadata["type"] == ResourceType.OCR.name
+    assert metadata["type"] == ResourceType.OCR
     assert metadata["version"] == "0.1.0"
     assert "modified" in metadata
     assert "attributes" in metadata

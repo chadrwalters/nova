@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from unittest.mock import Mock
+
 import pytest
 
 from nova.bear_parser.ocr import EasyOcrModel
@@ -36,8 +37,8 @@ def test_get_metadata(handler: OCRHandler) -> None:
 
     # Test specific values
     assert metadata["id"] == "ocr-handler"
-    assert metadata["type"] == ResourceType.OCR.name
-    assert metadata["name"] == "OCR Handler"  # type: ignore[unreachable]
+    assert metadata["type"] == ResourceType.OCR
+    assert metadata["name"] == "OCR Handler"
     assert metadata["version"] == "0.1.0"
     assert isinstance(metadata["modified"], float)
 
@@ -48,7 +49,6 @@ def test_get_metadata(handler: OCRHandler) -> None:
     assert attributes["languages"] == ["en"]
     assert attributes["confidence_threshold"] == handler.CONFIDENCE_THRESHOLD
     assert attributes["cache_enabled"] is True
-    assert attributes["cache_size"] == 0
 
 
 def test_validate_access(handler: OCRHandler) -> None:

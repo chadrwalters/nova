@@ -5,10 +5,10 @@ import random
 from pathlib import Path
 
 import pytest
+
 from nova.server.server import NovaServer
 from nova.server.tools import ExtractTool, ListTool, RemoveTool, SearchTool
 from nova.server.types import ServerConfig
-
 from tests.performance.conftest import benchmark
 
 
@@ -147,7 +147,7 @@ def test_search_tool_execution(
 ) -> None:
     """Benchmark search tool execution."""
     search_tool = SearchTool(search_schema_path, server._get_vector_store())
-    doc = random.choice(sample_documents)
+
     search_tool.validate_request(
         {
             "id": "search-1",
@@ -192,13 +192,27 @@ def test_extract_tool_execution(
 ) -> None:
     """Benchmark extract tool execution."""
     extract_tool = ExtractTool(extract_schema_path)
-    extract_tool.execute({
-        "path": "test.txt",
-        "filters": {
-            "type": "file",
-            "extension": ".txt"
-        }
-    })
+    doc = random.choice(sample_documents)
+
+    # Create a test file
+    test_file = Path("test.txt")
+    test_file.write_text("This is a test file for extraction")
+
+    try:
+        extract_tool.execute(
+            {
+                "id": "extract-1",
+                "type": "extract",
+                "name": "Extract Test",
+                "version": "1.0.0",
+                "parameters": {"source_id": doc["id"], "target_path": str(test_file)},
+                "capabilities": ["extract"],
+            }
+        )
+    finally:
+        # Clean up test file
+        if test_file.exists():
+            test_file.unlink()
 
 
 @benchmark(iterations=100, warmup=10)
