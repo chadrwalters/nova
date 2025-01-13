@@ -1,19 +1,20 @@
 """Unit tests for Nova MCP server."""
 
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import time
 
 import pytest
+
 from nova.server.server import NovaServer
 from nova.server.types import (
     MCPError,
     ProtocolError,
     ResourceError,
+    ResourceType,
     ServerConfig,
     ServerState,
     ToolError,
-    ResourceType,
 )
 from nova.vector_store.store import VectorStore
 
@@ -98,16 +99,23 @@ def test_server_start_stop(
         },
     }
 
-    with patch(
-        "nova.server.server.NovaServer._get_vector_store",
-        return_value=mock_vector_store,
-    ), patch(
-        "nova.server.server.NovaServer._get_note_store", return_value=mock_note_store
-    ), patch(
-        "nova.server.server.NovaServer._get_attachment_store",
-        return_value=mock_attachment_store,
-    ), patch(
-        "nova.server.server.NovaServer._get_ocr_engine", return_value=mock_ocr_engine
+    with (
+        patch(
+            "nova.server.server.NovaServer._get_vector_store",
+            return_value=mock_vector_store,
+        ),
+        patch(
+            "nova.server.server.NovaServer._get_note_store",
+            return_value=mock_note_store,
+        ),
+        patch(
+            "nova.server.server.NovaServer._get_attachment_store",
+            return_value=mock_attachment_store,
+        ),
+        patch(
+            "nova.server.server.NovaServer._get_ocr_engine",
+            return_value=mock_ocr_engine,
+        ),
     ):
         server = NovaServer(server_config)
         server.start()
@@ -228,7 +236,6 @@ def test_server_stop_failure(
     mock_vector_store: MagicMock,
     mock_note_store: MagicMock,
     mock_attachment_store: MagicMock,
-    mock_ocr_engine: MagicMock,
 ) -> None:
     """Test server stop failure."""
     # Configure mocks to return proper metadata
@@ -266,32 +273,20 @@ def test_server_stop_failure(
             "storage_path": "/test/store",
         },
     }
-    mock_ocr_engine.get_metadata.return_value = {
-        "id": "ocr-handler",
-        "type": ResourceType.OCR.name,
-        "name": "OCR Handler",
-        "version": "0.1.0",
-        "modified": time.time(),
-        "attributes": {
-            "engine": "gpt-4o",
-            "languages": ["eng"],
-            "confidence_threshold": 0.8,
-            "cache_enabled": True,
-            "cache_size": 1000,
-            "supported_formats": ["png", "jpg", "pdf"],
-        },
-    }
 
-    with patch(
-        "nova.server.server.NovaServer._get_vector_store",
-        return_value=mock_vector_store,
-    ), patch(
-        "nova.server.server.NovaServer._get_note_store", return_value=mock_note_store
-    ), patch(
-        "nova.server.server.NovaServer._get_attachment_store",
-        return_value=mock_attachment_store,
-    ), patch(
-        "nova.server.server.NovaServer._get_ocr_engine", return_value=mock_ocr_engine
+    with (
+        patch(
+            "nova.server.server.NovaServer._get_vector_store",
+            return_value=mock_vector_store,
+        ),
+        patch(
+            "nova.server.server.NovaServer._get_note_store",
+            return_value=mock_note_store,
+        ),
+        patch(
+            "nova.server.server.NovaServer._get_attachment_store",
+            return_value=mock_attachment_store,
+        ),
     ):
         server = NovaServer(server_config)
         server.start()

@@ -6,7 +6,7 @@
 Nova
 
 ### Purpose
-- Ingest and unify Bear.app notes and attachments (using EasyOCR)
+- Ingest and unify Bear.app notes using docling's document processing pipeline
 - Provide a semantic chunking and embedding layer for retrieving relevant data
 - Use Anthropic's Claude with the official Model-Context Protocol (MCP) SDK for structured RAG queries
 - Offer a minimal web interface to monitor or inspect system status (performance, logs, chunk stats)
@@ -44,20 +44,13 @@ Nova
 
 ## 4. Functional Requirements
 
-### 4.1 Bear Export & File Conversion [IMPLEMENTED]
-- EasyOCR-based text extraction:
-  - Multiple OCR configurations for quality/speed tradeoff
-  - Confidence threshold validation (50%)
-  - Automatic fallback for low confidence results
-- Placeholder system for failed OCR:
-  - JSON-based placeholder format
-  - Error tracking and timestamps
-  - 30-day retention policy
-  - Automatic cleanup
-- Structured output in .nova directory:
-  - Organized by processing type
-  - Clear separation of placeholders and logs
-  - Configurable cleanup policies
+### 4.1 Bear Export & File Conversion [REFACTORING]
+- Docling-based document processing:
+  + Native format detection and conversion
+  + Built-in text extraction and OCR
+  + Rich metadata preservation
+  + Attachment handling with versioning
+  + Integrated error handling and logging
 
 ### 4.2 Vector Store Layer [IMPLEMENTED]
 - Hybrid chunking combining:

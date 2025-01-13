@@ -1,167 +1,283 @@
-"""Test resource handlers."""
+"""Tests for resource handlers."""
 
-import threading
-import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 
-from nova.bear_parser.ocr import EasyOcrModel
+import pytest
+from fastapi import HTTPException
+
 from nova.bear_parser.parser import BearNote, BearParser
 from nova.server.attachments import AttachmentStore
 from nova.server.resources.attachment import AttachmentHandler
 from nova.server.resources.note import NoteHandler
-from nova.server.resources.ocr import OCRHandler
-from nova.server.types import ResourceError, ResourceType
+from nova.server.types import ResourceType
 
 
 class MockBearParser(BearParser):
-    """Mock Bear parser."""
+    """Mock Bear parser for testing."""
 
-    def __init__(self) -> None:
-        """Initialize mock parser."""
-        self._notes: list[BearNote] = [
+    def __init__(self, input_dir: Path | str) -> None:
+        """Initialize parser.
+
+        Args:
+            input_dir: Input directory containing Bear notes
+        """
+        super().__init__(input_dir)
+        now = datetime.now()
+        self._notes = [
             BearNote(
                 title="Test Note 1",
+                date=now,
                 content="Test content 1",
-                tags=["tag1"],
+                tags=["tag1", "tag2"],
                 attachments=[],
-                metadata={},
+                metadata={"original_file": "test1.md"},
             ),
             BearNote(
                 title="Test Note 2",
+                date=now,
                 content="Test content 2",
-                tags=["tag1", "tag2"],
+                tags=["tag2", "tag3"],
                 attachments=[],
-                metadata={},
+                metadata={"original_file": "test2.md"},
             ),
         ]
-        self._tags: set[str] = {"tag1", "tag2"}
 
-    def parse_directory(self) -> list[BearNote]:
-        """Parse directory."""
+    def process_notes(self, output_dir: Path | None = None) -> list[BearNote]:
+        """Mock process_notes method.
+
+        Args:
+            output_dir: Optional output directory for processed notes
+
+        Returns:
+            List of processed notes
+        """
         return self._notes
-
-    def read(self, note_id: str) -> str:
-        """Read note content."""
-        return ""
-
-    def count_notes(self) -> int:
-        """Get total number of notes."""
-        return len(self._notes)
-
-    def count_tags(self) -> int:
-        """Get total number of tags."""
-        return len(self._tags)
 
 
 class MockAttachmentStore(AttachmentStore):
-    """Mock attachment store."""
+    """Mock attachment store for testing."""
 
-    def __init__(self) -> None:
-        """Initialize mock store."""
-        self._attachments: dict[str, dict[str, Any]] = {}
-        self._next_id = 1
-        self._id_lock = threading.Lock()  # Add lock for thread safety
-        self._mime_types: set[str] = {"image/png", "image/jpeg", "application/pdf"}
+    def __init__(self, store_dir: Path) -> None:
+        """Initialize store.
 
-    def add_attachment(
-        self, file_path: Path, metadata: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Mock add attachment."""
-        with self._id_lock:  # Use lock for thread-safe ID generation
-            attachment_id = str(self._next_id)
-            self._next_id += 1
-            self._attachments[attachment_id] = {
-                "id": attachment_id,
-                "mime_type": "image/png",
-                "ocr_status": "pending",
-                "metadata": metadata or {},
-                "size": 1000,
-                "created": time.time(),
-                "modified": time.time(),
-                "name": file_path.name,
-            }
-            return self._attachments[attachment_id]
+        Args:
+            store_dir: Directory for storing attachments
+        """
+        super().__init__(store_dir)
+        self._attachments: dict[str, bytes] = {}
+        self._metadata: dict[str, dict] = {}
 
-    def get_attachment_info(self, attachment_id: str) -> dict[str, Any]:
-        """Mock get attachment info."""
+    def read(self, attachment_id: str) -> bytes:
+        """Read attachment data.
+
+        Args:
+            attachment_id: Attachment ID
+
+        Returns:
+            Attachment data
+
+        Raises:
+            FileNotFoundError: If attachment not found
+        """
         if attachment_id not in self._attachments:
-            raise ResourceError(f"Attachment not found: {attachment_id}")
+            raise FileNotFoundError(f"Attachment not found: {attachment_id}")
         return self._attachments[attachment_id]
 
-    def list_attachments(self) -> list[dict[str, Any]]:
-        """Mock list attachments."""
-        return list(self._attachments.values())
+    def write(self, attachment_id: str, content: bytes) -> None:
+        """Write attachment data.
 
-    def count_attachments(self) -> int:
-        """Mock count attachments."""
-        return len(self._attachments)
+        Args:
+            attachment_id: Attachment ID
+            content: Attachment data
+        """
+        self._attachments[attachment_id] = content
+        if attachment_id not in self._metadata:
+            self._metadata[attachment_id] = {
+                "id": attachment_id,
+                "name": attachment_id,
+                "mime_type": "application/octet-stream",
+                "size": len(content),
+                "created": datetime.now().isoformat(),
+                "modified": datetime.now().isoformat(),
+                "metadata": {},
+            }
 
-    @property
-    def storage_path(self) -> Path:
-        """Mock storage path."""
-        return Path("/test/store")
+    def get_attachment_info(self, attachment_id: str) -> dict | None:
+        """Get attachment metadata.
+
+        Args:
+            attachment_id: Attachment ID
+
+        Returns:
+            Attachment metadata or None if not found
+        """
+        return self._metadata.get(attachment_id)
+
+    def update_attachment_metadata(
+        self, attachment_id: str, metadata: dict
+    ) -> dict | None:
+        """Update attachment metadata.
+
+        Args:
+            attachment_id: Attachment ID
+            metadata: New metadata
+
+        Returns:
+            Updated metadata or None if not found
+        """
+        if attachment_id not in self._metadata:
+            return None
+        self._metadata[attachment_id]["metadata"].update(metadata)
+        return self._metadata[attachment_id]
+
+    def delete_attachment(self, attachment_id: str) -> bool:
+        """Delete attachment.
+
+        Args:
+            attachment_id: Attachment ID
+
+        Returns:
+            True if deleted, False if not found
+        """
+        if attachment_id not in self._attachments:
+            return False
+        del self._attachments[attachment_id]
+        del self._metadata[attachment_id]
+        return True
+
+    def list_attachments(self) -> list[dict]:
+        """List all attachments.
+
+        Returns:
+            List of attachment metadata
+        """
+        return list(self._metadata.values())
 
 
-class MockOcrModel(EasyOcrModel):
-    """Mock OCR model."""
+@pytest.fixture
+def note_handler(tmp_path: Path) -> NoteHandler:
+    """Create note handler fixture.
 
-    def process(self, image_path: str) -> dict[str, Any]:
-        """Process image."""
-        return {
-            "text": "test",
-            "confidence": 0.95,
-            "regions": [],
-            "language": "en",
-            "processing_time": 0.1,
-        }
+    Args:
+        tmp_path: Temporary directory path
 
+    Returns:
+        Note handler instance
+    """
+    # Create test notes directory
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir()
 
-def test_note_handler() -> None:
-    """Test note handler."""
-    store = MockBearParser()
-    handler = NoteHandler(store)
+    # Create test note files
+    (notes_dir / "test1.md").write_text("Test content 1")
+    (notes_dir / "test2.md").write_text("Test content 2")
 
-    # Test metadata
-    metadata = handler.get_metadata()
-    assert metadata["id"] == "notes"
-    assert metadata["type"] == ResourceType.NOTE
-    assert metadata["name"] == "Note Store"
+    # Initialize handler with mock parser
+    parser = MockBearParser(notes_dir)
+    handler = NoteHandler(parser)
+    return handler
 
 
-def test_attachment_handler() -> None:
-    """Test attachment handler."""
-    store = MockAttachmentStore()
+@pytest.fixture
+def attachment_handler(tmp_path: Path) -> AttachmentHandler:
+    """Create attachment handler fixture.
+
+    Args:
+        tmp_path: Temporary directory path
+
+    Returns:
+        Attachment handler instance
+    """
+    # Create test attachments directory
+    attachments_dir = tmp_path / "attachments"
+    attachments_dir.mkdir()
+
+    # Initialize handler with mock store
+    store = MockAttachmentStore(attachments_dir)
     handler = AttachmentHandler(store)
+    return handler
 
-    # Test metadata
+
+def test_note_handler_init(tmp_path: Path) -> None:
+    """Test note handler initialization.
+
+    Args:
+        tmp_path: Temporary directory path
+    """
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir()
+
+    parser = BearParser(notes_dir)
+    handler = NoteHandler(parser)
     metadata = handler.get_metadata()
-    assert metadata["id"] == "attachment-handler"
+    assert metadata["type"] == ResourceType.NOTE
+    assert metadata["version"] == NoteHandler.VERSION
+
+
+def test_note_handler_list_notes(note_handler: NoteHandler) -> None:
+    """Test listing notes.
+
+    Args:
+        note_handler: Note handler fixture
+    """
+    notes = note_handler.list_notes()
+    assert len(notes) == 2
+    assert notes[0]["title"] == "Test Note 1"
+    assert notes[1]["title"] == "Test Note 2"
+
+
+def test_note_handler_get_metadata(note_handler: NoteHandler) -> None:
+    """Test getting note metadata.
+
+    Args:
+        note_handler: Note handler fixture
+    """
+    metadata = note_handler.get_note_metadata("Test Note 1")
+    assert metadata == {
+        "title": "Test Note 1",
+        "tags": ["tag1", "tag2"],
+        "original_file": "test1.md",
+    }
+
+    with pytest.raises(HTTPException) as exc:
+        note_handler.get_note_metadata("Non-existent Note")
+    assert exc.value.status_code == 404
+
+
+def test_attachment_handler_init(tmp_path: Path) -> None:
+    """Test attachment handler initialization.
+
+    Args:
+        tmp_path: Temporary directory path
+    """
+    attachments_dir = tmp_path / "attachments"
+    attachments_dir.mkdir()
+
+    store = MockAttachmentStore(attachments_dir)
+    handler = AttachmentHandler(store)
+    metadata = handler.get_metadata()
     assert metadata["type"] == ResourceType.ATTACHMENT
-    assert metadata["version"] == "1.0.0"
-    assert "modified" in metadata
-    assert "attributes" in metadata
-    assert isinstance(metadata["attributes"], dict)
-    assert "total_attachments" in metadata["attributes"]
-    assert "supported_formats" in metadata["attributes"]
-    assert "storage_path" in metadata["attributes"]
+    assert metadata["version"] == AttachmentHandler.VERSION
 
 
-def test_ocr_handler() -> None:
-    """Test OCR handler."""
-    engine = MockOcrModel()
-    handler = OCRHandler(engine)
+def test_attachment_handler_get(attachment_handler: AttachmentHandler) -> None:
+    """Test getting attachment.
 
-    # Test metadata
-    metadata = handler.get_metadata()
-    assert metadata["id"] == "ocr-handler"
-    assert metadata["type"] == ResourceType.OCR
-    assert metadata["version"] == "0.1.0"
-    assert "modified" in metadata
-    assert "attributes" in metadata
-    assert isinstance(metadata["attributes"], dict)
-    assert "engine" in metadata["attributes"]
-    assert "languages" in metadata["attributes"]
-    assert "confidence_threshold" in metadata["attributes"]
-    assert "cache_enabled" in metadata["attributes"]
-    assert "cache_size" in metadata["attributes"]
+    Args:
+        attachment_handler: Attachment handler fixture
+    """
+    # Store test attachment
+    test_data = b"Test attachment data"
+    attachment_handler.add_attachment(
+        Path("test.txt"), {"content": test_data.decode("utf-8")}
+    )
+
+    # Get attachment
+    info = attachment_handler.get_attachment("test.txt")
+    assert info["name"] == "test.txt"
+    assert info["mime_type"] == "text/plain"
+
+    with pytest.raises(HTTPException) as exc:
+        attachment_handler.get_attachment("non-existent.txt")
+    assert exc.value.status_code == 404

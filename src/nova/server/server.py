@@ -1,16 +1,14 @@
 """Nova MCP Server implementation."""
 
 import logging
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
-from nova.bear_parser.ocr import EasyOcrModel
 from nova.bear_parser.parser import BearParser
 from nova.server.attachments import AttachmentStore
 from nova.server.resources import (
     AttachmentHandler,
     NoteHandler,
-    OCRHandler,
     ResourceHandler,
     VectorStoreHandler,
 )
@@ -211,10 +209,6 @@ class NovaServer:
             attachment_store = self._get_attachment_store()
             self.register_resource(AttachmentHandler(attachment_store))
 
-            # Initialize OCR handler
-            ocr_engine = self._get_ocr_engine()
-            self.register_resource(OCRHandler(ocr_engine))
-
             logger.info("Resource initialization complete")
         except Exception as e:
             raise ResourceError(f"Failed to initialize resources: {str(e)}") from e
@@ -261,29 +255,13 @@ class NovaServer:
             ResourceError: If attachment store initialization fails
         """
         try:
-            attachments_dir = Path(".nova/attachments")
-            attachments_dir.mkdir(parents=True, exist_ok=True)
-            return AttachmentStore(attachments_dir)
+            store_dir = Path(".nova/attachments")
+            store_dir.mkdir(parents=True, exist_ok=True)
+            return AttachmentStore(store_dir)
         except Exception as e:
             raise ResourceError(
                 f"Failed to initialize attachment store: {str(e)}"
             ) from e
-
-    def _get_ocr_engine(self) -> EasyOcrModel:
-        """Get OCR engine instance.
-
-        Returns:
-            Initialized OCR engine instance
-
-        Raises:
-            ResourceError: If OCR engine initialization fails
-        """
-        try:
-            ocr_dir = Path(".nova/ocr")
-            ocr_dir.mkdir(parents=True, exist_ok=True)
-            return EasyOcrModel()
-        except Exception as e:
-            raise ResourceError(f"Failed to initialize OCR engine: {str(e)}") from e
 
     def _initialize_tools(self) -> None:
         """Initialize tool handlers.
@@ -293,34 +271,31 @@ class NovaServer:
         """
         logger.info("Initializing tools")
         try:
-            # Get schema paths from source
+            # Get schema paths
             schema_dir = Path(__file__).parent / "schemas"
-            if not schema_dir.exists():
-                raise ToolError("Schema directory not found")
+            schema_dir.mkdir(parents=True, exist_ok=True)
 
-            # Initialize search tool with vector store
+            # Initialize vector store for search tool
             vector_store = self._get_vector_store()
-            search_schema = schema_dir / "search_tool.json"
-            self.register_tool(SearchTool(search_schema, vector_store))
 
-            # Initialize list tool
-            list_schema = schema_dir / "list_tool.json"
-            self.register_tool(ListTool(list_schema))
+            # Initialize tools with schemas
+            search_tool = SearchTool(schema_dir / "search.json", vector_store)
+            list_tool = ListTool(schema_dir / "list.json")
+            extract_tool = ExtractTool(schema_dir / "extract.json")
+            remove_tool = RemoveTool(schema_dir / "remove.json")
 
-            # Initialize extract tool
-            extract_schema = schema_dir / "extract_tool.json"
-            self.register_tool(ExtractTool(extract_schema))
-
-            # Initialize remove tool
-            remove_schema = schema_dir / "remove_tool.json"
-            self.register_tool(RemoveTool(remove_schema))
+            # Register tools
+            self.register_tool(search_tool)
+            self.register_tool(list_tool)
+            self.register_tool(extract_tool)
+            self.register_tool(remove_tool)
 
             logger.info("Tool initialization complete")
         except Exception as e:
             raise ToolError(f"Failed to initialize tools: {str(e)}") from e
 
     def _cleanup_resources(self) -> None:
-        """Cleanup resource handlers.
+        """Clean up resource handlers.
 
         Raises:
             ResourceError: If resource cleanup fails
@@ -328,43 +303,42 @@ class NovaServer:
         logger.info("Cleaning up resources")
         try:
             # Clean up vector store
-            if "vector_store" in self._resources:
+            if "vector-store" in self._resources:
+                logger.info("Cleaning up vector store")
                 vector_store = self._get_vector_store()
                 vector_store.client.reset()  # Reset Chroma client
-                logger.info("Cleaned up vector store")
 
             # Clean up note store
             if "notes" in self._resources:
-                # Note store is read-only, no cleanup needed
                 logger.info("Note store is read-only, no cleanup needed")
 
             # Clean up attachment store
             if "attachments" in self._resources:
+                logger.info("Cleaning up attachment store")
                 attachment_store = self._get_attachment_store()
                 attachment_store.clear()
-                logger.info("Cleaned up attachment store")
-
-            # Clean up OCR engine
-            if "ocr" in self._resources:
-                # OCR engine is stateless, no cleanup needed
-                logger.info("OCR engine is stateless, no cleanup needed")
 
             # Clear all resource registrations
             self._resources.clear()
             logger.info("Resource cleanup complete")
         except Exception as e:
-            raise ResourceError(f"Failed to cleanup resources: {str(e)}") from e
+            raise ResourceError(f"Failed to clean up resources: {str(e)}") from e
 
     def _cleanup_tools(self) -> None:
-        """Cleanup tool registry.
+        """Clean up tool handlers.
 
         Raises:
             ToolError: If tool cleanup fails
         """
         logger.info("Cleaning up tools")
         try:
-            # Tools are stateless, just clear registrations
+            # Call cleanup on each tool
+            for tool_id, tool in self._tools.items():
+                logger.info("Cleaning up tool %s", tool_id)
+                tool.cleanup()
+
+            # Clear all tool registrations
             self._tools.clear()
             logger.info("Tool cleanup complete")
         except Exception as e:
-            raise ToolError(f"Failed to cleanup tools: {str(e)}") from e
+            raise ToolError(f"Failed to clean up tools: {str(e)}") from e

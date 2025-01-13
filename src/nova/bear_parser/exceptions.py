@@ -13,12 +13,6 @@ class AttachmentError(BearParserError):
     pass
 
 
-class OCRError(BearParserError):
-    """Exception raised when there is an error during OCR processing."""
-
-    pass
-
-
 class ValidationError(BearParserError):
     """Exception raised when note validation fails."""
 

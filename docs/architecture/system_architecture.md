@@ -19,58 +19,59 @@
 
 ### 1. Data Ingestion Layer
 
-#### Bear Export Handler [IMPLEMENTED]
-- Processes Bear.app exports (Markdown + attachments)
-- Maintains link integrity and metadata
-- Handles file organization and structure
-- Tag Processing:
-  - Code block-aware extraction
-  - Metadata validation
-  - Punctuation handling
-  - Nested tag support (#tag/subtag)
-  - Tag inheritance from metadata
-- Error Handling:
-  - Hierarchical error system (BearParserError, AttachmentError, OCRError)
-  - Specific error types with context
-  - Graceful degradation with logging
-- Attachment Management:
-  - Image detection (.png, .jpg, .jpeg, .gif, .bmp)
-  - Metadata handling with versioning
-  - OCR integration with EasyOCR
-- Current Status:
-  - Core parsing functionality verified
-  - Metadata generation working
-  - Tag extraction operational
-  - OCR pipeline ready
-  - Test suite passing
-  - Python environment configured
-  - Dependencies resolved
-  - Placeholder system operational
+#### Bear Export Handler [REFACTORING]
+- Leverages docling for document processing:
+  + Document conversion pipeline
+  + Rich metadata extraction
+  + Built-in format detection
+  + Native attachment handling
 
-#### OCR Integration [IMPLEMENTED]
-- EasyOCR-based text extraction:
-  - Confidence scoring with 50% threshold
-  - Multiple OCR configurations for quality/speed tradeoff
-  - Async processing with fallback mechanisms
-  - Python 3.10 environment required
-  - Proper import path: nova.bear_parser.ocr
-- Error Handling:
-  - Structured OCR errors with detailed messages
-  - Placeholder generation for failed OCR:
-    - JSON format with version tracking
-    - Original file reference
-    - Error details and timestamps
-    - Automatic cleanup after 30 days
-  - Configurable output to .nova directory:
-    - Placeholders in .nova/placeholders/ocr
-    - Processing files in .nova/processing/ocr
-    - Logs in .nova/logs
-- Current Status:
-  - Core OCR functionality verified
-  - Test suite passing
-  - Python environment configured
-  - Dependencies resolved
-  - Placeholder system operational
++ Metadata Integration:
+  + Use docling's document model
+  + Map Bear-specific metadata to docling format
+  + Preserve Bear tags in docling metadata
+
+- Tag Integration:
+  + Extract tags through docling's text processing
+  + Map to Bear tag structure
+  + Preserve hierarchical relationships
+  + Support nested tags via docling's text model
+
++ Error Management:
+  + Leverage docling's error system
+  + Map Bear-specific errors to docling errors
+  + Maintain context and logging
+
++ Attachment Pipeline:
+  + Use docling's native attachment handling
+  + Leverage docling's format detection
+  + Map Bear attachments to docling model
+  + Built-in versioning support
+
+#### ~~OCR Integration [REMOVING]~~
+- ~~EasyOCR-based text extraction:~~
+  - ~~Confidence scoring with 50% threshold~~
+  - ~~Multiple OCR configurations for quality/speed tradeoff~~
+  - ~~Async processing with fallback mechanisms~~
+  - ~~Python 3.10 environment required~~
+  - ~~Proper import path: nova.bear_parser.ocr~~
+- ~~Error Handling:~~
+  - ~~Structured OCR errors with detailed messages~~
+  - ~~Placeholder generation for failed OCR:~~
+    - ~~JSON format with version tracking~~
+    - ~~Original file reference~~
+    - ~~Error details and timestamps~~
+    - ~~Automatic cleanup after 30 days~~
+  - ~~Configurable output to .nova directory:~~
+    - ~~Placeholders in .nova/placeholders/ocr~~
+    - ~~Processing files in .nova/processing/ocr~~
+    - ~~Logs in .nova/logs~~
++ Image Processing:
+  + Use docling's built-in image processing
+  + Leverage docling's OCR capabilities
+  + Native format support
+  + Integrated error handling
+  + Built-in confidence scoring
 
 ### 2. Vector Store Layer [IMPLEMENTED]
 
