@@ -13,7 +13,6 @@
 - [✓] Implement BearParser with full note/attachment support
 - [✓] Add error recovery and validation
 - [✓] Implement tag extraction system
-- [✓] Set up OCR integration with fallbacks
 - [✓] Configure processing pipeline
 
 **MILESTONE**: ✅ Run tests for export processing - PASSED
@@ -50,7 +49,6 @@
   - [✓] Vector store resource schema
   - [✓] Note resource schema
   - [✓] Attachment resource schema
-  - [✓] OCR resource schema
   - [✓] Search tool schema
   - [✓] List tool schema
   - [✓] Extract tool schema
@@ -72,13 +70,6 @@
   - [✓] Attachment Handler
     - [✓] File operations
     - [✓] Metadata handling
-    - [✓] OCR integration
-    - [✓] Change notifications
-    - [✓] Unit tests
-  - [✓] OCR Handler
-    - [✓] Engine configuration
-    - [✓] Processing pipeline
-    - [✓] Result caching
     - [✓] Change notifications
     - [✓] Unit tests
 - [✓] Add Protocol Support
@@ -95,6 +86,140 @@
   - [✓] Error messages
   - [✓] Error recovery
   - [✓] Error logging
+
+### Docling Integration Phase [CURRENT FOCUS]
+#### 1. Test Stabilization [✓]
+- [✓] Fix failing tests in test_note_resource.py
+  - [✓] Update MockBearParser to use docling model
+  - [✓] Fix NoteHandler attribute errors
+  - [✓] Update test assertions for new model
+- [✓] Fix failing tests in test_handlers.py
+  - [✓] Remove OCR-related tests
+  - [✓] Update AttachmentHandler tests
+  - [✓] Fix version mismatch errors
+- [✓] Fix failing tests in test_bear_parser.py
+  - [✓] Update docling format handling
+  - [✓] Fix file conversion errors
+  - [✓] Update metadata assertions
+
+#### 2. Document Processing Migration [IN PROGRESS]
+- [✓] Map Bear metadata to docling format
+  - [✓] Title -> document.name
+  - [✓] Tags -> metadata["tags"]
+  - [✓] Date -> metadata["date"]
+  - [✓] Attachments -> pictures[].image.uri
+- [✓] Implement format detection
+  - [✓] Add format detection using docling's FormatToExtensions
+  - [✓] Add format detection using docling's FormatToMimeType
+  - [✓] Add format validation before processing
+  - [✓] Add format conversion for supported types
+- [✓] Handle attachments through docling
+  - [✓] Add PictureItem support for images
+  - [✓] Add TableItem support for structured data
+  - [✓] Add versioning through docling's origin tracking
+    - [✓] Implement binary hash generation
+    - [✓] Add mimetype detection
+    - [✓] Add proper URI handling
+    - [✓] Implement version tracking
+  - [✓] Implement attachment format validation
+    - [✓] Add MIME type validation
+      - [✓] Create validation function
+      - [✓] Add supported MIME types list
+      - [✓] Add validation error messages
+    - [✓] Add size validation
+      - [✓] Define size limits
+      - [✓] Add size check function
+      - [✓] Add validation error messages
+    - [✓] Add format-specific validation
+      - [✓] Image format validation (dimensions, corruption)
+      - [✓] CSV format validation (rows, columns)
+      - [✓] Add validation error messages
+  - [✓] Add attachment metadata preservation
+    - [✓] Preserve original filenames
+      - [✓] Add filename field to metadata
+      - [✓] Handle filename collisions
+      - [✓] Validate filename format
+    - [✓] Keep creation/modification dates
+      - [✓] Extract file timestamps
+      - [✓] Add date fields to metadata
+      - [✓] Handle timezone conversion
+    - [✓] Store original file paths
+      - [✓] Add path field to metadata
+      - [✓] Make paths relative to note
+      - [✓] Handle path normalization
+    - [✓] Add metadata validation
+      - [✓] Validate required fields
+      - [✓] Check field formats
+      - [✓] Handle missing data
+- [IN PROGRESS] Update error handling
+  - [✓] Use docling's built-in error system
+  - [✓] Map Bear-specific errors to docling errors
+  - [✓] Maintain context in error messages
+  - [IN PROGRESS] Add error recovery strategies
+    - [✓] Handle invalid MIME types
+    - [✓] Handle file size limits
+    - [✓] Handle format validation
+    - [ ] Add retry logic for transient errors
+    - [ ] Implement graceful degradation
+    - [ ] Add fallback options
+
+#### 3. Test Suite Adaptation [NEXT FOCUS]
+- [ ] Convert mock data to docling format
+  - [ ] Create test fixtures with docling models
+  - [ ] Update test data generation
+  - [ ] Add format-specific test cases
+- [ ] Update assertions for new model
+  - [ ] Add docling model validation
+  - [ ] Update metadata checks
+  - [ ] Add format validation
+- [ ] Add docling-specific test cases
+  - [ ] Test format detection
+  - [ ] Test attachment handling
+  - [ ] Test error cases
+- [ ] Verify format handling
+  - [ ] Test supported formats
+  - [ ] Test format conversion
+  - [ ] Test error handling
+
+**MILESTONE**: Get all tests passing with docling integration
+
+#### 4. Resource Handler Updates [PLANNED]
+- [ ] Update NoteHandler for docling model
+  - [ ] Implement docling model conversion
+  - [ ] Add format validation
+  - [ ] Update metadata handling
+- [ ] Modify AttachmentHandler integration
+  - [ ] Use docling's attachment types
+  - [ ] Add format validation
+  - [ ] Update storage strategy
+- [ ] Implement new metadata mapping
+  - [ ] Map Bear metadata to docling
+  - [ ] Add custom metadata support
+  - [ ] Update search indexing
+- [ ] Add format validation
+  - [ ] Implement format detection
+  - [ ] Add conversion support
+  - [ ] Handle unsupported formats
+
+**MILESTONE**: Get resource handlers working with docling model
+
+#### 5. CLI Command Updates [PLANNED]
+- [ ] Update process-notes command
+  - [ ] Add format detection
+  - [ ] Implement conversion
+  - [ ] Update progress reporting
+- [ ] Modify vector processing
+  - [ ] Update chunking for docling
+  - [ ] Modify embedding strategy
+  - [ ] Update metadata handling
+- [ ] Add format validation
+  - [ ] Implement validation rules
+  - [ ] Add conversion options
+  - [ ] Handle validation errors
+- [ ] Enhance error reporting
+  - [ ] Add detailed error messages
+  - [ ] Implement recovery options
+  - [ ] Update logging format
 
 ### Core Testing Phase [IN PROGRESS]
 - [✓] Set up testing infrastructure
@@ -117,44 +242,84 @@
       - [✓] Permission errors
       - [✓] Disk space errors
       - [✓] Metadata validation errors
-  - [✓] OCR tests
-    - [✓] Basic functionality tests
-    - [✓] Image processing tests
-    - [✓] Cache system tests
-    - [✓] Error handling tests
-    - [✓] Engine error tests
-    - [✓] Confidence value tests
-- [✓] Tool Registry Tests
-  - [✓] Search tool tests
-  - [✓] List tool tests
-  - [✓] Extract tool tests
-  - [✓] Remove tool tests
-- [✓] Change Notification Tests
-  - [✓] Event tests
-  - [✓] Webhook tests
-  - [✓] Filter tests
-- [✓] Error Handling Tests
-  - [✓] Error code tests
-  - [✓] Recovery tests
-  - [✓] Logging tests
+  - [✓] Tool Registry Tests
+    - [✓] Search tool tests
+    - [✓] List tool tests
+    - [✓] Extract tool tests
+    - [✓] Remove tool tests
+  - [✓] Change Notification Tests
+    - [✓] Event tests
+    - [✓] Webhook tests
+    - [✓] Filter tests
+  - [✓] Error Handling Tests
+    - [✓] Error code tests
+    - [✓] Recovery tests
+    - [✓] Logging tests
 
 **MILESTONE**: Get all existing tests passing with >90% coverage
 
-## Current Focus [IN PROGRESS]
-1. [IN PROGRESS] Test Stabilization
-   - [ ] Fix type errors in OCR handler
-   - [ ] Fix attachment store attribute errors
-   - [ ] Fix notification type compatibility
-   - [ ] Fix tool handler argument errors
-   - [ ] Fix vector store type issues
-   - [ ] Run full test suite until passing
-2. [NOT STARTED] Real-World Usage Preparation
-   - [ ] Create sample Bear notes for testing
-   - [ ] Set up test input directory
-   - [ ] Configure OCR engine with real images
-   - [ ] Test vector store with actual content
-   - [ ] Validate end-to-end workflow
-   - [ ] Document real-world usage patterns
+## Previous Focus [IN PROGRESS]
+1. [✓] Test Stabilization
+   - [✓] Fix type errors in OCR handler
+   - [✓] Fix attachment store attribute errors
+   - [✓] Fix notification type compatibility
+   - [✓] Fix tool handler argument errors
+   - [✓] Fix vector store type issues
+   - [✓] Run full test suite until passing
+2. [IN PROGRESS] Real-World Usage Preparation
+   - [✓] Create sample Bear notes for testing
+   - [✓] Set up test input directory
+   - [IN PROGRESS] Pipeline Validation
+     - [✓] Initial Bear note processing
+       - [✓] Verify metadata extraction
+       - [✓] Check tag processing
+       - [✓] Validate attachment handling
+     - [IN PROGRESS] OCR Processing
+       - [ ] Test image recognition
+       - [ ] Verify confidence scores
+       - [ ] Check placeholder generation
+     - [✓] Vector Store Population
+       - [✓] Monitor chunking results
+       - [✓] Verify embedding generation
+       - [✓] Check metadata preservation
+     - [IN PROGRESS] MCP Integration Testing
+       - [ ] Test search capabilities
+         - [ ] Basic text search
+         - [ ] Tag-based filtering
+         - [ ] Date range queries
+       - [ ] Verify context retrieval
+         - [ ] Check relevance scores
+         - [ ] Validate metadata inclusion
+       - [ ] Validate RAG responses
+         - [ ] Test query understanding
+         - [ ] Check source attribution
+         - [ ] Verify response quality
+   - [NOT STARTED] Interactive Testing
+     - [ ] CLI-based querying
+       - [ ] Implement search CLI
+       - [ ] Add filtering options
+       - [ ] Support result formatting
+     - [ ] Response validation
+       - [ ] Define quality metrics
+       - [ ] Create test queries
+       - [ ] Measure response accuracy
+     - [ ] Performance monitoring
+       - [ ] Track query latency
+       - [ ] Monitor resource usage
+       - [ ] Log system metrics
+   - [NOT STARTED] System Validation
+     - [ ] Resource usage tracking
+       - [ ] Memory profiling
+       - [ ] CPU utilization
+       - [ ] Disk I/O patterns
+     - [ ] Error handling verification
+       - [ ] Test failure modes
+       - [ ] Verify recovery paths
+       - [ ] Check error reporting
+     - [ ] Recovery testing
+       - [ ] Test system restarts
+       - [ ] Validate state persistence
+       - [ ] Check data integrity
 
 ## Blockers [IN PROGRESS]
 1. [✓] Resource Handlers
