@@ -6,7 +6,7 @@
 Nova
 
 ### Purpose
-- Ingest and unify Bear.app notes using docling's document processing pipeline
+- Ingest and unify Bear.app notes with rich metadata extraction
 - Provide a semantic chunking and embedding layer for retrieving relevant data
 - Use Anthropic's Claude with the official Model-Context Protocol (MCP) SDK for structured RAG queries
 - Offer a minimal web interface to monitor or inspect system status (performance, logs, chunk stats)
@@ -44,8 +44,8 @@ Nova
 
 ## 4. Functional Requirements
 
-### 4.1 Bear Export & File Conversion [REFACTORING]
-- Docling-based document processing:
+### 4.1 Bear Export & File Conversion [IMPLEMENTED]
+- Rich document processing:
   + Native format detection and conversion
   + Built-in text extraction and OCR
   + Rich metadata preservation
@@ -58,7 +58,7 @@ Nova
   - Semantic content splitting with word boundary detection
   - Configurable chunk sizes (min=100, max=512, overlap=50)
 - Sentence transformer embeddings:
-  - all-MiniLM-L6-v2 model
+  - paraphrase-MiniLM-L3-v2 model
   - 384-dimensional vectors
   - MPS acceleration on macOS
   - Batch processing (size=32)
@@ -71,7 +71,7 @@ Nova
   - Bear note integration
   - Detailed logging and error handling
 
-### 4.3 CLI Interface [IN PROGRESS]
+### 4.3 CLI Interface [IMPLEMENTED]
 - Command-line interface architecture:
   - Unified command structure with base command class
   - Plugin-based extensibility with automatic discovery
@@ -88,6 +88,21 @@ Nova
     - Cache management and persistence
     - Configurable chunking parameters
     - Progress tracking for long operations
+  - nova search:
+    - Semantic search through vector embeddings
+    - Configurable result limits
+    - Rich result formatting with metadata
+    - Content preview generation
+  - nova clean-processing:
+    - Safe cleanup of processed notes
+    - Force flag for deletion
+    - Directory validation
+    - Error handling and logging
+  - nova clean-vectors:
+    - Vector store cleanup
+    - Force flag for deletion
+    - Directory validation
+    - Error handling and logging
   - nova monitor:
     - Health checks and system status
     - Statistics and metrics display

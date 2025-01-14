@@ -438,7 +438,9 @@ class BearParser:
             logger.error("Input path is not a directory: %s", self.input_dir)
             raise BearParserError(f"Input path is not a directory: {self.input_dir}")
 
+        # Look for both .txt and .md files
         note_files = list(self.input_dir.glob("*.txt"))
+        note_files.extend(self.input_dir.glob("*.md"))
 
         if not note_files:
             logger.info("No notes found in directory: %s", self.input_dir)
@@ -452,12 +454,19 @@ class BearParser:
                 title, date = self._parse_title_and_date(note_file.name)
                 tags = self._extract_tags(content)
 
+                # Use appropriate input format based on file extension
+                input_format = (
+                    InputFormat.MARKDOWN
+                    if note_file.suffix.lower() == ".md"
+                    else InputFormat.TEXT
+                )
+
                 note = BearNote(
                     title=title,
                     content=content,
                     date=date,
                     tags=tags,
-                    input_format=InputFormat.TEXT,
+                    input_format=input_format,
                 )
                 self._notes.append(note)
                 logger.debug("Successfully processed note: %s", note)

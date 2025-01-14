@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import click
 import numpy as np
@@ -49,7 +49,7 @@ class ProcessBearVectorsCommand(NovaCommand):
 
                 # Create embedding for the note content
                 embedding = embedding_engine.embed_text(note.content)
-                embeddings.append(cast(NDArray[np.float32], embedding))
+                embeddings.append(embedding.vector)
 
                 # Create metadata for the note
                 metadata: dict[str, str | int | float | bool] = {

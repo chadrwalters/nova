@@ -38,10 +38,10 @@ Process Bear.app note exports into the system.
 
 ```bash
 # Process notes from default input directory
-nova process-notes
+uv run nova process-notes
 
 # Process notes from a specific directory
-nova process-notes --input-dir /path/to/notes --output-dir /path/to/output
+uv run nova process-notes --input-dir /path/to/notes --output-dir /path/to/output
 ```
 
 Options:
@@ -59,10 +59,10 @@ Process Bear notes into vector embeddings.
 
 ```bash
 # Process notes from default input directory
-nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
+uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
 
 # Process notes from a specific directory
-nova process-bear-vectors --input-dir /path/to/notes --output-dir /path/to/vectors
+uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir /path/to/vectors
 ```
 
 Options:
@@ -77,15 +77,55 @@ Output:
   - Creation date
   - Tags
 
+#### `nova search`
+Search through vector embeddings for similar content.
+
+```bash
+# Search with default settings
+uv run nova search "your search query"
+
+# Search with custom parameters
+uv run nova search "your search query" --vector-dir /path/to/vectors --limit 10
+```
+
+Options:
+- `--vector-dir`: Directory containing vector store (default: .nova/vectors)
+- `--limit`: Maximum number of results to return (default: 5)
+
+Output:
+- Ranked list of similar notes with:
+  - Title and similarity score
+  - Tags and creation date
+  - Content preview (first 200 characters)
+
+#### `nova clean-processing`
+Clean the processed notes directory.
+
+```bash
+# Show warning without deleting
+uv run nova clean-processing
+
+# Force deletion of processed notes
+uv run nova clean-processing --force
+```
+
+Options:
+- `--force`: Force deletion without confirmation
+
+Warning:
+- This command deletes all processed notes
+- Operation cannot be undone
+- Requires explicit --force flag
+
 #### `nova clean-vectors`
 Clean the vector store.
 
 ```bash
 # Show warning without deleting
-nova clean-vectors
+uv run nova clean-vectors
 
 # Force deletion of vector store
-nova clean-vectors --force
+uv run nova clean-vectors --force
 ```
 
 Options:
@@ -101,13 +141,13 @@ Monitor system health and status.
 
 ```bash
 # Check system health
-nova monitor health
+uv run nova monitor health
 
 # View system statistics
-nova monitor stats
+uv run nova monitor stats
 
 # View recent logs
-nova monitor logs
+uv run nova monitor logs
 ```
 
 Subcommands:
@@ -126,48 +166,51 @@ Subcommands:
 1. Initial Setup and Health Check:
 ```bash
 # Check system health first
-nova monitor health
+uv run nova monitor health
 
 # Process existing Bear notes
-nova process-notes
+uv run nova process-notes
 
 # Create vector embeddings
-nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
+uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
 
 # Verify processing results
-nova monitor stats
+uv run nova monitor stats
 ```
 
 2. Processing New Content:
 ```bash
 # Clean existing vectors if needed
-nova clean-vectors --force
+uv run nova clean-vectors --force
 
 # Process new notes
-nova process-notes --input-dir new_notes/
+uv run nova process-notes --input-dir new_notes/
 
 # Create new vector embeddings
-nova process-bear-vectors --input-dir new_notes/ --output-dir .nova/vectors
+uv run nova process-bear-vectors --input-dir new_notes/ --output-dir .nova/vectors
 
 # Check processing status
-nova monitor logs
-nova monitor stats
+uv run nova monitor logs
+uv run nova monitor stats
 ```
 
 3. Error Recovery:
 ```bash
 # Check system health
-nova monitor health
+uv run nova monitor health
 
 # View recent errors
-nova monitor logs
+uv run nova monitor logs
 
 # Clean vectors if corrupted
-nova clean-vectors --force
+uv run nova clean-vectors --force
+
+# Clean processing if needed
+uv run nova clean-processing --force
 
 # Retry processing
-nova process-notes
-nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
+uv run nova process-notes
+uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
 ```
 
 ### Error Handling
@@ -210,6 +253,7 @@ The CLI provides consistent error handling across all commands:
       - `process_bear_vectors.py` - Vector store operations
       - `clean_vectors.py` - Vector store cleanup
       - `monitor.py` - System monitoring
+      - `search.py` - Vector search functionality
     - `utils/` - Shared CLI utilities
 - `.nova/` - System directory
   - `processing/` - Processed notes with metadata
@@ -253,6 +297,22 @@ Use this when:
 - Starting fresh
 - Fixing corrupted vectors
 - Changing embedding models
+
+### Searching Notes
+
+1. Search through processed notes:
+```bash
+# Basic search
+nova search "your query"
+
+# Advanced search with more results
+nova search "your query" --limit 10
+```
+
+This will:
+- Convert your query to a vector embedding
+- Find similar notes in the vector store
+- Display ranked results with metadata
 
 ### Configuration
 

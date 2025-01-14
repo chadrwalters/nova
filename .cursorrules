@@ -7,6 +7,8 @@
 1. Package Management
    - Use uv ONLY
    - Direct pip usage is FORBIDDEN
+   - Direct python/python3 usage is FORBIDDEN
+   - All Python commands must go through uv
 
 2. Vision Model
    - Use "gpt-4o" model for vision recognition

@@ -55,6 +55,9 @@ module = [
     "chromadb.api.types",
     "chromadb.config",
     "sentence_transformers",
+    "aiohttp",
+    "jsonschema.validators",
+    "yaml",
 ]
 ignore_missing_imports = true
 
@@ -72,4 +75,7 @@ nova = "nova.cli.main:main"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
-skips = ["B103"]         # Ignore file permission warnings
+skips = [
+    "B103",
+    "B110",
+] # Ignore file permission warnings and try-except-pass in error handlers

@@ -19,59 +19,43 @@
 
 ### 1. Data Ingestion Layer
 
-#### Bear Export Handler [REFACTORING]
-- Leverages docling for document processing:
+#### Bear Export Handler [IMPLEMENTED]
+- Rich document processing:
   + Document conversion pipeline
   + Rich metadata extraction
   + Built-in format detection
   + Native attachment handling
 
 + Metadata Integration:
-  + Use docling's document model
-  + Map Bear-specific metadata to docling format
-  + Preserve Bear tags in docling metadata
+  + Rich metadata model
+  + Bear-specific metadata mapping
+  + Tag preservation and hierarchy
+  + Attachment references
 
 - Tag Integration:
-  + Extract tags through docling's text processing
-  + Map to Bear tag structure
-  + Preserve hierarchical relationships
-  + Support nested tags via docling's text model
+  + Advanced text processing
+  + Bear tag structure mapping
+  + Hierarchical relationship preservation
+  + Nested tag support
 
 + Error Management:
-  + Leverage docling's error system
-  + Map Bear-specific errors to docling errors
-  + Maintain context and logging
+  + Comprehensive error system
+  + Bear-specific error mapping
+  + Context preservation
+  + Structured logging
 
 + Attachment Pipeline:
-  + Use docling's native attachment handling
-  + Leverage docling's format detection
-  + Map Bear attachments to docling model
-  + Built-in versioning support
+  + Native attachment handling
+  + Format detection and validation
+  + Versioning support
+  + Metadata preservation
 
-#### ~~OCR Integration [REMOVING]~~
-- ~~EasyOCR-based text extraction:~~
-  - ~~Confidence scoring with 50% threshold~~
-  - ~~Multiple OCR configurations for quality/speed tradeoff~~
-  - ~~Async processing with fallback mechanisms~~
-  - ~~Python 3.10 environment required~~
-  - ~~Proper import path: nova.bear_parser.ocr~~
-- ~~Error Handling:~~
-  - ~~Structured OCR errors with detailed messages~~
-  - ~~Placeholder generation for failed OCR:~~
-    - ~~JSON format with version tracking~~
-    - ~~Original file reference~~
-    - ~~Error details and timestamps~~
-    - ~~Automatic cleanup after 30 days~~
-  - ~~Configurable output to .nova directory:~~
-    - ~~Placeholders in .nova/placeholders/ocr~~
-    - ~~Processing files in .nova/processing/ocr~~
-    - ~~Logs in .nova/logs~~
 + Image Processing:
-  + Use docling's built-in image processing
-  + Leverage docling's OCR capabilities
+  + Built-in image processing
+  + OCR capabilities
   + Native format support
   + Integrated error handling
-  + Built-in confidence scoring
+  + Confidence scoring
 
 ### 2. Vector Store Layer [IMPLEMENTED]
 
@@ -95,7 +79,7 @@
 
 #### Embedding Service [IMPLEMENTED]
 - Sentence transformer integration:
-  - all-MiniLM-L6-v2 model support
+  - paraphrase-MiniLM-L3-v2 model
   - 384-dimensional embeddings
   - MPS acceleration on macOS
 - Batch processing support:
@@ -138,6 +122,7 @@
   - CLI modules implemented:
     - process-bear-vectors: Bear note vector processing
     - clean-vectors: Vector store cleanup
+    - search: Semantic search functionality
 
 ### 3. RAG Orchestration Layer
 
@@ -160,6 +145,17 @@
     - Metadata preservation
     - Batch processing support
     - Configurable input/output paths
+  - search:
+    - Semantic search through vector embeddings
+    - Configurable result limits
+    - Rich result formatting with metadata
+    - Content preview generation
+    - Similarity score calculation
+  - clean-processing:
+    - Safe cleanup of processed notes
+    - Force flag for deletion
+    - Directory validation
+    - Error handling and logging
   - clean-vectors:
     - Vector store cleanup
     - Safe deletion with --force flag
@@ -171,161 +167,6 @@
     - Log viewing and filtering
     - Rich table-based output
     - Real-time system monitoring
-- Command Registration:
-  - Plugin-based architecture with base command class
-  - Automatic command discovery and registration
-  - Standardized error handling and logging
-  - Type-safe command interfaces
-  - Click-based command creation
-- Console Integration:
-  - pyproject.toml entrypoints for nova command
-  - Shell completion support
-  - Unified error handling with click.Abort
-  - Rich terminal output formatting
-  - Color-coded status indicators
-- Progress Feedback:
-  - Rich progress bars for long operations
-  - Structured status updates
-  - Error reporting with context
-  - Color-coded output formatting
-  - Operation status tracking
-- Error Handling:
-  - Input validation with descriptive messages
-  - Path existence verification
-  - Operation status tracking
-  - Recovery suggestions
-  - Partial progress preservation
-- Testing:
-  - Comprehensive unit test suite
-  - Integration tests for commands
-  - Mock-based testing
-  - Click test runner integration
-  - Help text verification
-
-#### MCP Integration [PLANNED]
-- MCP Server Implementation:
-  - Core Components:
-    - NovaServer: MCP protocol server implementation
-      - Protocol version validation
-      - Capability negotiation
-      - Initialize/initialized handshake
-      - Dynamic tool/resource discovery
-    - ResourceManager: File and data access handler
-      - JSON Schema definitions
-      - Resource change notifications
-      - Access control validation
-    - ToolRegistry: Vector store tool definitions
-      - JSON Schema validation
-      - Parameter type checking
-      - Dynamic tool registration
-      - Tool change notifications
-    - PromptManager: Template management system
-      - Template validation
-      - Context assembly
-      - Dynamic updates
-  - Implementation Structure:
-    - src/nova/mcp/
-      - __init__.py: Main entry point
-      - server.py: NovaServer implementation
-      - resources/: Resource handlers
-        - schemas/: JSON Schema definitions
-        - handlers/: Resource implementations
-      - tools/: Tool implementations
-        - schemas/: Tool JSON Schemas
-        - handlers/: Tool implementations
-      - prompts/: Template definitions
-      - errors.py: JSON-RPC error definitions
-- Capability Types:
-  - Resources:
-    - Vector store access:
-      - Schema: VectorStoreResource
-      - Change notifications
-      - Access patterns
-    - Note content retrieval:
-      - Schema: NoteResource
-      - Metadata handling
-      - Content streaming
-    - Attachment handling:
-      - Schema: AttachmentResource
-      - Binary data handling
-      - MIME type support
-    - OCR result access:
-      - Schema: OCRResource
-      - Confidence scoring
-      - Error states
-  - Tools:
-    - search_documentation:
-      - Schema: SearchParams
-      - Result format
-      - Error codes
-    - list_sources:
-      - Schema: ListParams
-      - Collection format
-      - Filter options
-    - extract_content:
-      - Schema: ExtractParams
-      - Format options
-      - Error states
-    - remove_documentation:
-      - Schema: RemoveParams
-      - Safety checks
-      - Rollback support
-  - Prompts:
-    - Search templates:
-      - Schema validation
-      - Variable substitution
-    - Content formatting:
-      - Output validation
-      - Style consistency
-    - Error handling:
-      - Error templates
-      - Recovery hints
-    - System instructions:
-      - Context validation
-      - State tracking
-- Protocol Implementation:
-  - Handshake Protocol:
-    - Version validation
-    - Capability negotiation
-    - Connection setup
-  - Change Notifications:
-    - Tool updates
-    - Resource changes
-    - State transitions
-  - Error Handling:
-    - JSON-RPC error objects
-    - Custom error codes
-    - Error context
-    - Recovery hints
-- Testing Strategy:
-  - MCP Inspector Integration:
-    - Manual protocol testing
-    - Schema validation
-    - Tool invocation
-    - Resource access
-  - Automated Tests:
-    - Protocol compliance
-    - Schema validation
-    - Error handling
-    - Performance metrics
-- Local Transport:
-  - MCP Protocol Implementation:
-    - Standard capability exposure
-    - Local socket communication
-    - Client connection handling
-  - Resource Management:
-    - Connection lifecycle
-    - Memory limits
-    - Cleanup routines
-- Error Handling:
-  - Standard MCP Error Types:
-    - Resource access errors
-    - Tool execution errors
-    - Protocol errors
-  - Recovery:
-    - Standard retry mechanisms
-    - Error reporting
-    - State recovery
 
 ### 4. Monitoring System [PLANNED]
 

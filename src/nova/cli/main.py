@@ -4,14 +4,20 @@ This module provides the main CLI dispatcher for all nova commands. It
 uses a plugin-based architecture to discover and register commands.
 """
 
-import importlib
 import logging
-import pkgutil
 
 import click
 from rich.console import Console
 
-from nova.cli import commands
+from nova.cli.commands import (
+    CleanProcessingCommand,
+    CleanVectorsCommand,
+    MonitorCommand,
+    ProcessBearVectorsCommand,
+    ProcessNotesCommand,
+    ProcessVectorsCommand,
+    SearchCommand,
+)
 from nova.cli.utils.command import NovaCommand
 from nova.config import load_config
 
@@ -22,6 +28,7 @@ def setup_logging() -> None:
     """Set up logging configuration."""
     config = load_config()
     log_file = config.paths.logs_dir / "nova.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
 
     logging.basicConfig(
         level=logging.INFO,
@@ -35,21 +42,26 @@ class NovaCLI:
 
     def __init__(self) -> None:
         """Initialize the CLI dispatcher."""
-        self.commands: dict[str, type[NovaCommand]] = {}
-        self._discover_commands()
+        self.commands: dict[str, type[NovaCommand]] = {}  # type: ignore
+        self._register_commands()
 
-    def _discover_commands(self) -> None:
-        """Discover and register all available commands."""
-        for _, name, _ in pkgutil.iter_modules(commands.__path__):
-            module = importlib.import_module(f"nova.cli.commands.{name}")
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (
-                    isinstance(attr, type)
-                    and issubclass(attr, NovaCommand)
-                    and attr != NovaCommand
-                ):
-                    self.commands[attr.name] = attr
+    def _register_commands(self) -> None:
+        """Register all available commands."""
+        command_classes = [
+            CleanProcessingCommand,
+            CleanVectorsCommand,
+            MonitorCommand,
+            ProcessBearVectorsCommand,
+            ProcessNotesCommand,
+            ProcessVectorsCommand,
+            SearchCommand,
+        ]
+        for cmd_class in command_classes:
+            if not isinstance(cmd_class, type) or not issubclass(
+                cmd_class, NovaCommand
+            ):
+                raise TypeError(f"Invalid command class: {cmd_class}")
+            self.commands[cmd_class.name] = cmd_class  # type: ignore
 
     def create_cli(self) -> click.Group:
         """Create the CLI application.

@@ -86,23 +86,6 @@
   - [✓] Error messages
   - [✓] Error recovery
   - [✓] Error logging
-
-### Docling Integration Phase [CURRENT FOCUS]
-#### 1. Test Stabilization [✓]
-- [✓] Fix failing tests in test_note_resource.py
-  - [✓] Update MockBearParser to use docling model
-  - [✓] Fix NoteHandler attribute errors
-  - [✓] Update test assertions for new model
-- [✓] Fix failing tests in test_handlers.py
-  - [✓] Remove OCR-related tests
-  - [✓] Update AttachmentHandler tests
-  - [✓] Fix version mismatch errors
-- [✓] Fix failing tests in test_bear_parser.py
-  - [✓] Update docling format handling
-  - [✓] Fix file conversion errors
-  - [✓] Update metadata assertions
-
-#### 2. Document Processing Migration [IN PROGRESS]
 - [✓] Map Bear metadata to docling format
   - [✓] Title -> document.name
   - [✓] Tags -> metadata["tags"]
@@ -164,6 +147,18 @@
     - [✓] Add fallback options
 
 #### 3. Test Suite Adaptation [CURRENT FOCUS]
+- [✓] Fix failing tests in test_note_resource.py
+  - [✓] Update MockBearParser to use docling model
+  - [✓] Fix NoteHandler attribute errors
+  - [✓] Update test assertions for new model
+- [✓] Fix failing tests in test_handlers.py
+  - [✓] Remove OCR-related tests
+  - [✓] Update AttachmentHandler tests
+  - [✓] Fix version mismatch errors
+- [✓] Fix failing tests in test_bear_parser.py
+  - [✓] Update docling format handling
+  - [✓] Fix file conversion errors
+  - [✓] Update metadata assertions
 - [ ] Convert mock data to docling format
   - [ ] Create test fixtures with docling models
   - [ ] Update test data generation
