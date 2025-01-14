@@ -1,91 +1,74 @@
 """Attachment store implementation."""
 
-import logging
-import mimetypes
+import json
 import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from nova.server.types import ResourceError
 
 
 class AttachmentStore:
-    """Store for managing file attachments."""
+    """Store for managing attachments."""
 
-    def __init__(self, store_dir: Path) -> None:
-        """Initialize attachment store.
+    def __init__(self, storage_path: Path) -> None:
+        """Initialize store.
 
         Args:
-            store_dir: Directory for storing attachments
+            storage_path: Path to store attachments
         """
-        self._store_dir = store_dir
-        self._store_dir.mkdir(parents=True, exist_ok=True)
-        self._mime_types: set[str] = set()
-        self._count = 0
-        self._version = "1.0.0"
-        self._metadata: dict[str, dict[str, Any]] = {}
+        self.storage_path = storage_path
+        self.mime_types = {"image/png", "image/jpeg", "application/pdf", "image/tiff"}
+        self._ensure_storage()
 
-    @property
-    def storage_path(self) -> Path:
-        """Get storage directory path."""
-        return self._store_dir
-
-    @property
-    def count(self) -> int:
-        """Get number of stored attachments."""
-        return self._count
-
-    def count_attachments(self) -> int:
-        """Get number of stored attachments."""
-        return self.count
-
-    @property
-    def mime_types(self) -> list[str]:
-        """Get list of supported MIME types."""
-        return sorted(self._mime_types)
-
-    @property
-    def version(self) -> str:
-        """Get store version."""
-        return self._version
+    def _ensure_storage(self) -> None:
+        """Ensure storage directory exists."""
+        try:
+            self.storage_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise ResourceError(f"Failed to create storage directory: {str(e)}")
 
     def add_attachment(
-        self, file_path: Path, metadata: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Add an attachment to the store.
+        self, file_path: Path, metadata: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Add an attachment.
 
         Args:
-            file_path: Path to file to add
-            metadata: Optional metadata for the attachment
+            file_path: Path to file to attach
+            metadata: Metadata for attachment
 
         Returns:
-            Dictionary containing attachment information
+            Attachment info dictionary or None if failed
         """
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        try:
+            # Generate unique ID
+            attachment_id = str(int(datetime.now().timestamp() * 1000))
+            target_path = self.storage_path / attachment_id
 
-        attachment_id = str(len(self._metadata) + 1)
-        self.store(file_path, attachment_id)
+            # Copy file
+            shutil.copy2(file_path, target_path)
 
-        mime_type, _ = mimetypes.guess_type(str(file_path))
-        if mime_type:
-            self._mime_types.add(mime_type)
+            # Create info
+            info = {
+                "id": attachment_id,
+                "name": file_path.name,
+                "mime_type": metadata.get("mime_type", "application/octet-stream"),
+                "size": file_path.stat().st_size,
+                "created": datetime.now().isoformat(),
+                "modified": datetime.now().isoformat(),
+                "metadata": metadata,
+            }
 
-        info = {
-            "id": attachment_id,
-            "name": file_path.name,
-            "mime_type": mime_type or "application/octet-stream",
-            "size": file_path.stat().st_size,
-            "created": datetime.now().isoformat(),
-            "modified": datetime.now().isoformat(),
-            "ocr_status": "pending",
-            "ocr_confidence": None,
-            "metadata": metadata or {},
-        }
-        self._metadata[attachment_id] = info
-        self._count += 1
-        return info
+            # Save info
+            info_path = target_path.with_suffix(".json")
+            with info_path.open("w") as f:
+                json.dump(info, f)
+
+            return info
+
+        except Exception as e:
+            raise ResourceError(f"Failed to add attachment: {str(e)}")
 
     def get_attachment_info(self, attachment_id: str) -> dict[str, Any] | None:
         """Get attachment information.
@@ -94,9 +77,19 @@ class AttachmentStore:
             attachment_id: Unique identifier for attachment
 
         Returns:
-            Dictionary containing attachment information or None if not found
+            Attachment info dictionary or None if not found
         """
-        return self._metadata.get(attachment_id)
+        try:
+            info_path = self.storage_path / f"{attachment_id}.json"
+            if not info_path.exists():
+                return None
+
+            with info_path.open() as f:
+                info: dict[str, Any] = json.load(f)
+                return info
+
+        except Exception as e:
+            raise ResourceError(f"Failed to get attachment info: {str(e)}")
 
     def update_attachment_metadata(
         self, attachment_id: str, metadata: dict[str, Any]
@@ -105,17 +98,29 @@ class AttachmentStore:
 
         Args:
             attachment_id: Unique identifier for attachment
-            metadata: New metadata for the attachment
+            metadata: New metadata for attachment
 
         Returns:
-            Updated attachment information or None if not found
+            Updated attachment info dictionary or None if not found
         """
-        if attachment_id not in self._metadata:
-            return None
+        try:
+            info_path = self.storage_path / f"{attachment_id}.json"
+            if not info_path.exists():
+                return None
 
-        self._metadata[attachment_id]["metadata"].update(metadata)
-        self._metadata[attachment_id]["modified"] = datetime.now().isoformat()
-        return self._metadata[attachment_id]
+            with info_path.open() as f:
+                info: dict[str, Any] = json.load(f)
+
+            info["metadata"] = metadata
+            info["modified"] = datetime.now().isoformat()
+
+            with info_path.open("w") as f:
+                json.dump(info, f)
+
+            return info
+
+        except Exception as e:
+            raise ResourceError(f"Failed to update attachment metadata: {str(e)}")
 
     def delete_attachment(self, attachment_id: str) -> bool:
         """Delete an attachment.
@@ -124,112 +129,53 @@ class AttachmentStore:
             attachment_id: Unique identifier for attachment
 
         Returns:
-            True if attachment was deleted, False otherwise
+            True if deleted, False if not found
         """
-        if attachment_id not in self._metadata:
-            return False
+        try:
+            file_path = self.storage_path / attachment_id
+            info_path = file_path.with_suffix(".json")
 
-        if self.remove(attachment_id):
-            del self._metadata[attachment_id]
-            self._count -= 1
+            if not file_path.exists() or not info_path.exists():
+                return False
+
+            file_path.unlink()
+            info_path.unlink()
             return True
-        return False
+
+        except Exception as e:
+            raise ResourceError(f"Failed to delete attachment: {str(e)}")
 
     def list_attachments(self) -> list[dict[str, Any]]:
         """List all attachments.
 
         Returns:
-            List of attachment information dictionaries
+            List of attachment info dictionaries
         """
-        return list(self._metadata.values())
+        try:
+            attachments = []
+            for info_path in self.storage_path.glob("*.json"):
+                with info_path.open() as f:
+                    attachments.append(json.load(f))
+            return attachments
 
-    def store(self, file_path: Path, attachment_id: str) -> None:
-        """Store an attachment.
+        except Exception as e:
+            raise ResourceError(f"Failed to list attachments: {str(e)}")
 
-        Args:
-            file_path: Path to file to store
-            attachment_id: Unique identifier for attachment
-        """
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        mime_type, _ = mimetypes.guess_type(str(file_path))
-        if mime_type:
-            self._mime_types.add(mime_type)
-
-        target_path = self._store_dir / attachment_id
-        shutil.copy2(file_path, target_path)
-        self._count += 1
-        logger.info("Stored attachment %s from %s", attachment_id, file_path)
-
-    def retrieve(self, attachment_id: str) -> Path | None:
-        """Retrieve an attachment.
-
-        Args:
-            attachment_id: Unique identifier for attachment
+    def count_attachments(self) -> int:
+        """Count total attachments.
 
         Returns:
-            Path to attachment file if found, None otherwise
+            Number of attachments
         """
-        file_path = self._store_dir / attachment_id
-        if file_path.exists():
-            return file_path
-        return None
+        try:
+            return len(list(self.storage_path.glob("*.json")))
+        except Exception as e:
+            raise ResourceError(f"Failed to count attachments: {str(e)}")
 
-    def remove(self, attachment_id: str) -> bool:
-        """Remove an attachment.
-
-        Args:
-            attachment_id: Unique identifier for attachment
-
-        Returns:
-            True if attachment was removed, False if not found
-        """
-        file_path = self._store_dir / attachment_id
-        if file_path.exists():
-            file_path.unlink()
-            self._count -= 1
-            logger.info("Removed attachment %s", attachment_id)
-            return True
-        return False
-
-    def clear(self) -> None:
-        """Remove all attachments."""
-        shutil.rmtree(self._store_dir)
-        self._store_dir.mkdir(parents=True)
-        self._mime_types.clear()
-        self._count = 0
-        logger.info("Cleared all attachments")
-
-    def read(self, attachment_id: str) -> bytes:
-        """Read an attachment by its ID.
-
-        Args:
-            attachment_id: Unique identifier for attachment
-
-        Returns:
-            Attachment content as bytes
-
-        Raises:
-            FileNotFoundError: If attachment does not exist
-        """
-        attachment_path = self._store_dir / attachment_id
-        if not attachment_path.exists():
-            # Create a test file for benchmarking
-            attachment_path.write_bytes(b"Test attachment")
-        return attachment_path.read_bytes()
-
-    def write(self, attachment_id: str, content: bytes) -> None:
-        """Write an attachment to the store.
-
-        Args:
-            attachment_id: Unique identifier for attachment
-            content: Attachment content as bytes
-        """
-        attachment_path = self._store_dir / attachment_id
-        attachment_path.write_bytes(content)
-        mime_type, _ = mimetypes.guess_type(str(attachment_path))
-        if mime_type:
-            self._mime_types.add(mime_type)
-        self._count += 1
-        logger.info("Wrote attachment %s", attachment_id)
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        try:
+            if self.storage_path.exists():
+                shutil.rmtree(self.storage_path)
+        except Exception as e:
+            raise ResourceError(f"Failed to clean up: {str(e)}")

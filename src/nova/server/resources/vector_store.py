@@ -1,10 +1,10 @@
 """Vector store resource handler implementation."""
 
+import json
+import logging
+from pathlib import Path
 from typing import Any, TypedDict, cast
 from collections.abc import Callable
-
-import json
-from pathlib import Path
 
 import numpy as np
 from jsonschema.validators import validate
@@ -17,6 +17,8 @@ from nova.server.types import (
     ResourceType,
 )
 from nova.vector_store.store import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStoreAttributes(TypedDict):
@@ -248,5 +250,9 @@ class VectorStoreHandler(ResourceHandler):
             try:
                 callback()
             except Exception as e:
-                # Log error but continue notifying other callbacks
-                print(f"Error in change callback: {str(e)}")
+                logger.error(f"Error in change callback: {e}")
+
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        self._change_callbacks.clear()
+        self._store.cleanup()

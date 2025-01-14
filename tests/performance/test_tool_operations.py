@@ -1,57 +1,92 @@
 """Performance tests for tool operations."""
 
 import json
-import random
+import time
+import uuid
 from pathlib import Path
+from typing import Any
+from collections.abc import Callable
 
 import pytest
 
 from nova.server.server import NovaServer
-from nova.server.tools import ExtractTool, ListTool, RemoveTool, SearchTool
+from nova.server.tools import SearchTool, ListTool, ExtractTool, RemoveTool
 from nova.server.types import ServerConfig
-from tests.performance.conftest import benchmark
+from nova.stubs.docling import Document
+from nova.vector_store.store import VectorStore
 
 
 @pytest.fixture
-def list_schema_path(tmp_path: Path) -> Path:
-    """Create list tool schema file."""
-    schema_path = tmp_path / "list_tool.json"
-    schema = {
+def schema_dir(tmp_path: Path) -> Path:
+    """Create schema directory with tool schemas."""
+    schema_dir = tmp_path / "schemas"
+    schema_dir.mkdir(parents=True)
+
+    # Create search schema
+    search_schema = {
+        "id": "search",
         "type": "object",
         "properties": {
-            "id": {"type": "string"},
-            "type": {"type": "string"},
-            "name": {"type": "string"},
-            "version": {"type": "string"},
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
-                    "recursive": {"type": "boolean"},
-                    "include_pattern": {"type": "string"},
-                    "exclude_pattern": {"type": "string"},
+                    "query": {"type": "string"},
+                    "n_results": {"type": "integer"},
+                    "min_score": {"type": "number"},
                 },
-                "required": ["path"],
-            },
-            "capabilities": {"type": "array", "items": {"type": "string"}},
+                "required": ["query"],
+            }
         },
-        "required": ["id", "type", "name", "version", "parameters", "capabilities"],
+        "required": ["parameters"],
     }
-    schema_path.write_text(json.dumps(schema))
-    return schema_path
+    with open(schema_dir / "search.json", "w") as f:
+        json.dump(search_schema, f)
 
-
-@pytest.fixture
-def remove_schema_path(tmp_path: Path) -> Path:
-    """Create remove tool schema file."""
-    schema_path = tmp_path / "remove_tool.json"
-    schema = {
+    # Create list schema
+    list_schema = {
+        "id": "list",
         "type": "object",
         "properties": {
-            "id": {"type": "string"},
-            "type": {"type": "string"},
-            "name": {"type": "string"},
-            "version": {"type": "string"},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string"},
+                    "filter": {"type": "string"},
+                    "path": {"type": "string"},
+                },
+                "required": ["path"],
+            }
+        },
+        "required": ["parameters"],
+    }
+    with open(schema_dir / "list.json", "w") as f:
+        json.dump(list_schema, f)
+
+    # Create extract schema
+    extract_schema = {
+        "id": "extract",
+        "type": "object",
+        "properties": {
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_id": {"type": "string"},
+                    "format": {"type": "string"},
+                    "target_path": {"type": "string"},
+                },
+                "required": ["source_id", "target_path"],
+            }
+        },
+        "required": ["parameters"],
+    }
+    with open(schema_dir / "extract.json", "w") as f:
+        json.dump(extract_schema, f)
+
+    # Create remove schema
+    remove_schema = {
+        "id": "remove",
+        "type": "object",
+        "properties": {
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -59,176 +94,184 @@ def remove_schema_path(tmp_path: Path) -> Path:
                     "force": {"type": "boolean"},
                 },
                 "required": ["target_id"],
-            },
-            "capabilities": {"type": "array", "items": {"type": "string"}},
+            }
         },
-        "required": ["id", "type", "name", "version", "parameters", "capabilities"],
+        "required": ["parameters"],
     }
-    schema_path.write_text(json.dumps(schema))
-    return schema_path
+    with open(schema_dir / "remove.json", "w") as f:
+        json.dump(remove_schema, f)
+
+    return schema_dir
 
 
 @pytest.fixture
-def search_schema_path(tmp_path: Path) -> Path:
-    """Create search tool schema file."""
-    schema_path = tmp_path / "search_tool.json"
-    schema = {
-        "type": "object",
-        "properties": {
-            "id": {"type": "string"},
-            "type": {"type": "string"},
-            "name": {"type": "string"},
-            "version": {"type": "string"},
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "n_results": {"type": "integer"},
-                    "min_score": {"type": "number"},
-                    "filters": {"type": "object"},
-                },
-                "required": ["query"],
-            },
-            "capabilities": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["id", "type", "name", "version", "parameters", "capabilities"],
-    }
-    schema_path.write_text(json.dumps(schema))
-    return schema_path
+def vector_store(tmp_path: Path) -> VectorStore:
+    """Create vector store for testing."""
+    store_dir = tmp_path / "vector_store"
+    store_dir.mkdir(parents=True)
+    return VectorStore(store_dir)
 
 
 @pytest.fixture
-def extract_schema_path(tmp_path: Path) -> Path:
-    """Create extract tool schema file."""
-    schema_path = tmp_path / "extract_tool.json"
-    schema = {
-        "type": "object",
-        "properties": {
-            "id": {"type": "string"},
-            "type": {"type": "string"},
-            "name": {"type": "string"},
-            "version": {"type": "string"},
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "source_id": {"type": "string"},
-                    "target_path": {"type": "string"},
-                    "query": {"type": "string"},
-                },
-                "required": ["source_id", "target_path"],
-            },
-            "capabilities": {"type": "array", "items": {"type": "string"}},
-        },
-        "required": ["id", "type", "name", "version", "parameters", "capabilities"],
-    }
-    schema_path.write_text(json.dumps(schema))
-    return schema_path
-
-
-@pytest.fixture
-def server(temp_dir: Path) -> NovaServer:
-    """Create server instance for benchmarking.
-
-    Args:
-        temp_dir: Temporary directory fixture
-
-    Returns:
-        NovaServer instance
-    """
-    config = ServerConfig(host="localhost", port=8000, debug=True, max_connections=5)
+def server(tmp_path: Path) -> NovaServer:
+    """Create server instance for testing."""
+    config = ServerConfig(
+        host="localhost",
+        port=8000,
+        debug=True,
+        max_connections=5,
+        store_dir=str(tmp_path),
+    )
     server = NovaServer(config)
-    server.start()
     return server
 
 
-@benchmark(iterations=100, warmup=10)
+@pytest.fixture
+def sample_documents() -> list[dict[str, Any]]:
+    """Create sample documents for testing."""
+    docs = []
+    for i in range(10):
+        doc = Document(name=f"Test Document {i}")
+        doc.text = f"Test document {i} with some content for testing vector operations"
+        doc.metadata = {
+            "tags": ",".join(["test", "performance"]),
+            "source": "test.md",
+            "index": i,
+            "format": "text",
+            "modified": str(time.time()),
+        }
+        docs.append({"content": doc.text, "metadata": doc.metadata})
+    return docs
+
+
 def test_search_tool_execution(
-    server: NovaServer, search_schema_path: Path, sample_documents: list[dict]
+    benchmark: Callable[[Callable[[], None]], None],
+    vector_store: VectorStore,
+    schema_dir: Path,
+    sample_documents: list[dict],
 ) -> None:
-    """Benchmark search tool execution."""
-    search_tool = SearchTool(search_schema_path, server._get_vector_store())
+    """Test search tool execution."""
+    # Add a document first
+    doc = sample_documents[0]
+    doc_id = str(uuid.uuid4())
+    vector_store.add(doc_id, doc["content"], doc["metadata"])
+    vector_store._process_batch()  # Ensure document is committed
 
-    search_tool.validate_request(
-        {
-            "id": "search-1",
-            "type": "search",
-            "name": "Search Test",
-            "version": "1.0.0",
-            "parameters": {
-                "query": "test query",
-                "n_results": 10,
-                "min_score": 0.5,
-                "filters": {"source": "test"},
-            },
-            "capabilities": ["search"],
+    search_tool = SearchTool(schema_dir / "search.json", vector_store)
+    request = {
+        "parameters": {
+            "query": doc["content"],
+            "n_results": 5,
+            "min_score": 0.7,
         }
-    )
+    }
+    search_tool.validate_request(request)
+
+    def run_search() -> None:
+        response = search_tool.search(request)
+        assert isinstance(response, dict)
+        assert "results" in response
+        assert isinstance(response["results"], list)
+
+    benchmark(run_search)
 
 
-@benchmark(iterations=100, warmup=10)
-def test_list_tool_execution(server: NovaServer, list_schema_path: Path) -> None:
-    """Benchmark list tool execution."""
-    list_tool = ListTool(list_schema_path)
-    list_tool.validate_request(
-        {
-            "id": "list-1",
-            "type": "list",
-            "name": "List Test",
-            "version": "1.0.0",
-            "parameters": {
-                "path": "/test",
-                "recursive": True,
-                "include_pattern": "*.txt",
-                "exclude_pattern": "*.tmp",
-            },
-            "capabilities": ["list"],
+def test_list_tool_execution(
+    benchmark: Callable[[Callable[[], None]], None], schema_dir: Path
+) -> None:
+    """Test list tool execution."""
+    list_tool = ListTool(schema_dir / "list.json")
+    request = {
+        "parameters": {
+            "path": str(schema_dir),
+            "type": "text",
+            "filter": "*.txt",
         }
-    )
+    }
+    list_tool.validate_request(request)
+
+    def run_list() -> None:
+        response = list_tool.list(request)
+        assert isinstance(response, dict)
+        assert "entries" in response
+        assert isinstance(response["entries"], list)
+
+    benchmark(run_list)
 
 
-@benchmark(iterations=100, warmup=10)
 def test_extract_tool_execution(
-    server: NovaServer, extract_schema_path: Path, sample_documents: list[dict]
+    benchmark: Callable[[Callable[[], None]], None],
+    vector_store: VectorStore,
+    schema_dir: Path,
+    sample_documents: list[dict],
 ) -> None:
-    """Benchmark extract tool execution."""
-    extract_tool = ExtractTool(extract_schema_path)
-    doc = random.choice(sample_documents)
+    """Test extract tool execution."""
+    # Add a document first
+    doc = sample_documents[0]
+    doc_id = str(uuid.uuid4())
+    vector_store.add(doc_id, doc["content"], doc["metadata"])
+    vector_store._process_batch()  # Ensure document is committed
 
     # Create a test file
     test_file = Path("test.txt")
-    test_file.write_text("This is a test file for extraction")
+    test_file.write_text("Test content for extraction")
 
-    try:
-        extract_tool.execute(
-            {
-                "id": "extract-1",
-                "type": "extract",
-                "name": "Extract Test",
-                "version": "1.0.0",
-                "parameters": {"source_id": doc["id"], "target_path": str(test_file)},
-                "capabilities": ["extract"],
-            }
-        )
-    finally:
-        # Clean up test file
-        if test_file.exists():
-            test_file.unlink()
-
-
-@benchmark(iterations=100, warmup=10)
-def test_remove_tool_execution(
-    server: NovaServer, remove_schema_path: Path, sample_documents: list[dict]
-) -> None:
-    """Benchmark remove tool execution."""
-    remove_tool = RemoveTool(remove_schema_path)
-    doc = random.choice(sample_documents)
-    remove_tool.validate_request(
-        {
-            "id": "remove-1",
-            "type": "remove",
-            "name": "Remove Test",
-            "version": "1.0.0",
-            "parameters": {"target_id": doc["id"], "force": True},
-            "capabilities": ["remove"],
+    extract_tool = ExtractTool(schema_dir / "extract.json")
+    request = {
+        "parameters": {
+            "source_id": doc_id,
+            "format": "text",
+            "target_path": str(test_file),
         }
-    )
+    }
+    extract_tool.validate_request(request)
+
+    def run_extract() -> None:
+        response = extract_tool.extract(request)
+        assert isinstance(response, dict)
+        assert "id" in response
+        assert "success" in response
+        assert "metadata" in response
+        assert isinstance(response["id"], str)
+        assert isinstance(response["success"], bool)
+        assert isinstance(response["metadata"], dict)
+
+    benchmark(run_extract)
+
+    # Clean up
+    test_file.unlink()
+
+
+def test_remove_tool_execution(
+    benchmark: Callable[[Callable[[], None]], None],
+    vector_store: VectorStore,
+    schema_dir: Path,
+    sample_documents: list[dict],
+) -> None:
+    """Test remove tool execution."""
+    # Add a document first
+    doc = sample_documents[0]
+    doc_id = str(uuid.uuid4())
+    vector_store.add(doc_id, doc["content"], doc["metadata"])
+    vector_store._process_batch()  # Ensure document is committed
+
+    remove_tool = RemoveTool(schema_dir / "remove.json")
+    request = {
+        "parameters": {
+            "target_id": doc_id,
+            "force": True,
+        }
+    }
+    remove_tool.validate_request(request)
+
+    def run_remove() -> None:
+        response = remove_tool.remove(request)
+        assert isinstance(response, dict)
+        assert "id" in response
+        assert "success" in response
+        assert "metadata" in response
+        assert isinstance(response["id"], str)
+        assert isinstance(response["success"], bool)
+        assert isinstance(response["metadata"], dict)
+
+    benchmark(run_remove)

@@ -2,15 +2,16 @@
 
 import logging
 import time
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Union, cast
 
-import chromadb
 import numpy as np
+from numpy.typing import NDArray
+import chromadb
 from chromadb.api.types import Embeddings, Metadatas, Where
 from chromadb.config import Settings
-from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
@@ -31,14 +32,40 @@ class VectorStore:
         """
         self._store_dir = store_dir
         self._store_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(self._store_dir, 0o755)  # rwxr-xr-x
+
+        # Create ChromaDB directory structure with proper permissions
+        chroma_dir = self._store_dir / "chroma"
+        chroma_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(chroma_dir, 0o755)  # rwxr-xr-x
+
+        # Create all required subdirectories
+        subdirs = ["db", "index", "system", "data"]
+        for subdir in subdirs:
+            dir_path = chroma_dir / subdir
+            dir_path.mkdir(parents=True, exist_ok=True)
+            os.chmod(dir_path, 0o755)  # rwxr-xr-x
+
+        # Create and set permissions for SQLite database file
+        db_file = chroma_dir / "chroma.db"
+        if not db_file.exists():
+            db_file.touch(mode=0o644)  # rw-r--r--
+        os.chmod(db_file, 0o644)  # rw-r--r--
+
+        # Initialize other instance variables
         self._model: SentenceTransformer | None = None
         self._embedding_cache: dict[str, NDArray[np.float32]] = {}
         self._batch_queue: list[tuple[str, str, dict[str, Any]]] = []
 
         # Configure Chroma client with reset enabled for tests
         settings = Settings(
-            allow_reset=True, is_persistent=True, persist_directory=str(store_dir)
+            allow_reset=True,
+            is_persistent=True,
+            persist_directory=str(chroma_dir),
+            anonymized_telemetry=False,
         )
+
+        # Initialize ChromaDB client and collection
         self.client = chromadb.Client(settings)
         self.collection = self.client.get_or_create_collection("nova")
 
@@ -70,15 +97,15 @@ class VectorStore:
             return
 
         # Convert documents to embeddings
-        texts = [doc["content"] for doc in self._batch_queue]
+        texts = [doc[1] for doc in self._batch_queue]  # content is at index 1
         embeddings = self.model.encode(texts)
 
         # Add to Chroma collection
         self.collection.add(
             embeddings=embeddings,
-            documents=[doc["content"] for doc in self._batch_queue],
-            metadatas=[doc["metadata"] for doc in self._batch_queue],
-            ids=[doc["id"] for doc in self._batch_queue],
+            documents=texts,
+            metadatas=[doc[2] for doc in self._batch_queue],  # metadata is at index 2
+            ids=[doc[0] for doc in self._batch_queue],  # id is at index 0
         )
 
         # Clear batch
@@ -119,11 +146,11 @@ class VectorStore:
             self._process_batch()
 
         # Check if document exists
-        results = self.collection.get(where={"id": doc_id})
+        results = self.collection.get(ids=[doc_id])
         if not results["ids"]:
             raise ValueError(f"Document {doc_id} not found")
 
-        self.collection.delete(where={"id": doc_id})
+        self.collection.delete(ids=[doc_id])
         if doc_id in self._embedding_cache:
             del self._embedding_cache[doc_id]
         logger.info("Removed document %s", doc_id)
@@ -222,3 +249,10 @@ class VectorStore:
             "total_vectors": total_vectors,
             "store_dir": str(self._store_dir),
         }
+
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        self._batch_queue.clear()
+        self._embedding_cache.clear()
+        self._model = None
+        self.client.reset()

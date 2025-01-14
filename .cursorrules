@@ -1,4 +1,8 @@
 # Nova Project Rules
+0. Where to go for documentation:
+    - Docling: @Docling
+    - Raycast: @Raycast
+    - MCP: @MCP
 
 1. Package Management
    - Use uv ONLY

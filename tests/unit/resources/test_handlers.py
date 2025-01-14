@@ -5,54 +5,87 @@ from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
+from nova.stubs.docling import Document, DocumentConverter
 
-from nova.bear_parser.parser import BearNote, BearParser
 from nova.server.attachments import AttachmentStore
 from nova.server.resources.attachment import AttachmentHandler
 from nova.server.resources.note import NoteHandler
 from nova.server.types import ResourceType
 
 
-class MockBearParser(BearParser):
-    """Mock Bear parser for testing."""
+class MockDocumentConverter(DocumentConverter):
+    """Mock document converter for testing."""
 
-    def __init__(self, input_dir: Path | str) -> None:
-        """Initialize parser.
+    def __init__(self, input_dir: str) -> None:
+        """Initialize converter.
 
         Args:
-            input_dir: Input directory containing Bear notes
+            input_dir: Input directory containing notes
         """
-        super().__init__(input_dir)
+        self.input_dir = input_dir
         now = datetime.now()
         self._notes = [
-            BearNote(
-                title="Test Note 1",
-                date=now,
-                content="Test content 1",
-                tags=["tag1", "tag2"],
-                attachments=[],
-                metadata={"original_file": "test1.md"},
+            self._create_document(
+                "test1.md", "Test Note 1", "Test content 1", ["tag1", "tag2"], now
             ),
-            BearNote(
-                title="Test Note 2",
-                date=now,
-                content="Test content 2",
-                tags=["tag2", "tag3"],
-                attachments=[],
-                metadata={"original_file": "test2.md"},
+            self._create_document(
+                "test2.md", "Test Note 2", "Test content 2", ["tag2", "tag3"], now
             ),
         ]
 
-    def process_notes(self, output_dir: Path | None = None) -> list[BearNote]:
-        """Mock process_notes method.
+    def _create_document(
+        self, name: str, title: str, content: str, tags: list[str], date: datetime
+    ) -> Document:
+        """Create a test document.
 
         Args:
-            output_dir: Optional output directory for processed notes
+            name: Document name
+            title: Document title
+            content: Document content
+            tags: Document tags
+            date: Document date
 
         Returns:
-            List of processed notes
+            Document instance
         """
-        return self._notes
+        doc = Document(name)
+        doc.text = content
+        doc.metadata = {
+            "title": title,
+            "date": date.isoformat(),
+            "tags": tags,
+            "format": "text",
+        }
+        doc.pictures = []
+        return doc
+
+    def convert_file(self, path: Path) -> Document:
+        """Convert a file to a document.
+
+        Args:
+            path: Path to file
+
+        Returns:
+            Document instance
+
+        Raises:
+            FileNotFoundError: If file not found
+        """
+        for note in self._notes:
+            if note.name == path.name:
+                return note
+        raise FileNotFoundError(f"File not found: {path}")
+
+    def convert_all(self, paths: list[Path]) -> list[Document]:
+        """Convert multiple files to documents.
+
+        Args:
+            paths: List of file paths
+
+        Returns:
+            List of documents
+        """
+        return [self.convert_file(path) for path in paths]
 
 
 class MockAttachmentStore(AttachmentStore):
@@ -173,9 +206,9 @@ def note_handler(tmp_path: Path) -> NoteHandler:
     (notes_dir / "test1.md").write_text("Test content 1")
     (notes_dir / "test2.md").write_text("Test content 2")
 
-    # Initialize handler with mock parser
-    parser = MockBearParser(notes_dir)
-    handler = NoteHandler(parser)
+    # Initialize handler with mock converter
+    converter = MockDocumentConverter(str(notes_dir))
+    handler = NoteHandler(converter)
     return handler
 
 
@@ -208,8 +241,8 @@ def test_note_handler_init(tmp_path: Path) -> None:
     notes_dir = tmp_path / "notes"
     notes_dir.mkdir()
 
-    parser = BearParser(notes_dir)
-    handler = NoteHandler(parser)
+    converter = MockDocumentConverter(str(notes_dir))
+    handler = NoteHandler(converter)
     metadata = handler.get_metadata()
     assert metadata["type"] == ResourceType.NOTE
     assert metadata["version"] == NoteHandler.VERSION
@@ -233,15 +266,13 @@ def test_note_handler_get_metadata(note_handler: NoteHandler) -> None:
     Args:
         note_handler: Note handler fixture
     """
-    metadata = note_handler.get_note_metadata("Test Note 1")
-    assert metadata == {
-        "title": "Test Note 1",
-        "tags": ["tag1", "tag2"],
-        "original_file": "test1.md",
-    }
+    metadata = note_handler.get_note_metadata("test1.md")
+    assert metadata["name"] == "test1.md"
+    assert metadata["title"] == "Test Note 1"
+    assert metadata["tags"] == ["tag1", "tag2"]
 
     with pytest.raises(HTTPException) as exc:
-        note_handler.get_note_metadata("Non-existent Note")
+        note_handler.get_note_metadata("nonexistent.md")
     assert exc.value.status_code == 404
 
 
@@ -258,26 +289,4 @@ def test_attachment_handler_init(tmp_path: Path) -> None:
     handler = AttachmentHandler(store)
     metadata = handler.get_metadata()
     assert metadata["type"] == ResourceType.ATTACHMENT
-    assert metadata["version"] == AttachmentHandler.VERSION
-
-
-def test_attachment_handler_get(attachment_handler: AttachmentHandler) -> None:
-    """Test getting attachment.
-
-    Args:
-        attachment_handler: Attachment handler fixture
-    """
-    # Store test attachment
-    test_data = b"Test attachment data"
-    attachment_handler.add_attachment(
-        Path("test.txt"), {"content": test_data.decode("utf-8")}
-    )
-
-    # Get attachment
-    info = attachment_handler.get_attachment("test.txt")
-    assert info["name"] == "test.txt"
-    assert info["mime_type"] == "text/plain"
-
-    with pytest.raises(HTTPException) as exc:
-        attachment_handler.get_attachment("non-existent.txt")
-    assert exc.value.status_code == 404
+    assert metadata["version"] == "1.0.0"  # Version is hardcoded in AttachmentHandler

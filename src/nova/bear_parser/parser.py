@@ -1,370 +1,547 @@
 """Bear note parser implementation."""
 
-import hashlib
+import json
 import logging
-import mimetypes
+import time
 from datetime import datetime
+from enum import Enum
+from functools import wraps
 from pathlib import Path
-from typing import Dict, List, Optional
-from urllib.parse import quote
+from typing import Any, TypeVar
+from collections.abc import Callable
 
-import pandas as pd
-from docling.datamodel.base_models import (
-    FormatToExtensions,
-    FormatToMimeType,
-    InputFormat,
-)
-from docling_core.types.doc.document import (
-    DoclingDocument,
-    DocumentOrigin,
-    FloatingItem,
-    ImageRef,
-    PictureItem,
-    TableCell,
-    TableData,
-    TableItem,
-    TextItem,
-)
-from docling_core.types.doc.labels import DocItemLabel
-from PIL import Image, UnidentifiedImageError
-from pydantic import AnyUrl, parse_obj_as
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
 
-class AttachmentError(Exception):
-    """Error processing an attachment."""
+
+def retry_on_error(
+    max_retries: int = 3,
+    delay: float = 1.0,
+    backoff: float = 2.0,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Retry decorator for handling transient errors."""
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            last_error = None
+            current_delay = delay
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    last_error = e
+                    if attempt == max_retries:
+                        break
+                    time.sleep(current_delay)
+                    current_delay *= backoff
+
+            # If we get here, all retries failed
+            if last_error is not None:
+                raise last_error
+            raise Exception("Unknown error occurred")
+
+        return wrapper
+
+    return decorator
+
+
+class InputFormat(str, Enum):
+    """Input format for Bear notes."""
+
+    TEXT = "text"
+    MARKDOWN = "markdown"
+
+
+# Format to file extension mappings
+FORMAT_TO_EXTENSIONS = {
+    InputFormat.TEXT: [".txt"],
+    InputFormat.MARKDOWN: [".md", ".markdown"],
+}
+
+# Format to MIME type mappings
+FORMAT_TO_MIME_TYPE = {
+    InputFormat.TEXT: "text/plain",
+    InputFormat.MARKDOWN: "text/markdown",
+}
+
+
+class BearParserError(Exception):
+    """Base exception for Bear parser errors."""
 
     pass
 
 
-class UnsupportedFormatError(Exception):
-    """Unsupported file format."""
+class AttachmentError(BearParserError):
+    """Exception raised when processing an attachment."""
 
     pass
+
+
+class UnsupportedFormatError(BearParserError):
+    """Exception raised when a file format is not supported."""
+
+    pass
+
+
+class DocItemLabel(str, Enum):
+    """Document item labels."""
+
+    TEXT = "text"
+    KEY_VALUE_REGION = "key_value_region"
+
+
+class GroupLabel(str, Enum):
+    """Group labels for document sections."""
+
+    METADATA = "key_value_area"
+    CONTENT = "section"
+    HEADER = "section"
+    FOOTER = "section"
+
+
+class DocItem(BaseModel):
+    """Base class for document items."""
+
+    self_ref: str = Field(description="Reference to the item")
+    orig: str = Field(description="Original text")
+    text: str = Field(description="Processed text")
+    label: str = Field(description="Item label")
+
+
+class TextItem(DocItem):
+    """Text item in a document."""
+
+    label: DocItemLabel = Field(
+        default=DocItemLabel.TEXT, description="Text item label"
+    )
+
+
+class KeyValueItem(DocItem):
+    """Key-value item in a document."""
+
+    label: DocItemLabel = Field(
+        default=DocItemLabel.KEY_VALUE_REGION, description="Key-value item label"
+    )
+
+
+class GroupItem(BaseModel):
+    """Group of items in a document."""
+
+    self_ref: str = Field(description="Reference to the group")
+    label: GroupLabel = Field(description="Group label")
+    items: list[DocItem] = Field(
+        default_factory=list, description="List of items in the group"
+    )
+
+
+class BearDocument(BaseModel):
+    """Bear note document that follows the Docling document schema."""
+
+    schema_name: str = Field(
+        default="DoclingDocument", description="Schema name for the document"
+    )
+    version: str = Field(default="1.0.0", description="Schema version")
+    name: str = Field(description="Document title")
+    origin: str | None = Field(
+        default=None, description="Original source of the document"
+    )
+    furniture: GroupItem | None = Field(default=None, description="Document furniture")
+    groups: list[GroupItem] = Field(default_factory=list, description="Document groups")
+    texts: list[TextItem] = Field(
+        default_factory=list, description="Text items in the document"
+    )
+    pictures: list[DocItem] = Field(
+        default_factory=list, description="Picture items in the document"
+    )
+    tables: list[DocItem] = Field(
+        default_factory=list, description="Table items in the document"
+    )
+    key_value_items: list[KeyValueItem] = Field(
+        default_factory=list, description="Key-value items in the document"
+    )
+    pages: dict[str, Any] = Field(default_factory=dict, description="Document pages")
+    attachments: list[str] = Field(
+        default_factory=list, description="Document attachments"
+    )
+
+    def __init__(
+        self,
+        title: str,
+        content: str,
+        date: str | None = None,
+        tags: list[str] | None = None,
+        input_format: InputFormat = InputFormat.TEXT,
+    ) -> None:
+        """Initialize document.
+
+        Args:
+            title: Document title
+            content: Document content
+            date: Optional document date
+            tags: Optional list of tags
+            input_format: Input format (text or markdown)
+        """
+        super().__init__(
+            schema_name="DoclingDocument",
+            version="1.0.0",
+            name=title,
+        )
+
+        # Add content as text item
+        text_item = TextItem(
+            self_ref="#/content",
+            orig=content,
+            text=content,
+            label=DocItemLabel.TEXT,
+        )
+        self.texts.append(text_item)
+
+        # Add metadata as key-value items
+        metadata_group = GroupItem(
+            self_ref="#/metadata",
+            label=GroupLabel.METADATA,
+            items=[
+                KeyValueItem(
+                    self_ref="#/metadata/title",
+                    orig=title,
+                    text=title,
+                    label=DocItemLabel.KEY_VALUE_REGION,
+                ),
+                KeyValueItem(
+                    self_ref="#/metadata/format",
+                    orig=input_format.value,
+                    text=input_format.value,
+                    label=DocItemLabel.KEY_VALUE_REGION,
+                ),
+            ],
+        )
+
+        # Add date if present
+        if date:
+            metadata_group.items.append(
+                KeyValueItem(
+                    self_ref="#/metadata/date",
+                    orig=date,
+                    text=date,
+                    label=DocItemLabel.KEY_VALUE_REGION,
+                )
+            )
+        else:
+            # Use current date if not provided
+            current_date = datetime.now().isoformat()
+            metadata_group.items.append(
+                KeyValueItem(
+                    self_ref="#/metadata/date",
+                    orig=current_date,
+                    text=current_date,
+                    label=DocItemLabel.KEY_VALUE_REGION,
+                )
+            )
+
+        # Add tags if present
+        if tags:
+            tags_text = ",".join(tags)
+            metadata_group.items.append(
+                KeyValueItem(
+                    self_ref="#/metadata/tags",
+                    orig=tags_text,
+                    text=tags_text,
+                    label=DocItemLabel.KEY_VALUE_REGION,
+                )
+            )
+
+        self.groups.append(metadata_group)
+
+    @property
+    def title(self) -> str:
+        """Get the document title."""
+        return self.name
+
+    @property
+    def content(self) -> str:
+        """Get the document content."""
+        text_items = [
+            item
+            for item in self.texts
+            if isinstance(item, TextItem) and item.label == DocItemLabel.TEXT
+        ]
+        return text_items[0].text if text_items else ""
+
+    @property
+    def tags(self) -> list[str]:
+        """Get the document tags."""
+        for group in self.groups:
+            if group.label == GroupLabel.METADATA:
+                for item in group.items:
+                    if item.self_ref == "#/metadata/tags":
+                        return (
+                            [tag.strip() for tag in item.text.split(",")]
+                            if item.text
+                            else []
+                        )
+        return []
+
+    @property
+    def date(self) -> datetime:
+        """Get the document date."""
+        for group in self.groups:
+            if group.label == GroupLabel.METADATA:
+                for item in group.items:
+                    if item.self_ref == "#/metadata/date":
+                        return datetime.fromisoformat(item.text)
+        return datetime.now()  # Default to current time if not found
+
+    def model_dump_json(self, **kwargs: Any) -> str:
+        """Serialize to JSON.
+
+        Args:
+            **kwargs: Additional arguments passed to json.dumps
+
+        Returns:
+            JSON string representation of the document
+        """
+        return json.dumps(self.model_dump(), **kwargs)
+
+
+class BearNote:
+    """Bear note representation."""
+
+    def __init__(
+        self,
+        title: str,
+        content: str,
+        date: datetime | None = None,
+        tags: list[str] | None = None,
+        attachments: list[str] | None = None,
+        input_format: InputFormat = InputFormat.TEXT,
+    ) -> None:
+        """Initialize note.
+
+        Args:
+            title: Note title
+            content: Note content
+            date: Optional note date
+            tags: Optional list of tags
+            attachments: Optional list of attachments
+            input_format: Input format (text or markdown)
+        """
+        self.title = title
+        self.content = content
+        self.date = date or datetime.now()
+        self.tags = tags or []
+        self.attachments = attachments or []
+        self.input_format = input_format
+
+    def to_docling(self) -> BearDocument:
+        """Convert to Docling document."""
+        return BearDocument(
+            title=self.title,
+            content=self.content,
+            date=self.date.isoformat(),
+            tags=self.tags,
+            input_format=self.input_format,
+        )
+
+    def __str__(self) -> str:
+        """Get string representation.
+
+        Returns:
+            String representation
+        """
+        return f"BearNote(title={self.title}, date={self.date}, tags={self.tags})"
+
+    def __repr__(self) -> str:
+        """Get string representation.
+
+        Returns:
+            String representation
+        """
+        return self.__str__()
 
 
 class BearParser:
     """Parser for Bear notes."""
 
-    # Supported MIME types for attachments
-    SUPPORTED_IMAGE_TYPES = {
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/tiff",
-        "image/webp",
-    }
-    SUPPORTED_TABLE_TYPES = {"text/csv"}
-    SUPPORTED_MIME_TYPES = SUPPORTED_IMAGE_TYPES | SUPPORTED_TABLE_TYPES
-
-    # Size limits in bytes
-    MAX_IMAGE_SIZE = 50 * 1024 * 1024  # 50MB
-    MAX_TABLE_SIZE = 10 * 1024 * 1024  # 10MB
-
-    # Image dimension limits
-    MAX_IMAGE_WIDTH = 10000  # pixels
-    MAX_IMAGE_HEIGHT = 10000  # pixels
-
-    # Table dimension limits
-    MAX_TABLE_ROWS = 1000000  # 1M rows
-    MAX_TABLE_COLS = 1000  # 1K columns
-
-    def __init__(self, input_dir: Path):
+    def __init__(self, input_dir: str | Path) -> None:
         """Initialize parser.
 
         Args:
-            input_dir: Input directory containing Bear notes
+            input_dir: Input directory path
         """
-        self.input_dir = input_dir
+        self.input_dir = Path(input_dir)
+        self._notes: list[BearNote] = []  # Initialize as empty list
+        self._initialized = False
 
-    def _get_file_metadata(self, file_path: Path) -> dict[str, str]:
-        """Get metadata for a file.
+    def _ensure_initialized(self) -> None:
+        """Ensure notes are parsed if needed."""
+        if not self._initialized:
+            self.parse_directory()
+
+    def _extract_tags(self, content: str) -> list[str]:
+        """Extract tags from content.
 
         Args:
-            file_path: Path to file
+            content: Note content
 
         Returns:
-            Dictionary containing file metadata
+            List of tags
         """
-        stat = file_path.stat()
-        return {
-            "filename": file_path.name,
-            "original_path": str(file_path.absolute()),
-            "relative_path": str(file_path.relative_to(self.input_dir)),
-            "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-            "size": str(stat.st_size),
-        }
+        tags = []
+        words = content.split()
+        for word in words:
+            if word.startswith("#") and len(word) > 1:
+                tags.append(word[1:])  # Remove the # prefix
+        return tags
 
-    def _validate_mime_type(self, file_path: Path) -> str:
-        """Validate and return the MIME type of a file."""
-        mime_type = mimetypes.guess_type(file_path)[0]
-        if not mime_type:
-            raise UnsupportedFormatError(
-                f"Could not determine MIME type for {file_path}"
-            )
-
-        if mime_type.startswith("image/"):
-            if mime_type not in self.SUPPORTED_IMAGE_TYPES:
-                raise UnsupportedFormatError(f"Unsupported image format: {mime_type}")
-        elif mime_type == "text/csv":
-            pass  # CSV is the only supported table format
-        else:
-            raise UnsupportedFormatError(f"Unsupported file format: {mime_type}")
-
-        return mime_type
-
-    def _validate_file_size(self, file_path: Path, mime_type: str) -> None:
-        """Validate size of a file.
+    def _parse_title_and_date(self, filename: str) -> tuple[str, datetime | None]:
+        """Parse title and date from filename.
 
         Args:
-            file_path: Path to file
-            mime_type: MIME type of file
-
-        Raises:
-            AttachmentError: If file size exceeds limit
-        """
-        size = file_path.stat().st_size
-
-        if mime_type in self.SUPPORTED_IMAGE_TYPES:
-            if size > self.MAX_IMAGE_SIZE:
-                raise AttachmentError(
-                    f"Image {file_path} size ({size} bytes) exceeds limit "
-                    f"of {self.MAX_IMAGE_SIZE} bytes"
-                )
-        elif mime_type in self.SUPPORTED_TABLE_TYPES:
-            if size > self.MAX_TABLE_SIZE:
-                raise AttachmentError(
-                    f"Table {file_path} size ({size} bytes) exceeds limit "
-                    f"of {self.MAX_TABLE_SIZE} bytes"
-                )
-
-    def _validate_image(self, file_path: Path) -> Image.Image:
-        """Validate an image file.
-
-        Args:
-            file_path: Path to image file
+            filename: Note filename
 
         Returns:
-            Opened PIL Image
-
-        Raises:
-            AttachmentError: If image is invalid or exceeds limits
+            Tuple of (title, date)
         """
-        try:
-            img = Image.open(file_path)
-            if img.width > self.MAX_IMAGE_WIDTH or img.height > self.MAX_IMAGE_HEIGHT:
-                raise AttachmentError(
-                    f"Image {file_path} dimensions ({img.width}x{img.height}) exceed "
-                    f"limits ({self.MAX_IMAGE_WIDTH}x{self.MAX_IMAGE_HEIGHT})"
-                )
-            return img
-        except UnidentifiedImageError:
-            raise AttachmentError(f"Invalid or corrupted image file: {file_path}")
-        except Exception as e:
-            raise AttachmentError(f"Failed to process image {file_path}: {e}")
+        # Remove extension
+        name = Path(filename).stem
 
-    def _validate_table(self, file_path: Path) -> pd.DataFrame:
-        """Validate a table file.
+        # Check for date prefix (YYYYMMDD - Title)
+        parts = name.split(" - ", 1)
+        if len(parts) == 2 and len(parts[0]) == 8 and parts[0].isdigit():
+            try:
+                date = datetime.strptime(parts[0], "%Y%m%d")
+                return parts[1], date
+            except ValueError:
+                pass
+
+        return name, None
+
+    def parse_directory(self) -> None:
+        """Parse all notes in the input directory."""
+        if self._initialized:
+            return
+
+        logger.info("Parsing directory: %s", self.input_dir)
+
+        if not self.input_dir.exists():
+            logger.warning("Input directory does not exist: %s", self.input_dir)
+            self._initialized = True
+            return
+
+        if not self.input_dir.is_dir():
+            logger.error("Input path is not a directory: %s", self.input_dir)
+            raise BearParserError(f"Input path is not a directory: {self.input_dir}")
+
+        note_files = list(self.input_dir.glob("*.txt"))
+
+        if not note_files:
+            logger.info("No notes found in directory: %s", self.input_dir)
+            self._initialized = True
+            return
+
+        for note_file in note_files:
+            try:
+                logger.debug("Processing note: %s", note_file)
+                content = note_file.read_text()
+                title, date = self._parse_title_and_date(note_file.name)
+                tags = self._extract_tags(content)
+
+                note = BearNote(
+                    title=title,
+                    content=content,
+                    date=date,
+                    tags=tags,
+                    input_format=InputFormat.TEXT,
+                )
+                self._notes.append(note)
+                logger.debug("Successfully processed note: %s", note)
+
+            except Exception as e:
+                logger.error("Failed to process note %s: %s", note_file, e)
+                # Continue processing other notes instead of failing completely
+                continue
+
+        logger.info("Successfully parsed %d notes", len(self._notes))
+        self._initialized = True
+
+    @retry_on_error(max_retries=3, delay=1.0, backoff=2.0)
+    def process_notes(self, output_dir: Path | None = None) -> list[BearDocument]:
+        """Process all notes in the input directory.
 
         Args:
-            file_path: Path to table file
+            output_dir: Optional output directory for processed notes
 
         Returns:
-            Loaded pandas DataFrame
+            List of BearDocument instances
 
         Raises:
-            AttachmentError: If table is invalid or exceeds limits
+            BearParserError: If processing fails
         """
-        try:
-            df = pd.read_csv(file_path)
-            if len(df) > self.MAX_TABLE_ROWS:
-                raise AttachmentError(
-                    f"Table {file_path} has too many rows ({len(df)}). "
-                    f"Maximum allowed: {self.MAX_TABLE_ROWS}"
-                )
-            if len(df.columns) > self.MAX_TABLE_COLS:
-                raise AttachmentError(
-                    f"Table {file_path} has too many columns ({len(df.columns)}). "
-                    f"Maximum allowed: {self.MAX_TABLE_COLS}"
-                )
-            return df
-        except pd.errors.EmptyDataError:
-            raise AttachmentError(f"Empty table file: {file_path}")
-        except pd.errors.ParserError:
-            raise AttachmentError(f"Invalid CSV format in file: {file_path}")
-        except Exception as e:
-            raise AttachmentError(f"Failed to process table {file_path}: {e}")
+        # Parse notes if not already done
+        self._ensure_initialized()
 
-    def _detect_format(self, file_path: Path) -> InputFormat:
-        """Detect format of a file.
+        # Convert notes to BearDocument instances
+        documents = []
+        for note in self._notes:
+            try:
+                logger.debug("Converting note to document: %s", note)
+                # Convert note to docling document
+                doc = note.to_docling()
 
-        Args:
-            file_path: Path to file
+                # Save document if output directory is provided
+                if output_dir:
+                    output_path = output_dir / f"{note.title}.json"
+                    output_path.write_text(doc.model_dump_json())
+                    logger.debug("Saved document to: %s", output_path)
 
-        Returns:
-            Detected format
+                documents.append(doc)
 
-        Raises:
-            UnsupportedFormatError: If format is not supported
-        """
-        ext = file_path.suffix.lower()
-        mime_type = mimetypes.guess_type(str(file_path))[0]
+            except Exception as e:
+                logger.error("Failed to process note %s: %s", note.title, e)
+                # Continue processing other notes instead of failing completely
+                continue
 
-        # Check known extensions
-        for fmt, exts in FormatToExtensions.items():
-            if ext in exts:
-                return fmt
+        logger.info("Successfully processed %d notes", len(documents))
+        return documents
 
-        # Check mime types
-        for fmt, types in FormatToMimeType.items():
-            if mime_type in types:
-                return fmt
 
-        raise UnsupportedFormatError(f"Unsupported file format: {file_path}")
+def get_format_from_extension(extension: str) -> InputFormat:
+    """Get input format from file extension.
 
-    def _make_file_uri(self, path: Path) -> AnyUrl:
-        """Create a file URI from a path."""
-        uri_str = f"file://localhost{quote(str(path.absolute()))}"
-        return parse_obj_as(AnyUrl, uri_str)
+    Args:
+        extension: File extension (e.g. ".txt", ".md")
 
-    def _process_attachment(self, attachment_path: Path) -> FloatingItem | None:
-        """Process an attachment file and return a FloatingItem."""
-        try:
-            # Validate format and size
-            mime_type = self._validate_mime_type(attachment_path)
-            self._validate_file_size(attachment_path, mime_type)
+    Returns:
+        Input format
 
-            # Process based on type
-            if mime_type.startswith("image/"):
-                self._validate_image(attachment_path)
-                with Image.open(attachment_path) as img:
-                    # Create picture item
-                    item = PictureItem(
-                        label=DocItemLabel.PICTURE,
-                        self_ref=f"#/pictures/{attachment_path.name}",
-                        captions=[],  # Bear notes don't support captions yet
-                        references=[],  # No references in Bear notes
-                        footnotes=[],  # No footnotes in Bear notes
-                        prov=[],  # No provenance info in Bear notes
-                        annotations=[],  # No annotations in Bear notes
-                    )
-                    # Create image reference from PIL image
-                    item.image = ImageRef.from_pil(img, dpi=72)
-                    return item
+    Raises:
+        UnsupportedFormatError: If extension not supported
+    """
+    for fmt, exts in FORMAT_TO_EXTENSIONS.items():
+        if extension in exts:
+            return fmt
+    raise UnsupportedFormatError(f"Unsupported file extension: {extension}")
 
-            elif mime_type == "text/csv":
-                self._validate_table(attachment_path)
-                df = pd.read_csv(attachment_path)
-                table_cells = []
-                for i in range(len(df)):
-                    for j in range(len(df.columns)):
-                        cell = TableCell(
-                            text=str(df.iloc[i, j]),
-                            start_row_offset_idx=i,
-                            end_row_offset_idx=i,
-                            start_col_offset_idx=j,
-                            end_col_offset_idx=j,
-                            column_header=(i == 0),  # First row is header
-                            row_header=False,
-                            row_section=False,
-                        )
-                        table_cells.append(cell)
 
-                table_data = TableData(
-                    table_cells=table_cells, num_rows=len(df), num_cols=len(df.columns)
-                )
+def get_format_from_mime_type(mime_type: str) -> InputFormat:
+    """Get input format from MIME type.
 
-                item = TableItem(
-                    label=DocItemLabel.TABLE,
-                    self_ref=f"#/tables/{attachment_path.name}",
-                    captions=[],  # Bear notes don't support captions yet
-                    references=[],  # No references in Bear notes
-                    footnotes=[],  # No footnotes in Bear notes
-                    prov=[],  # No provenance info in Bear notes
-                    data=table_data,
-                )
-                return item
+    Args:
+        mime_type: MIME type (e.g. "text/plain", "text/markdown")
 
-            return None
+    Returns:
+        Input format
 
-        except (UnsupportedFormatError, AttachmentError) as e:
-            logger.warning(f"Failed to process attachment {attachment_path}: {e}")
-            return None
-        except Exception as e:
-            logger.error(
-                f"Unexpected error processing attachment {attachment_path}: {e}"
-            )
-            return None
-
-    def _process_note_attachments(self, note_dir: Path) -> list[FloatingItem]:
-        """Process all attachments in a note directory."""
-        attachments = []
-        for attachment_path in note_dir.glob("*"):
-            if attachment_path.is_file() and attachment_path.name != "text.txt":
-                item = self._process_attachment(attachment_path)
-                if item:
-                    attachments.append(item)
-        return attachments
-
-    def process_notes(self) -> list[DoclingDocument]:
-        """Process all notes in the input directory."""
-        notes = []
-        for note_dir in self.input_dir.glob("*"):
-            if note_dir.is_dir():
-                try:
-                    # Process text content
-                    text_path = note_dir / "text.txt"
-                    if text_path.exists():
-                        with open(text_path) as f:
-                            text = f.read()
-
-                    # Process attachments
-                    attachments = self._process_note_attachments(note_dir)
-
-                    # Create document
-                    doc = DoclingDocument(
-                        name=note_dir.name,
-                        origin=DocumentOrigin(
-                            mimetype="text/markdown",
-                            binary_hash=self._compute_binary_hash(text_path),
-                            filename=text_path.name,
-                            uri=AnyUrl.build(
-                                scheme="file", host="", path=str(text_path.absolute())
-                            ),
-                        ),
-                    )
-
-                    # Add text content
-                    doc.texts.append(
-                        TextItem(
-                            label=DocItemLabel.TEXT,
-                            text=text,
-                            orig=text,
-                            self_ref="#/texts/0",
-                            prov=[],  # No provenance info in Bear notes
-                        )
-                    )
-
-                    # Add attachments
-                    for item in attachments:
-                        if isinstance(item, PictureItem):
-                            doc.pictures.append(item)
-                        elif isinstance(item, TableItem):
-                            doc.tables.append(item)
-
-                    notes.append(doc)
-
-                except Exception as e:
-                    logger.error(f"Failed to process note {note_dir}: {e}")
-                    continue
-
-        return notes
-
-    def _compute_binary_hash(self, file_path: Path) -> int:
-        """Compute a binary hash for a file."""
-        with open(file_path, "rb") as f:
-            content = f.read()
-            file_hash = hashlib.sha256(content).digest()[:8]
-            return int.from_bytes(file_hash, byteorder="big")
+    Raises:
+        UnsupportedFormatError: If MIME type not supported
+    """
+    for fmt, mime in FORMAT_TO_MIME_TYPE.items():
+        if mime_type == mime:
+            return fmt
+    raise UnsupportedFormatError(f"Unsupported MIME type: {mime_type}")

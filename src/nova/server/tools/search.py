@@ -43,34 +43,27 @@ class SearchTool(ToolHandler):
         self._store = vector_store
 
     def get_metadata(self) -> ToolMetadata:
-        """Get tool metadata.
-
-        Returns:
-            Tool metadata dictionary
-        """
+        """Get tool metadata."""
         return {
-            "id": "search-tool",
+            "id": "search",
             "type": ToolType.SEARCH,
             "name": "Search Tool",
             "version": "0.1.0",
             "parameters": {
-                "query": {"type": "string", "description": "Search query text"},
+                "query": {
+                    "type": "string",
+                    "description": "Search query",
+                    "required": True,
+                },
                 "n_results": {
                     "type": "integer",
-                    "description": "Maximum number of results to return",
-                    "minimum": 1,
-                    "default": 10,
+                    "description": "Number of results to return",
+                    "required": False,
                 },
                 "min_score": {
                     "type": "number",
-                    "description": "Minimum similarity score threshold",
-                    "minimum": 0.0,
-                    "maximum": 1.0,
-                    "default": 0.0,
-                },
-                "filters": {
-                    "type": "object",
-                    "description": "Optional filters to apply",
+                    "description": "Minimum similarity score",
+                    "required": False,
                 },
             },
             "capabilities": ["search"],

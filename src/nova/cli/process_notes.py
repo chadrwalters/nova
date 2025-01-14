@@ -6,12 +6,12 @@ from pathlib import Path
 import click
 
 from nova.bear_parser.parser import BearParser
-from nova.cli.base import BaseCommand
+from nova.cli.utils.command import NovaCommand
 
 logger = logging.getLogger(__name__)
 
 
-class ProcessNotesCommand(BaseCommand):
+class ProcessNotesCommand(NovaCommand):
     """Command for processing notes."""
 
     def __init__(self) -> None:

@@ -1,14 +1,8 @@
 """Resource handlers for Nova MCP server."""
 
 from nova.server.types import ResourceHandler
+from nova.server.resources.note import NoteHandler
+from nova.server.resources.attachment import AttachmentHandler
+from nova.server.resources.vector_store import VectorStoreHandler
 
-from .attachment import AttachmentHandler
-from .note import NoteHandler
-from .vector_store import VectorStoreHandler
-
-__all__ = [
-    "AttachmentHandler",
-    "NoteHandler",
-    "ResourceHandler",
-    "VectorStoreHandler",
-]
+__all__ = ["ResourceHandler", "NoteHandler", "AttachmentHandler", "VectorStoreHandler"]

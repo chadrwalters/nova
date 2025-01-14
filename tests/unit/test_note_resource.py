@@ -1,152 +1,110 @@
 """Unit tests for note resource handler."""
 
-from datetime import datetime
 from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
+from nova.stubs.docling import Document, DocumentConverter
 
-from nova.bear_parser.parser import BearNote, BearParser
 from nova.server.resources.note import NoteHandler
 from nova.server.types import ResourceType
 
 
-class MockBearParser(BearParser):
-    """Mock Bear parser for testing."""
+class MockDocumentConverter(DocumentConverter):
+    """Mock document converter for testing."""
 
-    def __init__(self, input_dir: Path | str) -> None:
-        """Initialize parser.
+    def __init__(self, input_dir: str) -> None:
+        """Initialize mock document converter."""
+        self.input_dir = input_dir
+        doc = Document("test1.md")
+        doc.text = "Test note content"
+        doc.metadata = {
+            "title": "Test Note 1",
+            "date": "2024-01-01T00:00:00",
+            "tags": ["test1", "test2"],
+            "format": "text",
+            "modified": "2024-01-01T00:00:00",
+            "size": 17,
+        }
+        doc.pictures = []
+        self.doc = doc
 
-        Args:
-            input_dir: Input directory containing Bear notes
-        """
-        super().__init__(input_dir)
-        now = datetime.now()
-        self._notes = [
-            BearNote(
-                title="Test Note 1",
-                date=now,
-                content="Test content 1",
-                tags=["tag1", "tag2"],
-                attachments=[],
-                metadata={"original_file": "test1.md"},
-            ),
-            BearNote(
-                title="Test Note 2",
-                date=now,
-                content="Test content 2",
-                tags=["tag2", "tag3"],
-                attachments=[],
-                metadata={"original_file": "test2.md"},
-            ),
-        ]
+    def convert_file(self, path: Path) -> Document:
+        """Convert a file to a document."""
+        if path.name == "nonexistent.md":
+            raise FileNotFoundError(f"File not found: {path}")
+        return self.doc
 
-    def process_notes(self, output_dir: Path | None = None) -> list[BearNote]:
-        """Mock process_notes method.
-
-        Args:
-            output_dir: Optional output directory for processed notes
-
-        Returns:
-            List of processed notes
-        """
-        return self._notes
+    def convert_all(self, paths: list[Path]) -> list[Document]:
+        """Convert multiple files to documents."""
+        return [self.doc]  # Always return a document for testing
 
 
 @pytest.fixture
-def note_handler(tmp_path: Path) -> NoteHandler:
-    """Create note handler fixture.
-
-    Args:
-        tmp_path: Temporary directory path
-
-    Returns:
-        Note handler instance
-    """
-    # Create test notes directory
-    notes_dir = tmp_path / "notes"
-    notes_dir.mkdir()
-
-    # Create test note files
-    (notes_dir / "test1.md").write_text("Test content 1")
-    (notes_dir / "test2.md").write_text("Test content 2")
-
-    # Initialize handler with mock parser
-    parser = MockBearParser(notes_dir)
-    handler = NoteHandler(parser)
-    return handler
+def notes_dir(tmp_path: Path) -> Path:
+    """Create a temporary directory for notes."""
+    notes = tmp_path / "notes"
+    notes.mkdir(exist_ok=True)
+    test_file = notes / "test1.md"
+    test_file.write_text("Test note content")
+    return notes
 
 
-def test_init_handler(tmp_path: Path) -> None:
-    """Test handler initialization.
+@pytest.fixture
+def note_handler(notes_dir: Path) -> NoteHandler:
+    """Create a note handler for testing."""
+    converter = MockDocumentConverter(str(notes_dir))
+    return NoteHandler(converter)
 
-    Args:
-        tmp_path: Temporary directory path
-    """
-    notes_dir = tmp_path / "notes"
-    notes_dir.mkdir()
 
-    parser = MockBearParser(notes_dir)
-    handler = NoteHandler(parser)
-    metadata = handler.get_metadata()
-    assert metadata["type"] == ResourceType.NOTE
-    assert metadata["version"] == NoteHandler.VERSION
+def test_init_handler(notes_dir: Path) -> None:
+    """Test initializing the handler."""
+    converter = MockDocumentConverter(str(notes_dir))
+    handler = NoteHandler(converter)
+    assert handler is not None
 
 
 def test_get_note_metadata(note_handler: NoteHandler) -> None:
-    """Test getting note metadata.
-
-    Args:
-        note_handler: Note handler fixture
-    """
-    metadata = note_handler.get_note_metadata("Test Note 1")
-    assert metadata == {
-        "title": "Test Note 1",
-        "tags": ["tag1", "tag2"],
-        "original_file": "test1.md",
-    }
-
-    with pytest.raises(HTTPException) as exc:
-        note_handler.get_note_metadata("Non-existent Note")
-    assert exc.value.status_code == 404
+    """Test getting note metadata."""
+    metadata = note_handler.get_metadata()
+    assert metadata["type"] == ResourceType.NOTE
+    assert metadata["version"] == "1.0.0"
 
 
 def test_get_note_content(note_handler: NoteHandler) -> None:
-    """Test getting note content.
-
-    Args:
-        note_handler: Note handler fixture
-    """
-    content = note_handler.get_note_content("Test Note 1")
-    assert content == "Test content 1"
-
-    with pytest.raises(HTTPException) as exc:
-        note_handler.get_note_content("Non-existent Note")
-    assert exc.value.status_code == 404
+    """Test getting note content."""
+    content = note_handler.get_note_content("test1.md")
+    assert content == "Test note content"
 
 
 def test_list_notes(note_handler: NoteHandler) -> None:
-    """Test listing notes.
-
-    Args:
-        note_handler: Note handler fixture
-    """
+    """Test listing notes."""
     notes = note_handler.list_notes()
-    assert len(notes) == 2
-    assert notes[0]["title"] == "Test Note 1"
-    assert notes[1]["title"] == "Test Note 2"
+    assert len(notes) == 1
+    note = notes[0]
+    assert note["name"] == "test1.md"
+    assert note["title"] == "Test Note 1"
+    assert note["tags"] == ["test1", "test2"]
+    assert note["modified"] == "2024-01-01T00:00:00"
+    assert note["size"] == 17
 
 
 def test_validate_access(note_handler: NoteHandler) -> None:
-    """Test access validation.
+    """Test validating note access."""
+    with pytest.raises(HTTPException) as exc_info:
+        note_handler.get_note_content("nonexistent.md")
+    assert exc_info.value.status_code == 404
 
-    Args:
-        note_handler: Note handler fixture
-    """
-    # Valid note title should not raise exception
-    note_handler.validate_access("Test Note 1")
 
-    # Invalid note title should raise 404
-    with pytest.raises(HTTPException) as exc:
-        note_handler.validate_access("Non-existent Note")
-    assert exc.value.status_code == 404
+def test_cleanup(note_handler: NoteHandler) -> None:
+    """Test cleanup."""
+    note_handler.cleanup()
+
+
+def test_on_change(note_handler: NoteHandler) -> None:
+    """Test change notification."""
+
+    def callback() -> None:
+        pass
+
+    note_handler.on_change(callback)

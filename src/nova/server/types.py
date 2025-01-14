@@ -21,7 +21,6 @@ class ResourceType(Enum):
     VECTOR_STORE = auto()
     NOTE = auto()
     ATTACHMENT = auto()
-    OCR = auto()
 
 
 class ToolType(Enum):
@@ -63,6 +62,8 @@ class ServerConfig:
 
     host: str
     port: int
+    input_dir: str | None = None
+    store_dir: str | None = None
     debug: bool = False
     max_connections: int = 10
 
@@ -98,6 +99,10 @@ class ResourceHandler(Protocol):
         Returns:
             Dictionary containing resource metadata
         """
+        ...
+
+    def cleanup(self) -> None:
+        """Clean up resources."""
         ...
 
     def validate_access(self, operation: str) -> bool:
@@ -203,13 +208,3 @@ class ErrorCode(Enum):
         "Resource access denied",
         "Please check your permissions and try again.",
     )
-
-
-class OCRResult(TypedDict):
-    """OCR result type."""
-
-    text: str
-    confidence: float
-    language: str
-    regions: list[dict[str, Any]]
-    processing_time: float

@@ -222,41 +222,25 @@ class ListTool(ToolHandler):
         pass  # Nothing to clean up
 
     def list(self, request: dict[str, Any]) -> dict[str, Any]:
-        """List directory contents."""
-        # Validate request
-        if "path" not in request:
-            raise ResourceError("Path is required")
+        """List directory contents.
 
-        path = Path(request["path"])
-        if not path.exists():
-            raise ResourceError("Path does not exist")
-        if not path.is_dir():
-            raise ResourceError("Path is not a directory")
+        Args:
+            request: Request dictionary with path, recursive flag, and filters
 
-        recursive = request.get("recursive", False)
-        if not isinstance(recursive, bool):
-            raise ResourceError("Recursive must be a boolean")
+        Returns:
+            Dictionary with path, entries, and metadata
 
-        filters = request.get("filters", {})
-        if not isinstance(filters, dict):
-            raise ResourceError("Filters must be an object")
+        Raises:
+            ResourceError: If request is invalid or operation fails
+        """
+        # Convert legacy request format to new format
+        if "parameters" not in request:
+            request = {"parameters": request}
 
-        try:
-            entries = []
-            if recursive:
-                for entry_path in path.rglob("*"):
-                    if self._should_include(entry_path, filters):
-                        entries.append(self._get_entry_info(entry_path))
-            else:
-                for entry_path in path.iterdir():
-                    if self._should_include(entry_path, filters):
-                        entries.append(self._get_entry_info(entry_path))
-
-            return {
-                "path": str(path),
-                "entries": entries,
-                "metadata": {"total": len(entries), "recursive": recursive},
-            }
-
-        except Exception as e:
-            raise ResourceError(f"Failed to list entries: {str(e)}")
+        # Execute request using standard handler
+        result = self.execute(request)
+        return {
+            "path": result["path"],
+            "entries": result["entries"],
+            "metadata": result["metadata"],
+        }
