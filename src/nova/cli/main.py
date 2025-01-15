@@ -17,6 +17,7 @@ from nova.cli.commands import (
     ProcessNotesCommand,
     ProcessVectorsCommand,
     SearchCommand,
+    StartMCPCommand,
 )
 from nova.cli.utils.command import NovaCommand
 from nova.config import load_config
@@ -55,6 +56,7 @@ class NovaCLI:
             ProcessNotesCommand,
             ProcessVectorsCommand,
             SearchCommand,
+            StartMCPCommand,
         ]
         for cmd_class in command_classes:
             if not isinstance(cmd_class, type) or not issubclass(

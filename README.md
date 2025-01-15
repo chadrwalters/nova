@@ -1,16 +1,36 @@
 # Nova
 
-A RAG-based system for Bear.app notes with MCP integration.
+A vector-based note processing and search system with MCP integration.
 
 ## Requirements
 
-- Python 3.10
-- uv package manager (pip usage is forbidden)
-- EasyOCR (for text extraction)
+- Python 3.11+
+- uv package manager (pip/python usage is FORBIDDEN)
+- python-magic (for format detection)
+- html2text (for HTML conversion)
+- docutils (for RST conversion)
+
+## File System Organization
+
+All system files are stored in the `.nova` directory:
+- `.nova/processing/`: Processed notes
+- `.nova/vectors/`: Vector store database
+- `.nova/logs/`: System logs
+
+Input files location is configurable:
+- Default: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput`
+- Can be overridden via command line arguments
+
+## Testing
+
+- All tests MUST run through uv: `uv run pytest -v`
+- Type checking MUST be run before tests
+- Tests should run without approval
+- Test command: `uv run pytest -v`
 
 ## Installation
 
-1. Create a Python 3.10 virtual environment:
+1. Create a Python virtual environment:
 ```bash
 uv venv .venv
 source .venv/bin/activate
@@ -34,7 +54,7 @@ Nova provides a comprehensive command-line interface for managing your notes and
 ### Core Commands
 
 #### `nova process-notes`
-Process Bear.app note exports into the system.
+Process notes with automatic format detection and conversion.
 
 ```bash
 # Process notes from default input directory
@@ -45,14 +65,25 @@ uv run nova process-notes --input-dir /path/to/notes --output-dir /path/to/outpu
 ```
 
 Options:
-- `--input-dir`: Directory containing Bear.app exports (default: configured input path)
+- `--input-dir`: Directory containing notes (default: configured input path)
 - `--output-dir`: Directory for processed notes (default: .nova/processing)
 
-Error Handling:
-- Validates input directory exists
-- Creates output directory if missing
-- Reports parsing errors with context
-- Maintains partial progress on failure
+Supported Formats:
+- Text Formats:
+  - Markdown (.md) - Native format
+  - Plain text (.txt) - Direct conversion
+  - HTML (.html, .htm) - via html2text
+  - reStructuredText (.rst) - via docutils
+  - AsciiDoc (.adoc, .asciidoc) - via asciidoc
+  - Org Mode (.org) - via pandoc
+  - Wiki (.wiki) - via pandoc
+  - LaTeX (.tex) - via pandoc
+- Office Formats:
+  - Word (.docx) - via pandoc
+  - Excel (.xlsx) - via pandoc
+  - PowerPoint (.pptx) - via pandoc
+- Other Formats:
+  - PDF (.pdf) - via pandoc
 
 #### `nova process-bear-vectors`
 Process Bear notes into vector embeddings.
@@ -78,7 +109,7 @@ Output:
   - Tags
 
 #### `nova search`
-Search through vector embeddings for similar content.
+Search through vector embeddings using sentence-transformers for semantic similarity.
 
 ```bash
 # Search with default settings
@@ -94,7 +125,7 @@ Options:
 
 Output:
 - Ranked list of similar notes with:
-  - Title and similarity score
+  - Title and normalized similarity score (0-100%)
   - Tags and creation date
   - Content preview (first 200 characters)
 
@@ -112,11 +143,6 @@ uv run nova clean-processing --force
 Options:
 - `--force`: Force deletion without confirmation
 
-Warning:
-- This command deletes all processed notes
-- Operation cannot be undone
-- Requires explicit --force flag
-
 #### `nova clean-vectors`
 Clean the vector store.
 
@@ -130,11 +156,6 @@ uv run nova clean-vectors --force
 
 Options:
 - `--force`: Force deletion without confirmation
-
-Warning:
-- This command deletes the entire vector store
-- Operation cannot be undone
-- Requires explicit --force flag
 
 #### `nova monitor`
 Monitor system health and status.
@@ -152,244 +173,23 @@ uv run nova monitor logs
 
 Subcommands:
 - `health`: Check system component status
-  - .nova directory structure
-  - Vector store availability
-  - Log system status
 - `stats`: Display system statistics
-  - Vector embedding count
-  - Processed note count
-  - Log file count
-- `logs`: View recent log entries (last 50 lines)
+- `logs`: View recent log entries
 
-### Common Patterns
+## MCP Integration
 
-1. Initial Setup and Health Check:
-```bash
-# Check system health first
-uv run nova monitor health
+Nova runs an MCP server on port 8765 for Claude Desktop integration. This port was chosen to avoid conflicts with common development services.
 
-# Process existing Bear notes
-uv run nova process-notes
+IMPORTANT: The MCP server is READ-ONLY for the vector store. All write operations (processing notes, creating vectors, cleaning) must be done through the CLI commands. This ensures data integrity and proper processing of notes.
 
-# Create vector embeddings
-uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
+MCP Server Capabilities:
+- Search existing vectors
+- Retrieve note content
+- Monitor system health
+- View statistics
 
-# Verify processing results
-uv run nova monitor stats
-```
-
-2. Processing New Content:
-```bash
-# Clean existing vectors if needed
-uv run nova clean-vectors --force
-
-# Process new notes
-uv run nova process-notes --input-dir new_notes/
-
-# Create new vector embeddings
-uv run nova process-bear-vectors --input-dir new_notes/ --output-dir .nova/vectors
-
-# Check processing status
-uv run nova monitor logs
-uv run nova monitor stats
-```
-
-3. Error Recovery:
-```bash
-# Check system health
-uv run nova monitor health
-
-# View recent errors
-uv run nova monitor logs
-
-# Clean vectors if corrupted
-uv run nova clean-vectors --force
-
-# Clean processing if needed
-uv run nova clean-processing --force
-
-# Retry processing
-uv run nova process-notes
-uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
-```
-
-### Error Handling
-
-The CLI provides consistent error handling across all commands:
-
-1. Input Validation:
-   - Checks for required arguments
-   - Validates file/directory paths
-   - Verifies input formats
-
-2. Progress Tracking:
-   - Real-time progress indicators
-   - Operation status updates
-   - Completion confirmation
-
-3. Error Reporting:
-   - Descriptive error messages
-   - Context for failures
-   - Recovery suggestions
-
-4. System Status:
-   - Health check capabilities
-   - Component status verification
-   - Resource availability monitoring
-
-## Project Structure
-
-- `src/nova/` - Main package directory
-  - `ingestion/` - Note ingestion functionality
-    - `bear/` - Bear note parsing
-      - `__init__.py` - Contains BearParser and BearNote classes
-  - `vector_store/` - Vector store functionality
-    - `chunking.py` - Heading-aware document chunking
-    - `embedding.py` - Text embedding with caching
-    - `store.py` - Chroma-based vector store
-  - `cli/` - Command-line interface modules
-    - `commands/` - Individual command implementations
-      - `process_notes.py` - Bear note processing
-      - `process_bear_vectors.py` - Vector store operations
-      - `clean_vectors.py` - Vector store cleanup
-      - `monitor.py` - System monitoring
-      - `search.py` - Vector search functionality
-    - `utils/` - Shared CLI utilities
-- `.nova/` - System directory
-  - `processing/` - Processed notes with metadata
-  - `vectors/` - Vector embeddings (Chroma DB)
-  - `logs/` - System logs
-
-## Usage
-
-### Processing Bear Notes
-
-1. Configure input directory:
-Default: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput`
-
-2. Process the notes:
-```bash
-nova process-notes
-```
-This will:
-- Parse all notes in the configured input directory
-- Extract metadata (title, date, tags)
-- Create a structured output in .nova/processing
-
-### Vector Store Processing
-
-1. Process Bear notes with vector store:
-```bash
-nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
-```
-This creates:
-- Vector embeddings for each note
-- Metadata including:
-  - Note title and date
-  - Tags
-  - Source file path
-
-2. Clean vector store if needed:
-```bash
-nova clean-vectors --force
-```
-Use this when:
-- Starting fresh
-- Fixing corrupted vectors
-- Changing embedding models
-
-### Searching Notes
-
-1. Search through processed notes:
-```bash
-# Basic search
-nova search "your query"
-
-# Advanced search with more results
-nova search "your query" --limit 10
-```
-
-This will:
-- Convert your query to a vector embedding
-- Find similar notes in the vector store
-- Display ranked results with metadata
-
-### Configuration
-
-Default paths:
-- Input directory: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput`
-- System directory: `.nova/`
-  - Processing: `.nova/processing/`
-  - Vectors: `.nova/vectors/`
-  - Logs: `.nova/logs/`
-
-### OCR Processing
-
-The system uses EasyOCR for processing images with the following features:
-- Multiple OCR configurations for quality/speed tradeoff
-- Confidence threshold validation (50%)
-- Automatic fallback for low confidence results
-- JSON-based placeholder format for failed OCR
-- 30-day retention policy with automatic cleanup
-
-## Development
-
-Run tests:
-```bash
-uv run pytest -v
-```
-
-Run pre-commit checks:
-```bash
-uv run pre-commit run --all-files
-```
-
-Pre-commit configuration:
-- Type checking with mypy
-- Code formatting with ruff
-- Security checks with bandit
-- Docstring formatting
-- Python 3.10+ compatibility
-
-## Implementation Status
-
-### Completed
-- [x] Bear note parsing
-- [x] Metadata generation
-- [x] Tag extraction (with code block awareness)
-- [x] OCR infrastructure
-- [x] Error handling system
-- [x] Placeholder management
-- [x] Vector store implementation
-  - [x] Chunking engine with heading awareness
-  - [x] Embedding pipeline with caching
-  - [x] Bear note integration
-  - [x] CLI modules for processing
-- [x] Command Line Interface
-  - [x] Core commands (process-notes, process-bear-vectors, monitor)
-  - [x] Rich terminal output with progress tracking
-  - [x] Comprehensive error handling
-  - [x] System health monitoring
-  - [x] Plugin-based architecture
-  - [x] Type-safe implementations
-  - [x] Test coverage
-
-### In Progress
-- [ ] MCP integration
-  - [ ] Tool definitions
-  - [ ] Context block handling
-  - [ ] Transport layer
-- [ ] RAG implementation
-  - [ ] Query processor
-  - [ ] Retrieval system
-  - [ ] Result processor
-
-### Planned
-- [ ] Monitoring system
-  - [ ] FastAPI web app
-  - [ ] Metrics collection
-  - [ ] Performance tracking
-- [ ] Desktop integration
-  - [ ] IPC mechanisms
-  - [ ] Claude integration
-  - [ ] Query interface
+Write Operations (CLI Only):
+- Processing notes
+- Creating vectors
+- Cleaning vectors/processing
+- System maintenance

@@ -1,23 +1,121 @@
-"""Process notes command."""
-
-import logging
-from pathlib import Path
-from typing import Any
-import shutil
+"""Process notes command implementation."""
 
 import click
+from pathlib import Path
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.console import Console
+import logging
+from typing import Any, Optional, Dict, cast, List
+import asyncio
+import aiofiles
+import aiofiles.os
+import os
 
-from nova.stubs.docling import Document, DocumentConverter, InputFormat
 from nova.cli.utils.command import NovaCommand
+from nova.docling import Document, DocumentConverter, FormatDetector, InputFormat
+from nova.config import load_config
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 
 class ProcessNotesCommand(NovaCommand):
-    """Process notes command."""
+    """Command for processing notes with format detection."""
 
     name = "process-notes"
-    help = "Process notes from input directory"
+
+    async def run_async(self, **kwargs: Any) -> None:
+        """Run the command asynchronously.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        input_dir = kwargs.get("input_dir")
+        output_dir = kwargs.get("output_dir")
+
+        config = load_config()
+
+        # Use default paths if not specified
+        input_dir = input_dir or config.paths.input_dir
+        output_dir = output_dir or config.paths.processing_dir
+
+        # Create output directory
+        await aiofiles.os.makedirs(str(output_dir), exist_ok=True)
+
+        # Initialize format detector and converter
+        detector = FormatDetector()
+        converter = DocumentConverter()
+
+        # Get all files in input directory
+        files: List[Path] = []
+        for root, _, filenames in os.walk(str(input_dir)):
+            for filename in filenames:
+                files.append(Path(root) / filename)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            # Detect formats
+            progress.add_task("Detecting file formats...", total=None)
+            formats: Dict[Path, InputFormat] = {}
+
+            async def detect_format(file: Path) -> None:
+                try:
+                    detected_format = detector.detect_format(file)
+                    if detected_format is not None:
+                        formats[file] = detected_format
+                except Exception as e:
+                    logger.error(f"Failed to detect format for {file}: {e}")
+
+            # Run format detection concurrently
+            await asyncio.gather(*[detect_format(file) for file in files])
+
+            # Report detected formats
+            format_counts: Dict[str, int] = {}
+            for fmt in formats.values():
+                format_counts[fmt.name] = format_counts.get(fmt.name, 0) + 1
+
+            console.print("\nDetected formats:")
+            for format_name, count in format_counts.items():
+                console.print(f"  {format_name}: {count} files")
+
+            # Process files
+            task = progress.add_task(
+                "Processing files...",
+                total=len(files)
+            )
+
+            async def process_file(file: Path) -> None:
+                try:
+                    format_name = formats.get(file)
+                    if not format_name:
+                        return
+
+                    # Convert file
+                    console.print(f"\nConverting {format_name} -> markdown: {file}")
+                    doc = converter.convert_file(file, format_name)
+
+                    # Save processed document
+                    output_file = output_dir / file.relative_to(input_dir)
+                    output_file = output_file.with_suffix(".md")
+                    await aiofiles.os.makedirs(str(output_file.parent), exist_ok=True)
+
+                    # Save document asynchronously
+                    async with aiofiles.open(str(output_file), 'w') as f:
+                        await f.write(doc.content)
+
+                except Exception as e:
+                    logger.error(f"Failed to process {file}: {e}")
+                    raise click.ClickException(f"Failed to process {file}: {e}")
+
+                progress.advance(task)
+
+            # Process files concurrently
+            await asyncio.gather(*[process_file(file) for file in files])
+
+            console.print("\nProcessing complete!")
 
     def run(self, **kwargs: Any) -> None:
         """Run the command.
@@ -25,143 +123,24 @@ class ProcessNotesCommand(NovaCommand):
         Args:
             **kwargs: Command arguments
         """
-        input_dir = kwargs["input_dir"]
-        output_dir = kwargs["output_dir"]
-
-        try:
-            # Create output directory
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Process notes
-            logger.info("Processing notes from %s", input_dir)
-
-            # Check for error directory first
-            if input_dir.name == "error":
-                raise ValueError("Parser error")
-
-            # Find all text and markdown files
-            text_files = list(input_dir.glob("*.txt"))
-            md_files = list(input_dir.glob("*.md"))
-            note_files = []  # Start with empty list
-            logger.debug(
-                "Found %d text files and %d markdown files",
-                len(text_files),
-                len(md_files),
-            )
-            if not text_files and not md_files:
-                raise ValueError("No notes found in directory")
-
-            # Add markdown files first
-            note_files.extend(md_files)
-
-            # Convert text files to markdown and add them
-            for txt_file in text_files:
-                md_file = txt_file.with_suffix(".md")
-                shutil.copy2(txt_file, md_file)
-                logger.debug("Converted %s to %s", txt_file, md_file)
-
-            # Deduplicate paths and ensure they exist
-            note_files = [f for f in set(note_files) if f.exists()]
-            logger.debug("Processing %d note files: %s", len(note_files), note_files)
-
-            # Convert notes using docling
-            converter = DocumentConverter(allowed_formats=[InputFormat.MD])
-            converter.input_dir = str(input_dir)
-            try:
-                # Process each file individually to ensure all are handled
-                converted_notes = []
-                # Process original markdown files
-                for note_file in md_files:
-                    try:
-                        # Create a new document for each file
-                        doc = Document(note_file.stem)
-                        doc.text = note_file.read_text()
-                        doc.metadata = {
-                            "title": note_file.stem,
-                            "date": "",  # Will be set by converter
-                            "tags": [],
-                            "format": "md",
-                            "source": "md",  # Mark source for output naming
-                        }
-                        # Add the document to converted notes
-                        converted_notes.append(doc)
-                        logger.debug("Successfully converted %s", note_file)
-                    except Exception as e:
-                        logger.error("Failed to convert %s: %s", note_file, e)
-                        continue
-
-                # Process converted text files
-                for txt_file in text_files:
-                    try:
-                        # Create a new document for each file
-                        doc = Document(txt_file.stem)
-                        doc.text = txt_file.read_text()
-                        doc.metadata = {
-                            "title": txt_file.stem,
-                            "date": "",  # Will be set by converter
-                            "tags": [],
-                            "format": "md",
-                            "source": "txt",  # Mark source for output naming
-                        }
-                        # Add the document to converted notes
-                        converted_notes.append(doc)
-                        logger.debug("Successfully converted %s", txt_file)
-                    except Exception as e:
-                        logger.error("Failed to convert %s: %s", txt_file, e)
-                        continue
-
-                # Check if any notes were converted
-                if not converted_notes:
-                    logger.error("No notes were converted")
-                    raise ValueError("No notes were converted")
-
-                # Save converted notes
-                for note in converted_notes:
-                    if note.metadata is None:
-                        logger.error("Note metadata is None for %s", note.name)  # type: ignore[unreachable]
-                        continue
-                    # Use source in output filename to ensure uniqueness
-                    source = note.metadata.get("source", "unknown")
-                    title = note.metadata.get(
-                        "title", note.name
-                    )  # Get title with fallback
-                    output_file = output_dir / f"{title}_{source}.md"
-                    output_file.write_text(note.text)
-                    logger.debug("Saved note to %s", output_file)
-
-                logger.info("Processed %d notes", len(converted_notes))
-
-                # Clean up temporary .md files
-                for txt_file in text_files:
-                    md_file = txt_file.with_suffix(".md")
-                    if (
-                        md_file.exists() and md_file not in md_files
-                    ):  # Only clean up converted files
-                        md_file.unlink()
-                        logger.debug("Cleaned up temporary file %s", md_file)
-
-            except Exception as e:
-                logger.error("Failed to convert notes: %s", e)
-                raise ValueError(f"Failed to convert notes: {e}")
-
-        except ValueError as e:
-            logger.error("Failed to process notes: %s", e)
-            raise click.ClickException(str(e)) from e
-        except Exception as e:
-            logger.error("Failed to process notes: %s", e)
-            raise click.ClickException(str(e)) from e
+        asyncio.run(self.run_async(**kwargs))
 
     def create_command(self) -> click.Command:
-        """Create the click command.
+        """Create the process-notes command."""
 
-        Returns:
-            The click command instance
-        """
-
-        @click.command(name=self.name, help=self.help)
-        @click.argument("input_dir", type=click.Path(exists=True, path_type=Path))
-        @click.argument("output_dir", type=click.Path(path_type=Path))
-        def command(input_dir: Path, output_dir: Path) -> None:
+        @click.command(name=self.name)
+        @click.option(
+            "--input-dir",
+            type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+            help="Directory containing notes to process",
+        )
+        @click.option(
+            "--output-dir",
+            type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+            help="Directory to store processed notes",
+        )
+        def process_notes(input_dir: Optional[Path], output_dir: Optional[Path]) -> None:
+            """Process notes with format detection and conversion."""
             self.run(input_dir=input_dir, output_dir=output_dir)
 
-        return command
+        return process_notes

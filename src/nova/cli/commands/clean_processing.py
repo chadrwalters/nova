@@ -4,6 +4,9 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Any
+import asyncio
+import aiofiles  # type: ignore
+import aiofiles.os  # type: ignore
 
 import click
 
@@ -17,8 +20,8 @@ class CleanProcessingCommand(NovaCommand):
 
     name = "clean-processing"
 
-    def run(self, **kwargs: Any) -> None:
-        """Run the clean-processing command.
+    async def run_async(self, **kwargs: Any) -> None:
+        """Run the clean-processing command asynchronously.
 
         Args:
             **kwargs: Command arguments
@@ -26,7 +29,7 @@ class CleanProcessingCommand(NovaCommand):
         force = kwargs.get("force", False)
         processing_dir = Path(".nova/processing")
 
-        if not processing_dir.exists():
+        if not await aiofiles.os.path.exists(str(processing_dir)):
             logger.info("Processing directory does not exist")
             return
 
@@ -35,12 +38,21 @@ class CleanProcessingCommand(NovaCommand):
             return
 
         try:
-            shutil.rmtree(processing_dir)
+            # Run rmtree in a thread to avoid blocking
+            await asyncio.to_thread(shutil.rmtree, processing_dir)
             logger.info("Processing directory deleted successfully")
         except Exception as e:
             msg = f"Failed to delete processing directory: {str(e)}"
             logger.error(msg)
             raise click.Abort(msg) from e
+
+    def run(self, **kwargs: Any) -> None:
+        """Run the command.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        asyncio.run(self.run_async(**kwargs))
 
     def create_command(self) -> click.Command:
         """Create the clean-processing command.

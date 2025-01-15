@@ -1,154 +1,153 @@
-"""Monitor command for nova CLI."""
-
-import logging
+"""Monitor command for checking system health and stats."""
+import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, cast
 
+import aiofiles
+import aiofiles.os
 import click
-import chromadb
 from rich.console import Console
 from rich.table import Table
 
-from nova.cli.utils.command import NovaCommand
-
-logger = logging.getLogger(__name__)
-
+from ...vector_store.store import VectorStore
+from ...vector_store.types import VectorStoreStats
+from ..utils.command import NovaCommand
+import os
 
 class MonitorCommand(NovaCommand):
-    """Monitor command for system health, stats, and logs."""
+    """Monitor command for checking system health and stats."""
 
     name = "monitor"
 
-    def run(self, **kwargs: Any) -> None:
-        """Run the command.
-
-        Args:
-            **kwargs: Command arguments
-
-        Raises:
-            KeyError: If required arguments are missing
-        """
-        if not kwargs:
-            raise KeyError("No subcommand provided")
-
-        subcommand = kwargs.get("subcommand")
-        if subcommand == "health":
-            self.run_health()
-        elif subcommand == "stats":
-            self.run_stats()
-        elif subcommand == "logs":
-            self.run_logs()
-        else:
-            raise KeyError(f"Unknown subcommand: {subcommand}")
-
-    def run_health(self) -> None:
-        """Run health check."""
-        console = Console()
-        table = Table(title="System Health")
-        table.add_column("Component", style="cyan")
-        table.add_column("Status", style="green")
-        table.add_column("Path", style="blue")
-
-        # Check .nova directory
-        nova_dir = Path(".nova")
-        nova_status = "✓ OK" if nova_dir.exists() else "✗ Missing"
-        table.add_row(".nova Directory", nova_status, str(nova_dir.absolute()))
-
-        # Check vector store
-        vector_store = nova_dir / "vectors"
-        vector_status = "✓ OK" if vector_store.exists() else "✗ Missing"
-        table.add_row("Vector Store", vector_status, str(vector_store.absolute()))
-
-        # Check logs directory
-        logs_dir = nova_dir / "logs"
-        logs_status = "✓ OK" if logs_dir.exists() else "✗ Missing"
-        table.add_row("Logs Directory", logs_status, str(logs_dir.absolute()))
-
-        console.print(table)
-
-    def run_stats(self) -> None:
-        """Run stats command."""
-        console = Console()
-        table = Table(title="System Statistics")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="green")
-
-        # Count vector embeddings
-        vector_store = Path(".nova/vectors")
-        if vector_store.exists():
-            try:
-                client = chromadb.PersistentClient(path=str(vector_store))
-                collection = client.get_collection("nova")
-                embedding_count = collection.count()
-            except Exception:
-                embedding_count = 0
-        else:
-            embedding_count = 0
-        table.add_row("Vector Embeddings", str(embedding_count))
-
-        # Count processed notes
-        processing_dir = Path(".nova/processing")
-        if processing_dir.exists():
-            note_count = len(list(processing_dir.glob("*/*.md")))
-        else:
-            note_count = 0
-        table.add_row("Processed Notes", str(note_count))
-
-        # Count log files
-        logs_dir = Path(".nova/logs")
-        if logs_dir.exists():
-            log_count = len(list(logs_dir.glob("*.log")))
-        else:
-            log_count = 0
-        table.add_row("Log Files", str(log_count))
-
-        console.print(table)
-
-    def run_logs(self) -> None:
-        """Run logs command."""
-        console = Console()
-        logs_dir = Path(".nova/logs")
-        if not logs_dir.exists():
-            console.print("[red]No logs directory found[/red]")
-            return
-
-        log_files = list(logs_dir.glob("*.log"))
-        if not log_files:
-            console.print("[yellow]No log files found[/yellow]")
-            return
-
-        # Get most recent log file
-        latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
-        with latest_log.open() as f:
-            # Get last 50 lines
-            lines = f.readlines()[-50:]
-            for line in lines:
-                console.print(line.strip())
-
     def create_command(self) -> click.Command:
-        """Create the Click command.
+        """Create the monitor command.
 
         Returns:
-            click.Command: The Click command
+            click.Command: The monitor command
         """
+        @click.command(name=self.name)
+        @click.argument("subcommand", type=click.Choice(["health", "stats", "logs"]), default="health")
+        def monitor(subcommand: str) -> None:
+            """Monitor system health and stats.
 
-        @click.group(name="monitor")
-        def monitor() -> None:
-            """Monitor system health, stats, and logs."""
-
-        @monitor.command()
-        def health() -> None:
-            """Check system health."""
-            self.run(subcommand="health")
-
-        @monitor.command()
-        def stats() -> None:
-            """Show system statistics."""
-            self.run(subcommand="stats")
-
-        @monitor.command()
-        def logs() -> None:
-            """Show recent log entries."""
-            self.run(subcommand="logs")
+            Args:
+                subcommand: The subcommand to run (health, stats, logs)
+            """
+            asyncio.run(self.run_async(subcommand=subcommand))
 
         return monitor
+
+    async def run_async(self, subcommand: str) -> None:
+        """Run the command asynchronously.
+
+        Args:
+            subcommand: The subcommand to run (health, stats, logs)
+        """
+        if subcommand == "health":
+            await self.run_health()
+        elif subcommand == "stats":
+            await self.run_stats()
+        elif subcommand == "logs":
+            await self.run_logs()
+        else:
+            raise ValueError(f"Unknown subcommand: {subcommand}")
+
+    async def run_health(self) -> None:
+        """Run health check."""
+        console = Console()
+
+        # Check vector store
+        store = VectorStore(Path(".nova/vectors"))
+        if store._store_dir.exists():
+            console.print("[green]Vector store exists[/green]")
+        else:
+            console.print("[red]Vector store does not exist[/red]")
+
+        # Check processing directory
+        if Path(".nova/processing").exists():
+            console.print("[green]Processing directory exists[/green]")
+        else:
+            console.print("[red]Processing directory does not exist[/red]")
+
+        # Check logs directory
+        if Path(".nova/logs").exists():
+            console.print("[green]Logs directory exists[/green]")
+        else:
+            console.print("[red]Logs directory does not exist[/red]")
+
+    async def run_stats(self) -> None:
+        """Run stats command."""
+        store = VectorStore(Path(".nova/vectors"))
+        stats = await store.get_stats()
+
+        console = Console()
+
+        table = Table(title="Vector Store Stats")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="magenta")
+
+        table.add_row("Collection", stats.collection_name)
+        table.add_row("Embeddings", str(stats.num_embeddings))
+
+        console.print(table)
+
+        # Check processing directory
+        processing_dir = Path(".nova/processing")
+        if processing_dir.exists():
+            files = [f for f in os.scandir(processing_dir) if f.is_file()]
+            total_size = sum(f.stat().st_size for f in files)
+
+            table = Table(title="Processing Directory Stats")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value", style="magenta")
+
+            table.add_row("Files", str(len(files)))
+            table.add_row("Total Size", f"{total_size / 1024:.2f} KB")
+            console.print(table)
+        else:
+            console.print("[yellow]Processing directory does not exist[/yellow]")
+
+        # Check logs directory
+        logs_dir = Path(".nova/logs")
+        if logs_dir.exists():
+            files = [f for f in os.scandir(logs_dir) if f.is_file()]
+            total_size = sum(f.stat().st_size for f in files)
+
+            table = Table(title="Logs Directory Stats")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value", style="magenta")
+
+            table.add_row("Files", str(len(files)))
+            table.add_row("Total Size", f"{total_size / 1024:.2f} KB")
+            console.print(table)
+        else:
+            console.print("[yellow]Logs directory does not exist[/yellow]")
+
+    async def run_logs(self) -> None:
+        """Run logs command."""
+        log_dir = Path(".nova/logs")
+        if not log_dir.exists():
+            print("No log directory found.")
+            return
+
+        console = Console()
+        table = Table(title="Recent Logs")
+        table.add_column("File", style="cyan")
+        table.add_column("Size", style="magenta")
+        table.add_column("Modified", style="green")
+
+        files = sorted(
+            [f for f in os.scandir(log_dir) if f.is_file()],
+            key=lambda x: x.stat().st_mtime,
+            reverse=True
+        )[:5]  # Show 5 most recent logs
+
+        for f in files:
+            stat = f.stat()
+            table.add_row(
+                f.name,
+                f"{stat.st_size / 1024:.2f} KB",
+                f"{stat.st_mtime}"
+            )
+
+        console.print(table)

@@ -23,6 +23,7 @@ wheels/
 # Virtual environments
 .env
 .venv
+.venv-mcp
 env/
 venv/
 ENV/
@@ -41,6 +42,8 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pdm-build/
+.benchmarks/
 
 # Nova specific
 logs/

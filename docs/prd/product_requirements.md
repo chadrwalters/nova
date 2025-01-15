@@ -7,8 +7,7 @@ Nova
 
 ### Purpose
 - Ingest and unify Bear.app notes with rich metadata extraction
-- Provide a semantic chunking and embedding layer for retrieving relevant data
-- Use Anthropic's Claude with the official Model-Context Protocol (MCP) SDK for structured RAG queries
+- Provide semantic chunking and embedding layer for retrieving relevant data
 - Offer a minimal web interface to monitor or inspect system status (performance, logs, chunk stats)
 
 ### Scope
@@ -22,9 +21,10 @@ Nova
    - Pull all Bear.app notes + attachments into a single repository
    - Reference attachments inline or place them near parent notes
 
-2. **MCP-Driven Claude Queries**
-   - Leverage official MCP SDK for structured data handling
-   - Manage ephemeral data, system instructions, and user content
+2. **Vector-Based Search**
+   - Use sentence-transformers for semantic embeddings
+   - Efficient vector storage and retrieval with Chroma
+   - Semantic similarity search capabilities
 
 3. **Simple Monitoring Web App**
    - Show system metrics (chunk counts, conversion logs, recent requests)
@@ -36,7 +36,7 @@ Nova
 
 ## 3. User Stories
 
-1. As a user, I export my Bear.app notes, run Nova's ingestion pipeline, and query my notes via Claude while Nova retrieves relevant information through an MCP-compliant RAG pipeline.
+1. As a user, I export my Bear.app notes, run Nova's ingestion pipeline, and search my notes using semantic similarity.
 
 2. As a user, I open a local web dashboard to check processed attachments, OCR errors, and vector store chunk counts.
 
@@ -44,13 +44,62 @@ Nova
 
 ## 4. Functional Requirements
 
-### 4.1 Bear Export & File Conversion [IMPLEMENTED]
+### 4.1 Document Processing [IMPLEMENTED]
 - Rich document processing:
   + Native format detection and conversion
-  + Built-in text extraction and OCR
+  + Built-in format validation
   + Rich metadata preservation
   + Attachment handling with versioning
   + Integrated error handling and logging
+
+- Format Support:
+  + Text Formats:
+    + Markdown (.md) - Native format
+    + Plain text (.txt) - Direct conversion
+    + HTML (.html, .htm) - via html2text
+    + reStructuredText (.rst) - via docutils
+    + AsciiDoc (.adoc, .asciidoc) - via asciidoc
+    + Org Mode (.org) - via pandoc
+    + Wiki (.wiki) - via pandoc
+    + LaTeX (.tex) - via pandoc
+  + Office Formats:
+    + Word (.docx) - via pandoc
+    + Excel (.xlsx) - via pandoc
+    + PowerPoint (.pptx) - via pandoc
+  + Other Formats:
+    + PDF (.pdf) - via pandoc
+  + Format Detection:
+    + MIME type detection
+    + File extension fallback
+    + Validation rules
+    + Error handling
+  + Conversion Features:
+    + Automatic format detection
+    + Lossless when possible
+    + Fallback strategies
+    + Error recovery
+    + Progress tracking
+
+- Metadata Model:
+  + Document title and date
+  + Source format tracking
+  + Tag preservation
+  + Custom metadata fields
+  + Attachment references
+
+- Error Management:
+  + Format validation errors
+  + Conversion failures
+  + MIME type validation
+  + Structured error reporting
+  + Recovery strategies
+
+- Progress Tracking:
+  + Format detection progress
+  + Conversion status updates
+  + Rich terminal output
+  + Error summaries
+  + Completion reporting
 
 ### 4.2 Vector Store Layer [IMPLEMENTED]
 - Hybrid chunking combining:
@@ -79,10 +128,24 @@ Nova
   - Standardized logging and progress tracking
 - Core commands:
   - nova process-notes:
-    - Process Bear exports with configurable paths
-    - Handle OCR conversion and metadata
-    - Track progress with rich output
-    - Validate input and output directories
+    - Format detection and validation
+    - Automatic format conversion
+    - Rich progress tracking
+    - Error handling and recovery
+    - Configurable paths:
+      - Input directory
+      - Output directory
+      - Default paths from config
+    - Format support:
+      - Markdown (native)
+      - Plain text (direct)
+      - HTML (conversion)
+      - RST (conversion)
+    - Progress reporting:
+      - Format detection status
+      - Conversion progress
+      - File processing status
+      - Error summaries
   - nova process-vectors:
     - Vector store operations with batch support
     - Cache management and persistence
@@ -93,6 +156,11 @@ Nova
     - Configurable result limits
     - Rich result formatting with metadata
     - Content preview generation
+    - Normalized similarity scoring:
+      - Cosine distance-based calculation
+      - 0-100% score normalization
+      - Semantic similarity ranking
+      - Consistent score distribution
   - nova clean-processing:
     - Safe cleanup of processed notes
     - Force flag for deletion
@@ -119,86 +187,121 @@ Nova
   - Error handling guidelines
   - Configuration and setup guide
 
-### 4.4 MCP Integration with Claude [PLANNED]
-- Official MCP SDK integration:
-  - Dedicated mcp module
-  - Data retrieval interface
-  - MCP adapter implementation
-- Tool definitions:
-  - search_documentation
-  - list_sources
-  - extract_content
-  - remove_documentation
-- Context block handling:
-  - Ephemeral data in memory
-  - Resource block persistence
-  - System instruction management
+### 4.4 MCP Integration [IMPLEMENTED]
+- FastMCP Integration:
+  - Asynchronous FastAPI-based server
+  - Tool-based architecture for extensibility
+  - Standardized error handling and response formats
+  - Health monitoring and diagnostics
+  - Port 8765 (chosen to avoid common service conflicts)
+- Core Tools:
+  - process_notes_tool: Document processing and ingestion
+    - Multi-format support
+    - Automatic format detection
+    - Rich metadata extraction
+    - Progress tracking
+  - search_tool: Semantic search through vector embeddings
+    - Configurable result limits
+    - Rich result formatting
+    - Metadata inclusion
+    - Similarity scoring
+  - monitor_tool: System health and statistics
+    - Component health checks
+    - Vector store statistics
+    - Processing metrics
+    - Log analysis
+  - clean_processing_tool: Safe cleanup of processed files
+    - Selective cleanup
+    - Directory validation
+    - Progress tracking
+  - clean_vectors_tool: Vector store maintenance
+    - Safe deletion operations
+    - Collection management
+    - Progress tracking
+- Error Handling:
+  - Standardized error responses
+  - Validation middleware
+  - Detailed error messages
+  - Recovery strategies
+- Testing & Validation:
+  - Comprehensive test suite
+  - Integration tests
+  - Tool functionality testing
+  - Error handling verification
+- Access Control:
+  - READ-ONLY access to vector store
+  - No direct write operations
+  - All modifications through CLI only
+  - Data integrity preservation
 
-### 4.5 Monitoring System [PLANNED]
-- FastAPI-based web server:
-  - Health check endpoint
-  - Basic metrics display
-  - Recent ingestion stats
+### 4.5 Monitoring System [IMPLEMENTED]
+- FastMCP-based monitoring:
+  - Health check endpoints
+  - Tool-based metrics collection
+  - System status monitoring
+  - Log management
 - Structured logging:
   - structlog integration
   - Consistent log format
-  - Log rotation
+  - Log rotation and cleanup
+  - Error tracking
 - Performance metrics:
   - Vector store statistics
-  - Query performance
-  - System health
+  - Query performance tracking
+  - System health monitoring
+  - Resource utilization
 - API endpoints:
-  - /health for system status
-  - /metrics for performance data
-  - /stats for processing statistics
+  - /tools/process_notes: Document processing
+  - /tools/search: Semantic search
+  - /tools/monitor: Health monitoring
+  - /tools/clean_processing: Processing cleanup
+  - /tools/clean_vectors: Vector store cleanup
+- Testing Infrastructure:
+  - Pytest-based test suite
+  - Async test support
+  - FastAPI TestClient integration
+  - Temporary test fixtures
 
 ## 5. Non-Functional Requirements
 
-1. **Performance**
-   - Few seconds response time for typical queries
-   - Stable performance with thousands of notes
-   - Efficient resource utilization:
-     - Memory management
-     - CPU optimization
-     - Disk space monitoring
+### 5.1 Performance
+- Few seconds response time for typical queries
+- Stable performance with thousands of notes
+- Efficient resource utilization:
+  - Memory management
+  - CPU optimization
+  - Disk space monitoring
 
-2. **Scalability**
-   - Handle large note collections efficiently
-   - Maintain performance with growing data
-   - Resource-aware processing:
-     - Batch operations
-     - Caching strategies
-     - Async processing
+### 5.2 Scalability
+- Handle large note collections efficiently
+- Maintain performance with growing data
+- Resource-aware processing:
+  - Batch operations
+  - Caching strategies
+  - Async processing
 
-3. **Reliability**
-   - Graceful handling of conversion failures
-   - Robust ephemeral data management
-   - Error recovery:
-     - Automatic retries
-     - Failure logging
-     - Status tracking
+### 5.3 Reliability
+- Graceful handling of conversion failures
+- Robust error recovery
+- Data integrity preservation
 
-4. **Security**
-   - No sensitive data exposure
-   - Proper ephemeral data handling
-   - API key management:
-     - Secure storage
-     - Access control
-     - Key rotation
+### 5.4 Package Management
+- Use uv ONLY for all Python operations
+- Direct pip usage is FORBIDDEN
+- Direct python/python3 usage is FORBIDDEN
+- All Python commands must go through uv
 
-5. **Development**
-   - uv-based environment management:
-     - Dependency locking
-     - Virtual environment isolation
-     - Package versioning
-   - Testing infrastructure:
-     - Unit test coverage
-     - Integration testing
-     - End-to-end validation
-   - Documentation:
-     - Setup guides
-     - API reference
-     - Usage examples
+### 5.5 File System Organization
+- All system files MUST be stored in .nova directory
+- All logs, processing files, and system writes go to .nova
+- Input files location must be configurable
+- Default input path: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
+
+### 5.6 Testing
+- Use uv run pytest for ALL test runs
+- Tests should run without approval
+- Test command: uv run pytest -v
+- Type checking MUST be run before tests
 
 ## 6. Assumptions
 

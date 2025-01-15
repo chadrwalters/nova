@@ -2,10 +2,11 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
-from nova.stubs.docling import Document, DocumentConverter
+from nova.stubs.docling import Document, DocumentConverter, InputFormat
 
 from nova.server.attachments import AttachmentStore
 from nova.server.resources.attachment import AttachmentHandler
@@ -16,76 +17,27 @@ from nova.server.types import ResourceType
 class MockDocumentConverter(DocumentConverter):
     """Mock document converter for testing."""
 
-    def __init__(self, input_dir: str) -> None:
-        """Initialize converter.
-
-        Args:
-            input_dir: Input directory containing notes
-        """
-        self.input_dir = input_dir
-        now = datetime.now()
-        self._notes = [
-            self._create_document(
-                "test1.md", "Test Note 1", "Test content 1", ["tag1", "tag2"], now
-            ),
-            self._create_document(
-                "test2.md", "Test Note 2", "Test content 2", ["tag2", "tag3"], now
-            ),
-        ]
-
-    def _create_document(
-        self, name: str, title: str, content: str, tags: list[str], date: datetime
-    ) -> Document:
-        """Create a test document.
-
-        Args:
-            name: Document name
-            title: Document title
-            content: Document content
-            tags: Document tags
-            date: Document date
-
-        Returns:
-            Document instance
-        """
-        doc = Document(name)
-        doc.text = content
-        doc.metadata = {
-            "title": title,
-            "date": date.isoformat(),
-            "tags": tags,
-            "format": "text",
-        }
-        doc.pictures = []
-        return doc
+    def __init__(self) -> None:
+        """Initialize the mock converter."""
+        super().__init__()
+        self._documents: dict[str, Document] = {}
+        self.input_dir = ".nova/test_input"
 
     def convert_file(self, path: Path) -> Document:
-        """Convert a file to a document.
+        """Convert a file to a document."""
+        if str(path) == self.input_dir or str(path).endswith(self.input_dir):
+            # Return a special document that contains all documents in its metadata
+            listing_doc = Document("listing.md")
+            listing_doc.metadata["documents"] = list(self._documents.values())
+            return listing_doc
 
-        Args:
-            path: Path to file
+        if path.name not in self._documents:
+            raise FileNotFoundError(f"File not found: {path}")
+        return self._documents[path.name]
 
-        Returns:
-            Document instance
-
-        Raises:
-            FileNotFoundError: If file not found
-        """
-        for note in self._notes:
-            if note.name == path.name:
-                return note
-        raise FileNotFoundError(f"File not found: {path}")
-
-    def convert_all(self, paths: list[Path]) -> list[Document]:
-        """Convert multiple files to documents.
-
-        Args:
-            paths: List of file paths
-
-        Returns:
-            List of documents
-        """
-        return [self.convert_file(path) for path in paths]
+    def add_document(self, doc: Document) -> None:
+        """Add a document to the mock store."""
+        self._documents[doc.name] = doc
 
 
 class MockAttachmentStore(AttachmentStore):
@@ -189,27 +141,91 @@ class MockAttachmentStore(AttachmentStore):
 
 
 @pytest.fixture
-def note_handler(tmp_path: Path) -> NoteHandler:
-    """Create note handler fixture.
+def notes_dir(tmp_path: Path) -> Path:
+    """Create a temporary directory for notes.
 
     Args:
-        tmp_path: Temporary directory path
+        tmp_path: Temporary directory fixture
 
     Returns:
-        Note handler instance
+        Path to notes directory
     """
-    # Create test notes directory
     notes_dir = tmp_path / "notes"
     notes_dir.mkdir()
+    return notes_dir
 
-    # Create test note files
-    (notes_dir / "test1.md").write_text("Test content 1")
-    (notes_dir / "test2.md").write_text("Test content 2")
 
-    # Initialize handler with mock converter
-    converter = MockDocumentConverter(str(notes_dir))
-    handler = NoteHandler(converter)
-    return handler
+@pytest.fixture
+def note_handler(notes_dir: Path) -> NoteHandler:
+    """Create a note handler for testing."""
+    # Create test input directory
+    test_input = notes_dir / ".nova" / "test_input"
+    test_input.parent.mkdir(parents=True, exist_ok=True)
+    test_input.mkdir(exist_ok=True)
+
+    # Create test documents
+    converter = MockDocumentConverter()
+    docs = [
+        Document("test1.md"),
+        Document("test2.md"),
+        Document("test3.md"),
+    ]
+
+    # Set up test1.md
+    docs[0].text = "# Test Document 1\nTest content 1"
+    docs[0].metadata = {
+        "title": "Test Note 1",
+        "format": InputFormat.MD,
+        "tags": ["tag1", "tag2"],
+        "created": datetime.now().isoformat(),
+        "modified": datetime.now().isoformat(),
+        "date": datetime.now().isoformat(),
+        "size": len(docs[0].text),
+    }
+
+    # Set up test2.md
+    docs[1].text = "# Test Document 2\nTest content 2"
+    docs[1].metadata = {
+        "title": "Test Note 2",
+        "format": InputFormat.MD,
+        "tags": ["tag2", "tag3"],
+        "created": datetime.now().isoformat(),
+        "modified": datetime.now().isoformat(),
+        "date": datetime.now().isoformat(),
+        "size": len(docs[1].text),
+    }
+
+    # Set up test3.md
+    docs[2].text = "# Test Document 3\nTest content 3"
+    docs[2].metadata = {
+        "title": "Test Note 3",
+        "format": InputFormat.MD,
+        "tags": ["tag3", "tag4"],
+        "created": datetime.now().isoformat(),
+        "modified": datetime.now().isoformat(),
+        "date": datetime.now().isoformat(),
+        "size": len(docs[2].text),
+    }
+
+    # Add documents to converter
+    for doc in docs:
+        converter._documents[doc.name] = doc
+
+    # Create listing document
+    listing = Document("listing.md")
+    listing.metadata = {
+        "format": InputFormat.MD,
+        "documents": docs,
+        "created": datetime.now().isoformat(),
+        "modified": datetime.now().isoformat(),
+        "date": datetime.now().isoformat(),
+        "title": "Document Listing",
+        "tags": [],
+        "size": 0,
+    }
+    converter._documents[".nova/test_input"] = listing
+
+    return NoteHandler(converter)
 
 
 @pytest.fixture
@@ -241,7 +257,7 @@ def test_note_handler_init(tmp_path: Path) -> None:
     notes_dir = tmp_path / "notes"
     notes_dir.mkdir()
 
-    converter = MockDocumentConverter(str(notes_dir))
+    converter = MockDocumentConverter()
     handler = NoteHandler(converter)
     metadata = handler.get_metadata()
     assert metadata["type"] == ResourceType.NOTE
@@ -255,9 +271,13 @@ def test_note_handler_list_notes(note_handler: NoteHandler) -> None:
         note_handler: Note handler fixture
     """
     notes = note_handler.list_notes()
-    assert len(notes) == 2
-    assert notes[0]["title"] == "Test Note 1"
-    assert notes[1]["title"] == "Test Note 2"
+    assert len(notes) == 4  # test1.md, test2.md, test3.md, listing.md
+    assert all(note["type"] == ResourceType.NOTE for note in notes)
+    assert all("title" in note["metadata"] for note in notes)
+    assert all("date" in note["metadata"] for note in notes)
+    assert all("format" in note["metadata"] for note in notes)
+    assert all("modified" in note["metadata"] for note in notes)
+    assert all("size" in note["metadata"] for note in notes)
 
 
 def test_note_handler_get_metadata(note_handler: NoteHandler) -> None:

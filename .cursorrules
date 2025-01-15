@@ -1,78 +1,144 @@
 # Nova Project Rules
-0. Where to go for documentation:
-    - Docling: @Docling
-    - Raycast: @Raycast
-    - MCP: @MCP
 
-1. Package Management
-   - Use uv ONLY
-   - Direct pip usage is FORBIDDEN
-   - Direct python/python3 usage is FORBIDDEN
-   - All Python commands must go through uv
+documentation:
+    docling: docling-docs
+    raycast: raycast-docs
+    mcp: mcp-docs
 
-2. Vision Model
-   - Use "gpt-4o" model for vision recognition
-   - Do NOT use gpt-4-vision-preview or any other vision models
+package_management:
+    - Use uv ONLY
+    - Direct pip usage is FORBIDDEN
+    - Direct python/python3 usage is FORBIDDEN
+    - All Python commands must go through uv
 
-3. File System Organization
-   - All system files MUST be stored in .nova directory
-   - All logs, processing files, and system writes go to .nova
-   - Input files location must be configurable
-   - Default input path: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
+vision_model:
+    - Use "gpt-4o" model for vision recognition
+    - Do NOT use gpt-4-vision-preview or any other vision models
 
-4. Testing
-   - Use uv run pytest for ALL test runs
-   - Tests should run without approval
-   - Test command: uv run pytest -v
-   - Type checking MUST be run before tests
+file_system:
+    - All system files MUST be stored in .nova directory
+    - All logs, processing files, and system writes go to .nova
+    - Input files location must be configurable
+    - Default input path: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
 
-5. AI Commands
-When I submit a command to you, you MUST follow the procedure outlined in the command.
+testing:
+    - Use uv run pytest for ALL test runs
+    - Tests should run without approval
+    - Test command: uv run pytest -v
+    - Type checking MUST be run before tests
 
-- "update docs":
-    - procedure:
-        1. "Parse all Markdown files in docs/**/*.md and README.md"
-        2. "Extract relevant updates from conversation"
-        3. "Apply any relevant and useful updates"
+ai_commands:
+    update_docs:
+        procedure:
+            - "Parse all Markdown files in docs/**/*.md and README.md"
+            - "Extract relevant updates from conversation"
+            - "Apply any relevant and useful updates"
 
-- "create plan":
-    - procedure:
-        1. "If there is a plan, you MUST delete it"
-        2. "Create a new plan in .Plan in cursorplan format"
-        3. "You must include status markers for each step, along with milestones where we should run and get the tests to work"
-        4. "Extract relevant updates from conversation"
-        5. "Apply any relevant and useful parts of conversation to the plan"
+    create_plan:
+        procedure:
+            - "If there is a plan, you MUST delete it"
+            - "Create a new plan in .Plan in cursorplan format"
+            - "You must include status markers for each step, along with milestones where we should run and get the tests to work"
+            - "Extract relevant updates from conversation"
+            - "Apply any relevant and useful parts of conversation to the plan"
 
-- "update plan":
-    - procedure:
-        1. "You must read the plan in .Plan"
-        2. "Extract relevant updates from conversation and make appropriate changes to the plan"
-        3. "You must update status markers for each step, along with milestones where we should run and get the tests to work"
-        4. "Apply any relevant and useful parts of conversation to the plan"
+    update_plan:
+        procedure:
+            - "You must read the plan in .Plan"
+            - "Extract relevant updates from conversation and make appropriate changes to the plan"
+            - "You must update status markers for each step, along with milestones where we should run and get the tests to work"
+            - "Apply any relevant and useful parts of conversation to the plan"
 
-- "update rules":
-    - procedure:
-        1. "Parse .cursorrules file"
-        2. "Extract rule updates from conversation"
-        3. "Apply any relevant and useful updates"
+    update_rules:
+        procedure:
+            - "Parse .cursorrules file"
+            - "Extract rule updates from conversation"
+            - "Apply any relevant and useful updates"
 
-- "update thoughts":
-    - procedure:
-        1. "You MUST read the .cursorscratchpad file"
-        2. "Extract relevant insights from current context"
-        3. "Interleave your thoughts with previous thoughts in the <SCRATCHPAD> buffer"
-        4. "You MUST write your thoughts in the <SCRATCHPAD> buffer"
-        5. "Consolidate your thoughts as necessary, grouping related thoughts together"
+    update_scratchpad:
+        procedure:
+            - "You MUST read the .cursorscratchpad file"
+            - "Extract relevant insights from current context"
+            - "Interleave your thoughts with previous thoughts in the <SCRATCHPAD> buffer"
+            - "You MUST write your thoughts in the <SCRATCHPAD> buffer"
+            - "Consolidate your thoughts as necessary, grouping related thoughts together"
 
-- "update note":
-    - procedure:
-        1. "You MUST read the .cursornotes and .cursorscratchpad files"
-        2. "Consolidate previous thoughts from <SCRATCHPAD>"
-        3. "Integrate new information from current conversation"
-        4. "Format as dated entry, request date from user"
-        5. "Append to .cursornotes file"
-        6. "Clear <SCRATCHPAD> section in .cursorscratchpad"
+    update_note:
+        procedure:
+            - "You MUST read the .cursornotes and .cursorscratchpad files"
+            - "Consolidate previous thoughts from <SCRATCHPAD>"
+            - "Integrate new information from current conversation"
+            - "Format as dated entry, request date from user"
+            - "Append to .cursornotes file"
+            - "Clear <SCRATCHPAD> section in .cursorscratchpad"
 
-- "run tests":
-    - procedure:
-        1. "You MUST uv run pytest -v"
+    run_tests:
+        procedure:
+            - "Run command: uv run pytest -v"
+
+    process_notes:
+        procedure:
+            - "Check if input directory exists"
+            - "Check if output directory exists and create if needed"
+            - "Run command: uv run python -m nova.cli process-notes <input_dir> <output_dir>"
+            - "Verify note processing results"
+            - "Check for any errors in processing"
+            - "Update the plan with processing status"
+
+    process_bear_vectors:
+        procedure:
+            - "Check if input directory exists"
+            - "Check if output directory exists and create if needed"
+            - "Run command: uv run python -m nova.cli process-bear-vectors <input_dir> <output_dir>"
+            - "Verify vector processing results"
+            - "Check for any errors in processing"
+            - "Update the plan with processing status"
+            - "Note: This is the primary vector processing command for Nova, used for both 'process vectors' and 'process bear vectors' requests"
+
+    clean_processing:
+        procedure:
+            - "Check if processing directory exists"
+            - "Run command: uv run python -m nova.cli clean-processing"
+            - "Verify cleanup results"
+            - "Check for any errors in cleanup"
+            - "Update the plan with cleanup status"
+
+    clean_vectors:
+        procedure:
+            - "Check if vector store exists"
+            - "Run command: uv run python -m nova.cli clean-vectors"
+            - "Verify cleanup results"
+            - "Check for any errors in cleanup"
+            - "Update the plan with cleanup status"
+
+    monitor_health:
+        procedure:
+            - "Run command: uv run python -m nova.cli monitor health"
+            - "Check system component status"
+            - "Verify directory structure"
+            - "Report any issues found"
+            - "Update the plan with health status"
+
+    monitor_stats:
+        procedure:
+            - "Run command: uv run python -m nova.cli monitor stats"
+            - "Check vector store statistics"
+            - "Check note processing statistics"
+            - "Check log file statistics"
+            - "Update the plan with current statistics"
+
+    monitor_logs:
+        procedure:
+            - "Run command: uv run python -m nova.cli monitor logs"
+            - "Check log directory"
+            - "Analyze log contents"
+            - "Report any errors or warnings"
+            - "Update the plan with log analysis"
+
+    search_vectors:
+        procedure:
+            - "Check if vector store exists"
+            - "Run command: uv run python -m nova.cli search --query <query>"
+            - "Verify search results"
+            - "Format results for display"
+            - "Update the plan with search status"

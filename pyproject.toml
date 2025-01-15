@@ -1,81 +1,220 @@
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "nova"
 version = "0.1.0"
-description = "Nova MCP Server"
-authors = [{ name = "Chad Walters", email = "chad@nova.ai" }]
+description = "Nova - AI-powered note processing and search"
+authors = [{ name = "Chad Walters", email = "chad@walters.io" }]
 dependencies = [
-    "chromadb>=0.4.22",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "websockets>=12.0",
+    "python-magic>=0.4.27",
+    "markdown2>=2.4.10",
+    "html2text>=2020.1.16",
+    "docutils>=0.20.1",
+    "asciidoc>=10.2.0",
+    "pypandoc>=1.12",
+    "pdfplumber>=0.10.3",
+    "openpyxl>=3.1.2",
+    "python-pptx>=0.6.22",
+    "aiofiles>=23.2.1",
+    "chromadb>=0.4.18",
     "sentence-transformers>=2.2.2",
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.25.0",
-    "pytest-benchmark>=4.0.0",
-    "pytest-cov>=4.1.0",
-    "pytest-timeout>=2.2.0",
-    "pytest-xdist>=3.5.0",
+    "mcp[cli]>=1.2.0",
+    "fastmcp>=0.4.1",
+    "uv>=0.1.12",
+    "rich>=13.7.0",
+    "click>=8.1.7",
+    "pyyaml>=6.0.1",
+    "numpy>=1.26.2",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "MIT" }
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.4",
-    "pytest-cov>=4.1.0",
-    "pytest-asyncio>=0.23.5",
-    "mypy>=1.8.0",
-    "black>=23.12.1",
-    "isort>=5.13.2",
-    "flake8>=7.0.0",
-    "types-requests>=2.31.0",
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Text Processing :: General",
 ]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "strict"
-timeout = 300
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-
-[[tool.mypy.overrides]]
-module = [
-    "chromadb",
-    "chromadb.api.types",
-    "chromadb.config",
-    "sentence_transformers",
-    "aiohttp",
-    "jsonschema.validators",
-    "yaml",
-]
-ignore_missing_imports = true
-
-[tool.black]
-line-length = 100
-target-version = ['py310']
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 100
 
 [project.scripts]
 nova = "nova.cli.main:main"
 
-[tool.bandit]
-exclude_dirs = ["tests"]
-skips = [
-    "B103",
-    "B110",
-] # Ignore file permission warnings and try-except-pass in error handlers
+[project.urls]
+Homepage = "https://github.com/chadwalters/nova"
+Repository = "https://github.com/chadwalters/nova.git"
+Documentation = "https://github.com/chadwalters/nova/tree/main/docs"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.23.2",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.7.1",
+    "ruff>=0.1.6",
+    "types-aiofiles>=23.2.0.0",
+    "types-PyYAML>=6.0.12.12",
+    "mkdocs>=1.5.3",
+    "mkdocs-material>=9.4.14",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.1",
+    "mkdocs-section-index>=0.3.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra -q"
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = [
+    "magic.*",
+    "markdown2.*",
+    "html2text.*",
+    "docutils.*",
+    "asciidoc.*",
+    "pypandoc.*",
+    "pdfplumber.*",
+    "openpyxl.*",
+    "pptx.*",
+    "aiofiles.*",
+    "chromadb.*",
+    "sentence_transformers.*",
+    "mcp.*",
+    "fastmcp.*",
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "B",   # flake8-bugbear
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific rules
+    "D",   # pydocstyle
+]
+ignore = []
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.isort]
+known-first-party = ["nova"]
+combine-as-imports = true
+
+[tool.ruff.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[tool.mkdocs]
+site_name = "Nova Documentation"
+site_description = "Documentation for Nova, an AI-powered note processing and search system"
+site_author = "Chad Walters"
+repo_url = "https://github.com/chadwalters/nova"
+repo_name = "chadwalters/nova"
+edit_uri = "edit/main/docs/"
+theme = "material"
+docs_dir = "docs"
+site_dir = "site"
+
+[[tool.mkdocs.nav]]
+Home = "index.md"
+
+[[tool.mkdocs.nav]]
+"Getting Started" = "getting-started.md"
+
+[[tool.mkdocs.nav]]
+"User Guide" = [
+    { Installation = "user-guide/installation.md" },
+    { Configuration = "user-guide/configuration.md" },
+    { "CLI Commands" = "user-guide/cli-commands.md" },
+    { "MCP Integration" = "user-guide/mcp-integration.md" },
+]
+
+[[tool.mkdocs.nav]]
+Architecture = [
+    { Overview = "architecture/overview.md" },
+    { "System Architecture" = "architecture/system_architecture.md" },
+    { "Vector Store" = "architecture/vector_store.md" },
+    { "Document Processing" = "architecture/document_processing.md" },
+]
+
+[[tool.mkdocs.nav]]
+"API Reference" = [
+    { CLI = "api/cli.md" },
+    { "Vector Store" = "api/vector_store.md" },
+    { "Document Processing" = "api/document_processing.md" },
+    { "MCP Server" = "api/mcp_server.md" },
+]
+
+[[tool.mkdocs.nav]]
+Development = [
+    { Contributing = "development/contributing.md" },
+    { "Development Setup" = "development/setup.md" },
+    { Testing = "development/testing.md" },
+]
+
+[[tool.mkdocs.nav]]
+About = [{ License = "about/license.md" }, { Changelog = "about/changelog.md" }]
+
+[tool.mkdocs.plugins]
+search = {}
+gen-files = {}
+literate-nav = {}
+section-index = {}
+
+[tool.mkdocs.plugins.mkdocstrings]
+handlers.python.paths = ["src"]
+handlers.python.options.docstring_style = "google"
+handlers.python.options.show_source = true
+handlers.python.options.show_root_heading = true
+handlers.python.options.show_category_heading = true
+handlers.python.options.show_if_no_docstring = true
+handlers.python.options.heading_level = 2
+handlers.python.options.merge_init_into_class = true
+handlers.python.options.separate_signature = true
+handlers.python.options.show_signature_annotations = true
+
+[tool.mkdocs.markdown_extensions]
+admonition = {}
+attr_list = {}
+codehilite = {}
+footnotes = {}
+meta = {}
+"pymdownx.details" = {}
+"pymdownx.highlight" = {}
+"pymdownx.superfences" = { custom_fences = [
+    { name = "mermaid", class = "mermaid", format = "!!python/name:pymdownx.superfences.fence_code_format" },
+] }
+"pymdownx.tabbed" = {}
+"pymdownx.tasklist" = {}
+toc = { permalink = true }

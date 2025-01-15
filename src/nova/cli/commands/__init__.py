@@ -7,6 +7,7 @@ from nova.cli.commands.process_bear_vectors import ProcessBearVectorsCommand
 from nova.cli.commands.process_notes import ProcessNotesCommand
 from nova.cli.commands.process_vectors import ProcessVectorsCommand
 from nova.cli.commands.search import SearchCommand
+from nova.cli.commands.start_mcp import StartMCPCommand
 
 __all__ = [
     "CleanProcessingCommand",
@@ -16,4 +17,5 @@ __all__ = [
     "ProcessNotesCommand",
     "ProcessVectorsCommand",
     "SearchCommand",
+    "StartMCPCommand",
 ]

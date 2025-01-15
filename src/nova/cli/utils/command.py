@@ -4,8 +4,9 @@ This module provides the base command class and utilities for nova CLI
 commands.
 """
 
+import asyncio
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Coroutine
 
 import click
 from rich.console import Console
@@ -20,9 +21,27 @@ class NovaCommand(ABC):
     name: str
     help: str
 
-    @abstractmethod
     def run(self, **kwargs: Any) -> None:
         """Run the command with the given arguments.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        if hasattr(self, "run_async"):
+            asyncio.run(self.run_async(**kwargs))
+        else:
+            self._run_sync(**kwargs)
+
+    def _run_sync(self, **kwargs: Any) -> None:
+        """Run the command synchronously.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        pass
+
+    async def run_async(self, **kwargs: Any) -> None:
+        """Run the command asynchronously.
 
         Args:
             **kwargs: Command arguments

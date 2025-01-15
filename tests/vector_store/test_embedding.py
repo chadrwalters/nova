@@ -14,7 +14,7 @@ def test_embed_text_basic() -> None:
     assert result.text == text
     assert isinstance(result.vector, np.ndarray)
     assert result.vector.dtype == np.float32
-    assert result.vector.shape == (1536,)
+    assert result.vector.shape == (384,)
 
 
 def test_embed_texts_multiple() -> None:
@@ -28,7 +28,7 @@ def test_embed_texts_multiple() -> None:
         assert result.text == text
         assert isinstance(result.vector, np.ndarray)
         assert result.vector.dtype == np.float32
-        assert result.vector.shape == (1536,)
+        assert result.vector.shape == (384,)
 
 
 def test_embed_text_empty() -> None:
@@ -40,4 +40,4 @@ def test_embed_text_empty() -> None:
     assert result.text == text
     assert isinstance(result.vector, np.ndarray)
     assert result.vector.dtype == np.float32
-    assert result.vector.shape == (1536,)
+    assert result.vector.shape == (384,)

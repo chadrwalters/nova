@@ -6,7 +6,7 @@
    - Primary deployment on user's machine
    - Optional cloud deployment with enhanced security
    - Ephemeral data handling in memory
-   - uv-based package management
+   - uv-based package management (pip/python usage FORBIDDEN)
    - Centralized .nova directory for system files
    - Configurable input directory
 
@@ -15,47 +15,92 @@
    - Clear interfaces between components
    - Pluggable implementations (e.g., vector stores)
 
+3. **Separation of Concerns**
+   - Data ingestion (CLI only)
+   - Vector store management (CLI only)
+   - Search processing (semantic similarity)
+   - Orchestration layer
+
+4. **Data Flow Architecture**
+   - Input Layer (CLI)
+     - Note processing
+     - Format conversion
+     - Metadata extraction
+   - Vector Store Layer
+     - Vector embeddings (sentence-transformers)
+     - Metadata storage
+     - Search capabilities
+   - Search Layer
+     - Semantic similarity search
+     - Result formatting
+     - Health monitoring
+
+5. **Access Patterns**
+   - Vector Store Write Operations (CLI Only)
+     - Processing notes
+     - Creating embeddings
+     - Cleaning/maintenance
+     - System updates
+   - Vector Store Read Operations
+     - Semantic search
+     - Content retrieval
+     - Health checks
+     - Statistics
+
 ## System Components
 
 ### 1. Data Ingestion Layer
 
-#### Bear Export Handler [IMPLEMENTED]
-- Rich document processing:
-  + Document conversion pipeline
-  + Rich metadata extraction
-  + Built-in format detection
+#### Document Processing [IMPLEMENTED]
+- Docling Integration:
+  + Rich document model with metadata
+  + Format detection and validation
+  + Automatic format conversion
   + Native attachment handling
+  + Error recovery and logging
 
-+ Metadata Integration:
-  + Rich metadata model
-  + Bear-specific metadata mapping
-  + Tag preservation and hierarchy
++ Format Support:
+  + Text Formats:
+    + Markdown (.md) - Native format
+    + Plain text (.txt) - Direct conversion
+    + HTML (.html, .htm) - via html2text
+    + reStructuredText (.rst) - via docutils
+    + AsciiDoc (.adoc, .asciidoc) - via asciidoc
+    + Org Mode (.org) - via pandoc
+    + Wiki (.wiki) - via pandoc
+    + LaTeX (.tex) - via pandoc
+  + Office Formats:
+    + Word (.docx) - via pandoc
+    + Excel (.xlsx) - via pandoc
+    + PowerPoint (.pptx) - via pandoc
+  + Other Formats:
+    + PDF (.pdf) - via pandoc
+  + Format Detection:
+    + MIME type detection
+    + File extension fallback
+    + Validation rules
+    + Error handling
+
++ Metadata Model:
+  + Document title and date
+  + Source format tracking
+  + Tag preservation
+  + Custom metadata fields
   + Attachment references
 
-- Tag Integration:
-  + Advanced text processing
-  + Bear tag structure mapping
-  + Hierarchical relationship preservation
-  + Nested tag support
-
 + Error Management:
-  + Comprehensive error system
-  + Bear-specific error mapping
-  + Context preservation
-  + Structured logging
+  + Format validation errors
+  + Conversion failures
+  + MIME type validation
+  + Structured error reporting
+  + Recovery strategies
 
-+ Attachment Pipeline:
-  + Native attachment handling
-  + Format detection and validation
-  + Versioning support
-  + Metadata preservation
-
-+ Image Processing:
-  + Built-in image processing
-  + OCR capabilities
-  + Native format support
-  + Integrated error handling
-  + Confidence scoring
++ Progress Tracking:
+  + Format detection progress
+  + Conversion status updates
+  + Rich terminal output
+  + Error summaries
+  + Completion reporting
 
 ### 2. Vector Store Layer [IMPLEMENTED]
 
@@ -124,7 +169,7 @@
     - clean-vectors: Vector store cleanup
     - search: Semantic search functionality
 
-### 3. RAG Orchestration Layer
+### 3. Search Orchestration Layer
 
 #### CLI Architecture [COMPLETED]
 - Command Structure:
@@ -134,11 +179,24 @@
     - utils/: Shared CLI utilities and error handling
 - Core Commands:
   - process-notes:
-    - Bear note processing with configurable paths
-    - Metadata generation and organization
-    - Progress tracking with rich output
-    - Async note processing with error recovery
-    - Configurable input/output paths
+    - Format detection and validation
+    - Automatic format conversion
+    - Rich progress tracking
+    - Error handling and recovery
+    - Configurable paths:
+      - Input directory
+      - Output directory
+      - Default paths from config
+    - Format support:
+      - Markdown (native)
+      - Plain text (direct)
+      - HTML (conversion)
+      - RST (conversion)
+    - Progress reporting:
+      - Format detection status
+      - Conversion progress
+      - File processing status
+      - Error summaries
   - process-bear-vectors:
     - Bear note vector processing
     - Chroma vector store integration
@@ -150,7 +208,11 @@
     - Configurable result limits
     - Rich result formatting with metadata
     - Content preview generation
-    - Similarity score calculation
+    - Similarity score calculation:
+      - Cosine distance normalization
+      - 0-100% score range
+      - Semantic similarity ranking
+      - Consistent score distribution
   - clean-processing:
     - Safe cleanup of processed notes
     - Force flag for deletion
@@ -168,13 +230,21 @@
     - Rich table-based output
     - Real-time system monitoring
 
-### 4. Monitoring System [PLANNED]
+### 4. Monitoring System [IMPLEMENTED]
 
 #### Backend Services
-- FastAPI-based server:
-  - Health check endpoint
-  - Basic metrics display
-  - Recent ingestion stats
+- FastMCP Integration:
+  - Asynchronous FastAPI-based server
+  - Tool-based architecture for extensibility
+  - Standardized error handling and response formats
+  - Health monitoring and diagnostics
+  - Port 8765 (chosen to avoid common service conflicts)
+- Core Tools:
+  - process_notes_tool: Document processing and ingestion
+  - search_tool: Semantic search with vector embeddings
+  - monitor_tool: System health and statistics
+  - clean_processing_tool: Safe cleanup of processed files
+  - clean_vectors_tool: Vector store maintenance
 - Structured Logging:
   - structlog integration
   - Consistent log format
@@ -184,237 +254,134 @@
   - Query performance tracking
   - System health monitoring
 - API Endpoints:
-  - /health: System status
-  - /metrics: Performance data
-  - /stats: Processing statistics
+  - /tools/process_notes: Document processing endpoint
+  - /tools/search: Semantic search endpoint
+  - /tools/monitor: Health monitoring endpoint
+  - /tools/clean_processing: Processing cleanup endpoint
+  - /tools/clean_vectors: Vector store cleanup endpoint
 
-#### Performance Monitoring
-- Resource Usage:
-  - Memory consumption
-  - CPU utilization
-  - Disk space tracking
-- Operation Metrics:
-  - Ingestion throughput
-  - Query latency
-  - Vector store performance
-- Error Tracking:
-  - Failure rates
-  - Error patterns
-  - Recovery success
+#### MCP Tools [IMPLEMENTED]
 
-## Data Flow Architecture
+1. **process_notes_tool**
+   - Purpose: Process and ingest documents into the vector store
+   - Features:
+     - Multi-format document support
+     - Automatic format detection
+     - Rich metadata extraction
+     - Progress tracking
+   - Error Handling:
+     - Format validation errors
+     - Conversion failures
+     - Path validation
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI
-    participant BearHandler
-    participant Docling
-    participant VectorStore
-    participant MCP
-    participant Claude
-    participant Monitor
+2. **search_tool**
+   - Purpose: Semantic search through vector embeddings
+   - Features:
+     - Configurable result limits
+     - Rich result formatting
+     - Metadata inclusion
+     - Similarity scoring
+   - Error Handling:
+     - Query validation
+     - Vector store access errors
+     - Result formatting issues
 
-    User->>CLI: Command
-    CLI->>BearHandler: Process Notes
-    BearHandler->>Docling: Convert Attachments
-    Docling-->>BearHandler: Converted Content
-    BearHandler->>VectorStore: Store Chunks
-    User->>CLI: Query
-    CLI->>MCP: Process Query
-    MCP->>VectorStore: Retrieve Context
-    VectorStore-->>MCP: Relevant Chunks
-    MCP->>Claude: Request
-    Claude-->>MCP: Response
-    MCP-->>User: Answer
-    Monitor->>VectorStore: Collect Metrics
-    Monitor->>MCP: Track Performance
-```
+3. **monitor_tool**
+   - Purpose: System health and statistics monitoring
+   - Features:
+     - Component health checks
+     - Vector store statistics
+     - Processing metrics
+     - Log analysis
+   - Error Handling:
+     - Component failures
+     - Metric collection errors
+     - Log access issues
 
-## Development Architecture
+4. **clean_processing_tool**
+   - Purpose: Safe cleanup of processed documents
+   - Features:
+     - Selective cleanup
+     - Directory validation
+     - Progress tracking
+   - Error Handling:
+     - Path validation
+     - Permission issues
+     - File access errors
 
-### Environment Management
-- uv-based dependency management:
-  - pyproject.toml for package metadata
-  - uv.lock for dependency locking
-  - Virtual environment isolation
-- Setup Process:
-  1. Install uv: `brew install uv` or `pip install uv`
-  2. Initialize environment: `uv venv`
-  3. Install dependencies: `uv sync`
-  4. Activate environment: `source .venv/bin/activate`
+5. **clean_vectors_tool**
+   - Purpose: Vector store maintenance and cleanup
+   - Features:
+     - Safe deletion operations
+     - Collection management
+     - Progress tracking
+   - Error Handling:
+     - Vector store access errors
+     - Collection validation
+     - Cleanup failures
 
-### Testing Strategy
-- Test Organization:
-  - tests/unit/: Unit tests by module
-  - tests/integration/: Cross-module tests
-  - tests/e2e/: End-to-end workflows
-- Test Runner:
-  - pytest with verbose output
-  - Type checking with mypy
-  - Command: `uv run mypy src tests && uv run pytest -v`
+### 5. Testing Infrastructure [IMPLEMENTED]
 
-### Documentation Structure
-- README.md:
-  - Quick start guide
-  - Environment setup
-  - Command reference
-- docs/architecture/: Technical design
-- docs/prd/: Product requirements
-- Developer guide:
-  - Setup instructions
-  - Testing procedures
-  - Contribution guidelines
+#### Test Architecture
+- Pytest-based test suite
+- Async test support with pytest-asyncio
+- FastAPI TestClient integration
+- Temporary directory fixtures
+- Vector store test fixtures
 
-## Security Architecture
+#### Test Coverage
+- Tool Function Tests:
+  - Input validation
+  - Error handling
+  - Response formats
+  - Edge cases
+- Integration Tests:
+  - FastMCP initialization
+  - Tool registration
+  - Vector store operations
+  - File system operations
+- Health Check Tests:
+  - Component status
+  - Metric collection
+  - Log management
 
-### Local Deployment
-- Minimal authentication required
-- File system security
-- Memory-only ephemeral data
-- Secure API key handling
+#### Test Fixtures
+- Vector Store:
+  - Temporary database
+  - Test collections
+  - Cleanup handling
+- File System:
+  - Temporary directories
+  - Test files
+  - Cleanup management
+- FastMCP:
+  - Test client
+  - Tool registration
+  - Response validation
 
-### Cloud Deployment (Optional)
-- Token-based authentication
-- TLS encryption
-- Secure ephemeral data handling
-- Access control
+## Package Management
 
-## Performance Architecture
+- Use uv ONLY for all Python operations
+- Direct pip usage is FORBIDDEN
+- Direct python/python3 usage is FORBIDDEN
+- All Python commands must go through uv
 
-### Optimization Strategies
-1. Efficient chunking algorithms
-2. Batch processing for embeddings
-3. Vector store indexing optimization
-4. Response streaming
-5. Caching layers
+## File System Organization
 
-### Resource Management
-1. Memory-efficient data structures
-2. Garbage collection optimization
-3. Connection pooling
-4. Batch operations
-
-## Error Handling Architecture
-
-### Failure Modes
-1. Conversion failures
-   - OCR processing errors
-   - Image quality issues
-   - Unsupported file formats
-2. OCR errors
-   - Low confidence scores
-   - Failed text extraction
-   - Image preprocessing failures
-3. API rate limits
-4. Network issues
-5. Storage errors
-
-### Recovery Strategies
-1. Fallback mechanisms
-   - Alternative OCR approaches
-   - Placeholder content generation
-   - Metadata preservation
-2. Retry policies
-3. Circuit breakers
-4. Error logging
-5. User notifications
+- All system files MUST be stored in .nova directory:
+  - .nova/processing/: Processed notes
+  - .nova/vectors/: Vector store database
+  - .nova/logs/: System logs
+- Input files location must be configurable
+- Default input path: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
 
 ## Testing Architecture
 
-### Test Layers
-1. Unit tests per component
-2. Integration tests between layers
-3. End-to-end system tests
-
-### Test Infrastructure
-1. Local test runners
-2. Test data management
-
-### Not In Scope
-The following testing aspects are explicitly NOT included in the current architecture:
-1. CI/CD pipelines
-2. Code coverage tracking
-3. Performance profiling
-4. Security audits
-5. Automated benchmarking
-
-Our testing focus is on maintaining functionality through regular local testing during development.
-
-## Deployment Architecture
-
-### Local Setup
-1. uv environment management
-2. Configuration management
-   - Input directory configuration
-   - API keys and credentials
-   - Vector store settings
-3. File System Structure
-   - .nova directory for all system files
-     - Logs directory
-     - Processing files
-     - Vector store data
-     - System state
-   - Configurable input directory
-     - Default: ~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
-     - Bear.app exports
-     - Attachments
-4. Local services
-
-### Cloud Setup (Optional)
-1. Container orchestration
-2. Service scaling
-3. Monitoring integration
-4. Backup strategies
-
-## Future Extensibility
-
-### Integration Points
-1. Alternative vector stores
-2. Different LLM providers
-3. Additional file formats
-4. Enhanced monitoring
-
-### Scalability Paths
-1. Distributed processing
-2. Enhanced caching
-3. Load balancing
-4. Horizontal scaling
-
-## Command-Line Interface
-
-The system provides a unified command-line interface through the `nova` command with the following subcommands:
-
-### Bear Note Processing
-- `nova generate-metadata`: Generates metadata.json for Bear notes
-  - Creates structured metadata for all notes
-  - Extracts creation/modification dates
-  - Maps attachment references
-  - Builds initial tag list
-
-- `nova process-notes`: Processes Bear notes using the parser
-  - Parses all notes in configured input directory
-  - Extracts tags with nested support
-  - Processes image attachments with OCR
-  - Generates OCR failure placeholders
-  - Creates structured output in .nova directory
-
-### Vector Store Processing
-- `nova process-vectors`: Standalone vector store processing
-  - Input: Raw text and output directory
-  - Performs heading-aware document chunking
-  - Generates embeddings with caching
-  - Saves chunks and embeddings to specified directory
-
-- `nova process-bear-vectors`: Bear note vector store integration
-  - Input: Bear notes directory and output directory
-  - Combines Bear parsing with vector store processing
-  - Preserves metadata through processing pipeline
-  - Creates note-specific output directories
-  - Maintains heading context in chunks
-
-All commands support:
-- Configurable input/output paths
-- Logging with customizable levels
-- Error recovery and reporting
-- Progress tracking for long operations
+- All tests MUST run through uv: `uv run pytest -v`
+- Type checking MUST be run before tests
+- Tests should run without approval
+- Test command: `uv run pytest -v`
+- Test organization:
+  - Unit tests for core components
+  - Integration tests for service layers
+  - End-to-end tests for CLI commands

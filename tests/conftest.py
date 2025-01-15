@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from nova.server.types import ServerConfig
+from nova.vector_store.store import VectorStore
 
 
 @pytest.fixture(scope="module")
@@ -51,23 +51,11 @@ def temp_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def server_config(temp_dir: Path) -> ServerConfig:
-    """Create a server configuration for tests.
-
-    Args:
-        temp_dir: Temporary directory fixture
-
-    Returns:
-        Server configuration
-    """
-    return ServerConfig(
-        host="localhost",
-        port=8000,
-        input_dir=str(temp_dir / "input"),
-        store_dir=str(temp_dir / ".nova"),
-        debug=True,
-        max_connections=5,
-    )
+def vector_store(temp_dir: Path) -> VectorStore:
+    """Create a vector store instance for testing."""
+    store = VectorStore(temp_dir / ".nova/vectors")
+    yield store
+    store.cleanup()
 
 
 @pytest.fixture(autouse=True)

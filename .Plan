@@ -1,5 +1,222 @@
 # Nova Development Plan
 
+## Current Milestones [✓]
+- [✓] Vector Store Implementation
+- [✓] Document Processing Pipeline
+- [✓] CLI Command Updates
+- [✓] Resource Handler Integration
+- [✓] Test Suite Adaptation
+- [✓] MCP Server Setup
+- [✓] Resource Handler Implementation
+- [✓] Document Processing Implementation
+- [✓] Error Handling Updates
+- [✓] Test Suite Implementation
+- [✓] Echo Server POC
+
+## Current Phase: MCP Integration [IN PROGRESS]
+
+1. Echo Server [COMPLETED]
+   - [✓] Working reference implementation
+     - [✓] Clean FastMCP example
+     - [✓] Shell script startup
+     - [✓] Proper logging
+     - [✓] Claude Desktop integration
+   - [✓] Documentation
+     - [✓] Setup instructions
+     - [✓] Usage examples
+     - [✓] Architecture docs
+
+2. Nova MCP Server Implementation [IN PROGRESS]
+   - [✓] Shell Script Setup
+     - [✓] Create start_nova_mcp.sh
+     - [✓] Configure environment variables
+     - [✓] Set up proper logging paths
+     - [✓] Add error handling
+   - [✓] Port Echo POC learnings to nova server
+     - [✓] Use FastMCP base
+     - [✓] Set up structured logging to .nova/logs
+     - [✓] Configure proper error handling
+     - [✓] Use shell script startup
+   - [✓] Server Directory Cleanup
+     - [✓] Remove old MCP implementations
+     - [✓] Remove old server code
+     - [✓] Remove old resource handling
+     - [✓] Remove old protocol code
+   - [✓] CLI/MCP Unification
+     - [✓] Wrap CLI commands with FastMCP tools
+     - [✓] Set up unified logging
+   - [✓] Component Integration
+     - [✓] Vector Store Integration
+       - [✓] Basic connectivity
+       - [✓] Async operations
+       - [✓] Result formatting
+     - [✓] Bear Note Processing
+       - [✓] Using BearParser
+       - [✓] Vector processing
+       - [✓] Metadata handling
+     - [✓] Verify Functionality
+       - [✓] Test vector store operations
+       - [✓] Validate Bear note processing
+       - [✓] Check async operations
+   - [✓] Testing & Validation
+     - [✓] Create FastMCP test suite
+     - [✓] Test all tool functions
+     - [✓] Validate error handling
+     - [✓] Add vector store fixtures
+   - [✓] Documentation
+     - [✓] Update Architecture Docs
+       - [✓] FastMCP Integration Overview
+       - [✓] Tool Implementation Details
+       - [✓] Vector Store Integration
+       - [✓] Async Operation Model
+       - [✓] Error Handling Strategy
+     - [✓] Tool Documentation
+       - [✓] process_notes_tool
+         - [✓] Parameters
+         - [✓] Return Format
+         - [✓] Error Cases
+         - [✓] Examples
+       - [✓] search_tool
+         - [✓] Parameters
+         - [✓] Return Format
+         - [✓] Error Cases
+         - [✓] Examples
+       - [✓] monitor_tool
+         - [✓] Parameters
+         - [✓] Return Format
+         - [✓] Error Cases
+         - [✓] Examples
+       - [✓] clean_processing_tool
+         - [✓] Parameters
+         - [✓] Return Format
+         - [✓] Error Cases
+         - [✓] Examples
+       - [✓] clean_vectors_tool
+         - [✓] Parameters
+         - [✓] Return Format
+         - [✓] Error Cases
+         - [✓] Examples
+     - [✓] Usage Examples
+       - [✓] Basic Tool Usage
+       - [✓] Error Handling Examples
+       - [✓] Common Workflows
+       - [✓] Best Practices
+     - [✓] Testing Documentation
+       - [✓] Test Suite Overview
+       - [✓] Test Fixtures
+       - [✓] Writing New Tests
+       - [✓] Running Tests
+
+3. Claude Vector Store Integration [NEXT]
+   - [ ] Basic Query Implementation
+     - [ ] Add vector store query tool to MCP server
+     - [ ] Implement note retrieval by similarity
+     - [ ] Add basic metadata filtering (title, date)
+   - [ ] Claude Integration Testing
+     - [ ] Test Claude's ability to query notes
+     - [ ] Validate end-to-end flow: Bear note -> Vector -> Claude query
+     - [ ] Test query result formatting and relevance
+   - [ ] Documentation
+     - [ ] Add query tool documentation
+     - [ ] Include example queries
+     - [ ] Document result format
+
+4. Enhanced Vector Store Features [PLANNED]
+   - [ ] Advanced Processing
+     - [ ] Implement proper chunking for large Bear notes
+     - [ ] Handle Bear's hierarchical structure
+     - [ ] Improve metadata extraction
+   - [ ] Query Capabilities
+     - [ ] Support querying by tags
+     - [ ] Add attachment handling
+     - [ ] Support Bear-specific metadata
+   - [ ] Performance Optimization
+     - [ ] Add result caching
+     - [ ] Implement batch operations
+     - [ ] Optimize search performance
+
+5. Monitoring & Operations [PLANNED]
+   - [ ] System Monitoring
+     - [ ] Health checks
+     - [ ] Performance metrics
+     - [ ] Error tracking
+   - [ ] Operational Tools
+     - [ ] Log rotation
+     - [ ] Resource monitoring
+     - [ ] Operation metrics
+
+## Future Phases
+
+### Phase 3: Enhanced MCP Features [PLANNED]
+1. Advanced Tool Implementation
+   - [ ] Enhanced tool schemas
+     - [ ] Rich metadata support
+     - [ ] Advanced filtering
+     - [ ] Complex queries
+   - [ ] Advanced handlers
+     - [ ] Sophisticated search
+     - [ ] Complex operations
+     - [ ] Rich error handling
+
+2. Advanced Resource Integration
+   - [ ] Full vector store features
+     - [ ] Advanced query options
+     - [ ] Rich result formatting
+     - [ ] Full metadata support
+   - [ ] Complete note integration
+     - [ ] Full content management
+     - [ ] Rich metadata handling
+     - [ ] Attachment support
+
+3. Enhanced Protocol Support
+   - [ ] Advanced WebSocket features
+   - [ ] Rich HTTP endpoints
+   - [ ] OAuth integration
+   - [ ] Advanced rate limiting
+
+### Phase 4: Monitoring System [PLANNED]
+1. Backend Services
+   - [ ] FastAPI web server
+   - [ ] Health check endpoint
+   - [ ] Metrics collection
+   - [ ] Log aggregation
+
+2. Frontend Dashboard
+   - [ ] Basic web interface
+   - [ ] System metrics display
+   - [ ] Log viewer
+   - [ ] Health status page
+
+### Phase 5: Performance Optimization [PLANNED]
+1. Vector Store Optimization
+   - [ ] Improve chunking strategy
+   - [ ] Enhance caching system
+   - [ ] Optimize batch processing
+
+2. Query Performance
+   - [ ] Add result caching
+   - [ ] Implement parallel processing
+   - [ ] Optimize memory usage
+
+### Phase 6: Advanced Features [PLANNED]
+1. Enhanced Search
+   - [ ] Hybrid search strategies
+   - [ ] Advanced filtering
+   - [ ] Custom ranking
+
+2. Document Processing
+   - [ ] Batch processing improvements
+   - [ ] Enhanced format support
+   - [ ] Better error recovery
+
+## Next Steps:
+1. Port Echo POC learnings to nova server
+2. Implement first production tool (vector search)
+3. Set up proper logging and monitoring
+
+-------------------
+# Project History
+
 ## Phase 1: Vector Store and File Ingestion [✓]
 
 ### Project Setup [✓]
@@ -25,8 +242,6 @@
 
 **MILESTONE**: ✅ Run tests for vector store - PASSED
 
-## Phase 2: RAG and MCP Integration [IN PROGRESS]
-
 ### CLI Consolidation [✓]
 - [✓] Create unified CLI with core commands
 - [✓] Implement process-notes and process-vectors
@@ -35,7 +250,7 @@
 
 **MILESTONE**: ✅ Run tests for CLI - PASSED
 
-### MCP Integration [IN PROGRESS]
+### MCP Server Setup [✓]
 - [✓] Set up MCP Server
 - [✓] Create nova server module
 - [✓] Implement prompt manager
@@ -60,18 +275,19 @@
   - [✓] Extract Tool implementation
   - [✓] Remove Tool implementation
   - [✓] Tool handler tests
-- [IN PROGRESS] Implement Resource Handlers
-  - [✓] Base Resource Handler class
-  - [✓] Vector Store Handler
-    - [✓] Basic implementation
-    - [✓] Add/query/delete operations
-    - [✓] Change notifications
-    - [✓] Unit tests
-  - [✓] Attachment Handler
-    - [✓] File operations
-    - [✓] Metadata handling
-    - [✓] Change notifications
-    - [✓] Unit tests
+
+### Resource Handler Implementation [✓]
+- [✓] Base Resource Handler class
+- [✓] Vector Store Handler
+  - [✓] Basic implementation
+  - [✓] Add/query/delete operations
+  - [✓] Change notifications
+  - [✓] Unit tests
+- [✓] Attachment Handler
+  - [✓] File operations
+  - [✓] Metadata handling
+  - [✓] Change notifications
+  - [✓] Unit tests
 - [✓] Add Protocol Support
   - [✓] WebSocket server
   - [✓] HTTP endpoints
@@ -86,6 +302,8 @@
   - [✓] Error messages
   - [✓] Error recovery
   - [✓] Error logging
+
+### Document Processing Implementation [✓]
 - [✓] Map Bear metadata to docling format
   - [✓] Title -> document.name
   - [✓] Tags -> metadata["tags"]
@@ -134,19 +352,20 @@
       - [✓] Validate required fields
       - [✓] Check field formats
       - [✓] Handle missing data
-- [IN PROGRESS] Update error handling
-  - [✓] Use docling's built-in error system
-  - [✓] Map Bear-specific errors to docling errors
-  - [✓] Maintain context in error messages
-  - [✓] Add error recovery strategies
-    - [✓] Handle invalid MIME types
-    - [✓] Handle file size limits
-    - [✓] Handle format validation
-    - [✓] Add retry logic for transient errors
-    - [✓] Implement graceful degradation
-    - [✓] Add fallback options
 
-#### 3. Test Suite Adaptation [CURRENT FOCUS]
+### Error Handling Updates [✓]
+- [✓] Use docling's built-in error system
+- [✓] Map Bear-specific errors to docling errors
+- [✓] Maintain context in error messages
+- [✓] Add error recovery strategies
+  - [✓] Handle invalid MIME types
+  - [✓] Handle file size limits
+  - [✓] Handle format validation
+  - [✓] Add retry logic for transient errors
+  - [✓] Implement graceful degradation
+  - [✓] Add fallback options
+
+### Test Suite Implementation [✓]
 - [✓] Fix failing tests in test_note_resource.py
   - [✓] Update MockBearParser to use docling model
   - [✓] Fix NoteHandler attribute errors
@@ -159,279 +378,45 @@
   - [✓] Update docling format handling
   - [✓] Fix file conversion errors
   - [✓] Update metadata assertions
-- [ ] Convert mock data to docling format
-  - [ ] Create test fixtures with docling models
-  - [ ] Update test data generation
-  - [ ] Add format-specific test cases
-- [ ] Update assertions for new model
-  - [ ] Add docling model validation
-  - [ ] Update metadata checks
-  - [ ] Add format validation
-- [ ] Add docling-specific test cases
-  - [ ] Test format detection
-  - [ ] Test attachment handling
-  - [ ] Test error cases
-- [ ] Verify format handling
-  - [ ] Test supported formats
-  - [ ] Test format conversion
-  - [ ] Test error handling
+- [✓] Convert mock data to docling format
+  - [✓] Create test_docling_integration.py
+  - [✓] Update mocks.py with comprehensive docling models
+  - [✓] Add format-specific test fixtures
+  - [✓] Implement test data generators
+- [✓] Update assertions for new model
+  - [✓] Add docling model validation in test_note_resource.py
+  - [✓] Enhance metadata validation in test_attachment_resource.py
+  - [✓] Add format validation tests
+  - [✓] Update error handling assertions
+- [✓] Add docling-specific test cases
+  - [✓] Test format detection
+  - [✓] Test attachment handling
+    - [✓] Test basic attachment operations
+    - [✓] Test metadata validation
+    - [✓] Test format validation
+    - [✓] Test error handling
+    - [✓] Test format conversion
+  - [✓] Test error cases
+  - [✓] Test format conversion
+- [✓] Verify format handling
+  - [✓] Test all supported formats
+  - [✓] Test format conversion edge cases
+  - [✓] Test error handling for unsupported formats
+  - [✓] Test format detection accuracy
+- [✓] Add integration test cases
+  - [✓] Test full processing pipeline
+  - [✓] Test error recovery paths
+  - [✓] Test format conversions
+  - [✓] Test metadata preservation
+- [✓] Add performance test cases
+  - [✓] Test large file handling
+  - [✓] Test concurrent operations
+  - [✓] Test memory usage patterns
+  - [✓] Test processing speed
+- [✓] Add CLI command tests
+  - [✓] Test process-notes command
+  - [✓] Test error handling
+  - [✓] Test custom paths
+  - [✓] Test parser errors
 
-**MILESTONE**: Get all tests passing with docling integration
-
-#### 4. Resource Handler Updates [PLANNED]
-- [ ] Update NoteHandler for docling model
-  - [ ] Implement docling model conversion
-  - [ ] Add format validation
-  - [ ] Update metadata handling
-- [ ] Modify AttachmentHandler integration
-  - [ ] Use docling's attachment types
-  - [ ] Add format validation
-  - [ ] Update storage strategy
-- [ ] Implement new metadata mapping
-  - [ ] Map Bear metadata to docling
-  - [ ] Add custom metadata support
-  - [ ] Update search indexing
-- [ ] Add format validation
-  - [ ] Implement format detection
-  - [ ] Add conversion support
-  - [ ] Handle unsupported formats
-
-**MILESTONE**: Get resource handlers working with docling model
-
-#### 5. CLI Command Updates [PLANNED]
-- [ ] Update process-notes command
-  - [ ] Add format detection
-  - [ ] Implement conversion
-  - [ ] Update progress reporting
-- [ ] Modify vector processing
-  - [ ] Update chunking for docling
-  - [ ] Modify embedding strategy
-  - [ ] Update metadata handling
-- [ ] Add format validation
-  - [ ] Implement validation rules
-  - [ ] Add conversion options
-  - [ ] Handle validation errors
-- [ ] Enhance error reporting
-  - [ ] Add detailed error messages
-  - [ ] Implement recovery options
-  - [ ] Update logging format
-
-### Core Testing Phase [IN PROGRESS]
-- [✓] Set up testing infrastructure
-  - [✓] Add pytest configuration
-  - [✓] Add test utilities
-  - [✓] Add test fixtures
-- [✓] Resource Handler Tests
-  - [✓] Note resource tests
-  - [✓] Vector store tests
-  - [✓] Attachment tests
-    - [✓] Basic functionality tests
-    - [✓] File operations tests
-    - [✓] Metadata handling tests
-    - [✓] Error handling tests
-    - [✓] MIME type handling tests
-    - [✓] Concurrent access tests
-    - [✓] Store operation error tests
-      - [✓] Storage path errors
-      - [✓] File system errors
-      - [✓] Permission errors
-      - [✓] Disk space errors
-      - [✓] Metadata validation errors
-  - [✓] Tool Registry Tests
-    - [✓] Search tool tests
-    - [✓] List tool tests
-    - [✓] Extract tool tests
-    - [✓] Remove tool tests
-  - [✓] Change Notification Tests
-    - [✓] Event tests
-    - [✓] Webhook tests
-    - [✓] Filter tests
-  - [✓] Error Handling Tests
-    - [✓] Error code tests
-    - [✓] Recovery tests
-    - [✓] Logging tests
-
-**MILESTONE**: Get all existing tests passing with >90% coverage
-
-## Previous Focus [IN PROGRESS]
-1. [✓] Test Stabilization
-   - [✓] Fix type errors in OCR handler
-   - [✓] Fix attachment store attribute errors
-   - [✓] Fix notification type compatibility
-   - [✓] Fix tool handler argument errors
-   - [✓] Fix vector store type issues
-   - [✓] Run full test suite until passing
-2. [IN PROGRESS] Real-World Usage Preparation
-   - [✓] Create sample Bear notes for testing
-   - [✓] Set up test input directory
-   - [IN PROGRESS] Pipeline Validation
-     - [✓] Initial Bear note processing
-       - [✓] Verify metadata extraction
-       - [✓] Check tag processing
-       - [✓] Validate attachment handling
-     - [IN PROGRESS] OCR Processing
-       - [ ] Test image recognition
-       - [ ] Verify confidence scores
-       - [ ] Check placeholder generation
-     - [✓] Vector Store Population
-       - [✓] Monitor chunking results
-       - [✓] Verify embedding generation
-       - [✓] Check metadata preservation
-     - [IN PROGRESS] MCP Integration Testing
-       - [ ] Test search capabilities
-         - [ ] Basic text search
-         - [ ] Tag-based filtering
-         - [ ] Date range queries
-       - [ ] Verify context retrieval
-         - [ ] Check relevance scores
-         - [ ] Validate metadata inclusion
-       - [ ] Validate RAG responses
-         - [ ] Test query understanding
-         - [ ] Check source attribution
-         - [ ] Verify response quality
-   - [NOT STARTED] Interactive Testing
-     - [ ] CLI-based querying
-       - [ ] Implement search CLI
-       - [ ] Add filtering options
-       - [ ] Support result formatting
-     - [ ] Response validation
-       - [ ] Define quality metrics
-       - [ ] Create test queries
-       - [ ] Measure response accuracy
-     - [ ] Performance monitoring
-       - [ ] Track query latency
-       - [ ] Monitor resource usage
-       - [ ] Log system metrics
-   - [NOT STARTED] System Validation
-     - [ ] Resource usage tracking
-       - [ ] Memory profiling
-       - [ ] CPU utilization
-       - [ ] Disk I/O patterns
-     - [ ] Error handling verification
-       - [ ] Test failure modes
-       - [ ] Verify recovery paths
-       - [ ] Check error reporting
-     - [ ] Recovery testing
-       - [ ] Test system restarts
-       - [ ] Validate state persistence
-       - [ ] Check data integrity
-
-## Blockers [IN PROGRESS]
-1. [✓] Resource Handlers
-   - [✓] OCR engine selection and configuration
-   - [✓] Attachment storage strategy
-     - [✓] Basic file operations
-     - [✓] Metadata handling
-     - [✓] Concurrent access
-     - [✓] Error handling and recovery
-   - [✓] Performance optimization for large files
-
-## Monitoring Implementation [NOT STARTED]
-- [ ] Create minimal web app
-  - [ ] FastAPI-based server
-  - [ ] Health check endpoint
-  - [ ] Basic metrics display
-- [ ] Add structured logging
-  - [ ] Configure structlog
-  - [ ] Define log format
-  - [ ] Add log handlers
-- [ ] Implement metrics collection
-  - [ ] Vector store stats
-  - [ ] Query performance
-  - [ ] System health
-- [ ] Create API endpoints
-  - [ ] Health check
-  - [ ] Recent ingestion stats
-  - [ ] Vector store metrics
-- [ ] Add tests for monitoring
-  - [ ] Server tests
-  - [ ] Metrics tests
-  - [ ] Logging tests
-
-**MILESTONE**: Run tests for monitoring
-
-### Documentation Updates [NOT STARTED]
-- [ ] Update README.md
-  - [ ] Add uv setup instructions
-  - [ ] Include quickstart guide
-  - [ ] Document CLI usage
-- [ ] Update architecture docs
-  - [ ] Add MCP integration details
-  - [ ] Document monitoring approach
-  - [ ] Include performance considerations
-- [ ] Create developer guide
-  - [ ] Environment setup
-  - [ ] Testing procedures
-  - [ ] Contribution guidelines
-
-**MILESTONE**: Documentation review
-
-### RAG Implementation [NOT STARTED]
-- [ ] Create query processor
-  - [ ] Tool-based decomposition
-  - [ ] Context window management
-  - [ ] Source attribution
-- [ ] Implement retrieval system
-  - [ ] Hybrid search functionality
-  - [ ] Chunk selection logic
-  - [ ] Dynamic context assembly
-- [ ] Add result processor
-  - [ ] Source validation
-  - [ ] Metadata enrichment
-  - [ ] Relevance scoring
-- [ ] Create Claude interface
-  - [ ] Anthropic API integration
-  - [ ] Message formatting
-  - [ ] Session management
-- [ ] Add tests for RAG pipeline
-
-**MILESTONE**: Run tests for RAG system
-
-## Phase 3: Claude Desktop Integration [NOT STARTED]
-
-### Desktop Client Setup [NOT STARTED]
-- [ ] Create desktop client structure
-- [ ] Set up IPC mechanisms
-  - [ ] Local communication
-  - [ ] Resource management
-- [ ] Implement Claude integration
-  - [ ] MCP message handling
-  - [ ] Response streaming
-  - [ ] Error recovery
-- [ ] Add tests for desktop client
-
-**MILESTONE**: Run tests for desktop integration
-
-### Desktop Features [NOT STARTED]
-- [ ] Create query interface
-- [ ] Implement response display
-- [ ] Add settings management
-  - [ ] API key handling
-  - [ ] Vector store config
-- [ ] Implement error handling
-- [ ] Add tests for desktop features
-
-**MILESTONE**: Run tests for desktop features
-
-## Phase 4: Monitoring System [NOT STARTED]
-
-### Monitoring Backend [NOT STARTED]
-- [ ] Implement metrics collection
-  - [ ] Vector store stats
-  - [ ] Query performance
-  - [ ] System health
-- [ ] Create logging system
-- [ ] Add performance tracking
-- [ ] Create API endpoints
-- [ ] Add tests for monitoring backend
-
-**MILESTONE**: Run tests for monitoring backend
-
-### Monitoring Frontend [NOT STARTED]
-- [ ] Create dashboard UI
-- [ ] Implement metrics display
-- [ ] Add log viewer
-- [ ] Create system status page
-- [ ] Add tests for monitoring frontend
-
-**MILESTONE**: Run tests for monitoring frontend
+**MILESTONE**: Get all tests passing with docling integration [✓]

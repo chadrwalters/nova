@@ -2,7 +2,8 @@
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
+import asyncio
 
 import click
 
@@ -18,8 +19,8 @@ class SearchCommand(NovaCommand):
     name = "search"
     help = "Search through vector embeddings"
 
-    def run(self, **kwargs: Any) -> None:
-        """Run the command.
+    async def run_async(self, **kwargs: Any) -> None:
+        """Run the command asynchronously.
 
         Args:
             **kwargs: Command arguments
@@ -32,8 +33,8 @@ class SearchCommand(NovaCommand):
             # Initialize vector store
             vector_store = VectorStore(vector_dir)
 
-            # Search for similar documents
-            results = vector_store.search(query, limit=limit)
+            # Search for similar documents asynchronously
+            results = await asyncio.to_thread(vector_store.search, query, limit=limit)
 
             # Display results
             if not results:
@@ -43,14 +44,16 @@ class SearchCommand(NovaCommand):
             logger.info("Found %d results:", len(results))
             for i, result in enumerate(results, 1):
                 metadata = result["metadata"]
-                score = 1.0 - result.get(
-                    "distance", 0.0
-                )  # Convert distance to similarity
+                # Convert cosine distance to similarity score (0-100%)
+                distance = result.get("distance", 0.0)
+                # Cosine distance is between 0 (identical) and 2 (opposite)
+                # Normalize to 0-1 range and convert to similarity
+                similarity = max(0.0, min(1.0, (2.0 - distance) / 2.0)) * 100
                 logger.info(
                     "\n%d. %s (%.2f%% match)\nTags: %s\nDate: %s\nContent: %s\n",
                     i,
                     metadata.get("title", "Untitled"),
-                    score * 100,
+                    similarity,
                     metadata.get("tags", ""),
                     metadata.get("date", "Unknown"),
                     metadata.get("content", "")[:200] + "...",  # Show first 200 chars
@@ -59,6 +62,14 @@ class SearchCommand(NovaCommand):
         except Exception as e:
             self.log_error(f"Failed to search: {e}")
             raise click.Abort()
+
+    def run(self, **kwargs: Any) -> None:
+        """Run the command.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        asyncio.run(self.run_async(**kwargs))
 
     def create_command(self) -> click.Command:
         """Create the click command.

@@ -4,6 +4,9 @@ import logging
 import shutil
 from pathlib import Path
 from typing import Any
+import asyncio
+import aiofiles
+import aiofiles.os
 
 import click
 
@@ -17,8 +20,8 @@ class CleanVectorsCommand(NovaCommand):
 
     name = "clean-vectors"
 
-    def run(self, **kwargs: Any) -> None:
-        """Run the clean-vectors command.
+    async def run_async(self, **kwargs: Any) -> None:
+        """Run the clean-vectors command asynchronously.
 
         Args:
             **kwargs: Command arguments
@@ -26,7 +29,7 @@ class CleanVectorsCommand(NovaCommand):
         force = kwargs.get("force", False)
         vector_dir = Path(".nova/vectors")
 
-        if not vector_dir.exists():
+        if not await aiofiles.os.path.exists(str(vector_dir)):
             logger.info("Vector store directory does not exist")
             return
 
@@ -35,12 +38,21 @@ class CleanVectorsCommand(NovaCommand):
             return
 
         try:
-            shutil.rmtree(vector_dir)
+            # Run rmtree in a thread to avoid blocking
+            await asyncio.to_thread(shutil.rmtree, vector_dir)
             logger.info("Vector store deleted successfully")
         except Exception as e:
             msg = f"Failed to delete vector store: {str(e)}"
             logger.error(msg)
             raise click.Abort(msg) from e
+
+    def run(self, **kwargs: Any) -> None:
+        """Run the command.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        asyncio.run(self.run_async(**kwargs))
 
     def create_command(self) -> click.Command:
         """Create the clean-vectors command.

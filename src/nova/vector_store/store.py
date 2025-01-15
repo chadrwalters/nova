@@ -9,10 +9,12 @@ from typing import Any, Union, cast
 
 import numpy as np
 from numpy.typing import NDArray
-import chromadb
-from chromadb.api.types import Embeddings, Metadatas, Where
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
+import chromadb  # type: ignore[import]
+from chromadb.api.types import Embeddings, Metadatas, Where  # type: ignore[import]
+from chromadb.config import Settings  # type: ignore[import]
+from sentence_transformers import SentenceTransformer  # type: ignore
+
+from .types import VectorStoreStats
 
 logger = logging.getLogger(__name__)
 
@@ -256,3 +258,19 @@ class VectorStore:
         self._embedding_cache.clear()
         self._model = None
         self.client.reset()
+
+    async def get_stats(self) -> VectorStoreStats:
+        """Get statistics about the vector store.
+
+        Returns:
+            VectorStoreStats: Statistics about the vector store
+        """
+        collection = self.client.get_collection("nova")
+        count = collection.count()
+        metadata = collection.get()
+
+        return VectorStoreStats(
+            collection_name="nova",
+            num_embeddings=count,
+            metadata=metadata
+        )
