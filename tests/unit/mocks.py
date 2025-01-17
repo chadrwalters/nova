@@ -3,8 +3,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nova.stubs.docling import Document, DocumentConverter, InputFormat
 from nova.server.types import ResourceError
+from nova.stubs.docling import Document, DocumentConverter
 
 
 class MockDocumentConverter(DocumentConverter):
@@ -41,13 +41,9 @@ class MockDocumentConverter(DocumentConverter):
             "modified": datetime.now().isoformat(),
             "size": 72,
         }
-        attachment_doc.pictures = [{
-            "image": {
-                "uri": "test.png",
-                "mime_type": "image/png",
-                "size": 1024
-            }
-        }]
+        attachment_doc.pictures = [
+            {"image": {"uri": "test.png", "mime_type": "image/png", "size": 1024}}
+        ]
         self._documents[attachment_doc.name] = attachment_doc
 
     def convert_file(self, path: Path) -> Document:

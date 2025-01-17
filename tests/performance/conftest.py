@@ -1,11 +1,11 @@
 """Performance test configuration and fixtures."""
 
-import time
 import os
-from collections.abc import Callable, Awaitable
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeVar, cast, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeVar, cast, runtime_checkable
 
 import pytest
 

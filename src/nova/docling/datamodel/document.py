@@ -2,9 +2,9 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from .base_models import InputFormat
+
 
 @dataclass
 class Document:
@@ -16,14 +16,14 @@ class Document:
     format: InputFormat
     """The document format."""
 
-    title: Optional[str] = None
+    title: str | None = None
     """The document title."""
 
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     """The document tags."""
 
-    metadata: Dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict)
     """Additional metadata."""
 
-    source_path: Optional[Path] = None
+    source_path: Path | None = None
     """The source file path."""

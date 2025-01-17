@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from nova.bear_parser.parser import BearParser, BearNote
+from nova.bear_parser.parser import BearNote, BearParser
 
 
 @pytest.fixture

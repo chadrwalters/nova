@@ -1,16 +1,19 @@
 """Clean vectors command."""
 
+import asyncio
 import logging
 import shutil
 from pathlib import Path
 from typing import Any
-import asyncio
+
 import aiofiles
 import aiofiles.os
-
+import chromadb
 import click
+from chromadb.config import Settings
 
 from nova.cli.utils.command import NovaCommand
+from nova.vector_store.store import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,7 @@ class CleanVectorsCommand(NovaCommand):
     """Clean vectors command for nova CLI."""
 
     name = "clean-vectors"
+    help = "Clean the vector store"
 
     async def run_async(self, **kwargs: Any) -> None:
         """Run the clean-vectors command asynchronously.
@@ -38,11 +42,38 @@ class CleanVectorsCommand(NovaCommand):
             return
 
         try:
+            # Try to delete collection first if it exists
+            try:
+                client = chromadb.PersistentClient(
+                    path=str(vector_dir / "chroma"),
+                    settings=Settings(
+                        persist_directory=str(vector_dir / "chroma"), is_persistent=True
+                    ),
+                )
+                try:
+                    collection = client.get_collection(name=VectorStore.COLLECTION_NAME)
+                    collection.delete()
+                    logger.info(f"Deleted collection: {VectorStore.COLLECTION_NAME}")
+                except ValueError:
+                    # Collection doesn't exist, that's fine
+                    logger.info(f"Collection {VectorStore.COLLECTION_NAME} does not exist")
+                except Exception as e:
+                    # Log other collection errors but continue
+                    logger.warning(f"Error deleting collection: {e}")
+            except Exception as e:
+                # Log ChromaDB errors but continue
+                logger.warning(f"Error accessing ChromaDB: {e}")
+
             # Run rmtree in a thread to avoid blocking
             await asyncio.to_thread(shutil.rmtree, vector_dir)
             logger.info("Vector store deleted successfully")
+
+            # Reset VectorStore singleton
+            VectorStore._instance = None
+            VectorStore._initialized = False
+
         except Exception as e:
-            msg = f"Failed to delete vector store: {str(e)}"
+            msg = f"Failed to delete vector store: {e!s}"
             logger.error(msg)
             raise click.Abort(msg) from e
 
@@ -61,7 +92,7 @@ class CleanVectorsCommand(NovaCommand):
             click.Command: The Click command
         """
 
-        @click.command(name="clean-vectors")
+        @click.command(name=self.name, help=self.help)
         @click.option(
             "--force",
             is_flag=True,

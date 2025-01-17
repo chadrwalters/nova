@@ -1,0 +1,46 @@
+# Package manager caches
+**/node_modules/
+**/.npm/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+
+# Build caches
+**/.gradle/
+**/.nuget/
+**/.cargo/
+**/.stack-work/
+**/.ccache/
+
+# IDE and Editor caches
+**/.idea/
+**/.vscode/
+**/*.swp
+**/*~
+
+# Temp files
+**/*.tmp
+**/*.temp
+**/*.bak
+
+**/*.meta
+**/package-lock.json
+
+.flake8
+.mypy_cache
+.nova
+.pytest_cache
+.ruff_cache
+.venv
+.vscode
+.bandit
+.cover
+.flake8
+.gitignore
+.gitmessage
+.plan
+.pre-commit-config.yaml
+.python-version
+.repomixignore
+repomix.config.json
+uv.lock

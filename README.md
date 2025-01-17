@@ -1,195 +1,210 @@
-# Nova
+# Nova: Building a Personal "Second Brain"
 
-A vector-based note processing and search system with MCP integration.
+Welcome to the Nova repository! This project has two main goals:
 
-## Requirements
+## 1. Streamlined Note Management & RAG Integration
+Nova began as a way to convert my meeting notes and attachments into PDFs so I could interact with them in Claude or ChatGPT. Over time, I discovered the limitations of uploading large PDFs and grew curious about more advanced approaches. This led me to explore RAG (Retrieval-Augmented Generation) pipelines, vector stores, and MCP integrations—ultimately transforming Nova into a "second brain" architecture that can easily recall and reference my notes.
 
-- Python 3.11+
-- uv package manager (pip/python usage is FORBIDDEN)
-- python-magic (for format detection)
-- html2text (for HTML conversion)
-- docutils (for RST conversion)
+## 2. Learning & Growing as a Developer (Again)
+Although I was a developer long ago, I now serve as an engineering executive. Building Nova has been a hands-on way to re-learn the fundamentals of coding and explore the power of AI-assisted development. Without these new tools, I simply could not have built something of this scope in such a short time—version 3 came together over about 1.5 weeks of nights and weekend sessions. I often chose the "longer way" on purpose to refine my process and learn how best to manage AI coding assistants. My hope is to share these insights with the community and apply them to professional environments.
 
-## File System Organization
+# Current Status (V3)
 
-All system files are stored in the `.nova` directory:
-- `.nova/processing/`: Processed notes
-- `.nova/vectors/`: Vector store database
-- `.nova/logs/`: System logs
+This is what I consider a non-optimized V3: a new architecture that sets the foundation for Nova as a personal second brain. Much of my next work will be focused on improving:
 
-Input files location is configurable:
-- Default: `/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput`
-- Can be overridden via command line arguments
+- Speed & Performance: Making the RAG pipeline faster and more efficient
+- Effectiveness of Retrieval: Optimizing how Nova integrates multiple data sources
+- Processing & Scaling: Ensuring Nova can handle expanding content while still performing reliably
 
-## Testing
+# Future Plans
 
-- All tests MUST run through uv: `uv run pytest -v`
-- Type checking MUST be run before tests
-- Tests should run without approval
-- Test command: `uv run pytest -v`
+From here on, I plan to keep pushing Nova's capabilities, focusing on features like:
+
+- Efficient data integration: Automating how different data sources feed into Nova.
+- Better contextual advice: Teaching Nova to reason more deeply about various topics, referencing new external documents.
+- Scaling for my workflow: Ensuring Nova scales smoothly from a single user—me—to potential broader use cases.
+
+By continuing to build and refactor, I aim to make Nova more useful over time and share my learnings with the community. Thank you for stopping by, and I look forward to collaborating on this journey!
+
+### Core Features
+- Document Processing: Multi-format support with rich metadata extraction
+- Vector Store: Semantic chunking and embeddings for efficient retrieval
+- Search: Semantic similarity search with metadata filtering
+- Claude Desktop Integration: READ-ONLY tools for search and monitoring
+
+### Document Processing Features
+- Format Support:
+  - Text Formats:
+    - Markdown (.md) - Native format with full metadata preservation
+    - Plain text (.txt) - Direct conversion with basic metadata
+    - HTML (.html, .htm) - Converted via html2text with link preservation
+    - reStructuredText (.rst) - Converted via docutils with structure preservation
+    - AsciiDoc (.adoc, .asciidoc) - Converted via asciidoc with formatting
+    - Org Mode (.org) - Converted via pandoc with hierarchy preservation
+    - Wiki (.wiki) - Converted via pandoc with basic formatting
+    - LaTeX (.tex) - Converted via pandoc with math support
+  - Office Formats:
+    - Word (.docx) - Converted via pandoc with style preservation
+    - Excel (.xlsx) - Converted via pandoc with table structure
+    - PowerPoint (.pptx) - Converted via pandoc with slide structure
+  - Other Formats:
+    - PDF (.pdf) - Converted via pandoc with layout preservation
+
+- Bear Note Processing:
+  - Title Date Extraction:
+    - Supports formats: YYYYMMDD, YYYY-MM-DD
+    - Extracts date components (year, month, day)
+    - Adds weekday information
+    - Preserves original title
+  - Tag Handling:
+    - Extracts #tags and #nested/tags
+    - Preserves tag hierarchy
+    - Maintains tag relationships
+  - Metadata Extraction:
+    - Creation date from title
+    - Modified date from file
+    - Tag collection and hierarchy
+    - Note title and subtitle
+    - Attachment references
+
+- Processing Features:
+  - Automatic format detection via MIME types
+  - Fallback to extension-based detection
+  - Rich metadata extraction
+  - Structure preservation
+  - Error recovery with detailed logging
+  - Progress tracking and reporting
+
+### Monitoring Features
+- Session Monitoring:
+  - Real-time performance tracking
+  - Health checks during sessions
+  - Error tracking and reporting
+  - Resource usage monitoring
+
+- Persistent Monitoring:
+  - Cross-session metrics storage
+  - Performance trend analysis
+  - Error pattern detection
+  - System health tracking
+
+- Log Management:
+  - Automated log rotation
+  - Log archival and cleanup
+  - Structured log parsing
+  - Log analysis tools
 
 ## Installation
 
-1. Create a Python virtual environment:
 ```bash
-uv venv .venv
+# Clone the repository
+git clone https://github.com/yourusername/nova.git
+cd nova
+
+# Create and activate virtual environment using uv
+uv venv
 source .venv/bin/activate
+
+# Install dependencies
+uv pip install -r requirements.txt
 ```
 
-2. Install dependencies:
-```bash
-uv pip install -e .
-```
+## Usage
 
-3. Install pre-commit hooks:
-```bash
-uv pip install pre-commit
-uv run pre-commit install
-```
-
-## Command Line Interface
-
-Nova provides a comprehensive command-line interface for managing your notes and vector store:
-
-### Core Commands
-
-#### `nova process-notes`
-Process notes with automatic format detection and conversion.
+### CLI Commands
 
 ```bash
-# Process notes from default input directory
-uv run nova process-notes
+# Process notes
+nova process-notes --input-dir /path/to/notes --output-dir .nova/processing
 
-# Process notes from a specific directory
-uv run nova process-notes --input-dir /path/to/notes --output-dir /path/to/output
+# Process vectors
+nova process-bear-vectors --input-dir .nova/processing --output-dir .nova/vectors
+
+# Search notes
+nova search "your query here" --limit 5
+
+# Monitor system
+nova monitor health  # Check system health
+nova monitor stats  # View statistics
+nova monitor logs   # View recent logs
+nova monitor errors # View error summary
+
+# Clean up
+nova clean-processing --force  # Clean processed notes
+nova clean-vectors --force     # Clean vector store
 ```
 
-Options:
-- `--input-dir`: Directory containing notes (default: configured input path)
-- `--output-dir`: Directory for processed notes (default: .nova/processing)
+### Claude Desktop Integration
 
-Supported Formats:
-- Text Formats:
-  - Markdown (.md) - Native format
-  - Plain text (.txt) - Direct conversion
-  - HTML (.html, .htm) - via html2text
-  - reStructuredText (.rst) - via docutils
-  - AsciiDoc (.adoc, .asciidoc) - via asciidoc
-  - Org Mode (.org) - via pandoc
-  - Wiki (.wiki) - via pandoc
-  - LaTeX (.tex) - via pandoc
-- Office Formats:
-  - Word (.docx) - via pandoc
-  - Excel (.xlsx) - via pandoc
-  - PowerPoint (.pptx) - via pandoc
-- Other Formats:
-  - PDF (.pdf) - via pandoc
+1. Configure Claude Desktop with Nova:
+```json
+{
+  "mcpServers": {
+    "nova": {
+      "command": "/path/to/nova/scripts/start_nova_mcp.sh",
+      "cwd": "/path/to/nova"
+    }
+  }
+}
+```
 
-#### `nova process-bear-vectors`
-Process Bear notes into vector embeddings.
+2. Start a conversation in Claude Desktop with:
+"I'm using Nova for semantic search and monitoring. Please use port 8765 for all operations."
+
+3. Available tools:
+- search_tool: Semantic search with configurable limits and similarity scoring
+- monitor_tool: System health checks, statistics, and log analysis
+
+## Directory Structure
+
+```
+.nova/
+├── processing/  # Processed documents
+├── vectors/     # Vector store data
+├── logs/        # System logs
+│   └── archive/ # Archived logs
+└── metrics/     # Persistent metrics
+```
+
+## Configuration
+
+Nova uses a centralized `.nova` directory for all system files:
+- Input files: Configurable location (default: iCloud Drive/_NovaInput)
+- System files: Always in `.nova` directory
+- Logs: Rotated at 10MB, archived after 7 days
+- Metrics: SQLite database for persistent monitoring
+
+## Monitoring
+
+### Session Monitoring
+- Real-time performance tracking
+- Component health checks
+- Error detection and reporting
+- Resource usage monitoring
+
+### Persistent Monitoring
+- Cross-session metrics storage
+- Performance trend analysis
+- Error pattern detection
+- System health tracking
+
+### Log Management
+- Automatic log rotation (10MB)
+- Log archival (7 days)
+- Structured parsing
+- Analysis tools
+
+## Development
 
 ```bash
-# Process notes from default input directory
-uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir .nova/vectors
+# Run tests
+uv run pytest -v
 
-# Process notes from a specific directory
-uv run nova process-bear-vectors --input-dir /path/to/notes --output-dir /path/to/vectors
+# Run type checking
+uv run mypy src/nova
+
+# Run linting
+uv run ruff src/nova
 ```
 
-Options:
-- `--input-dir`: Directory containing Bear notes (required)
-- `--output-dir`: Directory for vector store (required)
-
-Output:
-- Vector embeddings stored in Chroma database
-- Metadata preserved with each embedding:
-  - Source file path
-  - Note title
-  - Creation date
-  - Tags
-
-#### `nova search`
-Search through vector embeddings using sentence-transformers for semantic similarity.
-
-```bash
-# Search with default settings
-uv run nova search "your search query"
-
-# Search with custom parameters
-uv run nova search "your search query" --vector-dir /path/to/vectors --limit 10
-```
-
-Options:
-- `--vector-dir`: Directory containing vector store (default: .nova/vectors)
-- `--limit`: Maximum number of results to return (default: 5)
-
-Output:
-- Ranked list of similar notes with:
-  - Title and normalized similarity score (0-100%)
-  - Tags and creation date
-  - Content preview (first 200 characters)
-
-#### `nova clean-processing`
-Clean the processed notes directory.
-
-```bash
-# Show warning without deleting
-uv run nova clean-processing
-
-# Force deletion of processed notes
-uv run nova clean-processing --force
-```
-
-Options:
-- `--force`: Force deletion without confirmation
-
-#### `nova clean-vectors`
-Clean the vector store.
-
-```bash
-# Show warning without deleting
-uv run nova clean-vectors
-
-# Force deletion of vector store
-uv run nova clean-vectors --force
-```
-
-Options:
-- `--force`: Force deletion without confirmation
-
-#### `nova monitor`
-Monitor system health and status.
-
-```bash
-# Check system health
-uv run nova monitor health
-
-# View system statistics
-uv run nova monitor stats
-
-# View recent logs
-uv run nova monitor logs
-```
-
-Subcommands:
-- `health`: Check system component status
-- `stats`: Display system statistics
-- `logs`: View recent log entries
-
-## MCP Integration
-
-Nova runs an MCP server on port 8765 for Claude Desktop integration. This port was chosen to avoid conflicts with common development services.
-
-IMPORTANT: The MCP server is READ-ONLY for the vector store. All write operations (processing notes, creating vectors, cleaning) must be done through the CLI commands. This ensures data integrity and proper processing of notes.
-
-MCP Server Capabilities:
-- Search existing vectors
-- Retrieve note content
-- Monitor system health
-- View statistics
-
-Write Operations (CLI Only):
-- Processing notes
-- Creating vectors
-- Cleaning vectors/processing
-- System maintenance
+## License

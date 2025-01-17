@@ -24,7 +24,7 @@ def test_embed_texts_multiple() -> None:
     results = engine.embed_texts(texts)
 
     assert len(results) == len(texts)
-    for text, result in zip(texts, results):
+    for text, result in zip(texts, results, strict=False):
         assert result.text == text
         assert isinstance(result.vector, np.ndarray)
         assert result.vector.dtype == np.float32

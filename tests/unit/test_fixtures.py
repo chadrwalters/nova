@@ -1,8 +1,6 @@
 """Test fixtures for docling integration."""
 
 from datetime import datetime
-from pathlib import Path
-from typing import Any
 
 from nova.stubs.docling import Document, InputFormat
 
@@ -68,15 +66,17 @@ class DocumentFixtures:
             "modified": datetime.now().isoformat(),
             "size": 82,
         }
-        doc.pictures = [{
-            "image": {
-                "uri": "test.png",
-                "mime_type": "image/png",
-                "size": 1024,
-                "width": 800,
-                "height": 600,
+        doc.pictures = [
+            {
+                "image": {
+                    "uri": "test.png",
+                    "mime_type": "image/png",
+                    "size": 1024,
+                    "width": 800,
+                    "height": 600,
+                }
             }
-        }]
+        ]
         return doc
 
     @staticmethod

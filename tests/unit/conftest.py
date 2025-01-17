@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from nova.server.types import ResourceMetadata, ResourceType, ToolMetadata, ToolType
+
 from nova.vector_store import VectorStore
 
 
@@ -55,7 +55,7 @@ def mock_attachment_store(temp_dir: Path) -> MagicMock:
     mock = MagicMock()
     mock.storage_path = temp_dir / ".nova" / "attachments"
     mock.version = "1.0.0"
-    mock.count_attachments.return_value = 0
+    mock.count.return_value = 0
     return mock
 
 
@@ -66,40 +66,6 @@ def mock_ocr_engine() -> MagicMock:
     Returns:
         Mock OCR engine
     """
-    return MagicMock()
-
-
-@pytest.fixture
-def sample_resource_metadata() -> ResourceMetadata:
-    """Create sample resource metadata.
-
-    Returns:
-        Sample resource metadata
-    """
-    return {
-        "id": "test_resource",
-        "type": ResourceType.VECTOR_STORE,
-        "name": "Test Resource",
-        "version": "1.0.0",
-        "modified": 1234567890.0,
-        "attributes": {"test_attr": "test_value"},
-    }
-
-
-@pytest.fixture
-def sample_tool_metadata() -> ToolMetadata:
-    """Create sample tool metadata.
-
-    Returns:
-        Sample tool metadata
-    """
-    return {
-        "id": "test_tool",
-        "type": ToolType.SEARCH,
-        "name": "Test Tool",
-        "version": "1.0.0",
-        "parameters": {
-            "test_param": {"type": "string", "description": "Test parameter"}
-        },
-        "capabilities": ["test_capability"],
-    }
+    mock = MagicMock()
+    mock.version = "1.0.0"
+    return mock

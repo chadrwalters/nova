@@ -1,153 +1,155 @@
 """Monitor command for checking system health and stats."""
-import asyncio
-from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
 
-import aiofiles
-import aiofiles.os
+import logging
+from pathlib import Path
+
 import click
 from rich.console import Console
-from rich.table import Table
 
-from ...vector_store.store import VectorStore
-from ...vector_store.types import VectorStoreStats
-from ..utils.command import NovaCommand
-import os
+from nova.cli.utils.command import NovaCommand
+from nova.monitoring.logs import LogManager
+from nova.vector_store.stats import VectorStoreStats
+from nova.vector_store.store import VectorStore
+
+console = Console()
+logger = logging.getLogger(__name__)
+
 
 class MonitorCommand(NovaCommand):
-    """Monitor command for checking system health and stats."""
+    """Command for monitoring system health and stats."""
 
     name = "monitor"
+    help = "Monitor system health and stats"
 
-    def create_command(self) -> click.Command:
-        """Create the monitor command.
+    def __init__(self, vector_dir: str = ".nova/vectors"):
+        """Initialize the command."""
+        super().__init__()
+        self.vector_dir = Path(vector_dir)
+        self.stats_file = self.vector_dir / "stats.json"
+        self.vector_stats = VectorStoreStats()
+        self.log_manager = LogManager()
 
-        Returns:
-            click.Command: The monitor command
-        """
-        @click.command(name=self.name)
-        @click.argument("subcommand", type=click.Choice(["health", "stats", "logs"]), default="health")
-        def monitor(subcommand: str) -> None:
-            """Monitor system health and stats.
+        # Get the singleton VectorStore instance
+        self.vector_store = VectorStore(vector_dir=str(self.vector_dir))
 
-            Args:
-                subcommand: The subcommand to run (health, stats, logs)
-            """
-            asyncio.run(self.run_async(subcommand=subcommand))
+    def create_command(self):
+        """Create the Click command."""
+
+        @click.command(name=self.name, help=self.help)
+        @click.argument("subcommand", type=click.Choice(["health", "stats", "logs"]))
+        def monitor(subcommand):
+            """Monitor system health and stats."""
+            self._run_sync(subcommand=subcommand)
 
         return monitor
 
-    async def run_async(self, subcommand: str) -> None:
-        """Run the command asynchronously.
+    def _run_sync(self, subcommand: str):
+        """Run the command synchronously."""
+        try:
+            if subcommand == "health":
+                self._check_health()
+            elif subcommand == "stats":
+                self._show_stats()
+            elif subcommand == "logs":
+                self._show_logs()
+            else:
+                raise ValueError(f"Invalid subcommand: {subcommand}")
+        except Exception as e:
+            logger.error(f"Error running command: {e}")
+            raise
 
-        Args:
-            subcommand: The subcommand to run (health, stats, logs)
-        """
-        if subcommand == "health":
-            await self.run_health()
-        elif subcommand == "stats":
-            await self.run_stats()
-        elif subcommand == "logs":
-            await self.run_logs()
-        else:
-            raise ValueError(f"Unknown subcommand: {subcommand}")
+    def _check_health(self):
+        """Check system health."""
+        try:
+            # Check vector store directory
+            if not self.vector_dir.exists():
+                console.print("❌ Vector store directory does not exist", style="red")
+            else:
+                console.print("✅ Vector store directory exists", style="green")
 
-    async def run_health(self) -> None:
-        """Run health check."""
-        console = Console()
+            # Check ChromaDB directory
+            chroma_dir = self.vector_dir / "chroma"
+            if not chroma_dir.exists():
+                console.print("❌ ChromaDB directory does not exist", style="red")
+            else:
+                console.print("✅ ChromaDB directory exists", style="green")
 
-        # Check vector store
-        store = VectorStore(Path(".nova/vectors"))
-        if store._store_dir.exists():
-            console.print("[green]Vector store exists[/green]")
-        else:
-            console.print("[red]Vector store does not exist[/red]")
+            # Check cache directory
+            cache_dir = Path(".nova/cache")
+            if not cache_dir.exists():
+                console.print("❌ Cache directory does not exist", style="red")
+            else:
+                console.print("✅ Cache directory exists", style="green")
 
-        # Check processing directory
-        if Path(".nova/processing").exists():
-            console.print("[green]Processing directory exists[/green]")
-        else:
-            console.print("[red]Processing directory does not exist[/red]")
+            # Check logs directory
+            logs_dir = Path(".nova/logs")
+            if not logs_dir.exists():
+                console.print("❌ Logs directory does not exist", style="red")
+            else:
+                console.print("✅ Logs directory exists", style="green")
 
-        # Check logs directory
-        if Path(".nova/logs").exists():
-            console.print("[green]Logs directory exists[/green]")
-        else:
-            console.print("[red]Logs directory does not exist[/red]")
+            # Verify ChromaDB collection
+            try:
+                collection = self.vector_store.collection
+                if collection is not None:
+                    console.print("✅ ChromaDB collection is accessible", style="green")
+                else:
+                    console.print("❌ ChromaDB collection is not accessible", style="red")
+            except Exception as e:
+                console.print(f"❌ ChromaDB collection error: {e}", style="red")
 
-    async def run_stats(self) -> None:
-        """Run stats command."""
-        store = VectorStore(Path(".nova/vectors"))
-        stats = await store.get_stats()
+        except Exception as e:
+            logger.error(f"Error checking health: {e}")
+            raise
 
-        console = Console()
+    def _show_stats(self):
+        """Show system statistics."""
+        try:
+            # Get collection stats
+            collection = self.vector_store.collection
+            total_docs = 0
+            if collection is not None:
+                result = collection.get()
+                total_docs = len(result["ids"]) if result and "ids" in result else 0
 
-        table = Table(title="Vector Store Stats")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="magenta")
+            # Get stats from vector store
+            stats = self.vector_store.stats
+            stats_dict = stats.get_stats() if stats else {}
 
-        table.add_row("Collection", stats.collection_name)
-        table.add_row("Embeddings", str(stats.num_embeddings))
+            console.print("\nVector Store Statistics:", style="bold cyan")
+            console.print(f"Documents in collection: {total_docs}")
+            console.print(f"Total documents processed: {stats_dict.get('total_documents', 0)}")
+            console.print(f"Total chunks: {stats_dict.get('total_chunks', 0)}")
+            console.print(f"Total embeddings: {stats_dict.get('total_embeddings', 0)}")
+            console.print(f"Total searches: {stats_dict.get('total_searches', 0)}")
+            console.print(f"Cache hits: {stats_dict.get('cache_hits', 0)}")
+            console.print(f"Cache misses: {stats_dict.get('cache_misses', 0)}")
+            console.print(f"Last update: {stats_dict.get('last_update', 'Never')}")
 
-        console.print(table)
+            # Get log statistics
+            log_stats = self.log_manager.get_stats()
+            console.print("\nLog Statistics:", style="bold cyan")
+            console.print(f"Total log files: {log_stats['total_files']}")
+            console.print(f"Total entries: {log_stats['total_entries']}")
+            console.print(f"Error entries: {log_stats['error_entries']}")
+            console.print(f"Warning entries: {log_stats['warning_entries']}")
+            console.print(f"Info entries: {log_stats['info_entries']}")
 
-        # Check processing directory
-        processing_dir = Path(".nova/processing")
-        if processing_dir.exists():
-            files = [f for f in os.scandir(processing_dir) if f.is_file()]
-            total_size = sum(f.stat().st_size for f in files)
+        except Exception as e:
+            logger.error(f"Error showing stats: {e}")
+            raise
 
-            table = Table(title="Processing Directory Stats")
-            table.add_column("Metric", style="cyan")
-            table.add_column("Value", style="magenta")
-
-            table.add_row("Files", str(len(files)))
-            table.add_row("Total Size", f"{total_size / 1024:.2f} KB")
-            console.print(table)
-        else:
-            console.print("[yellow]Processing directory does not exist[/yellow]")
-
-        # Check logs directory
-        logs_dir = Path(".nova/logs")
-        if logs_dir.exists():
-            files = [f for f in os.scandir(logs_dir) if f.is_file()]
-            total_size = sum(f.stat().st_size for f in files)
-
-            table = Table(title="Logs Directory Stats")
-            table.add_column("Metric", style="cyan")
-            table.add_column("Value", style="magenta")
-
-            table.add_row("Files", str(len(files)))
-            table.add_row("Total Size", f"{total_size / 1024:.2f} KB")
-            console.print(table)
-        else:
-            console.print("[yellow]Logs directory does not exist[/yellow]")
-
-    async def run_logs(self) -> None:
-        """Run logs command."""
-        log_dir = Path(".nova/logs")
-        if not log_dir.exists():
-            print("No log directory found.")
-            return
-
-        console = Console()
-        table = Table(title="Recent Logs")
-        table.add_column("File", style="cyan")
-        table.add_column("Size", style="magenta")
-        table.add_column("Modified", style="green")
-
-        files = sorted(
-            [f for f in os.scandir(log_dir) if f.is_file()],
-            key=lambda x: x.stat().st_mtime,
-            reverse=True
-        )[:5]  # Show 5 most recent logs
-
-        for f in files:
-            stat = f.stat()
-            table.add_row(
-                f.name,
-                f"{stat.st_size / 1024:.2f} KB",
-                f"{stat.st_mtime}"
-            )
-
-        console.print(table)
+    def _show_logs(self):
+        """Show recent logs."""
+        try:
+            console.print("\nRecent Log Entries:", style="bold cyan")
+            logs = self.log_manager.tail_logs(100)
+            for log in logs:
+                timestamp = log["timestamp"]
+                level = log["level"]
+                message = log["message"]
+                style = "red" if level == "ERROR" else "yellow" if level == "WARNING" else "green"
+                console.print(f"[{timestamp}] [{level}] {message}", style=style)
+        except Exception as e:
+            logger.error(f"Error showing logs: {e}")
+            raise

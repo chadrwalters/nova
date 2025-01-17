@@ -66,5 +66,5 @@ class EmbeddingEngine:
         vectors = embeddings.astype(np.float32)
         return [
             EmbeddingResult(text=text, vector=vector)
-            for text, vector in zip(texts, vectors)
+            for text, vector in zip(texts, vectors, strict=False)
         ]

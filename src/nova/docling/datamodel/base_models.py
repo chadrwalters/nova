@@ -2,6 +2,7 @@
 
 from enum import Enum, auto
 
+
 class InputFormat(Enum):
     """Input format enum."""
 
@@ -21,6 +22,7 @@ class InputFormat(Enum):
     def __str__(self) -> str:
         """Return string representation."""
         return self.name.lower()
+
 
 # Format to MIME type mapping
 FORMAT_TO_MIME = {

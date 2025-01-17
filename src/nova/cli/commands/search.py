@@ -1,9 +1,9 @@
 """Search command."""
 
+import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
-import asyncio
+from typing import Any
 
 import click
 
@@ -38,25 +38,20 @@ class SearchCommand(NovaCommand):
 
             # Display results
             if not results:
-                logger.info("No results found")
+                print("No results found")
                 return
 
-            logger.info("Found %d results:", len(results))
+            print(f"Found {len(results)} results:")
             for i, result in enumerate(results, 1):
                 metadata = result["metadata"]
-                # Convert cosine distance to similarity score (0-100%)
-                distance = result.get("distance", 0.0)
-                # Cosine distance is between 0 (identical) and 2 (opposite)
-                # Normalize to 0-1 range and convert to similarity
-                similarity = max(0.0, min(1.0, (2.0 - distance) / 2.0)) * 100
-                logger.info(
-                    "\n%d. %s (%.2f%% match)\nTags: %s\nDate: %s\nContent: %s\n",
-                    i,
-                    metadata.get("title", "Untitled"),
-                    similarity,
-                    metadata.get("tags", ""),
-                    metadata.get("date", "Unknown"),
-                    metadata.get("content", "")[:200] + "...",  # Show first 200 chars
+                score = min(100.0, result["score"])  # Cap at 100%
+                text = result["text"]
+
+                print(
+                    f"\n{i}. Score: {score:.2f}%\n"
+                    f"Heading: {metadata.get('heading_text', 'No heading')}\n"
+                    f"Tags: {metadata.get('tags', '[]')}\n"
+                    f"Content: {text[:200] + '...' if len(text) > 200 else text}\n"
                 )
 
         except Exception as e:

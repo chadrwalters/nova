@@ -1,10 +1,10 @@
 """Tests for clean-processing command."""
 
 import logging
-import pytest
 from pathlib import Path
 
 import click
+import pytest
 
 from nova.cli.commands.clean_processing import CleanProcessingCommand
 

@@ -1,7 +1,8 @@
 """Type stubs for docling_core.types.doc module."""
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
+
 from pydantic import BaseModel
 
 class DoclingDocument(BaseModel):
@@ -9,8 +10,8 @@ class DoclingDocument(BaseModel):
 
     name: str
     text: str
-    metadata: Dict[str, Any]
-    pictures: List[Any]
+    metadata: dict[str, Any]
+    pictures: list[Any]
 
     def save(self, path: Path) -> None: ...
 

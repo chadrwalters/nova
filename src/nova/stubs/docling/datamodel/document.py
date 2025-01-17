@@ -1,8 +1,8 @@
 """Type stubs for docling.datamodel.document module."""
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from collections.abc import Iterator
 
 
 class Document:

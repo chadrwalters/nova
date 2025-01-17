@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -21,13 +20,11 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(message)s",
     datefmt="[%X]",
-    handlers=[
-        RichHandler(console=console, rich_tracebacks=True),
-        logging.FileHandler(log_file)
-    ]
+    handlers=[RichHandler(console=console, rich_tracebacks=True), logging.FileHandler(log_file)],
 )
 
 logger = logging.getLogger("nova.mcp")
+
 
 @click.command()
 @click.option("--host", default="localhost", help="Host to bind server to")
@@ -36,16 +33,13 @@ logger = logging.getLogger("nova.mcp")
 def mcp(host: str, port: int, max_connections: int) -> None:
     """Start the Nova MCP server.
 
-    This provides an MCP-compatible interface for Claude to interact with Nova's functionality.
-    The server will start on the specified host and port (default: localhost:8765).
+    This provides an MCP-compatible interface for Claude to interact
+    with Nova's functionality. The server will start on the specified
+    host and port (default: localhost:8765).
     """
     try:
         # Create and start Nova server
-        config = ServerConfig(
-            host=host,
-            port=port,
-            max_connections=max_connections
-        )
+        config = ServerConfig(host=host, port=port, max_connections=max_connections)
 
         logger.info("Starting Nova server...")
         server = NovaServer(config)
@@ -58,6 +52,7 @@ def mcp(host: str, port: int, max_connections: int) -> None:
         # Block until interrupted
         try:
             import asyncio
+
             asyncio.get_event_loop().run_forever()
         except KeyboardInterrupt:
             logger.info("Shutting down...")
@@ -66,6 +61,7 @@ def mcp(host: str, port: int, max_connections: int) -> None:
     except Exception as e:
         logger.exception("Failed to start MCP server")
         raise click.ClickException(str(e))
+
 
 if __name__ == "__main__":
     mcp()

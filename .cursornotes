@@ -1,0 +1,22 @@
+20240320 - Vector Store Search Implementation
+
+Key Developments:
+- Fixed issues with ChromaDB distance metric interpretation in search method
+- Implemented proper similarity score calculation using ChromaDB's distance values
+- Added normalization to convert distances to 0-1 similarity range
+- Enhanced relevance scoring with weighted boosts for exact matches
+- Improved test coverage for empty results and score normalization
+- Updated MCP server integration to maintain consistency with CLI implementation
+
+Technical Details:
+- ChromaDB returns distances in [0,2] range, converted to similarities in [0,1]
+- Base similarity calculation: 1.0 - (distance / 2.0)
+- Added boost factors for exact matches, consecutive matches, and term frequency
+- Implemented minimum relevance threshold (30%) to filter low-quality matches
+- Ensured proper resource cleanup in VectorStore singleton
+
+Next Steps:
+- Consider adding configuration options for similarity thresholds
+- Implement caching for frequently accessed embeddings
+- Add performance metrics for search operations
+- Consider adding fuzzy matching capabilities

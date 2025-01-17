@@ -1,7 +1,6 @@
 """Type definitions for vector store."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -10,4 +9,4 @@ class VectorStoreStats:
 
     collection_name: str
     num_embeddings: int
-    metadata: Optional[Dict[str, List[str]]] = None
+    metadata: dict[str, list[str]] | None = None

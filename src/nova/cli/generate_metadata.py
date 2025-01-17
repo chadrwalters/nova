@@ -21,12 +21,8 @@ def generate_metadata(notes_dir: Path) -> None:
         for note_file in notes_dir.glob("*.md"):
             # Get file stats
             stats = note_file.stat()
-            created = datetime.fromtimestamp(stats.st_ctime).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
-            modified = datetime.fromtimestamp(stats.st_mtime).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            created = datetime.fromtimestamp(stats.st_ctime).strftime("%Y-%m-%dT%H:%M:%SZ")
+            modified = datetime.fromtimestamp(stats.st_mtime).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             # Get title from filename
             title = note_file.stem
@@ -56,14 +52,12 @@ def generate_metadata(notes_dir: Path) -> None:
         logger.info(f"Generated metadata for {len(metadata)} notes at {metadata_path}")
 
     except Exception as e:
-        logger.error(f"Error generating metadata: {str(e)}", exc_info=True)
+        logger.error(f"Error generating metadata: {e!s}", exc_info=True)
 
 
 def main() -> None:
     """Main entry point."""
-    input_dir = Path(
-        "/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
-    )
+    input_dir = Path("/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput")
 
     if not input_dir.exists():
         logger.error(f"Input directory not found: {input_dir}")

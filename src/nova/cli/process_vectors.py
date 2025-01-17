@@ -11,7 +11,6 @@ from nova.vector_store.chunking import ChunkingEngine
 from nova.vector_store.embedding import EmbeddingEngine
 from nova.vector_store.store import VectorStore
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -61,7 +60,7 @@ class ProcessVectorsCommand(NovaCommand):
             logger.info("Stored embeddings in vector store")
 
         except Exception as e:
-            logger.error(f"Failed to process vectors: {str(e)}")
+            logger.error(f"Failed to process vectors: {e!s}")
             raise click.Abort()
 
     def create_command(self) -> click.Command:
@@ -73,9 +72,7 @@ class ProcessVectorsCommand(NovaCommand):
 
         @click.command(name="process-vectors")
         @click.option("--text", required=True, help="Input text to process")
-        @click.option(
-            "--output-dir", required=True, help="Output directory for vector store"
-        )
+        @click.option("--output-dir", required=True, help="Output directory for vector store")
         def command(text: str, output_dir: str) -> None:
             """Process text into vector embeddings."""
             self.run(text=text, output_dir=output_dir)

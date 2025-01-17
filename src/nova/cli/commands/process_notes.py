@@ -1,19 +1,20 @@
 """Process notes command implementation."""
 
-import click
-from pathlib import Path
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.console import Console
-import logging
-from typing import Any, Optional, Dict, cast, List
 import asyncio
+import logging
+import os
+from pathlib import Path
+from typing import Any
+
 import aiofiles
 import aiofiles.os
-import os
+import click
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from nova.cli.utils.command import NovaCommand
-from nova.docling import Document, DocumentConverter, FormatDetector, InputFormat
 from nova.config import load_config
+from nova.docling import DocumentConverter, FormatDetector, InputFormat
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -47,10 +48,12 @@ class ProcessNotesCommand(NovaCommand):
         converter = DocumentConverter()
 
         # Get all files in input directory
-        files: List[Path] = []
+        files: list[Path] = []
         for root, _, filenames in os.walk(str(input_dir)):
-            for filename in filenames:
+            for filename in sorted(filenames):  # Sort filenames for deterministic order
                 files.append(Path(root) / filename)
+
+        logger.info("Found files: %s", files)
 
         with Progress(
             SpinnerColumn(),
@@ -59,13 +62,14 @@ class ProcessNotesCommand(NovaCommand):
         ) as progress:
             # Detect formats
             progress.add_task("Detecting file formats...", total=None)
-            formats: Dict[Path, InputFormat] = {}
+            formats: dict[Path, InputFormat] = {}
 
             async def detect_format(file: Path) -> None:
                 try:
                     detected_format = detector.detect_format(file)
                     if detected_format is not None:
                         formats[file] = detected_format
+                        logger.info("Detected format %s for file %s", detected_format.name, file)
                 except Exception as e:
                     logger.error(f"Failed to detect format for {file}: {e}")
 
@@ -73,38 +77,48 @@ class ProcessNotesCommand(NovaCommand):
             await asyncio.gather(*[detect_format(file) for file in files])
 
             # Report detected formats
-            format_counts: Dict[str, int] = {}
+            format_counts: dict[str, int] = {}
             for fmt in formats.values():
                 format_counts[fmt.name] = format_counts.get(fmt.name, 0) + 1
 
             console.print("\nDetected formats:")
-            for format_name, count in format_counts.items():
+            for format_name in sorted(
+                format_counts.keys()
+            ):  # Sort format names for deterministic order
+                count = format_counts[format_name]
                 console.print(f"  {format_name}: {count} files")
 
             # Process files
-            task = progress.add_task(
-                "Processing files...",
-                total=len(files)
-            )
+            task = progress.add_task("Processing files...", total=len(files))
 
             async def process_file(file: Path) -> None:
                 try:
-                    format_name = formats.get(file)
-                    if not format_name:
+                    fmt = formats.get(file)
+                    if not fmt:
                         return
 
                     # Convert file
-                    console.print(f"\nConverting {format_name} -> markdown: {file}")
-                    doc = converter.convert_file(file, format_name)
+                    console.print(f"\nConverting {fmt.name.lower()} -> markdown: {file}")
+                    doc = converter.convert_file(file, fmt)
+                    logger.info("Converted content for %s: %s", file, doc.content)
 
                     # Save processed document
                     output_file = output_dir / file.relative_to(input_dir)
-                    output_file = output_file.with_suffix(".md")
+                    if fmt == InputFormat.MD:
+                        # Keep markdown files as is
+                        pass
+                    else:
+                        # For non-markdown files, keep the original name
+                        # This ensures test_html.md and test_txt.md don't overwrite each other
+                        output_file = output_file.parent / (
+                            output_file.stem + "_" + fmt.name.lower() + ".md"
+                        )
                     await aiofiles.os.makedirs(str(output_file.parent), exist_ok=True)
 
                     # Save document asynchronously
-                    async with aiofiles.open(str(output_file), 'w') as f:
+                    async with aiofiles.open(str(output_file), "w") as f:
                         await f.write(doc.content)
+                        logger.info("Saved content to %s", output_file)
 
                 except Exception as e:
                     logger.error(f"Failed to process {file}: {e}")
@@ -112,8 +126,9 @@ class ProcessNotesCommand(NovaCommand):
 
                 progress.advance(task)
 
-            # Process files concurrently
-            await asyncio.gather(*[process_file(file) for file in files])
+            # Process files sequentially to avoid any race conditions
+            for file in sorted(files):
+                await process_file(file)
 
             console.print("\nProcessing complete!")
 
@@ -139,7 +154,7 @@ class ProcessNotesCommand(NovaCommand):
             type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
             help="Directory to store processed notes",
         )
-        def process_notes(input_dir: Optional[Path], output_dir: Optional[Path]) -> None:
+        def process_notes(input_dir: Path | None, output_dir: Path | None) -> None:
             """Process notes with format detection and conversion."""
             self.run(input_dir=input_dir, output_dir=output_dir)
 

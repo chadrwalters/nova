@@ -30,6 +30,8 @@ dependencies = [
     "click>=8.1.7",
     "pyyaml>=6.0.1",
     "numpy>=1.26.2",
+    "psutil>=5.9.8",
+    "docling-core>=2.14.0",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
@@ -49,6 +51,23 @@ nova = "nova.cli.main:main"
 Homepage = "https://github.com/chadwalters/nova"
 Repository = "https://github.com/chadwalters/nova.git"
 Documentation = "https://github.com/chadwalters/nova/tree/main/docs"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.23.2",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.7.1",
+    "ruff>=0.1.6",
+    "types-aiofiles>=23.2.0.0",
+    "types-PyYAML>=6.0.12.12",
+    "mkdocs>=1.5.3",
+    "mkdocs-material>=9.4.14",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.1",
+    "mkdocs-section-index>=0.3.8",
+]
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -72,10 +91,17 @@ dev-dependencies = [
 ]
 
 [tool.pytest.ini_options]
+log_cli = false
+log_cli_level = "WARNING"
+log_cli_format = "%(message)s"
+addopts = "--verbosity=2 --showlocals --no-header"
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-ra -q"
-asyncio_mode = "auto"
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.pytest]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
 
 [tool.mypy]
 python_version = "3.11"

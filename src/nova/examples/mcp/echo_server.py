@@ -27,7 +27,6 @@ The server will start and Claude Desktop will automatically connect to it.
 You can then use the 'echo' tool in Claude Desktop conversations.
 """
 from pathlib import Path
-from typing import Dict
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.utilities.logging import get_logger
@@ -38,8 +37,9 @@ logger = get_logger(__name__)
 # Create echo server
 app = FastMCP(name="echo")
 
+
 @app.tool(description="Echo back the message")
-async def echo(message: str) -> Dict[str, str]:
+async def echo(message: str) -> dict[str, str]:
     """Echo back the message.
 
     This is a simple tool that demonstrates FastMCP's tool registration and handling.
@@ -55,6 +55,7 @@ async def echo(message: str) -> Dict[str, str]:
     response = {"message": f"Echo: {message}"}
     logger.info("Returning response", extra={"response": response})
     return response
+
 
 if __name__ == "__main__":
     # Configure logging to .nova/logs

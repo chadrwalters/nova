@@ -1,13 +1,13 @@
 """Clean processing command."""
 
+import asyncio
 import logging
 import shutil
 from pathlib import Path
 from typing import Any
-import asyncio
+
 import aiofiles  # type: ignore
 import aiofiles.os  # type: ignore
-
 import click
 
 from nova.cli.utils.command import NovaCommand
@@ -42,7 +42,7 @@ class CleanProcessingCommand(NovaCommand):
             await asyncio.to_thread(shutil.rmtree, processing_dir)
             logger.info("Processing directory deleted successfully")
         except Exception as e:
-            msg = f"Failed to delete processing directory: {str(e)}"
+            msg = f"Failed to delete processing directory: {e!s}"
             logger.error(msg)
             raise click.Abort(msg) from e
 

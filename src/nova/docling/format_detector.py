@@ -1,9 +1,11 @@
 """Format detector for docling."""
 
-import magic  # type: ignore
 from pathlib import Path
 
-from .datamodel import InputFormat, MIME_TO_FORMAT, EXT_TO_FORMAT
+import magic
+
+from .datamodel import EXT_TO_FORMAT, MIME_TO_FORMAT, InputFormat
+
 
 class FormatDetector:
     """Format detector for docling."""
@@ -24,17 +26,15 @@ class FormatDetector:
         Raises:
             ValueError: If format is not supported.
         """
-        # Get MIME type
-        mime_type = self._magic.from_file(str(file_path))
-
-        # Try to get format from MIME type
-        if mime_type in MIME_TO_FORMAT:
-            return MIME_TO_FORMAT[mime_type]
-
-        # Try to get format from extension
+        # Try to get format from extension first
         ext = file_path.suffix.lower()
         if ext in EXT_TO_FORMAT:
             return EXT_TO_FORMAT[ext]
+
+        # Fall back to MIME type detection
+        mime_type = self._magic.from_file(str(file_path))
+        if mime_type in MIME_TO_FORMAT:
+            return MIME_TO_FORMAT[mime_type]
 
         # Format not supported
         raise ValueError(f"Unsupported format: {mime_type} for file {file_path}")

@@ -21,11 +21,89 @@ file_system:
     - Input files location must be configurable
     - Default input path: /Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
 
+file_size:
+    - All code files MUST be less then 250 lines
+
 testing:
     - Use uv run pytest for ALL test runs
     - Tests should run without approval
     - Test command: uv run pytest -v
     - Type checking MUST be run before tests
+
+cli_commands:
+    base_command: "uv run python -m nova.cli"
+
+    process_notes:
+        command: "process-notes"
+        options:
+            - "--input-dir: Input directory path (required)"
+            - "--output-dir: Output directory path (optional, defaults to .nova/processing)"
+        rules:
+            - "Input directory must exist"
+            - "Output directory will be created if needed"
+            - "Supports multiple document formats"
+            - "Preserves metadata and structure"
+
+    process_bear_vectors:
+        command: "process-bear-vectors"
+        options:
+            - "--input-dir: Input directory path (required)"
+            - "--output-dir: Output directory path (optional, defaults to .nova/vectors)"
+        rules:
+            - "Input directory must contain Bear notes"
+            - "Output directory will be created if needed"
+            - "Preserves Bear metadata and tags"
+
+    clean_processing:
+        command: "clean-processing"
+        options:
+            - "--force: Required to actually perform deletion"
+        rules:
+            - "Must use --force flag to delete"
+            - "Cannot be undone"
+            - "Verifies directory exists before attempting cleanup"
+
+    clean_vectors:
+        command: "clean-vectors"
+        options:
+            - "--force: Required to actually perform deletion"
+        rules:
+            - "Must use --force flag to delete"
+            - "Cannot be undone"
+            - "Verifies vector store exists before attempting cleanup"
+
+    monitor:
+        command: "monitor"
+        subcommands:
+            health:
+                description: "Check system component status"
+                rules:
+                    - "Verifies all required directories exist"
+                    - "Checks component accessibility"
+            stats:
+                description: "Display system statistics"
+                rules:
+                    - "Shows vector store metrics"
+                    - "Shows processing metrics"
+                    - "Shows log statistics"
+            logs:
+                description: "View system logs"
+                rules:
+                    - "Shows recent log entries"
+                    - "Filters by component"
+                    - "Highlights errors and warnings"
+
+    search:
+        command: "search"
+        options:
+            - "--query: Search query (required)"
+            - "--vector-dir: Vector store directory (optional, defaults to .nova/vectors)"
+            - "--limit: Maximum results to return (optional, defaults to 5)"
+        rules:
+            - "Vector store must exist"
+            - "Returns similarity scores (0-100%)"
+            - "Includes metadata in results"
+            - "Shows content previews"
 
 ai_commands:
     update_docs:
@@ -75,70 +153,3 @@ ai_commands:
     run_tests:
         procedure:
             - "Run command: uv run pytest -v"
-
-    process_notes:
-        procedure:
-            - "Check if input directory exists"
-            - "Check if output directory exists and create if needed"
-            - "Run command: uv run python -m nova.cli process-notes <input_dir> <output_dir>"
-            - "Verify note processing results"
-            - "Check for any errors in processing"
-            - "Update the plan with processing status"
-
-    process_bear_vectors:
-        procedure:
-            - "Check if input directory exists"
-            - "Check if output directory exists and create if needed"
-            - "Run command: uv run python -m nova.cli process-bear-vectors <input_dir> <output_dir>"
-            - "Verify vector processing results"
-            - "Check for any errors in processing"
-            - "Update the plan with processing status"
-            - "Note: This is the primary vector processing command for Nova, used for both 'process vectors' and 'process bear vectors' requests"
-
-    clean_processing:
-        procedure:
-            - "Check if processing directory exists"
-            - "Run command: uv run python -m nova.cli clean-processing"
-            - "Verify cleanup results"
-            - "Check for any errors in cleanup"
-            - "Update the plan with cleanup status"
-
-    clean_vectors:
-        procedure:
-            - "Check if vector store exists"
-            - "Run command: uv run python -m nova.cli clean-vectors"
-            - "Verify cleanup results"
-            - "Check for any errors in cleanup"
-            - "Update the plan with cleanup status"
-
-    monitor_health:
-        procedure:
-            - "Run command: uv run python -m nova.cli monitor health"
-            - "Check system component status"
-            - "Verify directory structure"
-            - "Report any issues found"
-            - "Update the plan with health status"
-
-    monitor_stats:
-        procedure:
-            - "Run command: uv run python -m nova.cli monitor stats"
-            - "Check vector store statistics"
-            - "Check note processing statistics"
-            - "Check log file statistics"
-            - "Update the plan with current statistics"
-
-    monitor_logs:
-        procedure:
-            - "Run command: uv run python -m nova.cli monitor logs"
-            - "Check log directory"
-            - "Analyze log contents"
-            - "Report any errors or warnings"
-            - "Update the plan with log analysis"
-
-    search_vectors:
-        procedure:
-            - "Check if vector store exists"
-            - "Run command: uv run python -m nova.cli search --query <query>"
-            - "Verify search results"
-            - "Format results for display"
-            - "Update the plan with search status"

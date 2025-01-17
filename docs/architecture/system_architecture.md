@@ -59,48 +59,161 @@
   + Native attachment handling
   + Error recovery and logging
 
-+ Format Support:
++ Format Support and Processing:
   + Text Formats:
-    + Markdown (.md) - Native format
-    + Plain text (.txt) - Direct conversion
-    + HTML (.html, .htm) - via html2text
-    + reStructuredText (.rst) - via docutils
-    + AsciiDoc (.adoc, .asciidoc) - via asciidoc
-    + Org Mode (.org) - via pandoc
-    + Wiki (.wiki) - via pandoc
-    + LaTeX (.tex) - via pandoc
+    + Markdown (.md):
+      - Native format with full structure preservation
+      - Direct metadata extraction
+      - Tag and link processing
+      - Attachment reference handling
+    + Plain text (.txt):
+      - Direct conversion with line breaks
+      - Basic metadata from file system
+      - Simple structure preservation
+    + HTML (.html, .htm):
+      - Converted via html2text
+      - Link preservation with references
+      - Table structure maintenance
+      - Image reference extraction
+    + reStructuredText (.rst):
+      - Converted via docutils
+      - Section hierarchy preservation
+      - Directive handling
+      - Cross-reference processing
+    + AsciiDoc (.adoc, .asciidoc):
+      - Converted via asciidoc
+      - Block and inline formatting
+      - Table and list preservation
+      - Attribute handling
+    + Org Mode (.org):
+      - Converted via pandoc
+      - Heading hierarchy preservation
+      - TODO state handling
+      - Tag and property processing
+    + Wiki (.wiki):
+      - Converted via pandoc
+      - Wiki syntax conversion
+      - Link transformation
+      - Basic formatting
+    + LaTeX (.tex):
+      - Converted via pandoc
+      - Math expression handling
+      - Section structure preservation
+      - Bibliography processing
   + Office Formats:
-    + Word (.docx) - via pandoc
-    + Excel (.xlsx) - via pandoc
-    + PowerPoint (.pptx) - via pandoc
+    + Word (.docx):
+      - Converted via pandoc
+      - Style preservation
+      - Table and image handling
+      - Header/footer processing
+    + Excel (.xlsx):
+      - Converted via pandoc
+      - Table structure preservation
+      - Sheet separation
+      - Formula reference handling
+    + PowerPoint (.pptx):
+      - Converted via pandoc
+      - Slide structure preservation
+      - Image and shape handling
+      - Notes extraction
   + Other Formats:
-    + PDF (.pdf) - via pandoc
-  + Format Detection:
-    + MIME type detection
-    + File extension fallback
-    + Validation rules
-    + Error handling
+    + PDF (.pdf):
+      - Converted via pandoc
+      - Layout preservation attempt
+      - Text extraction with positioning
+      - Image reference handling
 
-+ Metadata Model:
-  + Document title and date
-  + Source format tracking
-  + Tag preservation
-  + Custom metadata fields
-  + Attachment references
++ Bear Note Processing:
+  + Title Processing:
+    - Date Extraction:
+      + Supported formats:
+        - YYYYMMDD (e.g., 20240115)
+        - YYYY-MM-DD (e.g., 2024-01-15)
+      + Extracted components:
+        - Year (numeric)
+        - Month (numeric)
+        - Day (numeric)
+        - Weekday (string)
+    - Title Cleanup:
+      + Date removal
+      + Whitespace normalization
+      + Subtitle extraction
+  + Tag Processing:
+    - Extraction patterns:
+      + Simple tags: #tag
+      + Nested tags: #parent/child
+      + Multi-level: #one/two/three
+    - Hierarchy preservation:
+      + Parent-child relationships
+      + Tag inheritance in chunks
+      + Complete path storage
+    - Special handling:
+      + Bear-specific tags
+      + System tags
+      + User-defined tags
+  + Metadata Handling:
+    - Automatic extraction:
+      + Creation date from title
+      + Modified date from file
+      + Tag collection with hierarchy
+      + Title and subtitle
+      + Attachment references
+    - Enhanced metadata:
+      + Date components for filtering
+      + Tag relationships
+      + Source file tracking
+      + Processing timestamp
+  + Attachment Processing:
+    - Reference extraction
+    - Type detection
+    - Path preservation
+    - Inline content handling
+
++ Format Detection:
+  + Primary: MIME type detection
+    - python-magic library
+    - Content-based detection
+    - Reliable format identification
+  + Fallback: Extension mapping
+    - File extension analysis
+    - Format validation
+    - Conversion path selection
+  + Validation rules:
+    - Format compatibility check
+    - Content structure validation
+    - Character encoding verification
 
 + Error Management:
-  + Format validation errors
-  + Conversion failures
-  + MIME type validation
-  + Structured error reporting
-  + Recovery strategies
+  + Format Validation:
+    - MIME type mismatches
+    - Unsupported formats
+    - Encoding issues
+  + Conversion Failures:
+    - Tool errors
+    - Content corruption
+    - Resource limitations
+  + Recovery Strategies:
+    - Fallback conversions
+    - Partial content recovery
+    - Error documentation
+  + Reporting:
+    - Structured error logs
+    - Warning collection
+    - Processing statistics
 
 + Progress Tracking:
-  + Format detection progress
-  + Conversion status updates
-  + Rich terminal output
-  + Error summaries
-  + Completion reporting
+  + Status Updates:
+    - Format detection progress
+    - Conversion status
+    - Processing completion
+  + Rich Output:
+    - Terminal progress bars
+    - Error summaries
+    - Success statistics
+  + Logging:
+    - Detailed process logs
+    - Error documentation
+    - Performance metrics
 
 ### 2. Vector Store Layer [IMPLEMENTED]
 
@@ -232,93 +345,112 @@
 
 ### 4. Monitoring System [IMPLEMENTED]
 
+#### Session Monitoring
+- Real-time Performance Tracking:
+  - Query response times
+  - Memory usage monitoring
+  - CPU utilization tracking
+  - Active processing status
+- Health Checks:
+  - Vector store connectivity
+  - Processing pipeline status
+  - Resource availability checks
+  - Component health validation
+- Error Tracking:
+  - Real-time error detection
+  - Error context capture
+  - Recovery suggestions
+  - Session-based error counts
+
+#### Persistent Monitoring
+- Cross-session Metrics:
+  - SQLite-based metrics storage in .nova/metrics
+  - Session duration tracking
+  - Query patterns and performance
+  - Error frequency analysis
+- System Health:
+  - Vector store integrity checks
+  - Input directory monitoring
+  - Storage space tracking
+  - Component status history
+- Performance Analysis:
+  - Daily and hourly statistics
+  - Performance trend analysis
+  - Resource utilization patterns
+  - Query optimization insights
+
+#### Log Management
+- Automated Log Handling:
+  - Rotation based on size and age
+  - Compression and archival
+  - Cleanup of old archives
+  - Structured log parsing
+- Analysis Tools:
+  - Error pattern detection
+  - Warning frequency analysis
+  - Component-wise logging
+  - Performance anomaly detection
+- Storage Management:
+  - Configurable retention policies
+  - Archive size management
+  - Log file organization
+  - Space utilization monitoring
+
 #### Backend Services
-- FastMCP Integration:
-  - Asynchronous FastAPI-based server
-  - Tool-based architecture for extensibility
-  - Standardized error handling and response formats
-  - Health monitoring and diagnostics
-  - Port 8765 (chosen to avoid common service conflicts)
-- Core Tools:
-  - process_notes_tool: Document processing and ingestion
-  - search_tool: Semantic search with vector embeddings
-  - monitor_tool: System health and statistics
-  - clean_processing_tool: Safe cleanup of processed files
-  - clean_vectors_tool: Vector store maintenance
-- Structured Logging:
-  - structlog integration
-  - Consistent log format
-  - Log rotation and cleanup
-- Metrics Collection:
-  - Vector store statistics
-  - Query performance tracking
-  - System health monitoring
-- API Endpoints:
-  - /tools/process_notes: Document processing endpoint
-  - /tools/search: Semantic search endpoint
-  - /tools/monitor: Health monitoring endpoint
-  - /tools/clean_processing: Processing cleanup endpoint
-  - /tools/clean_vectors: Vector store cleanup endpoint
+- FastMCP Server Implementations:
+  1. Claude Desktop Server (`nova.cli.commands.nova_mcp_server`):
+     - READ-ONLY implementation for direct Claude Desktop integration
+     - Minimal tool set (search and monitoring only)
+     - Strict access control
+     - Port 8765 (chosen to avoid common service conflicts)
+     - Optimized logging configuration
+     - Safe import structure
+     - Automatic startup through Claude Desktop
 
-#### MCP Tools [IMPLEMENTED]
+  2. Full MCP Server (`nova.server.mcp`):
+     - Complete implementation with all operations
+     - Used by internal tools and testing
+     - Not for direct Claude Desktop integration
+     - Comprehensive tool set
+     - Advanced error handling
+     - Performance monitoring
+     - Resource management
 
-1. **process_notes_tool**
-   - Purpose: Process and ingest documents into the vector store
-   - Features:
-     - Multi-format document support
-     - Automatic format detection
-     - Rich metadata extraction
-     - Progress tracking
-   - Error Handling:
-     - Format validation errors
-     - Conversion failures
-     - Path validation
+#### Core Tools
+- monitor_tool:
+  - Health Command:
+    - Real-time component status
+    - Resource availability
+    - System integrity checks
+  - Stats Command:
+    - Session statistics
+    - Performance metrics
+    - Query patterns
+  - Logs Command:
+    - Log analysis and filtering
+    - Error summaries
+    - Warning detection
+  - Errors Command:
+    - Error trend analysis
+    - Common error patterns
+    - Recovery suggestions
 
-2. **search_tool**
-   - Purpose: Semantic search through vector embeddings
-   - Features:
-     - Configurable result limits
-     - Rich result formatting
-     - Metadata inclusion
-     - Similarity scoring
-   - Error Handling:
-     - Query validation
-     - Vector store access errors
-     - Result formatting issues
-
-3. **monitor_tool**
-   - Purpose: System health and statistics monitoring
-   - Features:
-     - Component health checks
-     - Vector store statistics
-     - Processing metrics
-     - Log analysis
-   - Error Handling:
-     - Component failures
-     - Metric collection errors
-     - Log access issues
-
-4. **clean_processing_tool**
-   - Purpose: Safe cleanup of processed documents
-   - Features:
-     - Selective cleanup
-     - Directory validation
-     - Progress tracking
-   - Error Handling:
-     - Path validation
-     - Permission issues
-     - File access errors
-
-5. **clean_vectors_tool**
-   - Purpose: Vector store maintenance and cleanup
-   - Features:
-     - Safe deletion operations
-     - Collection management
-     - Progress tracking
-   - Error Handling:
-     - Vector store access errors
-     - Collection validation
-     - Cleanup failures
+#### Integration Points
+- Session Cleanup:
+  - Automatic metrics recording
+  - Log rotation on exit
+  - Resource cleanup
+  - State persistence
+- Health Reporting:
+  - Real-time status updates
+  - Cross-session trends
+  - System recommendations
+  - Performance insights
+- Error Management:
+  - Structured error tracking
+  - Pattern analysis
+  - Recovery procedures
+  - Prevention strategies
 
 ### 5. Testing Infrastructure [IMPLEMENTED]
 

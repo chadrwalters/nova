@@ -15,9 +15,7 @@ class NovaConfig(BaseModel):
         """Path configuration."""
 
         input_dir: Path = Field(
-            default=Path(
-                "~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput"
-            ).expanduser(),
+            default=Path("~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput").expanduser(),
             description="Directory containing Bear.app exports",
         )
         processing_dir: Path = Field(
@@ -28,9 +26,7 @@ class NovaConfig(BaseModel):
             default=Path(".nova/vectorstore"),
             description="Directory for vector store data",
         )
-        logs_dir: Path = Field(
-            default=Path(".nova/logs"), description="Directory for log files"
-        )
+        logs_dir: Path = Field(default=Path(".nova/logs"), description="Directory for log files")
         state_dir: Path = Field(
             default=Path(".nova/state"), description="Directory for system state"
         )
@@ -97,14 +93,10 @@ def load_config(config_path: str | None = None) -> NovaConfig:
 
     # Override with environment variables
     if "NOVA_API_ANTHROPIC_KEY" in os.environ:
-        config_data.setdefault("api", {})["anthropic_key"] = os.environ[
-            "NOVA_API_ANTHROPIC_KEY"
-        ]
+        config_data.setdefault("api", {})["anthropic_key"] = os.environ["NOVA_API_ANTHROPIC_KEY"]
 
     if "NOVA_PATHS_INPUT_DIR" in os.environ:
-        config_data.setdefault("paths", {})["input_dir"] = os.environ[
-            "NOVA_PATHS_INPUT_DIR"
-        ]
+        config_data.setdefault("paths", {})["input_dir"] = os.environ["NOVA_PATHS_INPUT_DIR"]
 
     return NovaConfig(**config_data)
 

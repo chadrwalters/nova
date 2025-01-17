@@ -4,8 +4,11 @@ import logging
 import os
 from pathlib import Path
 
+import chromadb
 import pytest
+from fastapi.testclient import TestClient
 
+from nova.server.mcp import app
 from nova.vector_store.store import VectorStore
 
 
@@ -51,10 +54,47 @@ def temp_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def vector_store(temp_dir: Path) -> VectorStore:
-    """Create a vector store instance for testing."""
-    store = VectorStore(temp_dir / ".nova/vectors")
+def test_client() -> TestClient:
+    """Create a test client for the FastMCP app."""
+    # FastMCP provides a FastAPI app through its asgi_app property
+    return TestClient(app.asgi_app)
+
+
+@pytest.fixture
+def vector_store(tmp_path):
+    """Create a test vector store."""
+    # Create vector store in temp directory
+    store = VectorStore(tmp_path / ".nova/vectors")
+
+    # Add some test documents
+    store.add(
+        "note1",
+        "# Python Programming\nLearn Python programming with examples and best practices.",
+        {
+            "title": "Python Programming",
+            "date": "2024-01-15",
+            "tags": ["programming", "python", "coding"],
+        },
+    )
+    store.add(
+        "note2",
+        "# Data Science with Python\nUsing Python for machine learning and data analysis.",
+        {
+            "title": "Data Science with Python",
+            "date": "2024-01-15",
+            "tags": ["data-science", "python", "machine-learning"],
+        },
+    )
+    store.add(
+        "note3",
+        "# Project Management\nBest practices for managing software projects.",
+        {"title": "Project Management", "date": "2024-01-15", "tags": ["management", "planning"]},
+    )
+    store._process_batch()  # Force processing
+
     yield store
+
+    # Clean up
     store.cleanup()
 
 
@@ -65,3 +105,20 @@ def setup_logging() -> None:
         level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+
+@pytest.fixture(autouse=True)
+def reset_chroma():
+    """Reset ChromaDB between tests."""
+    yield
+    # Clean up any existing ChromaDB instances
+    if hasattr(chromadb, "_instance"):
+        delattr(chromadb, "_instance")
+    if hasattr(chromadb, "_settings"):
+        delattr(chromadb, "_settings")
+
+
+@pytest.fixture
+def tmp_path(tmp_path_factory):
+    """Create a temporary directory for tests."""
+    return tmp_path_factory.mktemp("test")

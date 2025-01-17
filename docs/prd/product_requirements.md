@@ -45,61 +45,150 @@ Nova
 ## 4. Functional Requirements
 
 ### 4.1 Document Processing [IMPLEMENTED]
-- Rich document processing:
-  + Native format detection and conversion
-  + Built-in format validation
-  + Rich metadata preservation
-  + Attachment handling with versioning
-  + Integrated error handling and logging
 
-- Format Support:
-  + Text Formats:
-    + Markdown (.md) - Native format
-    + Plain text (.txt) - Direct conversion
-    + HTML (.html, .htm) - via html2text
-    + reStructuredText (.rst) - via docutils
-    + AsciiDoc (.adoc, .asciidoc) - via asciidoc
-    + Org Mode (.org) - via pandoc
-    + Wiki (.wiki) - via pandoc
-    + LaTeX (.tex) - via pandoc
-  + Office Formats:
-    + Word (.docx) - via pandoc
-    + Excel (.xlsx) - via pandoc
-    + PowerPoint (.pptx) - via pandoc
-  + Other Formats:
-    + PDF (.pdf) - via pandoc
-  + Format Detection:
-    + MIME type detection
-    + File extension fallback
-    + Validation rules
-    + Error handling
-  + Conversion Features:
-    + Automatic format detection
-    + Lossless when possible
-    + Fallback strategies
-    + Error recovery
-    + Progress tracking
+#### Format Support Requirements
+- Text Formats:
+  - Markdown (.md):
+    + Primary format with full feature support
+    + Complete metadata preservation
+    + Tag and link processing
+    + Attachment handling
+  - Plain Text (.txt):
+    + Basic conversion support
+    + File metadata extraction
+    + Simple formatting preservation
+  - HTML (.html, .htm):
+    + Link preservation
+    + Table structure maintenance
+    + Image reference handling
+  - reStructuredText (.rst):
+    + Section hierarchy preservation
+    + Directive support
+    + Cross-reference handling
+  - AsciiDoc (.adoc):
+    + Block and inline formatting
+    + Table preservation
+    + Attribute handling
+  - Org Mode (.org):
+    + Heading hierarchy
+    + TODO state support
+    + Property handling
+  - Wiki (.wiki):
+    + Basic formatting
+    + Link transformation
+  - LaTeX (.tex):
+    + Math expression support
+    + Section preservation
+    + Bibliography handling
 
-- Metadata Model:
-  + Document title and date
-  + Source format tracking
-  + Tag preservation
-  + Custom metadata fields
-  + Attachment references
+- Office Formats:
+  - Word (.docx):
+    + Style preservation
+    + Table support
+    + Image handling
+    + Header/footer support
+  - Excel (.xlsx):
+    + Table structure
+    + Sheet handling
+    + Formula references
+  - PowerPoint (.pptx):
+    + Slide structure
+    + Image/shape support
+    + Notes extraction
 
-- Error Management:
-  + Format validation errors
-  + Conversion failures
-  + MIME type validation
-  + Structured error reporting
-  + Recovery strategies
+- Other Formats:
+  - PDF (.pdf):
+    + Layout preservation
+    + Text extraction
+    + Image references
 
-- Progress Tracking:
-  + Format detection progress
-  + Conversion status updates
-  + Rich terminal output
-  + Error summaries
-  + Completion reporting
+#### Bear Note Processing Requirements
+- Title Processing:
+  + Date Extraction:
+    - Support for YYYYMMDD format
+    - Support for YYYY-MM-DD format
+    - Component extraction (year, month, day)
+    - Weekday calculation
+  + Title Cleanup:
+    - Date removal
+    - Whitespace handling
+    - Subtitle extraction
+
+- Tag Processing:
+  + Tag Formats:
+    - Simple tags (#tag)
+    - Nested tags (#parent/child)
+    - Multi-level tags (#one/two/three)
+  + Hierarchy:
+    - Parent-child relationships
+    - Complete path preservation
+    - Tag inheritance rules
+  + Special Tags:
+    - Bear-specific tag handling
+    - System tag processing
+    - User tag preservation
+
+- Metadata Requirements:
+  + Automatic Extraction:
+    - Creation date from title
+    - Modified date from file
+    - Tag hierarchy
+    - Title components
+    - Attachment references
+  + Enhanced Metadata:
+    - Date components for filtering
+    - Tag relationships
+    - Source tracking
+    - Processing metadata
+
+- Attachment Handling:
+  + Reference Processing:
+    - Path extraction
+    - Type detection
+    - Link preservation
+  + Content Management:
+    - Inline content handling
+    - Reference validation
+    - Path normalization
+
+#### Processing Requirements
+- Format Detection:
+  + Primary Method:
+    - MIME type detection
+    - Content-based analysis
+    - Format validation
+  + Fallback Method:
+    - Extension-based detection
+    - Format mapping
+    - Validation rules
+
+- Error Handling:
+  + Validation:
+    - Format compatibility
+    - Content structure
+    - Character encoding
+  + Recovery:
+    - Fallback procedures
+    - Partial recovery
+    - Error documentation
+  + Reporting:
+    - Structured logging
+    - Warning collection
+    - Statistics gathering
+
+- Progress Monitoring:
+  + Status Updates:
+    - Detection progress
+    - Conversion status
+    - Completion tracking
+  + User Feedback:
+    - Progress indicators
+    - Error summaries
+    - Success metrics
+  + Logging:
+    - Process documentation
+    - Error recording
+    - Performance tracking
 
 ### 4.2 Vector Store Layer [IMPLEMENTED]
 - Hybrid chunking combining:
@@ -188,18 +277,22 @@ Nova
   - Configuration and setup guide
 
 ### 4.4 MCP Integration [IMPLEMENTED]
-- FastMCP Integration:
-  - Asynchronous FastAPI-based server
-  - Tool-based architecture for extensibility
-  - Standardized error handling and response formats
-  - Health monitoring and diagnostics
-  - Port 8765 (chosen to avoid common service conflicts)
-- Core Tools:
-  - process_notes_tool: Document processing and ingestion
-    - Multi-format support
-    - Automatic format detection
-    - Rich metadata extraction
-    - Progress tracking
+- Server Implementations:
+  1. Claude Desktop Server (`nova.cli.commands.nova_mcp_server`):
+     - READ-ONLY FastAPI-based server
+     - Direct Claude Desktop integration
+     - Minimal tool set for safety
+     - Port 8765 (chosen to avoid conflicts)
+     - Strict access control
+
+  2. Full MCP Server (`nova.server.mcp`):
+     - Complete implementation
+     - Internal tools and testing
+     - All operations supported
+     - Not for Claude Desktop
+     - Advanced error handling
+
+- Core Tools (Claude Desktop):
   - search_tool: Semantic search through vector embeddings
     - Configurable result limits
     - Rich result formatting
@@ -210,6 +303,13 @@ Nova
     - Vector store statistics
     - Processing metrics
     - Log analysis
+
+- Extended Tools (Full Server):
+  - process_notes_tool: Document processing and ingestion
+    - Multi-format support
+    - Automatic format detection
+    - Rich metadata extraction
+    - Progress tracking
   - clean_processing_tool: Safe cleanup of processed files
     - Selective cleanup
     - Directory validation
@@ -218,49 +318,88 @@ Nova
     - Safe deletion operations
     - Collection management
     - Progress tracking
-- Error Handling:
-  - Standardized error responses
-  - Validation middleware
-  - Detailed error messages
-  - Recovery strategies
-- Testing & Validation:
-  - Comprehensive test suite
-  - Integration tests
-  - Tool functionality testing
-  - Error handling verification
-- Access Control:
-  - READ-ONLY access to vector store
-  - No direct write operations
-  - All modifications through CLI only
-  - Data integrity preservation
 
 ### 4.5 Monitoring System [IMPLEMENTED]
-- FastMCP-based monitoring:
+
+#### Session-based Monitoring
+- Real-time Performance Tracking:
+  - Query response time measurement
+  - Memory usage monitoring (peak and current)
+  - CPU utilization tracking
+  - Active processing status updates
+- Health Checks:
+  - Component connectivity validation
+  - Resource availability monitoring
+  - System integrity verification
+  - Real-time status reporting
+- Error Management:
+  - Real-time error detection and logging
+  - Error context preservation
+  - Recovery guidance
+  - Session error statistics
+
+#### Persistent Monitoring
+- Metrics Storage:
+  - SQLite-based persistence in .nova/metrics
+  - Cross-session data retention
+  - Performance trend tracking
+  - Error pattern analysis
+- Health Tracking:
+  - Component status history
+  - Resource utilization patterns
+  - Storage space monitoring
+  - System recommendations
+- Performance Analysis:
+  - Daily and hourly metrics
+  - Query pattern analysis
+  - Resource usage trends
+  - Optimization insights
+
+#### Log Management
+- Automated Operations:
+  - Size-based log rotation (10MB default)
+  - Age-based archival (7 days default)
+  - Compressed storage (.gz format)
+  - Archive cleanup (50 files max)
+- Analysis Capabilities:
+  - Structured log parsing
+  - Error pattern detection
+  - Warning frequency analysis
+  - Performance anomaly identification
+- Storage Optimization:
+  - Configurable retention settings
+  - Space utilization monitoring
+  - Archive management
+  - Directory organization
+
+#### Integration Features
+- Claude Desktop Integration:
+  - READ-ONLY monitoring tools
   - Health check endpoints
-  - Tool-based metrics collection
-  - System status monitoring
-  - Log management
-- Structured logging:
-  - structlog integration
-  - Consistent log format
-  - Log rotation and cleanup
-  - Error tracking
-- Performance metrics:
-  - Vector store statistics
-  - Query performance tracking
-  - System health monitoring
-  - Resource utilization
-- API endpoints:
-  - /tools/process_notes: Document processing
-  - /tools/search: Semantic search
-  - /tools/monitor: Health monitoring
-  - /tools/clean_processing: Processing cleanup
-  - /tools/clean_vectors: Vector store cleanup
-- Testing Infrastructure:
-  - Pytest-based test suite
-  - Async test support
-  - FastAPI TestClient integration
-  - Temporary test fixtures
+  - Performance metrics
+  - Log analysis capabilities
+- Cleanup Procedures:
+  - Automatic session cleanup
+  - Metric persistence
+  - Log rotation
+  - Resource release
+- Error Handling:
+  - Structured error tracking
+  - Pattern analysis
+  - Recovery procedures
+  - Prevention strategies
+
+#### Core Tools
+- monitor_tool Commands:
+  - health: System component status
+  - stats: Performance metrics
+  - logs: Log analysis and filtering
+  - errors: Error tracking and analysis
+- Features:
+  - Real-time monitoring
+  - Cross-session analysis
+  - Trend visualization
+  - Health recommendations
 
 ## 5. Non-Functional Requirements
 

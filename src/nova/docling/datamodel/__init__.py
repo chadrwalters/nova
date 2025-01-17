@@ -1,11 +1,11 @@
 """Docling datamodel package."""
 
 from .base_models import (
-    InputFormat,
-    FORMAT_TO_MIME,
-    FORMAT_TO_EXT,
-    MIME_TO_FORMAT,
     EXT_TO_FORMAT,
+    FORMAT_TO_EXT,
+    FORMAT_TO_MIME,
+    MIME_TO_FORMAT,
+    InputFormat,
 )
 from .document import Document
 

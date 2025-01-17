@@ -3,12 +3,12 @@
 import json
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
 from functools import wraps
 from pathlib import Path
 from typing import Any, TypeVar
-from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 
@@ -117,9 +117,7 @@ class DocItem(BaseModel):
 class TextItem(DocItem):
     """Text item in a document."""
 
-    label: DocItemLabel = Field(
-        default=DocItemLabel.TEXT, description="Text item label"
-    )
+    label: DocItemLabel = Field(default=DocItemLabel.TEXT, description="Text item label")
 
 
 class KeyValueItem(DocItem):
@@ -135,40 +133,28 @@ class GroupItem(BaseModel):
 
     self_ref: str = Field(description="Reference to the group")
     label: GroupLabel = Field(description="Group label")
-    items: list[DocItem] = Field(
-        default_factory=list, description="List of items in the group"
-    )
+    items: list[DocItem] = Field(default_factory=list, description="List of items in the group")
 
 
 class BearDocument(BaseModel):
     """Bear note document that follows the Docling document schema."""
 
-    schema_name: str = Field(
-        default="DoclingDocument", description="Schema name for the document"
-    )
+    schema_name: str = Field(default="DoclingDocument", description="Schema name for the document")
     version: str = Field(default="1.0.0", description="Schema version")
     name: str = Field(description="Document title")
-    origin: str | None = Field(
-        default=None, description="Original source of the document"
-    )
+    origin: str | None = Field(default=None, description="Original source of the document")
     furniture: GroupItem | None = Field(default=None, description="Document furniture")
     groups: list[GroupItem] = Field(default_factory=list, description="Document groups")
-    texts: list[TextItem] = Field(
-        default_factory=list, description="Text items in the document"
-    )
+    texts: list[TextItem] = Field(default_factory=list, description="Text items in the document")
     pictures: list[DocItem] = Field(
         default_factory=list, description="Picture items in the document"
     )
-    tables: list[DocItem] = Field(
-        default_factory=list, description="Table items in the document"
-    )
+    tables: list[DocItem] = Field(default_factory=list, description="Table items in the document")
     key_value_items: list[KeyValueItem] = Field(
         default_factory=list, description="Key-value items in the document"
     )
     pages: dict[str, Any] = Field(default_factory=dict, description="Document pages")
-    attachments: list[str] = Field(
-        default_factory=list, description="Document attachments"
-    )
+    attachments: list[str] = Field(default_factory=list, description="Document attachments")
 
     def __init__(
         self,
@@ -280,11 +266,7 @@ class BearDocument(BaseModel):
             if group.label == GroupLabel.METADATA:
                 for item in group.items:
                     if item.self_ref == "#/metadata/tags":
-                        return (
-                            [tag.strip() for tag in item.text.split(",")]
-                            if item.text
-                            else []
-                        )
+                        return [tag.strip() for tag in item.text.split(",")] if item.text else []
         return []
 
     @property
@@ -456,9 +438,7 @@ class BearParser:
 
                 # Use appropriate input format based on file extension
                 input_format = (
-                    InputFormat.MARKDOWN
-                    if note_file.suffix.lower() == ".md"
-                    else InputFormat.TEXT
+                    InputFormat.MARKDOWN if note_file.suffix.lower() == ".md" else InputFormat.TEXT
                 )
 
                 note = BearNote(

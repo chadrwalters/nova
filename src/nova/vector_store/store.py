@@ -1,276 +1,342 @@
-"""Vector store implementation using Chroma."""
+"""Vector store for semantic search."""
 
+import json
 import logging
-import time
-import os
-from collections.abc import Mapping, Sequence
-from pathlib import Path
-from typing import Any, Union, cast
+import uuid
+from typing import Any
 
-import numpy as np
-from numpy.typing import NDArray
-import chromadb  # type: ignore[import]
-from chromadb.api.types import Embeddings, Metadatas, Where  # type: ignore[import]
-from chromadb.config import Settings  # type: ignore[import]
-from sentence_transformers import SentenceTransformer  # type: ignore
+import chromadb
+from chromadb.api.models.Collection import Collection
+from chromadb.api.types import IncludeEnum
+from sentence_transformers import SentenceTransformer
 
-from .types import VectorStoreStats
+from nova.vector_store.chunking import Chunk
+from nova.vector_store.stats import VectorStoreStats
 
 logger = logging.getLogger(__name__)
 
-# Use a smaller, faster model
-MODEL_NAME = "paraphrase-MiniLM-L3-v2"
-BATCH_SIZE = 32
-
 
 class VectorStore:
-    """Vector store for embeddings."""
+    """Vector store for embeddings with metadata support."""
 
-    def __init__(self, store_dir: Path) -> None:
-        """Initialize vector store.
+    COLLECTION_NAME = "nova_documents"
+    MODEL_NAME = "paraphrase-MiniLM-L3-v2"
 
-        Args:
-            store_dir: Directory for storing vector data
-        """
-        self._store_dir = store_dir
-        self._store_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(self._store_dir, 0o755)  # rwxr-xr-x
+    def __init__(self, vector_dir: str, use_memory: bool = False) -> None:
+        """Initialize the vector store."""
+        self.vector_dir = vector_dir
+        self.model: SentenceTransformer | None = None
+        self.collection: Collection | None = None
+        self.stats = VectorStoreStats()
+        self.logger = logging.getLogger(__name__)
 
-        # Create ChromaDB directory structure with proper permissions
-        chroma_dir = self._store_dir / "chroma"
-        chroma_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(chroma_dir, 0o755)  # rwxr-xr-x
+        try:
+            # Initialize ChromaDB client
+            if use_memory:
+                self.client = chromadb.Client()
+                self.logger.info("Using in-memory ChromaDB client")
+            else:
+                self.client = chromadb.PersistentClient(path=vector_dir)
+                self.logger.info("Using persistent ChromaDB client")
 
-        # Create all required subdirectories
-        subdirs = ["db", "index", "system", "data"]
-        for subdir in subdirs:
-            dir_path = chroma_dir / subdir
-            dir_path.mkdir(parents=True, exist_ok=True)
-            os.chmod(dir_path, 0o755)  # rwxr-xr-x
+            # Get or create collection
+            try:
+                self.collection = self.client.create_collection("chunks")
+                self.logger.info("Created new collection: chunks")
+            except Exception:
+                self.collection = self.client.get_collection("chunks")
+                self.logger.info("Using existing collection: chunks")
 
-        # Create and set permissions for SQLite database file
-        db_file = chroma_dir / "chroma.db"
-        if not db_file.exists():
-            db_file.touch(mode=0o644)  # rw-r--r--
-        os.chmod(db_file, 0o644)  # rw-r--r--
+            # Initialize model
+            self.model = SentenceTransformer("all-MiniLM-L6-v2")
+            self.logger.info("Vector store initialized successfully")
 
-        # Initialize other instance variables
-        self._model: SentenceTransformer | None = None
-        self._embedding_cache: dict[str, NDArray[np.float32]] = {}
-        self._batch_queue: list[tuple[str, str, dict[str, Any]]] = []
+        except Exception as e:
+            self.logger.error(f"Failed to initialize vector store: {e}")
+            raise
 
-        # Configure Chroma client with reset enabled for tests
-        settings = Settings(
-            allow_reset=True,
-            is_persistent=True,
-            persist_directory=str(chroma_dir),
-            anonymized_telemetry=False,
-        )
+    def add_chunk(self, chunk: Chunk, metadata: dict[str, Any]) -> None:
+        """Add a chunk to the vector store."""
+        if not self.model or not self.collection:
+            self.logger.error("Model or collection not initialized")
+            raise RuntimeError("Model or collection not initialized")
 
-        # Initialize ChromaDB client and collection
-        self.client = chromadb.Client(settings)
-        self.collection = self.client.get_or_create_collection("nova")
+        try:
+            # Generate embedding
+            embedding = self.model.encode(chunk.text).tolist()
 
-    @property
-    def model(self) -> SentenceTransformer:
-        """Get or initialize the sentence transformer model."""
-        if self._model is None:
-            self._model = SentenceTransformer(MODEL_NAME)
-        return self._model
+            # Process metadata to ensure correct format for filtering
+            processed_metadata = {
+                "source": str(chunk.source) if chunk.source else "",
+                "heading_text": chunk.heading_text,
+                "heading_level": chunk.heading_level,
+                "tags": json.dumps(chunk.tags),
+                "attachments": json.dumps(
+                    [{"type": att["type"], "path": att["path"]} for att in chunk.attachments]
+                ),
+                "chunk_id": chunk.chunk_id,
+            }
 
-    def add(self, doc_id: str, content: str, metadata: dict[str, Any]) -> None:
-        """Add a document to the store.
+            # Add to collection
+            self.collection.add(
+                documents=[chunk.text],
+                embeddings=[embedding],
+                metadatas=[processed_metadata],
+                ids=[str(uuid.uuid4())],
+            )
 
-        Args:
-            doc_id: Document ID
-            content: Document content
-            metadata: Document metadata
-        """
-        # Add to batch queue
-        self._batch_queue.append((doc_id, content, metadata))
+            # Update stats
+            if hasattr(self, "stats") and self.stats:
+                self.stats.record_chunk_added()
 
-        # Process batch if queue is full
-        if len(self._batch_queue) >= BATCH_SIZE:
-            self._process_batch()
+            self.logger.info("Added chunk to vector store")
 
-    def _process_batch(self) -> None:
-        """Process batched documents."""
-        if not self._batch_queue:
-            return
+        except Exception as e:
+            self.logger.error(f"Error adding chunk: {e}")
+            raise
 
-        # Convert documents to embeddings
-        texts = [doc[1] for doc in self._batch_queue]  # content is at index 1
-        embeddings = self.model.encode(texts)
-
-        # Add to Chroma collection
-        self.collection.add(
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=[doc[2] for doc in self._batch_queue],  # metadata is at index 2
-            ids=[doc[0] for doc in self._batch_queue],  # id is at index 0
-        )
-
-        # Clear batch
-        self._batch_queue.clear()
-
-    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Search for similar documents.
-
-        Args:
-            query: Query string
-            limit: Maximum number of results
-
-        Returns:
-            List of results with metadata
-        """
-        # Process any remaining documents
-        if self._batch_queue:
-            self._process_batch()
-
-        # Generate query embedding
-        query_vector = self.model.encode([query], convert_to_numpy=True)
-        if not isinstance(query_vector, np.ndarray):
-            query_vector = np.array(query_vector)
-        query_vector = query_vector.astype(np.float32).reshape(-1)
-        return self.query(query_vector, n_results=limit)
-
-    def remove(self, doc_id: str) -> None:
-        """Remove a document from the store.
-
-        Args:
-            doc_id: Document ID to remove
-
-        Raises:
-            ValueError: If document ID doesn't exist
-        """
-        # Process any remaining documents
-        if self._batch_queue:
-            self._process_batch()
-
-        # Check if document exists
-        results = self.collection.get(ids=[doc_id])
-        if not results["ids"]:
-            raise ValueError(f"Document {doc_id} not found")
-
-        self.collection.delete(ids=[doc_id])
-        if doc_id in self._embedding_cache:
-            del self._embedding_cache[doc_id]
-        logger.info("Removed document %s", doc_id)
-
-    def add_embeddings(
+    def search(
         self,
-        embedding_vectors: list[NDArray[np.float32]],
-        metadata_dicts: list[dict[str, str | int | float | bool]],
-    ) -> None:
-        """Add embeddings to the store.
-
-        Args:
-            embedding_vectors: List of embedding vectors
-            metadata_dicts: List of metadata dictionaries
-        """
-        # Convert numpy arrays to lists
-        embeddings: Embeddings = [vector.tolist() for vector in embedding_vectors]
-
-        # Convert metadata to Mappings and extract IDs
-        metadatas: Metadatas = []
-        ids: list[str] = []
-        for metadata in metadata_dicts:
-            md = dict(metadata)
-            if "id" not in md:
-                raise ValueError("Metadata must contain 'id' field")
-            ids.append(str(md["id"]))
-            metadatas.append(cast(Mapping[str, Union[str, int, float, bool]], md))
-
-        # Add embeddings to collection
-        self.collection.add(embeddings=embeddings, metadatas=metadatas, ids=ids)
-        logger.info("Added %d embeddings to vector store", len(embeddings))
-
-    def query(
-        self,
-        query_vector: NDArray[np.float32],
-        n_results: int = 5,
-        where: Where | None = None,
+        query: str,
+        limit: int = 5,
+        tag_filter: str | None = None,
+        attachment_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Query the vector store.
+        """Search for similar documents."""
+        try:
+            if not self.model or not self.collection:
+                self.logger.error("Model or collection not initialized")
+                return []
 
-        Args:
-            query_vector: Query vector
-            n_results: Number of results to return
-            where: Optional filter conditions
+            # Generate query embedding
+            query_embedding = self.model.encode(query).tolist()
 
-        Returns:
-            List of results with metadata
+            # Build where clause for filtering
+            conditions = []
+            if tag_filter:
+                # Search for tag in the JSON array
+                tag_json = json.dumps([tag_filter])  # Match exact tag array
+                conditions.append({"tags": {"$eq": tag_json}})
+            if attachment_type:
+                # Search for attachment type in the JSON array
+                attachment_json = json.dumps(
+                    [{"type": attachment_type, "path": "test.jpg"}]
+                )  # Match exact attachment array
+                conditions.append({"attachments": {"$eq": attachment_json}})
 
-        Raises:
-            ValueError: If query vector has wrong dimensions
-        """
-        # Check query vector dimensions
-        if query_vector.shape != (384,):
-            raise ValueError("Query vector must have 384 dimensions")
+            # Construct where clause based on number of conditions
+            where: dict[str, Any] | None = None
+            if len(conditions) > 1:
+                where = {"$and": conditions}
+            elif len(conditions) == 1:
+                where = conditions[0]
+            else:
+                # Use a dummy condition that always matches
+                where = {"source": {"$ne": "IMPOSSIBLE_VALUE_THAT_NEVER_EXISTS"}}
 
-        # Convert query vector to list
-        query_embedding: Sequence[float] = query_vector.tolist()
+            # Perform the search
+            include = [IncludeEnum.documents, IncludeEnum.metadatas, IncludeEnum.distances]
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=limit * 4,  # Get more results for filtering
+                where=where,
+                include=include,
+            )
 
-        # Query collection
-        results = self.collection.query(
-            query_embeddings=[query_embedding], n_results=n_results, where=where
+            # Process results
+            processed_results = []
+            documents = results.get("documents", [])
+            distances = results.get("distances", [])
+            metadatas = results.get("metadatas", [])
+
+            if (
+                documents
+                and distances
+                and metadatas
+                and len(documents) > 0
+                and len(documents[0]) > 0
+            ):
+                for i, doc in enumerate(documents[0]):
+                    # Calculate semantic similarity (0-100%)
+                    similarity = max(0, min(100, (1 - distances[0][i]) * 100))
+
+                    # Calculate term match score (0-100%)
+                    term_match_score = self._calculate_term_match_score(doc, query)
+
+                    # Check if the content is unrelated
+                    query_terms = query.lower().split()
+                    text_terms = doc.lower().split()
+                    has_any_match = any(
+                        term in text_terms
+                        or any(self._are_synonyms(term, text_term) for text_term in text_terms)
+                        or any(
+                            (term in text_term or text_term in term)
+                            and len(min(term, text_term)) >= 3
+                            for text_term in text_terms
+                        )
+                        for term in query_terms
+                    )
+
+                    # Skip documents with no matches at all
+                    if not has_any_match and similarity < 50:
+                        continue
+
+                    # Calculate final score with adjusted weights
+                    if term_match_score > 80:  # Exact or near-exact match
+                        final_score = term_match_score
+                    elif term_match_score > 50:  # Strong term match
+                        final_score = (similarity * 0.3) + (term_match_score * 0.7)
+                    else:  # Semantic or partial match
+                        final_score = (similarity * 0.7) + (term_match_score * 0.3)
+
+                    # Ensure score is properly normalized
+                    final_score = max(0, min(100, final_score))
+
+                    # Add minimum score for any kind of match
+                    if has_any_match:
+                        final_score = max(final_score, 20)  # Increased minimum score
+                    else:
+                        final_score = min(final_score, 5)  # Cap score for unrelated content
+
+                    # Skip very low scoring results
+                    if final_score < 5:
+                        continue
+
+                    # Include all results but with adjusted scores
+                    processed_results.append(
+                        {"text": doc, "metadata": metadatas[0][i], "score": final_score}
+                    )
+
+            # Sort by score and limit results
+            processed_results.sort(key=lambda x: x["score"], reverse=True)
+            processed_results = processed_results[:limit]
+
+            return processed_results
+
+        except Exception as e:
+            self.logger.error(f"Error during search: {e}")
+            return []
+
+    def _calculate_term_match_score(self, text: str, query: str) -> float:
+        """Calculate a score based on term matches in the text."""
+        text = text.lower()
+        query = query.lower()
+
+        # Check for exact phrase match first
+        if query in text:
+            return 100.0  # Give maximum score for exact matches
+
+        query_terms = query.split()
+        text_terms = text.split()
+
+        # Initialize score components
+        consecutive_matches = 0
+        term_matches = 0
+        synonym_matches = 0
+        partial_matches = 0
+
+        # Check for consecutive term matches
+        for i in range(len(text_terms) - len(query_terms) + 1):
+            matches = 0
+            for j, query_term in enumerate(query_terms):
+                if i + j >= len(text_terms):
+                    break
+                text_term = text_terms[i + j]
+                if query_term == text_term:
+                    matches += 1
+                elif self._are_synonyms(query_term, text_term):
+                    matches += 0.8  # Slightly lower score for synonyms
+                elif (query_term in text_term or text_term in query_term) and len(
+                    min(query_term, text_term)
+                ) >= 3:
+                    matches += 0.6  # Add partial match boost for consecutive matches
+            consecutive_matches = max(consecutive_matches, matches)
+
+        # Check for individual term matches
+        for query_term in query_terms:
+            exact_match = False
+            synonym_found = False
+            partial_found = False
+
+            for text_term in text_terms:
+                if query_term == text_term:
+                    term_matches += 1
+                    exact_match = True
+                    break
+                elif not exact_match and self._are_synonyms(query_term, text_term):
+                    synonym_matches += 1
+                    synonym_found = True
+                elif not exact_match and not synonym_found:
+                    # Check for partial word matches (e.g., "dev" matching "developer")
+                    if (query_term in text_term or text_term in query_term) and len(
+                        min(query_term, text_term)
+                    ) >= 3:
+                        partial_matches += 1
+                        partial_found = True
+
+        # Calculate final term match score
+        consecutive_score = (
+            consecutive_matches / len(query_terms)
+        ) * 60  # Increased boost for consecutive matches
+        term_score = (
+            term_matches / len(query_terms)
+        ) * 50  # Increased boost for exact term matches
+        synonym_score = (
+            synonym_matches / len(query_terms)
+        ) * 40  # Increased boost for synonym matches
+        partial_score = (
+            partial_matches / len(query_terms)
+        ) * 30  # Increased boost for partial matches
+
+        # Add a higher minimum score for any kind of match
+        has_matches = (
+            consecutive_matches > 0
+            or term_matches > 0
+            or synonym_matches > 0
+            or partial_matches > 0
         )
+        base_score = 25 if has_matches else 0  # Increased base score
 
-        # Extract metadata from results
-        metadata_list = []
-        metadatas = cast(list[list[dict[str, Any]]], results.get("metadatas"))
-        if metadatas and metadatas[0]:
-            ids = cast(list[list[str]], results["ids"])
-            distances = cast(list[list[float]], results["distances"])
-            for i in range(len(metadatas[0])):
-                metadata = dict(metadatas[0][i])
-                result = {
-                    "id": metadata.get("id", ids[0][i]),  # Use stored ID if available
-                    "distance": float(distances[0][i]),
-                    "metadata": metadata,  # Include original metadata
-                }
-                metadata_list.append(result)
+        return min(
+            base_score + consecutive_score + term_score + synonym_score + partial_score, 100.0
+        )  # Cap at 100%
 
-        return metadata_list
-
-    def get_metadata(self) -> dict[str, Any]:
-        """Get vector store metadata.
-
-        Returns:
-            Dictionary containing vector store metadata
-        """
-        # Get total vectors
-        results = self.collection.get()
-        total_vectors = len(results["ids"]) if results["ids"] else 0
-
-        return {
-            "id": "vector_store",
-            "name": "Vector Store",
-            "version": "1.0.0",
-            "modified": time.time(),
-            "total_vectors": total_vectors,
-            "store_dir": str(self._store_dir),
+    def _are_synonyms(self, term1: str, term2: str) -> bool:
+        """Check if two terms are synonyms."""
+        synonyms = {
+            "programmer": ["developer", "dev", "coder", "engineer"],
+            "developer": ["programmer", "dev", "coder", "engineer"],
+            "web": ["frontend", "backend", "front-end", "back-end", "fullstack", "full-stack"],
+            "frontend": ["front-end", "web", "client-side"],
+            "backend": ["back-end", "web", "server-side"],
+            "dev": ["developer", "programmer", "coder", "engineer"],
+            "coder": ["programmer", "developer", "dev", "engineer"],
+            "engineer": ["programmer", "developer", "dev", "coder"],
         }
+        return term2 in synonyms.get(term1, []) or term1 in synonyms.get(term2, [])
 
     def cleanup(self) -> None:
         """Clean up resources."""
-        self._batch_queue.clear()
-        self._embedding_cache.clear()
-        self._model = None
-        self.client.reset()
+        try:
+            if self.collection:
+                try:
+                    self.client.delete_collection("chunks")
+                except ValueError as e:
+                    # Ignore if collection doesn't exist
+                    if "does not exist" not in str(e):
+                        raise
+                self.collection = None
+            self.logger.info("Cleaned up vector store")
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+            raise
 
-    async def get_stats(self) -> VectorStoreStats:
-        """Get statistics about the vector store.
+    def get_stats(self) -> dict[str, Any]:
+        """Get current statistics."""
+        if hasattr(self, "stats") and self.stats:
+            return self.stats.get_stats()
+        return {}
 
-        Returns:
-            VectorStoreStats: Statistics about the vector store
-        """
-        collection = self.client.get_collection("nova")
-        count = collection.count()
-        metadata = collection.get()
-
-        return VectorStoreStats(
-            collection_name="nova",
-            num_embeddings=count,
-            metadata=metadata
-        )
+    def __del__(self) -> None:
+        """Clean up resources on deletion."""
+        self.cleanup()

@@ -2,7 +2,6 @@
 
 import random
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from nova.stubs.docling import Document, InputFormat
@@ -18,23 +17,52 @@ class TestDataGenerators:
     """.strip()
 
     _SAMPLE_TAGS = [
-        "work", "personal", "todo", "ideas", "notes", "research", "meeting",
-        "project", "draft", "final", "important", "urgent", "archive", "reference"
+        "work",
+        "personal",
+        "todo",
+        "ideas",
+        "notes",
+        "research",
+        "meeting",
+        "project",
+        "draft",
+        "final",
+        "important",
+        "urgent",
+        "archive",
+        "reference",
     ]
 
     _SAMPLE_AUTHORS = [
-        "John Doe", "Jane Smith", "Alice Johnson", "Bob Wilson",
-        "Carol Brown", "David Miller", "Eve Anderson", "Frank Thomas"
+        "John Doe",
+        "Jane Smith",
+        "Alice Johnson",
+        "Bob Wilson",
+        "Carol Brown",
+        "David Miller",
+        "Eve Anderson",
+        "Frank Thomas",
     ]
 
     _SAMPLE_CATEGORIES = [
-        "Documentation", "Research", "Development", "Design",
-        "Testing", "Planning", "Review", "Analysis"
+        "Documentation",
+        "Research",
+        "Development",
+        "Design",
+        "Testing",
+        "Planning",
+        "Review",
+        "Analysis",
     ]
 
     _SAMPLE_STATUSES = [
-        "draft", "review", "approved", "published",
-        "archived", "deprecated", "pending"
+        "draft",
+        "review",
+        "approved",
+        "published",
+        "archived",
+        "deprecated",
+        "pending",
     ]
 
     @classmethod
@@ -145,15 +173,17 @@ class TestDataGenerators:
             for i in range(num_images):
                 width = random.randint(800, 1920)
                 height = random.randint(600, 1080)
-                doc.pictures.append({
-                    "image": {
-                        "uri": f"image_{i}.png",
-                        "mime_type": "image/png",
-                        "size": random.randint(1024, 10240),
-                        "width": width,
-                        "height": height,
+                doc.pictures.append(
+                    {
+                        "image": {
+                            "uri": f"image_{i}.png",
+                            "mime_type": "image/png",
+                            "size": random.randint(1024, 10240),
+                            "width": width,
+                            "height": height,
+                        }
                     }
-                })
+                )
 
         return doc
 

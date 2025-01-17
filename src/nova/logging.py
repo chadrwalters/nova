@@ -3,9 +3,10 @@
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastmcp.utilities.logging import configure_logging as configure_fastmcp_logging
+
 
 class LogLevel(str, Enum):
     """Log levels."""
@@ -14,6 +15,7 @@ class LogLevel(str, Enum):
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
+
 
 def get_component_logger(name: str) -> logging.Logger:
     """Get a logger for a component.
@@ -26,7 +28,8 @@ def get_component_logger(name: str) -> logging.Logger:
     """
     return logging.getLogger(f"nova.{name}")
 
-def log_error(logger: logging.Logger, message: str, error: Optional[Exception] = None) -> None:
+
+def log_error(logger: logging.Logger, message: str, error: Exception | None = None) -> None:
     """Log an error message.
 
     Args:
@@ -35,11 +38,12 @@ def log_error(logger: logging.Logger, message: str, error: Optional[Exception] =
         error: Optional exception
     """
     if error:
-        logger.error(f"{message}: {str(error)}")
+        logger.error(f"{message}: {error!s}")
     else:
         logger.error(message)
 
-def log_tool_call(logger: logging.Logger, tool_name: str, args: Dict[str, Any]) -> None:
+
+def log_tool_call(logger: logging.Logger, tool_name: str, args: dict[str, Any]) -> None:
     """Log a tool call.
 
     Args:
@@ -49,7 +53,8 @@ def log_tool_call(logger: logging.Logger, tool_name: str, args: Dict[str, Any]) 
     """
     logger.info(f"Calling tool {tool_name} with args: {args}")
 
-def configure_logging(log_dir: Optional[Path] = None) -> None:
+
+def configure_logging(log_dir: Path | None = None) -> None:
     """Configure logging.
 
     Args:
@@ -58,7 +63,4 @@ def configure_logging(log_dir: Optional[Path] = None) -> None:
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
 
-    configure_fastmcp_logging(
-        log_dir=str(log_dir) if log_dir else None,
-        log_level=LogLevel.INFO
-    )
+    configure_fastmcp_logging(log_dir=str(log_dir) if log_dir else None, log_level=LogLevel.INFO)
