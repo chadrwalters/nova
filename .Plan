@@ -1,344 +1,176 @@
-# Nova Development Plan
+# Nova Rebuild Script Implementation Plan
 
-## Remaining Tasks: Production Readiness [IN PROGRESS]
+## Phase 1: Foundation Setup (Week 1)
 
-1. Documentation Updates [COMPLETED]
-   - [✓] Update README with Claude Desktop setup
-   - [✓] Add troubleshooting guide
-   - [✓] Document example queries
-   - [✓] Update architecture diagrams
-   - [✓] API documentation for all tools
-   - [✓] Monitoring setup guide
-   - [✓] Operational procedures
-   - [✓] Format support details
-   - [✓] Bear note processing guide
-   - [✓] Update README.md with new architecture overview
-   - [✓] Create architectural decision records
-   - [✓] Document new command line interface
-   - [✓] Update API documentation
+[ ] Initial Project Structure
+    [ ] Create nova/rebuild package structure
+    [ ] Add dependencies to pyproject.toml
+        - Rich for UI
+        - Loguru for logging
+        - Psutil for monitoring
+    [ ] Setup basic CLI command structure
+    [ ] Create initial test framework
 
-2. Test Suite Cleanup and Update [IN PROGRESS]
-   - [✓] Review and catalog all test files
-   - [✓] Run tests and identify passing/failing tests
-   - [✓] Remove outdated test files (tracking for replacement)
-   - [✓] Fix mostly-working tests
-   - [✓] Identify working tests
-     - [✓] test_clean_processing.py (4 tests)
-     - [✓] test_clean_vectors.py (4 tests)
-     - [✓] test_command.py (3 tests)
-     - [✓] test_process_vectors.py (3 tests)
-     - One test in test_nova_mcp_server.py
-   - [✓] Remove/Update broken tests
-   - [✓] Fix process_vectors tests [COMPLETED]
-     - [✓] Add missing 'store' fixture
-     - [✓] Fix test_process_vectors_basic
-     - [✓] Fix test_process_vectors_multiple_chunks
-   - [✓] Fix monitor command tests [COMPLETED]
-     - [✓] Fix test_monitor_health output
-     - [✓] Fix test_monitor_stats output
-     - [✓] Fix test_monitor_logs output
-     - [✓] Fix test_monitor_missing_args error handling
-     - [✓] Fix test_monitor_invalid_subcommand error handling
-     - [✓] Fix test_monitor_health_missing_dirs output
-   - [✓] Fix search consistency tests [COMPLETED]
-     - [✓] Fix test_search_consistency
-     - [✓] Fix test_empty_results_consistency
-     - [✓] Fix test_score_normalization
-   - [✓] Fix vector store tests [COMPLETED]
-     - [✓] Fix test_exact_match_search
-     - [✓] Fix test_partial_match_search
-     - [✓] Fix test_semantic_search
-     - [✓] Fix test_relevance_scoring
-     - [✓] Fix test_metadata_search
-     - [✓] Fix test_low_relevance_filtering
-     - [✓] Fix test_consecutive_terms_boost
-     - [✓] Fix test_search_limit
-     - [✓] Fix test_case_insensitive_search
+[ ] Core Logging System
+    [ ] Create nova/rebuild/logging.py
+        [ ] Implement LoggingManager class
+        [ ] Add dynamic log level control
+        [ ] Setup log formatters
+        [ ] Configure log handlers
+    [ ] Create nova/cli/utils/logging.py
+        [ ] Add CLI logging utilities
+        [ ] Implement log level parsing
+    [ ] Add logging tests
+        [ ] Test level switching
+        [ ] Test formatting
+        [ ] Test handlers
 
-3. Error Handling and Monitoring [IN PROGRESS]
-   - [ ] Add comprehensive error messages [TODO]
-   - [ ] Add system health checks [TODO]
-   - [ ] Better error messages [TODO]
-   - [ ] Automatic retry mechanisms [TODO]
-   - [ ] Add detailed logging [TODO]
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Verify logging system works with basic CLI integration
 
+## Phase 2: Core Components (Week 1-2)
 
-4. Performance Optimization [IN PROGRESS]
-   - [ ] Profile vector store operations [TODO]
-   - [ ] Optimize batch processing [TODO]
-   - [ ] Improve search response time [TODO]
-   - [ ] Memory usage optimization [TODO]
-   - [ ] Load testing with large datasets [TODO]
-   - [ ] Query performance tuning [TODO]
-   - [ ] Batch processing improvements [TODO]
-   - [ ] Optimize memory usage [TODO]
-   - [ ] Implement caching strategy [TODO]
-   - [ ] Add performance metrics [TODO]
+[ ] Progress Tracking System
+    [ ] Create nova/rebuild/progress.py
+        [ ] Implement ProgressManager class
+        [ ] Add progress bar utilities
+        [ ] Setup time tracking
+    [ ] Create nova/cli/utils/progress.py
+        [ ] Add progress formatting
+        [ ] Implement progress indicators
+    [ ] Add progress tests
+        [ ] Test progress tracking
+        [ ] Test time estimation
 
-## Next Steps
-1. Create new FastMCP integration tests
-2. Create new docling integration tests
-3. Create new monitor command tests
-4. Begin performance optimization phase
+[ ] Statistics Collection
+    [ ] Create nova/rebuild/stats.py
+        [ ] Implement StatsCollector class
+        [ ] Add vector store stats
+        [ ] Setup system monitoring
+    [ ] Create nova/cli/utils/stats.py
+        [ ] Add stats formatting
+        [ ] Implement stats display
+    [ ] Add statistics tests
+        [ ] Test collection
+        [ ] Test formatting
 
-## Current Status Notes
-- Documentation phase completed with comprehensive guides
-- Moving into test suite cleanup and update phase
-- Major architectural changes completed:
-  - Moved to docling for note processing
-  - Fixed MCP app functionality
-  - Split into read-only and read-write apps
-  - Updated naming conventions
-- Enhanced vector store features completed and thoroughly tested
-- Monitoring system implemented with both session and persistent tracking
-- Document processing pipeline now supports wide range of formats
-- Bear note processing includes advanced date and tag handling
-- All core features implemented and tested
-- Log management system in place with rotation and analysis capabilities
-- All core features now have comprehensive test coverage
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Verify core components work together
 
--------------------
-# Completed Features
+## Phase 3: Process Management (Week 2)
 
-## Core Features [COMPLETED]
-- [✓] Vector Store Implementation
-- [✓] Document Processing Pipeline
-- [✓] CLI Command Updates
-- [✓] Resource Handler Integration
-- [✓] Test Suite Adaptation
-- [✓] MCP Server Setup
-- [✓] Resource Handler Implementation
-- [✓] Document Processing Implementation
-- [✓] Error Handling Updates
-- [✓] Test Suite Implementation
-- [✓] Echo Server POC
-- [✓] Claude Desktop Integration
-- [✓] Date-based Search Features
-- [✓] Monitoring & Operations Implementation
+[ ] Health Checking System
+    [ ] Create nova/rebuild/health.py
+        [ ] Implement HealthChecker class
+        [ ] Add component verification
+        [ ] Setup health reporting
+    [ ] Add health check tests
+        [ ] Test component checks
+        [ ] Test reporting
 
-## MCP Integration [COMPLETED]
+[ ] Rebuild Manager
+    [ ] Create nova/rebuild/manager.py
+        [ ] Implement RebuildManager class
+        [ ] Add component coordination
+        [ ] Setup process flow
+    [ ] Add manager tests
+        [ ] Test coordination
+        [ ] Test process flow
 
-1. Echo Server [COMPLETED]
-   - [✓] Working reference implementation
-     - [✓] Clean FastMCP example
-     - [✓] Shell script startup
-     - [✓] Proper logging
-     - [✓] Claude Desktop integration
-   - [✓] Documentation
-     - [✓] Setup instructions
-     - [✓] Usage examples
-     - [✓] Architecture docs
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Verify process management works end-to-end
 
-2. Nova MCP Server Implementation [COMPLETED]
-   - [✓] Shell Script Setup
-     - [✓] Create start_nova_mcp.sh
-     - [✓] Configure environment variables
-     - [✓] Set up proper logging paths
-     - [✓] Add error handling
-   - [✓] Port Echo POC learnings to nova server
-     - [✓] Use FastMCP base
-     - [✓] Set up structured logging to .nova/logs
-     - [✓] Configure proper error handling
-     - [✓] Use shell script startup
-   - [✓] Server Directory Cleanup
-     - [✓] Remove old MCP implementations
-     - [✓] Remove old server code
-     - [✓] Remove old resource handling
-     - [✓] Remove old protocol code
-   - [✓] CLI/MCP Unification
-     - [✓] Wrap CLI commands with FastMCP tools
-     - [✓] Set up unified logging
-   - [✓] Component Integration
-     - [✓] Vector Store Integration
-       - [✓] Basic connectivity
-       - [✓] Async operations
-       - [✓] Result formatting
-     - [✓] Bear Note Processing
-       - [✓] Using BearParser
-       - [✓] Vector processing
-       - [✓] Metadata handling
-     - [✓] Verify Functionality
-       - [✓] Test vector store operations
-       - [✓] Validate Bear note processing
-       - [✓] Check async operations
-   - [✓] Testing & Validation
-     - [✓] Create FastMCP test suite
-     - [✓] Test all tool functions
-     - [✓] Validate error handling
-     - [✓] Add vector store fixtures
-   - [✓] Documentation
-     - [✓] Update Architecture Docs
-       - [✓] FastMCP Integration Overview
-       - [✓] Tool Implementation Details
-       - [✓] Vector Store Integration
-       - [✓] Async Operation Model
-       - [✓] Error Handling Strategy
-     - [✓] Tool Documentation
-       - [✓] process_notes_tool
-         - [✓] Parameters
-         - [✓] Return Format
-         - [✓] Error Cases
-         - [✓] Examples
-       - [✓] search_tool
-         - [✓] Parameters
-         - [✓] Return Format
-         - [✓] Error Cases
-         - [✓] Examples
-       - [✓] monitor_tool
-         - [✓] Parameters
-         - [✓] Return Format
-         - [✓] Error Cases
-         - [✓] Examples
-       - [✓] clean_processing_tool
-         - [✓] Parameters
-         - [✓] Return Format
-         - [✓] Error Cases
-         - [✓] Examples
-       - [✓] clean_vectors_tool
-         - [✓] Parameters
-         - [✓] Return Format
-         - [✓] Error Cases
-         - [✓] Examples
-     - [✓] Usage Examples
-       - [✓] Basic Tool Usage
-       - [✓] Error Handling Examples
-       - [✓] Common Workflows
-       - [✓] Best Practices
-       - [✓] Testing Documentation
-         - [✓] Test Suite Overview
-         - [✓] Test Fixtures
-         - [✓] Writing New Tests
-         - [✓] Running Tests
+## Phase 4: CLI Integration (Week 3)
 
-3. Claude Vector Store Integration [COMPLETED]
-   - [✓] Basic Query Implementation
-     - [✓] Add vector store query tool to MCP server
-     - [✓] Implement note retrieval by similarity
-     - [✓] Add basic metadata filtering (title, date)
-   - [✓] Test Suite Implementation
-     - [✓] Set up test fixtures
-     - [✓] Implement test client
-     - [✓] Add comprehensive test cases
-     - [✓] Validate error handling
-   - [✓] Claude Integration Testing
-     - [✓] Test Claude's ability to query notes
-     - [✓] Validate end-to-end flow: Bear note -> Vector -> Claude query
-     - [✓] Test query result formatting and relevance
-   - [✓] Documentation
-     - [✓] Add query tool documentation
-     - [✓] Include example queries
-     - [✓] Document result format
+[ ] Command Structure
+    [ ] Update nova/cli/commands/rebuild.py
+        [ ] Add new command options
+        [ ] Implement logging controls
+        [ ] Setup progress display
+    [ ] Add command tests
+        [ ] Test options
+        [ ] Test integration
 
-## Implementation Details [COMPLETED]
+[ ] User Interface
+    [ ] Create nova/cli/utils/formatting.py
+        [ ] Add color schemes
+        [ ] Implement status banners
+        [ ] Setup interactive elements
+    [ ] Add UI tests
+        [ ] Test formatting
+        [ ] Test interaction
 
-1. Vector Store Implementation [COMPLETED]
-   - Enhanced chunking with hierarchy preservation
-   - Optimized embedding generation
-   - Efficient vector storage and retrieval
-   - Rich metadata support
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Verify CLI interface works smoothly
 
-2. Document Processing Pipeline [COMPLETED]
-   - Multi-format support with detailed capabilities
-   - Bear note processing with advanced features
-   - Robust error handling and recovery
-   - Progress tracking and reporting
+## Phase 5: Error Handling (Week 3-4)
 
-3. Enhanced Vector Store Features [COMPLETED]
-   - [✓] Date-based Features
-     - [✓] Extract dates from titles
-     - [✓] Store date components (year, month, day, weekday)
-     - [✓] Implement date range queries
-     - [✓] Add weekday-based filtering
-     - [✓] Create comprehensive test suite
-   - [✓] Advanced Processing
-     - [✓] Implement proper chunking for large Bear notes
-     - [✓] Handle Bear's hierarchical structure
-     - [✓] Improve metadata extraction
-     - [✓] Add attachment handling
-     - [✓] Support configurable chunk sizes
-   - [✓] Query Capabilities
-     - [✓] Support querying by tags
-     - [✓] Add attachment filtering
-     - [✓] Support Bear-specific metadata
-     - [✓] Implement semantic boost for relevance
-     - [✓] Add hierarchy inclusion in results
-   - [✓] Performance Optimization
-     - [✓] Add result caching with expiry
-     - [✓] Implement batch operations
-     - [✓] Add embedding cache
-     - [✓] Optimize search performance
+[ ] Error System
+    [ ] Create nova/rebuild/errors.py
+        [ ] Define error hierarchy
+        [ ] Add recovery strategies
+        [ ] Setup error reporting
+    [ ] Add error handling tests
+        [ ] Test recovery
+        [ ] Test reporting
 
-4. Monitoring & Operations [COMPLETED]
-   - [✓] Session Monitoring
-     - [✓] Quick health checks during active sessions
-       - [✓] Vector store connectivity
-       - [✓] Processing pipeline status
-       - [✓] Resource availability
-     - [✓] Real-time performance metrics
-       - [✓] Query response times
-       - [✓] Memory usage during session
-       - [✓] Active processing status
-     - [✓] Session error tracking
-       - [✓] Real-time error detection
-       - [✓] Error context capture
-       - [✓] Recovery suggestions
-   - [✓] Persistent Monitoring
-     - [✓] Cross-session metrics storage in .nova/metrics
-       - [✓] Session duration tracking
-       - [✓] Query patterns and performance
-       - [✓] Error frequency and types
-     - [✓] Structured logging to .nova/logs
-       - [✓] Session start/end markers
-       - [✓] Critical errors and warnings
-       - [✓] Performance anomalies
-     - [✓] System health indicators
-       - [✓] Vector store integrity checks
-       - [✓] Input directory monitoring
-       - [✓] Storage space tracking
-   - [✓] Operational Tools
-     - [✓] Log management
-       - [✓] Automatic log rotation
-       - [✓] Log archival between sessions
-       - [✓] Log analysis tools
-     - [✓] Resource monitoring
-       - [✓] Disk space monitoring for .nova
-       - [✓] Vector store size tracking
-       - [✓] Processing directory cleanup
-     - [✓] Health reporting
-       - [✓] Session health summaries
-       - [✓] Cross-session trend analysis
-       - [✓] System recommendations
+[ ] User Interaction
+    [ ] Update nova/cli/utils/interaction.py
+        [ ] Add confirmation prompts
+        [ ] Implement error responses
+        [ ] Setup recovery options
+    [ ] Add interaction tests
+        [ ] Test prompts
+        [ ] Test responses
 
-## Document Processing [COMPLETED]
-- Text Formats:
-  + Markdown with full metadata preservation
-  + Plain text with basic metadata
-  + HTML with link preservation
-  + RST with structure preservation
-  + AsciiDoc with formatting
-  + Org Mode with hierarchy
-  + Wiki with basic formatting
-  + LaTeX with math support
-- Office Formats:
-  + Word with style preservation
-  + Excel with table structure
-  + PowerPoint with slide structure
-- Other Formats:
-  + PDF with layout preservation
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Verify error handling works reliably
 
-## Bear Note Processing [COMPLETED]
-- Title Date Extraction:
-  + YYYYMMDD format support
-  + YYYY-MM-DD format support
-  + Date component extraction
-  + Weekday calculation
-- Tag Processing:
-  + Simple and nested tag support
-  + Tag hierarchy preservation
-  + Tag relationship tracking
-- Metadata Handling:
-  + Creation date from title
-  + Modified date from file
-  + Tag collection with hierarchy
-  + Title and subtitle extraction
-  + Attachment reference handling
+## Phase 6: Polish & Documentation (Week 4)
+
+[ ] Final Integration
+    [ ] Update scripts/rebuild.sh
+        [ ] Add new features
+        [ ] Implement full workflow
+        [ ] Setup completion reporting
+    [ ] Add integration tests
+        [ ] Test full workflow
+        [ ] Test edge cases
+
+[ ] Documentation
+    [ ] Update API docs
+        [ ] Document classes
+        [ ] Document methods
+    [ ] Create usage guide
+        [ ] Add examples
+        [ ] Document options
+    [ ] Add troubleshooting guide
+        [ ] Document common issues
+        [ ] Add solutions
+
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Verify documentation is complete and accurate
+
+## Final Steps
+
+[ ] Quality Assurance
+    [ ] Run full test suite
+    [ ] Check code coverage
+    [ ] Verify documentation
+    [ ] Test all scenarios
+
+[ ] Release Preparation
+    [ ] Update version
+    [ ] Create changelog
+    [ ] Prepare release notes
+    [ ] Final testing
+
+[MILESTONE] Run tests: uv run pytest -v
+[MILESTONE] Ready for release
+
+## Notes
+- All Python commands MUST use uv
+- All files MUST be under 250 lines
+- All system files MUST be in .nova directory
+- Tests MUST run without approval
+- Type checking MUST run before tests
