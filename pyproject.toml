@@ -244,3 +244,17 @@ meta = {}
 "pymdownx.tabbed" = {}
 "pymdownx.tasklist" = {}
 toc = { permalink = true }
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203"]
+exclude = [".git", "__pycache__", ".venv", ".pytest_cache", ".mypy_cache"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
