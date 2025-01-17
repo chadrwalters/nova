@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import click
+from tqdm import tqdm
 
 from nova.cli.utils.command import NovaCommand
 from nova.vector_store.chunking import Chunk, ChunkingEngine
@@ -67,7 +68,9 @@ class ProcessVectorsCommand(NovaCommand):
 
             # Initialize vector store if not provided
             if self.vector_store is None:
+                # Create new vector store
                 self.vector_store = VectorStore(str(output_path))
+                logger.info("Initialized vector store")
 
             # Handle empty text
             if not text:
@@ -84,22 +87,42 @@ class ProcessVectorsCommand(NovaCommand):
 
             # Store chunks if any were created
             if chunks:
-                for chunk in chunks:
-                    metadata = {
-                        "source": str(chunk.source) if chunk.source else "",
-                        "heading_text": chunk.heading_text or "",
-                        "heading_level": chunk.heading_level or 0,
-                        "tags": json.dumps(chunk.tags or []),
-                        "attachments": json.dumps(chunk.attachments or []),
-                    }
-                    self.vector_store.add_chunk(chunk, metadata)
-                logger.info(f"Stored {len(chunks)} chunks in vector store")
+                self.process_chunks(chunks)
             else:
                 logger.info("No chunks to store")
 
         except Exception as e:
             logger.error(f"Failed to process vectors: {e!s}")
             raise click.Abort()
+
+    def process_chunks(self, chunks: list[Chunk]) -> None:
+        """Process chunks and store them in the vector store."""
+        if not self.vector_store:
+            raise RuntimeError("Vector store not initialized")
+
+        logger.info(f"Processing {len(chunks)} chunks")
+
+        with tqdm(total=len(chunks), desc="Adding chunks to vector store", unit="chunk") as pbar:
+            for chunk in chunks:
+                try:
+                    # Add chunk with proper metadata
+                    metadata = {
+                        "source": str(chunk.source) if chunk.source else "",
+                        "heading_text": chunk.heading_text,
+                        "heading_level": chunk.heading_level,
+                        "tags": json.dumps(chunk.tags),
+                        "attachments": json.dumps(
+                            [{"type": att["type"], "path": att["path"]} for att in chunk.attachments]
+                        ),
+                        "chunk_id": chunk.chunk_id,
+                    }
+                    self.vector_store.add_chunk(chunk, metadata=metadata)
+                    pbar.update(1)
+                except Exception as e:
+                    logger.error(f"Error processing chunk: {e}")
+                    continue
+
+        logger.info(f"Stored {len(chunks)} chunks in vector store")
 
     def create_command(self) -> click.Command:
         """Create the Click command.

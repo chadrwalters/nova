@@ -8,6 +8,8 @@ import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from typing import Any
+import logging
+import sys
 
 import click
 from rich.console import Console
@@ -138,3 +140,17 @@ class NovaCommand(ABC):
             TextColumn("[progress.description]{task.description}"),
             console=console,
         )
+
+    @staticmethod
+    def setup_logging() -> None:
+        """Set up logging configuration."""
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(message)s",
+            stream=sys.stderr,  # Send all logs to stderr
+        )
+
+        # Disable debug logging for libraries
+        logging.getLogger("chromadb").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)

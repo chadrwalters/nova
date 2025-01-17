@@ -68,11 +68,11 @@ class MonitorCommand(NovaCommand):
                 console.print("✅ Vector store directory exists", style="green")
 
             # Check ChromaDB directory
-            chroma_dir = self.vector_dir / "chroma"
-            if not chroma_dir.exists():
-                console.print("❌ ChromaDB directory does not exist", style="red")
+            chroma_db = self.vector_dir / "chroma.sqlite3"
+            if not chroma_db.exists():
+                console.print("❌ ChromaDB database does not exist", style="red")
             else:
-                console.print("✅ ChromaDB directory exists", style="green")
+                console.print("✅ ChromaDB database exists", style="green")
 
             # Check cache directory
             cache_dir = Path(".nova/cache")

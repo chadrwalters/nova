@@ -31,7 +31,7 @@ class SearchCommand(NovaCommand):
 
         try:
             # Initialize vector store
-            vector_store = VectorStore(vector_dir)
+            vector_store = VectorStore(str(vector_dir))
 
             # Search for similar documents asynchronously
             results = await asyncio.to_thread(vector_store.search, query, limit=limit)

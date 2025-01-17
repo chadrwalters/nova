@@ -6,19 +6,22 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-import aiofiles  # type: ignore
-import aiofiles.os  # type: ignore
+import aiofiles
+import aiofiles.os
 import click
+from rich.console import Console
 
 from nova.cli.utils.command import NovaCommand
 
 logger = logging.getLogger(__name__)
+console = Console()
 
 
 class CleanProcessingCommand(NovaCommand):
     """Clean processing command for nova CLI."""
 
     name = "clean-processing"
+    help = "Clean the processing directory"
 
     async def run_async(self, **kwargs: Any) -> None:
         """Run the clean-processing command asynchronously.
@@ -30,17 +33,18 @@ class CleanProcessingCommand(NovaCommand):
         processing_dir = Path(".nova/processing")
 
         if not await aiofiles.os.path.exists(str(processing_dir)):
-            logger.info("Processing directory does not exist")
+            console.print("Processing directory does not exist")
             return
 
         if not force:
-            logger.warning("Use --force to actually delete the processing directory")
+            console.print("Use --force to actually delete the processing directory")
             return
 
         try:
             # Run rmtree in a thread to avoid blocking
             await asyncio.to_thread(shutil.rmtree, processing_dir)
-            logger.info("Processing directory deleted successfully")
+            console.print("🗑️  Processing directory deleted successfully")
+
         except Exception as e:
             msg = f"Failed to delete processing directory: {e!s}"
             logger.error(msg)

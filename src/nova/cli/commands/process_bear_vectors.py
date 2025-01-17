@@ -88,7 +88,7 @@ class ProcessBearVectorsCommand(NovaCommand):
 
         # Initialize vector store
         try:
-            vector_store = VectorStore(vector_dir=str(output_dir), stats=self.vector_stats)
+            vector_store = VectorStore(vector_dir=str(output_dir))
             embedding_engine = EmbeddingEngine()
 
             # Process files with progress bar
@@ -106,28 +106,35 @@ class ProcessBearVectorsCommand(NovaCommand):
                         store_task = progress.add_task("Storing vectors...", total=total_chunks)
 
                         for i, chunk in enumerate(chunks, 1):
-                            metadata = {
-                                "source": str(chunk.source) if chunk.source else "",
-                                "heading_text": chunk.heading_text,
-                                "heading_level": chunk.heading_level,
-                                "tags": json.dumps(chunk.tags),
-                                "attachments": json.dumps(
-                                    [{"type": att["type"]} for att in chunk.attachments]
-                                ),
-                            }
-                            vector_store.add_chunk(chunk, metadata=metadata)
-                            progress.update(
-                                store_task,
-                                advance=1,
-                                description=f"Stored {i}/{total_chunks} vectors",
-                            )
+                            try:
+                                metadata = {
+                                    "source": str(chunk.source) if chunk.source else "",
+                                    "heading_text": chunk.heading_text,
+                                    "heading_level": chunk.heading_level,
+                                    "tags": json.dumps(chunk.tags),
+                                    "attachments": json.dumps(
+                                        [{"type": att["type"]} for att in chunk.attachments]
+                                    ),
+                                }
+                                vector_store.add_chunk(chunk, metadata=metadata)
+                                progress.update(
+                                    store_task,
+                                    advance=1,
+                                    description=f"Stored {i}/{total_chunks} vectors",
+                                )
+                            except Exception as e:
+                                self.log_error(f"Failed to add chunk to vector store: {e}")
+                                continue
 
-                    self.log_success(
-                        f"Successfully processed {total_chunks} chunks from {input_dir}"
-                    )
+                        progress.update(store_task, description="Vectors stored")
+                        self.log_success(
+                            f"Successfully processed {total_chunks} chunks from {input_dir}"
+                        )
+                    else:
+                        self.log_warning("No chunks were generated from the input directory")
 
                 except Exception as e:
-                    self.log_error(f"Error processing Bear notes: {e}")
+                    self.log_error(f"Error processing chunks: {e}")
                     raise
 
         except Exception as e:
@@ -204,13 +211,18 @@ class ProcessBearVectorsCommand(NovaCommand):
 
         return chunks
 
-    def run(self, input_dir: str, output_dir: str) -> None:
+    def run(self, **kwargs: Any) -> None:
         """Run the command.
 
         Args:
-            input_dir: Input directory path
-            output_dir: Output directory path
+            **kwargs: Command arguments
+                input_dir: Input directory path
+                output_dir: Output directory path (optional, defaults to .nova/vectors)
         """
+        input_dir = kwargs["input_dir"]
+        output_dir = kwargs.get("output_dir", ".nova/vectors")
+
+        # Validate paths
         input_path = Path(input_dir)
         output_path = Path(output_dir)
 
@@ -272,10 +284,6 @@ class ProcessBearVectorsCommand(NovaCommand):
         except Exception as e:
             self.log_error(f"Failed to process directory: {e}")
             raise
-
-        finally:
-            # Clean up resources
-            vector_store.cleanup()
 
 
 @click.command()

@@ -11,6 +11,7 @@ import aiofiles.os
 import click
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from tqdm import tqdm
 
 from nova.cli.utils.command import NovaCommand
 from nova.config import load_config
@@ -159,3 +160,16 @@ class ProcessNotesCommand(NovaCommand):
             self.run(input_dir=input_dir, output_dir=output_dir)
 
         return process_notes
+
+    def process_files(self, files):
+        """Process a list of files."""
+        logger.info(f"Processing {len(files)} files")
+
+        with tqdm(total=len(files), desc="Converting files", unit="file") as pbar:
+            for file_path in files:
+                try:
+                    self.process_file(file_path)
+                    pbar.update(1)
+                except Exception as e:
+                    logger.error(f"Error processing {file_path}: {e}")
+                    continue

@@ -191,6 +191,13 @@ Nova
     - Performance tracking
 
 ### 4.2 Vector Store Layer [IMPLEMENTED]
+- ChromaDB vector store:
+  - Persistent storage in .nova/vectors
+  - Collection-based organization
+  - Cosine similarity search
+  - Metadata filtering
+  - Statistics persistence
+  - Health monitoring
 - Hybrid chunking combining:
   - Heading-based segmentation with hierarchy preservation
   - Semantic content splitting with word boundary detection
