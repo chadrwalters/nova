@@ -9,12 +9,10 @@ from typing import Any
 import aiofiles
 import aiofiles.os
 import click
-from rich.console import Console
 
 from nova.cli.utils.command import NovaCommand
 
 logger = logging.getLogger(__name__)
-console = Console()
 
 
 class CleanProcessingCommand(NovaCommand):
@@ -33,22 +31,26 @@ class CleanProcessingCommand(NovaCommand):
         processing_dir = Path(".nova/processing")
 
         if not await aiofiles.os.path.exists(str(processing_dir)):
-            console.print("Processing directory does not exist")
+            self.log_info("Processing directory does not exist")
             return
 
         if not force:
-            console.print("Use --force to actually delete the processing directory")
+            self.log_warning("Use --force to actually delete the processing directory")
             return
 
         try:
             # Run rmtree in a thread to avoid blocking
             await asyncio.to_thread(shutil.rmtree, processing_dir)
-            console.print("🗑️  Processing directory deleted successfully")
+            self.log_info("Processing directory deleted successfully")
 
+        except PermissionError as e:
+            msg = f"Failed to delete processing directory: {e}"
+            self.log_error(msg)
+            raise click.Abort(msg)
         except Exception as e:
-            msg = f"Failed to delete processing directory: {e!s}"
-            logger.error(msg)
-            raise click.Abort(msg) from e
+            msg = f"Failed to delete processing directory: {e}"
+            self.log_error(msg)
+            raise click.Abort(msg)
 
     def run(self, **kwargs: Any) -> None:
         """Run the command.

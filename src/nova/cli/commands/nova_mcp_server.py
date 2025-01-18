@@ -1,8 +1,7 @@
-"""FastMCP Nova Server.
+"""Nova MCP Server.
 
-This server integrates with Claude Desktop to provide Nova's core
-functionality through MCP. It exposes READ-ONLY tools for searching
-vectors and monitoring system health.
+This server provides Nova's core functionality through MCP. It exposes
+tools for searching vectors and monitoring system health.
 """
 
 import asyncio
@@ -12,9 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException
-from mcp.server.fastmcp import FastMCP
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from rich.console import Console
+from rich.logging import RichHandler
 
 from nova.monitoring.logs import LogManager
 from nova.monitoring.persistent import PersistentMonitor
@@ -25,20 +25,37 @@ from nova.vector_store.store import VectorStore
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
+# Initialize console
+console = Console(stderr=True)
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(console=console, show_path=False, show_time=False)]
+)
+
+# Disable noisy third-party loggers
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("nova.cli").setLevel(logging.WARNING)
+logging.getLogger("nova.vector_store").setLevel(logging.WARNING)
+logging.getLogger("nova.monitoring").setLevel(logging.WARNING)
+
 # Create Nova server
-app = FastMCP(name="nova")
+app = FastAPI(title="Nova MCP", description="Nova Master Control Program", version="0.1.0")
 
 # Initialize components
 base_path = Path(".nova")
-vector_store = VectorStore(str(base_path / "vectors"))
-session_monitor = SessionMonitor(base_path)
+vector_store = VectorStore(base_path=str(base_path / "vectors"))
+session_monitor = SessionMonitor(vector_store=vector_store)
 persistent_monitor = PersistentMonitor(base_path)
 log_manager = LogManager(str(base_path))
 
-
 # Register cleanup on exit
 @atexit.register
-def cleanup():
+def cleanup() -> None:
     """Save session metrics on shutdown."""
     try:
         # Get final session metrics
@@ -54,122 +71,8 @@ def cleanup():
     except Exception as e:
         logger.error("Failed to save session metrics: %s", str(e))
 
-
-class SearchRequest(BaseModel):
-    query: str
-    limit: int = 5
-
-
-class MonitorRequest(BaseModel):
-    command: str = "health"
-    subcommand: str | None = None
-    days: int | None = None
-    hours: int | None = None
-
-
-@app.tool("search", description="Search for notes in the vector store")
-async def search(query: str, limit: int = 5) -> dict[str, Any]:
-    """Search the vector store for relevant notes."""
-    try:
-        start_time = datetime.now()
-
-        # Search for similar documents
-        results = await asyncio.to_thread(vector_store.search, query, limit=limit)
-
-        # Record query metrics
-        query_time = (datetime.now() - start_time).total_seconds()
-        session_monitor.record_query(query_time)
-
-        # Return empty results with message for no matches
-        if not results:
-            return {
-                "results": [],
-                "count": 0,
-                "query": query,
-                "query_time": query_time,
-                "message": "No results found",
-            }
-
-        formatted_results = []
-        for i, result in enumerate(results, 1):
-            metadata = result["metadata"]
-            score = min(100.0, result["score"])  # Cap at 100%
-            text = result["text"]
-
-            formatted_result = {
-                "rank": i,
-                "score": score,
-                "heading": metadata.get("heading_text", "No heading"),
-                "tags": metadata.get("tags", "[]"),
-                "content": text[:200] + "..." if len(text) > 200 else text,
-                **metadata,  # Include all other metadata
-            }
-            formatted_results.append(formatted_result)
-
-        return {
-            "results": formatted_results,
-            "count": len(formatted_results),
-            "query": query,
-            "query_time": query_time,
-        }
-
-    except Exception as e:
-        error_msg = f"Search failed: {e!s}"
-        logger.error(error_msg)
-        session_monitor.record_error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
-
-
-@app.tool(description="Monitor system health and stats")
-async def monitor(
-    command: str = "health",
-    subcommand: str | None = None,
-    days: int | None = None,
-    hours: int | None = None,
-) -> dict[str, Any]:
-    """Monitor system health and stats."""
-    try:
-        if command == "health":
-            # Get both session and persistent health data
-            session_health = session_monitor.check_health()
-            system_health = persistent_monitor.get_system_health()
-
-            return {"session": session_health, "system": system_health}
-
-        elif command == "stats":
-            # Get session stats
-            session_stats = session_monitor.get_session_stats()
-
-            # Get performance trends
-            trends = persistent_monitor.get_performance_trends(days=days or 7)
-
-            return {"session": session_stats, "trends": trends}
-
-        elif command == "logs":
-            # Get log analysis
-            log_stats = log_manager.get_stats()
-            recent_logs = log_manager.tail_logs(n=100)
-
-            return {"stats": log_stats, "recent": recent_logs}
-
-        elif command == "errors":
-            # Get error summary
-            error_summary = persistent_monitor.get_error_summary(days=days or 7)
-            recent_logs = log_manager.tail_logs(n=100)
-
-            return {"summary": error_summary, "recent": recent_logs}
-
-        else:
-            raise ValueError(f"Unknown monitor command: {command}")
-
-    except Exception as e:
-        error_msg = f"Monitoring failed: {e!s}"
-        logger.error(error_msg)
-        session_monitor.record_error(error_msg)
-        raise HTTPException(status_code=500, detail=error_msg)
-
-
-if __name__ == "__main__":
+def main() -> None:
+    """Run the MCP server."""
     # Ensure required directories exist
     base_path.mkdir(exist_ok=True)
     (base_path / "vectors").mkdir(exist_ok=True)
@@ -178,4 +81,58 @@ if __name__ == "__main__":
 
     # Start the server
     logger.info("Starting Nova MCP server")
-    app.run()
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8765)
+
+class SearchRequest(BaseModel):
+    """Search request model."""
+
+    query: str
+    limit: int = 5
+
+
+@app.post("/search")
+async def search(request: SearchRequest) -> dict[str, Any]:
+    """Search the vector store for relevant notes."""
+    try:
+        start_time = datetime.now()
+        results = vector_store.search(request.query, limit=request.limit)
+        end_time = datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+
+        # Track search as a rebuild operation
+        session_monitor.track_rebuild_progress(len(results))
+        session_monitor.update_rebuild_progress(len(results), processing_time)
+
+        return {
+            "results": results,
+            "total": len(results),
+            "query": request.query,
+            "processing_time": processing_time,
+        }
+
+    except Exception as e:
+        logger.error("Search failed: %s", str(e))
+        session_monitor.record_rebuild_error(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    """Get system health status."""
+    try:
+        # Get session metrics
+        session_stats = session_monitor.get_session_stats()
+
+        # Get log stats
+        log_stats = log_manager.get_stats()
+
+        return {
+            "status": "healthy",
+            "session": session_stats,
+            "logs": log_stats,
+        }
+
+    except Exception as e:
+        logger.error("Health check failed: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))

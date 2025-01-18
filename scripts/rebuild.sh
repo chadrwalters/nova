@@ -11,51 +11,62 @@
 
 set -e  # Exit on any error
 
-NOVA_HOME=~/.nova
-NOVA_LOCAL=.nova
+# Load environment configuration
+if [ -f .env.local ]; then
+    source .env.local
+elif [ -f .env ]; then
+    source .env
+fi
 
-echo "🗑️  Removing Nova system directories..."
-# Only try to remove if they exist and we have permission
-[ -d "$NOVA_HOME" ] && [ -w "$NOVA_HOME" ] && rm -rf "$NOVA_HOME"
-[ -d "$NOVA_LOCAL" ] && [ -w "$NOVA_LOCAL" ] && rm -rf "$NOVA_LOCAL"
+# Function to handle errors
+handle_error() {
+    local step=$1
+    local exit_code=$2
+    echo "❌ Error during $step (exit code: $exit_code)"
+    uv run python -m nova.cli monitor health || true
+    exit $exit_code
+}
 
-# Ensure base directories exist with proper permissions
-echo "📁 Creating base directories..."
-for DIR in $NOVA_HOME $NOVA_LOCAL; do
-    mkdir -p "$DIR/vectors" "$DIR/cache" "$DIR/logs" "$DIR/processing"
-    # Ensure we have write permissions
-    chmod -R u+w "$DIR"
-done
+# Check input directory
+if [ ! -d "${NOVA_INPUT}" ]; then
+    echo "❌ Error: Input directory '${NOVA_INPUT}' does not exist"
+    exit 1
+fi
 
-# Initialize ChromaDB
-echo "💾 Initializing ChromaDB..."
-uv run python -m nova.cli monitor health >/dev/null 2>&1 || true
+if [ ! -r "${NOVA_INPUT}" ]; then
+    echo "❌ Error: Cannot read input directory '${NOVA_INPUT}'"
+    exit 1
+fi
+
+echo "🔄 Starting Nova system rebuild..."
 
 echo "🧹 Cleaning system..."
 echo "Cleaning vectors..."
-# Only show console output, filter out debug messages
-uv run python -m nova.cli clean-vectors --force 2>/dev/null | grep -v "DEBUG:" || true
+uv run python -m nova.cli clean-vectors --force || handle_error "vector cleaning" $?
 
 echo "Cleaning processing directory..."
-# Only show console output, filter out debug messages
-uv run python -m nova.cli clean-processing --force 2>/dev/null | grep -v "DEBUG:" || true
+uv run python -m nova.cli clean-processing --force || handle_error "processing directory cleaning" $?
 
 echo "📝 Processing notes..."
-# Only show progress bars and errors, filter out debug messages
-uv run python -m nova.cli process-notes --input-dir "/Users/chadwalters/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput" 2>&1 | grep -E "Converting files|Error:" | grep -v "DEBUG:" || true
+uv run python -m nova.cli process-notes \
+    --input-dir "${NOVA_INPUT}" || handle_error "note processing" $?
+
+# Check progress after note processing
+uv run python -m nova.cli monitor health || true
 
 echo "🔄 Processing vectors..."
-# Only show progress bars and errors, filter out debug messages
-uv run python -m nova.cli process-vectors --text .nova/processing --output-dir .nova/vectors 2>&1 | grep -E "Adding chunks|Error:" | grep -v "DEBUG:" || true
+uv run python -m nova.cli process-vectors || handle_error "vector processing" $?
+
+# Check progress after vector processing
+uv run python -m nova.cli monitor health || true
 
 echo "🏥 Checking system health..."
-uv run python -m nova.cli monitor health 2>&1 | grep -E "✅|❌" || true
+uv run python -m nova.cli monitor health || handle_error "health check" $?
 
-echo "📊 System statistics:"
-echo "Vector Store Stats:"
-uv run python -m nova.cli monitor stats 2>&1 | sed -n '/Vector Store Statistics:/,/Log Statistics:/p' | grep -E "Documents|Total|Cache|Last" | grep -v "Log Statistics:"
+echo "📊 System Report"
+echo "================"
 
-echo "Log Stats:"
-uv run python -m nova.cli monitor stats 2>&1 | sed -n '/Log Statistics:/,$p' | grep -E "Total|Error|Warning|Info"
+echo "Vector Store Statistics:"
+uv run python -m nova.cli monitor stats || true
 
-echo "✅ Rebuild complete! System is ready for Claude integration."
+echo "✅ Rebuild complete! System is ready."

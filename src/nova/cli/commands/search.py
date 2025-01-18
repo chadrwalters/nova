@@ -3,7 +3,8 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, List
+import json
 
 import click
 
@@ -19,6 +20,11 @@ class SearchCommand(NovaCommand):
     name = "search"
     help = "Search through vector embeddings"
 
+    def __init__(self) -> None:
+        """Initialize command."""
+        super().__init__()
+        self._vector_store: Optional[VectorStore] = None
+
     async def run_async(self, **kwargs: Any) -> None:
         """Run the command asynchronously.
 
@@ -30,8 +36,8 @@ class SearchCommand(NovaCommand):
         limit = kwargs.get("limit", 5)
 
         try:
-            # Initialize vector store
-            vector_store = VectorStore(str(vector_dir))
+            # Use injected vector store or create new one
+            vector_store = self._vector_store or VectorStore(base_path=str(vector_dir))
 
             # Search for similar documents asynchronously
             results = await asyncio.to_thread(vector_store.search, query, limit=limit)
@@ -47,10 +53,23 @@ class SearchCommand(NovaCommand):
                 score = min(100.0, result["score"])  # Cap at 100%
                 text = result["text"]
 
+                # Parse tags from metadata
+                tags: List[str] = []
+                if "tags" in metadata:
+                    tags_value = metadata["tags"]
+                    if isinstance(tags_value, str):
+                        try:
+                            tags = json.loads(tags_value)
+                        except json.JSONDecodeError:
+                            tags = [t.strip() for t in tags_value.split(",") if t.strip()]
+                    elif isinstance(tags_value, list):
+                        tags = tags_value
+                tags_str = ", ".join(tags) if tags else "No tags"
+
                 print(
-                    f"\n{i}. Score: {score:.2f}%\n"
+                    f"\n{i}. Score: {score:.2f}% # raw_score: {result['score']}\n"
                     f"Heading: {metadata.get('heading_text', 'No heading')}\n"
-                    f"Tags: {metadata.get('tags', '[]')}\n"
+                    f"Tags: {tags_str}\n"
                     f"Content: {text[:200] + '...' if len(text) > 200 else text}\n"
                 )
 
@@ -87,7 +106,14 @@ class SearchCommand(NovaCommand):
             default=5,
             help="Maximum number of results to return",
         )
-        def command(query: str, vector_dir: Path, limit: int) -> None:
+        def search(query: str, vector_dir: Path, limit: int) -> None:
+            """Search through vector embeddings.
+
+            Args:
+                query: The search query
+                vector_dir: Vector store directory
+                limit: Maximum number of results to return
+            """
             self.run(query=query, vector_dir=vector_dir, limit=limit)
 
-        return command
+        return search

@@ -1,67 +1,73 @@
-"""FastMCP Echo Server Example.
+"""MCP Echo Server Example.
 
-This is a minimal example of a FastMCP server that demonstrates the Model Context Protocol (MCP)
-integration with Claude Desktop. It serves as a proof of concept for Nova's MCP capabilities.
+This is a minimal example of a server that demonstrates the Model Context Protocol (MCP)
+integration. It provides a simple echo tool that returns the input text.
 
-Key Features:
-- FastMCP-based server implementation
-- Async tool handling
-- Structured logging
-- Clean error handling
-- Claude Desktop integration
-
-Configuration:
-1. Install Nova with MCP dependencies
-2. Configure Claude Desktop to use this server:
-   - Server Type: Local Python Module
-   - Module Path: nova.examples.mcp.echo_server
-   - Working Directory: {Nova project root}
-
-Usage:
-    ```bash
-    # From Nova project root
-    uv run python -m nova.examples.mcp.echo_server
-    ```
-
-The server will start and Claude Desktop will automatically connect to it.
-You can then use the 'echo' tool in Claude Desktop conversations.
+Features:
+- MCP-based server implementation
+- Basic tool registration
+- Error handling
+- Logging configuration
 """
-from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.utilities.logging import get_logger
+import logging
+from typing import Any
 
-# Set up FastMCP logger
-logger = get_logger(__name__)
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from rich.console import Console
+from rich.logging import RichHandler
 
-# Create echo server
-app = FastMCP(name="echo")
+# Set up logging
+logger = logging.getLogger(__name__)
+
+# Initialize console
+console = Console(stderr=True)
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(console=console, show_path=False, show_time=False)]
+)
+
+# Create server
+app = FastAPI(title="Echo Server", description="Simple MCP echo server", version="0.1.0")
+
+class EchoRequest(BaseModel):
+    """Echo request model."""
+
+    text: str
 
 
-@app.tool(description="Echo back the message")
-async def echo(message: str) -> dict[str, str]:
-    """Echo back the message.
+@app.post("/echo")
+async def echo(request: EchoRequest) -> dict[str, Any]:
+    """Echo the input text back.
 
-    This is a simple tool that demonstrates FastMCP's tool registration and handling.
-    It logs the incoming message and returns it wrapped in a response object.
+    This is a simple tool that demonstrates MCP's tool registration and handling.
+    It takes a text input and returns it unmodified.
 
     Args:
-        message: The message to echo back
+        request: The echo request containing the text to echo
 
     Returns:
-        Dict with the echoed message
+        Dict containing the echoed text and metadata
     """
-    logger.info(f"Echo tool called with message: {message}")
-    response = {"message": f"Echo: {message}"}
-    logger.info("Returning response", extra={"response": response})
-    return response
+    try:
+        logger.info("Echoing text: %s", request.text)
+        return {
+            "text": request.text,
+            "length": len(request.text),
+            "status": "success"
+        }
+    except Exception as e:
+        logger.error("Echo failed: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-if __name__ == "__main__":
-    # Configure logging to .nova/logs
-    log_dir = Path("~/.nova/logs").expanduser()
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    # Run the server
-    logger.info("Starting FastMCP echo server")
-    app.run()
+def main() -> None:
+    """Run the MCP server."""
+    logger.info("Starting MCP echo server")
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8766)

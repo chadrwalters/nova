@@ -1,8 +1,6 @@
-"""Nova MCP Server Module.
+"""Nova server initialization.
 
-This module implements the MCP (Model Control Protocol) server for Nova,
-providing a standardized interface for AI model interactions through
-FastMCP.
+This module provides the Nova server implementation using FastAPI.
 """
 
 from nova.server.mcp import app as mcp_app

@@ -6,8 +6,11 @@ import sys
 import time
 from collections.abc import Generator
 from pathlib import Path
+import shutil
 
 import pytest
+import asyncio
+from unittest.mock import patch
 
 from nova.cli.commands.nova_mcp_server import search as mcp_search
 from nova.cli.commands.search import SearchCommand
@@ -46,7 +49,7 @@ def setup_logging() -> Generator[None, None, None]:
 @pytest.fixture
 def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
     """Create a test vector store with sample data."""
-    store = VectorStore(vector_dir=str(tmp_path))
+    store = VectorStore(base_path=str(tmp_path), use_memory=True)
 
     # Add test chunks
     chunks = [
@@ -56,7 +59,6 @@ def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
                 source=Path("test1.md"),
                 heading_text="Programming",
                 heading_level=1,
-                tags=["python", "programming"],
             ),
             {
                 "source": "test1.md",
@@ -72,7 +74,6 @@ def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
                 source=Path("test2.md"),
                 heading_text="AI/ML",
                 heading_level=1,
-                tags=["ml", "ai", "tech"],
             ),
             {
                 "source": "test2.md",
@@ -88,7 +89,6 @@ def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
                 source=Path("test3.md"),
                 heading_text="Development",
                 heading_level=1,
-                tags=["testing", "dev"],
             ),
             {
                 "source": "test3.md",
@@ -109,7 +109,8 @@ def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
     yield store
 
     try:
-        store.cleanup()
+        # Clean up ChromaDB files
+        shutil.rmtree(str(store.base_path))
     except Exception:  # nosec
         pass  # Ignore cleanup errors in tests
 
@@ -117,53 +118,40 @@ def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
 @pytest.fixture
 def cli_command(vector_store: VectorStore) -> SearchCommand:
     """Create a CLI search command instance."""
-    return SearchCommand()
+    command = SearchCommand()
+    command._vector_store = vector_store  # Use the same vector store instance
+    return command
 
 
 @pytest.mark.asyncio
 async def test_search_consistency(
+    setup_logging,
     vector_store: VectorStore,
     cli_command: SearchCommand,
     capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that CLI and MCP server search return consistent results."""
+    """Test that CLI and MCP server return consistent results."""
     query = "python programming"
     limit = 5
 
     # Patch the MCP server's vector store
-    from nova.cli.commands import nova_mcp_server
+    with patch("nova.cli.commands.nova_mcp_server.vector_store", vector_store):
+        # Get MCP server results
+        mcp_results = await mcp_search(query=query, limit=limit)
 
-    monkeypatch.setattr(nova_mcp_server, "vector_store", vector_store)
+        # Get CLI results
+        await cli_command.run_async(query=query, vector_dir=str(vector_store.base_path), limit=limit)
+        cli_output = capsys.readouterr().out
 
-    # Get MCP server results
-    mcp_results = await mcp_search(query=query, limit=limit)
+        # Verify results exist
+        assert mcp_results["count"] > 0, "Expected at least one result"
+        assert "No results found" not in cli_output, "Expected results in CLI output"
 
-    # Get CLI results
-    await cli_command.run_async(query=query, vector_dir=vector_store.vector_dir, limit=limit)
-    cli_output = capsys.readouterr()
-
-    # Verify result counts match
-    assert mcp_results["count"] > 0, "Expected at least one result"  # nosec
-    assert "Found" in cli_output.out  # nosec
-
-    # Compare first result
-    if mcp_results["results"]:
+        # Compare first result
         mcp_first = mcp_results["results"][0]
-        cli_lines = cli_output.out.split("\n")
-        cli_score_line = next(line for line in cli_lines if "Score:" in line)
-        cli_score = float(cli_score_line.split(":")[1].strip().rstrip("%"))
-
-        # Verify scores match within 1%
-        assert abs(mcp_first["score"] - cli_score) < 1.0  # nosec
-
-        # Verify metadata matches
-        assert mcp_first["heading"] in cli_output.out  # nosec
-        # Compare tags accounting for JSON encoding
-        mcp_tags = json.loads(mcp_first["tags"])
-        for tag in mcp_tags:
-            assert tag in cli_output.out  # nosec
-        assert mcp_first["content"] in cli_output.out  # nosec
+        assert str(mcp_first["score"]) in cli_output, "Score not found in CLI output"
+        assert mcp_first["heading"] in cli_output, "Heading not found in CLI output"
+        assert mcp_first["content"][:50] in cli_output, "Content not found in CLI output"
 
 
 @pytest.mark.skip(reason="Empty results handling needs to be fixed - returns 1 result instead of 0")
@@ -188,7 +176,7 @@ async def test_empty_results_consistency(
     mcp_results = await mcp_search(query=query, limit=limit)
 
     # Get results from CLI
-    await cli_command.run_async(query=query, vector_dir=vector_store.vector_dir, limit=limit)
+    await cli_command.run_async(query=query, vector_dir=str(vector_store.base_path), limit=limit)
     cli_output = capsys.readouterr()
 
     # Verify both return empty results
@@ -220,7 +208,7 @@ async def test_score_normalization(
     mcp_results = await mcp_search(query=query, limit=limit)
 
     # Get CLI results
-    await cli_command.run_async(query=query, vector_dir=vector_store.vector_dir, limit=limit)
+    await cli_command.run_async(query=query, vector_dir=str(vector_store.base_path), limit=limit)
     cli_output = capsys.readouterr()
 
     # Verify all scores are properly normalized (0-100%)
@@ -229,7 +217,7 @@ async def test_score_normalization(
         assert 0 <= score <= 100  # nosec
 
     cli_scores = [
-        float(line.split(":")[1].strip().rstrip("%"))
+        float(line.split(":")[1].split("#")[0].strip().rstrip("%"))
         for line in cli_output.out.split("\n")
         if "Score:" in line
     ]

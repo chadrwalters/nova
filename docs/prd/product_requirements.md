@@ -101,6 +101,46 @@ Nova
     + Layout preservation
     + Text extraction
     + Image references
+  - Image Formats:
+    + PNG:
+      - Metadata extraction requirements:
+        * Basic attributes (dimensions, color mode)
+        * Format-specific metadata (gamma, sRGB)
+        * Error handling for corrupt files
+    + GIF:
+      - Animation support requirements:
+        * Frame count tracking
+        * Duration information
+        * Loop count handling
+        * Animation state detection
+    + WebP:
+      - Format requirements:
+        * Lossless/lossy detection
+        * Quality metrics
+        * Animation support
+        * ICC profile handling
+        * EXIF/XMP support
+    + SVG:
+      - Processing requirements:
+        * XML structure validation
+        * Element counting and analysis
+        * Viewbox/dimension extraction
+        * Title/description parsing
+        * Namespace handling
+    + Common Requirements:
+      - EXIF metadata handling:
+        * Camera information (make, model)
+        * Date/time extraction
+        * GPS data support
+        * Copyright information
+      - Error handling:
+        * Format validation
+        * Corrupt file detection
+        * Recovery strategies
+      - Output requirements:
+        * Markdown conversion
+        * Rich metadata preservation
+        * Structured error reporting
 
 #### Bear Note Processing Requirements
 - Title Processing:
@@ -283,48 +323,46 @@ Nova
   - Error handling guidelines
   - Configuration and setup guide
 
-### 4.4 MCP Integration [IMPLEMENTED]
-- Server Implementations:
-  1. Claude Desktop Server (`nova.cli.commands.nova_mcp_server`):
-     - READ-ONLY FastAPI-based server
-     - Direct Claude Desktop integration
-     - Minimal tool set for safety
-     - Port 8765 (chosen to avoid conflicts)
-     - Strict access control
+### 4.4 Server Architecture
 
-  2. Full MCP Server (`nova.server.mcp`):
-     - Complete implementation
-     - Internal tools and testing
-     - All operations supported
-     - Not for Claude Desktop
-     - Advanced error handling
+#### Server Types
 
-- Core Tools (Claude Desktop):
-  - search_tool: Semantic search through vector embeddings
-    - Configurable result limits
-    - Rich result formatting
-    - Metadata inclusion
-    - Similarity scoring
-  - monitor_tool: System health and statistics
-    - Component health checks
-    - Vector store statistics
-    - Processing metrics
-    - Log analysis
+1. Nova MCP Server (`nova.cli.commands.nova_mcp_server`):
+   - Core functionality
+   - Vector search capabilities
+   - System monitoring
+   - Health checks
+   - Port 8765 (default)
 
-- Extended Tools (Full Server):
-  - process_notes_tool: Document processing and ingestion
-    - Multi-format support
-    - Automatic format detection
-    - Rich metadata extraction
-    - Progress tracking
-  - clean_processing_tool: Safe cleanup of processed files
-    - Selective cleanup
-    - Directory validation
-    - Progress tracking
-  - clean_vectors_tool: Vector store maintenance
-    - Safe deletion operations
-    - Collection management
-    - Progress tracking
+2. Echo Server (`nova.examples.mcp.echo_server`):
+   - Example implementation
+   - Basic tool registration
+   - Error handling demonstration
+   - Port 8766 (default)
+
+#### Core Tools
+- search_tool:
+  - Semantic search
+  - Configurable limits
+  - Similarity scoring
+  - Metadata filtering
+- monitor_tool:
+  - Health Command:
+    - Real-time component status
+    - Resource availability
+    - System integrity checks
+  - Stats Command:
+    - Session statistics
+    - Performance metrics
+    - Query patterns
+  - Logs Command:
+    - Log analysis and filtering
+    - Error summaries
+    - Warning detection
+  - Errors Command:
+    - Error trend analysis
+    - Common error patterns
+    - Recovery suggestions
 
 ### 4.5 Monitoring System [IMPLEMENTED]
 

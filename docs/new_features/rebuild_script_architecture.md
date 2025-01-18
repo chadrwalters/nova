@@ -1,79 +1,70 @@
 # Nova Rebuild Script Technical Architecture
 
 ## Overview
-This document outlines the technical architecture for implementing the improved rebuild script functionality, focusing on code organization, dependencies, and implementation details.
+This document outlines the technical architecture for enhancing the rebuild script functionality by extending existing Nova components and adding new capabilities where needed.
 
 ## System Components
 
-### 1. Core Components
+### 1. Extended Core Components
 
-#### LoggingManager
+#### Enhanced MonitorCommand
 ```python
-class LoggingManager:
-    """Manages dynamic logging configuration and control."""
-    def __init__(self):
-        self.console = Console()
-        self.current_level = "INFO"
-        self.log_handlers = {}
+class MonitorCommand:
+    """Extended monitor command with rebuild-specific features."""
+    def _check_health(self):
+        """Enhanced health checks including rebuild status."""
+        # Existing health checks
+        super()._check_health()
 
-    def set_log_level(self, level: str):
-        """Dynamically updates logging level."""
+        # Additional rebuild-specific checks
+        self._check_rebuild_status()
+        self._verify_rebuild_components()
 
-    def setup_logging(self, initial_level: str = "INFO"):
-        """Configures logging system with initial settings."""
+    def _show_stats(self):
+        """Enhanced stats including rebuild metrics."""
+        # Existing stats
+        super()._show_stats()
 
-    async def handle_log_command(self, command: str):
-        """Handles runtime log level changes."""
+        # Additional rebuild metrics
+        self._show_rebuild_stats()
 ```
 
-#### RebuildManager
+#### Enhanced SessionMonitor
 ```python
-class RebuildManager:
-    """Manages the overall rebuild process and coordinates components."""
-    def __init__(self):
-        self.progress_manager = ProgressManager()
-        self.stats_collector = StatsCollector()
-        self.health_checker = HealthChecker()
-        self.logging_manager = LoggingManager()
+class SessionMonitor:
+    """Enhanced session monitor with rebuild tracking."""
+    def track_rebuild_progress(self):
+        """Track rebuild-specific metrics."""
+        self.metrics.rebuild_start = datetime.now()
+        self.metrics.chunks_processed = 0
+        self.metrics.processing_time = 0.0
 
-    async def run_rebuild(self):
-        """Main rebuild process orchestrator."""
+    def update_rebuild_progress(self, chunks: int, time: float):
+        """Update rebuild progress metrics."""
+        self.metrics.chunks_processed = chunks
+        self.metrics.processing_time = time
 ```
 
-#### ProgressManager
+#### Enhanced NovaCommand
 ```python
-class ProgressManager:
-    """Handles progress tracking and UI updates."""
-    def __init__(self):
-        self.console = Console()
-        self.progress = Progress()
+class NovaCommand:
+    """Enhanced base command with improved progress and error handling."""
+    def create_progress(self):
+        """Create enhanced progress display."""
+        return Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            MofNCompleteColumn()
+        )
 
-    def create_progress_bar(self, description: str, total: int):
-        """Creates a new progress bar."""
-```
-
-#### StatsCollector
-```python
-class StatsCollector:
-    """Collects and aggregates system statistics."""
-    def __init__(self):
-        self.vector_stats = VectorStoreStats()
-        self.system_stats = SystemStats()
-
-    def collect_stats(self) -> Dict[str, Any]:
-        """Collects all system statistics."""
-```
-
-#### HealthChecker
-```python
-class HealthChecker:
-    """Performs system health checks."""
-    def __init__(self):
-        self.required_dirs = [...]
-        self.required_files = [...]
-
-    async def check_health(self) -> List[HealthStatus]:
-        """Runs all health checks."""
+    def handle_error(self, error: Exception):
+        """Enhanced error handling with recovery options."""
+        if isinstance(error, RebuildError):
+            return self._handle_rebuild_error(error)
+        return super().handle_error(error)
 ```
 
 ### 2. File Structure
@@ -82,113 +73,107 @@ class HealthChecker:
 nova/
 ├── cli/
 │   ├── commands/
-│   │   ├── rebuild.py       # New rebuild command
-│   │   └── monitor.py       # Existing monitor command
+│   │   ├── rebuild.py       # Enhanced rebuild command
+│   │   └── monitor.py       # Extended monitor command
 │   └── utils/
-│       ├── progress.py      # Progress tracking utilities
-│       ├── formatting.py    # Console formatting utilities
-│       └── logging.py       # Logging utilities
-├── rebuild/
-│   ├── __init__.py
-│   ├── manager.py          # RebuildManager implementation
-│   ├── progress.py         # ProgressManager implementation
-│   ├── stats.py           # StatsCollector implementation
-│   ├── health.py          # HealthChecker implementation
-│   └── logging.py         # LoggingManager implementation
-└── scripts/
-    └── rebuild.sh         # Main rebuild script
+│       ├── progress.py      # Enhanced progress utilities
+│       └── formatting.py    # Console formatting utilities
+└── monitoring/
+    ├── session.py          # Enhanced session monitoring
+    └── persistent.py       # Enhanced persistent monitoring
 ```
 
 ## Implementation Details
 
-### 1. Progress Tracking
-- Use Rich's Progress class for real-time updates
-- Track multiple tasks simultaneously
-- Show time estimates and completion percentages
-- Handle nested progress indicators
+### 1. Enhanced Progress Tracking
+- Extend existing Rich progress bars
+- Add time remaining estimates
+- Show resource usage
+- Track multiple tasks
 
 ```python
-async def track_progress(self, task: RebuildTask):
-    with Progress() as progress:
-        task_id = progress.add_task(task.description, total=task.total)
+def track_progress(self, task: RebuildTask):
+    """Enhanced progress tracking."""
+    with self.create_progress() as progress:
+        task_id = progress.add_task(
+            task.description,
+            total=task.total,
+            show_time=True,
+            show_memory=True
+        )
         async for step in task.execute():
             progress.update(task_id, advance=1)
+            self.session_monitor.update_rebuild_progress(
+                step.chunks_processed,
+                step.processing_time
+            )
 ```
 
-### 2. Statistics Collection
-- Aggregate stats from multiple sources
-- Track system resource usage
-- Monitor vector store metrics
-- Calculate processing times
+### 2. Enhanced Statistics Collection
+- Extend existing vector store stats
+- Add rebuild-specific metrics
+- Track system resources
+- Calculate performance trends
 
 ```python
-def collect_vector_stats(self) -> Dict[str, Any]:
-    collection = self.vector_store.collection
-    return {
-        "total_docs": len(collection.get()["ids"]),
-        "total_chunks": self.stats.total_chunks,
-        "cache_hits": self.stats.cache_hits,
-        # ... more stats
-    }
+def collect_rebuild_stats(self) -> Dict[str, Any]:
+    """Collect enhanced rebuild statistics."""
+    # Get existing vector store stats
+    stats = super().collect_vector_stats()
+
+    # Add rebuild-specific stats
+    stats.update({
+        "rebuild_duration": self.session_monitor.metrics.processing_time,
+        "chunks_per_second": self.calculate_processing_rate(),
+        "peak_memory_usage": self.get_peak_memory(),
+        "success_rate": self.calculate_success_rate()
+    })
+
+    return stats
 ```
 
-### 3. Health Checking
-- Verify system components
-- Check file permissions
-- Validate ChromaDB access
-- Monitor resource availability
+### 3. Enhanced Health Checking
+- Extend existing health checks
+- Add rebuild-specific validation
+- Monitor resource usage
+- Track component status
 
 ```python
-async def verify_component(self, component: SystemComponent) -> HealthStatus:
+async def verify_rebuild_status(self) -> HealthStatus:
+    """Enhanced rebuild health verification."""
     try:
-        await component.check()
-        return HealthStatus(status=True, message="Component healthy")
+        # Check existing components
+        base_status = await super().verify_component()
+
+        # Additional rebuild checks
+        rebuild_checks = await self._verify_rebuild_components()
+
+        return HealthStatus(
+            status=base_status.status and all(rebuild_checks),
+            message=self._format_health_message(base_status, rebuild_checks)
+        )
     except Exception as e:
         return HealthStatus(status=False, message=str(e))
 ```
 
-### 4. Error Handling
-- Graceful error recovery
-- Detailed error messages
-- Retry mechanisms
-- User prompts for critical errors
+### 4. Enhanced Error Handling
+- Extend existing error handling
+- Add rebuild-specific recovery
+- Provide detailed context
+- Support retry operations
 
 ```python
-async def handle_error(self, error: RebuildError):
-    if error.is_critical:
-        await self.abort_rebuild()
-    else:
-        retry = await self.prompt_retry()
-        if retry:
-            await self.retry_operation()
-```
+async def handle_rebuild_error(self, error: RebuildError):
+    """Enhanced rebuild error handling."""
+    # Log error with context
+    self.log_error(f"Rebuild error: {error}", context=error.context)
 
-### 1. Logging Control
-- Dynamic log level management
-- Context-aware logging filters
-- Real-time log level switching
-- Structured log formatting
+    # Check if recoverable
+    if error.is_recoverable:
+        return await self._attempt_recovery(error)
 
-```python
-async def setup_logging(self):
-    """Configure logging with dynamic control."""
-    with Progress() as progress:
-        # Configure base logging
-        self.configure_base_logging()
-
-        # Setup log handlers
-        await self.setup_log_handlers()
-
-        # Initialize runtime control
-        await self.init_runtime_control()
-
-async def handle_log_command(self, command: str):
-    """Handle runtime log level changes."""
-    if command in self.valid_levels:
-        old_level = self.current_level
-        self.current_level = command.upper()
-        self.update_log_levels()
-        self.console.print(f"[cyan]Changed log level: {old_level} -> {self.current_level}[/cyan]")
+    # Handle critical errors
+    await self._handle_critical_error(error)
 ```
 
 ## Integration Points
@@ -196,35 +181,26 @@ async def handle_log_command(self, command: str):
 ### 1. CLI Integration
 ```python
 @click.command()
-@click.option("--log-level", type=click.Choice(['debug', 'info', 'warning', 'error']), default='info')
-@click.option("--verbose", is_flag=True, help="Enable verbose output")
-@click.option("--quiet", is_flag=True, help="Minimize output")
+@click.option("--log-level", type=click.Choice(['debug', 'info', 'warning', 'error']))
 @click.option("--force", is_flag=True, help="Force rebuild without confirmation")
-def rebuild(log_level: str, verbose: bool, quiet: bool, force: bool):
-    """Improved rebuild command."""
+def rebuild(log_level: str, force: bool):
+    """Enhanced rebuild command."""
     manager = RebuildManager()
-    if verbose:
-        log_level = 'debug'
-    elif quiet:
-        log_level = 'error'
-    manager.logging_manager.setup_logging(log_level)
-    manager.run_rebuild(force=force)
+    manager.run_rebuild(
+        force=force,
+        log_level=log_level,
+        progress_callback=manager.session_monitor.update_rebuild_progress
+    )
 ```
 
 ### 2. Monitoring Integration
 ```python
 class MonitorCommand:
-    """Enhanced monitor command with real-time updates."""
-    def show_progress(self):
-        """Show real-time progress information."""
-```
-
-### 3. Vector Store Integration
-```python
-class VectorStoreManager:
-    """Enhanced vector store management."""
-    async def rebuild_vectors(self):
-        """Rebuild vector store with progress tracking."""
+    """Enhanced monitor command."""
+    def show_rebuild_progress(self):
+        """Show real-time rebuild progress."""
+        stats = self.session_monitor.get_rebuild_stats()
+        self.console.print(self._format_rebuild_stats(stats))
 ```
 
 ## Configuration
@@ -235,7 +211,8 @@ PROGRESS_CONFIG = {
     "show_time": True,
     "show_percentage": True,
     "show_memory": True,
-    "update_interval": 0.1
+    "update_interval": 0.1,
+    "show_spinner": True
 }
 ```
 
@@ -249,26 +226,11 @@ HEALTH_CHECK_CONFIG = {
     ],
     "required_files": [
         ".nova/vectors/chroma.sqlite3"
-    ]
-}
-```
-
-### 1. Logging Configuration
-```python
-LOGGING_CONFIG = {
-    "levels": {
-        "debug": {"color": "blue", "show_path": True},
-        "info": {"color": "green", "show_path": False},
-        "warning": {"color": "yellow", "show_path": True},
-        "error": {"color": "red", "show_path": True}
-    },
-    "format": {
-        "debug": "{time} | {level} | {path}:{line} | {message}",
-        "default": "{time} | {level} | {message}"
-    },
-    "handlers": {
-        "console": {"level": "INFO", "format": "default"},
-        "file": {"level": "DEBUG", "format": "debug"}
+    ],
+    "resource_thresholds": {
+        "memory_percent": 80,
+        "disk_percent": 90,
+        "cpu_percent": 75
     }
 }
 ```

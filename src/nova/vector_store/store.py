@@ -1,200 +1,163 @@
-"""Vector store for semantic search."""
+"""Vector store module.
+
+This module provides a vector store implementation using ChromaDB. It handles document storage,
+retrieval, and semantic search functionality.
+"""
 
 import json
 import logging
-import uuid
-from typing import Any, Sequence, cast, List, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union, cast, Sequence
 
 import chromadb
-import numpy as np
-from chromadb.api.models.Collection import Collection
-from chromadb.api.types import IncludeEnum, Where, WhereDocument, QueryResult, Embeddings
-from sentence_transformers import SentenceTransformer
+from chromadb.config import Settings
+from chromadb.api.types import (
+    QueryResult, Include, Documents, Metadatas, Where, EmbeddingFunction, Embeddable
+)
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from nova.vector_store.chunking import Chunk
-from nova.vector_store.stats import VectorStoreStats
 
 logger = logging.getLogger(__name__)
 
+# Constants for include fields
+INCLUDE_FIELDS = ["documents", "metadatas", "distances"]
+
+
+def _convert_metadata_value(value: Any) -> Union[str, int, float, bool]:
+    """Convert metadata value to a type supported by ChromaDB."""
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return str(value)
+
 
 class VectorStore:
-    """Vector store for semantic search."""
+    """Vector store class."""
 
-    MODEL_NAME = "paraphrase-MiniLM-L3-v2"
-    COLLECTION_NAME = "nova_notes"
+    COLLECTION_NAME = "nova"
 
-    def __init__(self, vector_dir: str, use_memory: bool = False) -> None:
-        """Initialize the vector store."""
-        self.vector_dir = vector_dir
-        self.model: SentenceTransformer | None = None
-        self.collection: Collection | None = None
-        self.stats = VectorStoreStats(vector_dir=vector_dir)
-        self.logger = logging.getLogger(__name__)
+    def __init__(self, base_path: str, use_memory: bool = False) -> None:
+        """Initialize the vector store.
 
+        Args:
+            base_path: Base path for storing vectors
+            use_memory: Whether to use in-memory storage
+        """
+        self.base_path = Path(base_path)
+
+        # Initialize ChromaDB client
+        if use_memory:
+            settings = Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+                is_persistent=False
+            )
+        else:
+            settings = Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+                is_persistent=True,
+                persist_directory=str(self.base_path / "chroma")
+            )
+
+        # Create client and collection with default embedding function
+        self._client = chromadb.Client(settings)
+        self._collection = self._client.get_or_create_collection(
+            name=self.COLLECTION_NAME,
+            metadata={"hnsw_space": "cosine"},
+            embedding_function=DefaultEmbeddingFunction()
+        )
+
+    def add_chunk(self, chunk: Chunk, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Add a chunk to the store.
+
+        Args:
+            chunk: The chunk to add
+            metadata: Optional metadata to override chunk's default metadata
+        """
         try:
-            # Initialize ChromaDB client
-            if use_memory:
-                self.client = chromadb.Client()
-                self.logger.info("Using in-memory ChromaDB client")
-            else:
-                self.client = chromadb.PersistentClient(path=vector_dir)
-                self.logger.info("Using persistent ChromaDB client")
+            # Get metadata from chunk if not provided
+            if metadata is None:
+                metadata = chunk.to_metadata()
 
-            # Get or create collection
-            try:
-                self.collection = self.client.get_collection(self.COLLECTION_NAME)
-                self.logger.info(f"Using existing collection: {self.COLLECTION_NAME}")
-            except Exception:
-                self.logger.info(f"Creating new collection: {self.COLLECTION_NAME}")
-                self.collection = self.client.create_collection(
-                    name=self.COLLECTION_NAME,
-                    metadata={
-                        "hnsw:space": "cosine",  # Use cosine similarity
-                        "hnsw:construction_ef": 200,  # Higher accuracy during construction
-                        "hnsw:search_ef": 100,  # Higher accuracy during search
-                    }
-                )
-
-            # Initialize model
-            self.model = SentenceTransformer(self.MODEL_NAME)
-            self.logger.info("Vector store initialized successfully")
-
-        except Exception as e:
-            self.logger.error(f"Failed to initialize vector store: {e}")
-            self.stats.record_error()
-            raise
-
-    def add_chunk(self, chunk: Chunk, metadata: dict[str, Any]) -> None:
-        """Add a chunk to the vector store."""
-        if not self.model or not self.collection:
-            self.logger.error("Model or collection not initialized")
-            self.stats.record_error()
-            raise RuntimeError("Model or collection not initialized")
-
-        try:
-            # Generate embedding
-            embedding = self.model.encode(chunk.text)
-
-            # Process metadata to ensure correct format for filtering
-            processed_metadata: dict[str, str | int | float | bool] = {
-                "source": str(chunk.source) if chunk.source else "",
-                "heading_text": chunk.heading_text,
-                "heading_level": int(chunk.heading_level),
-                "tags": json.dumps(chunk.tags),
-                "attachments": json.dumps(
-                    [{"type": att["type"], "path": att["path"]} for att in chunk.attachments]
-                ),
-                "chunk_id": str(chunk.chunk_id),
+            # Convert metadata values to supported types
+            processed_metadata = {
+                k: _convert_metadata_value(v) for k, v in metadata.items()
             }
 
-            # Convert embedding to numpy array for ChromaDB
-            embedding_array = np.array([embedding.tolist()], dtype=np.float32)
-
-            # Add to collection
-            self.collection.add(
+            # Add chunk directly to collection
+            self._collection.add(
+                ids=[chunk.chunk_id],
                 documents=[chunk.text],
-                embeddings=embedding_array,  # ChromaDB expects ndarray
-                metadatas=[processed_metadata],
-                ids=[str(uuid.uuid4())],
+                metadatas=[processed_metadata]
             )
 
-            # Update stats
-            self.stats.record_chunk_added()
-            self.logger.info("Added chunk to vector store")
-
         except Exception as e:
-            self.logger.error(f"Failed to add chunk: {e}")
-            self.stats.record_error()
+            logger.error(f"Error adding chunk: {e}")
             raise
 
-    def search(
-        self,
-        query: str,
-        limit: int = 5,
-        where: Where | None = None,
-        include: list[IncludeEnum] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search for chunks similar to the query."""
-        if not self.model or not self.collection:
-            self.logger.error("Model or collection not initialized")
-            self.stats.record_error()
-            raise RuntimeError("Model or collection not initialized")
+    def clear(self) -> None:
+        """Clear all chunks from the store."""
+        # Get all document IDs
+        results = self._collection.get()
+        if results["ids"]:
+            # Delete all documents by ID
+            self._collection.delete(ids=results["ids"])
 
-        try:
-            # Generate query embedding
-            query_embedding = self.model.encode(query)
+    def search(self, query: str, limit: int = 5) -> list[Dict[str, Any]]:
+        """Search for chunks similar to the query.
 
-            # Set default include if not specified
-            if include is None:
-                include = [IncludeEnum.metadatas, IncludeEnum.documents, IncludeEnum.distances]
+        Args:
+            query: The search query
+            limit: Maximum number of results to return
 
-            # Convert embedding to numpy array for ChromaDB
-            embedding_array = np.array([query_embedding.tolist()], dtype=np.float32)
+        Returns:
+            List of search results
+        """
+        # Perform search
+        results = self._collection.query(
+            query_texts=[query],
+            n_results=limit,
+            include=INCLUDE_FIELDS
+        )
 
-            # Perform search
-            results = self.collection.query(
-                query_embeddings=embedding_array,  # ChromaDB expects ndarray
-                n_results=limit,
-                where=where,
-                include=include,
-            )
+        # Convert to search result format
+        search_results: list[Dict[str, Any]] = []
 
-            # Process results
-            processed_results = []
-            if isinstance(results, dict) and "ids" in results and results["ids"]:
-                # Extract results safely
-                ids = results["ids"]
-                documents = results.get("documents", [])
-                metadatas = results.get("metadatas", [])
-                distances = results.get("distances", [])
+        # Get result lists
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+        distances = results.get("distances", [])
 
-                # Ensure we have valid results
-                if (
-                    isinstance(ids, list)
-                    and len(ids) > 0
-                    and isinstance(ids[0], list)
-                    and len(ids[0]) > 0
-                ):
-                    # Process each result
-                    for i in range(len(ids[0])):
-                        result = {
-                            "id": ids[0][i],
-                            "text": documents[0][i] if documents and len(documents) > 0 else "",
-                            "metadata": metadatas[0][i] if metadatas and len(metadatas) > 0 else {},
-                            "score": self._normalize_score(
-                                float(distances[0][i]) if distances and len(distances) > 0 else 0.0
-                            ),
-                        }
-                        processed_results.append(result)
+        # Ensure we have results
+        if not documents or not metadatas or not distances:
+            return []
 
-            # Update stats
-            self.stats.record_search(len(processed_results))
-            return processed_results
+        # Get first result set
+        docs = documents[0] if documents else []
+        metas = metadatas[0] if metadatas else []
+        dists = distances[0] if distances else []
 
-        except Exception as e:
-            self.logger.error(f"Search failed: {e}")
-            self.stats.record_error()
-            raise
+        # Process results
+        for doc, meta, dist in zip(docs, metas, dists):
+            if doc is not None and meta is not None and dist is not None:
+                # Parse JSON-encoded metadata fields
+                processed_meta = {}
+                for k, v in meta.items():
+                    if k in ["tags", "attachments"] and isinstance(v, str):
+                        try:
+                            processed_meta[k] = json.loads(v)
+                        except json.JSONDecodeError:
+                            processed_meta[k] = v
+                    else:
+                        processed_meta[k] = v
 
-    def _normalize_score(self, distance: float) -> float:
-        """Normalize the cosine distance to a 0-100 score."""
-        # Convert cosine distance to similarity and scale to 0-100
-        similarity = 1 - distance
-        return round(similarity * 100, 2)
+                search_results.append({
+                    "text": str(doc),
+                    "score": 1.0 - float(dist),  # Convert distance to similarity score
+                    "metadata": processed_meta
+                })
 
-    def cleanup(self) -> None:
-        """Clean up resources."""
-        try:
-            if self.collection:
-                self.client.delete_collection(self.COLLECTION_NAME)
-                self.logger.info(f"Deleted collection: {self.COLLECTION_NAME}")
-        except Exception as e:
-            self.logger.error(f"Failed to cleanup vector store: {e}")
-            self.stats.record_error()
-            raise
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get current statistics."""
-        if hasattr(self, "stats") and self.stats:
-            return self.stats.get_stats()
-        return {}
+        return search_results

@@ -1,141 +1,161 @@
 """Process vectors command."""
 
-import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import List, Optional
 
 import click
-from tqdm import tqdm
 
-from nova.cli.utils.command import NovaCommand
-from nova.vector_store.chunking import Chunk, ChunkingEngine
-from nova.vector_store.store import VectorStore
+from nova.cli.commands.base_vector_command import BaseVectorCommand
+from nova.vector_store.chunking import Chunk
+from nova.bear_parser.processing import BearNoteProcessing
 
 logger = logging.getLogger(__name__)
 
-
-class ProcessVectorsCommand(NovaCommand):
+class ProcessVectorsCommand(BaseVectorCommand):
     """Process vectors command."""
 
     name = "process-vectors"
-
-    def __init__(self, vector_store: VectorStore | None = None):
-        """Initialize the command.
-
-        Args:
-            vector_store: Optional VectorStore instance. If not provided, one will be created.
-        """
-        super().__init__()
-        self.vector_store = vector_store
-        self.chunking_engine = ChunkingEngine()
-
-    def _process_text(self, text: str) -> list[Chunk]:
-        """Process text input into chunks."""
-        if not text:
-            return []
-        return self.chunking_engine.chunk_document(text)
-
-    def _process_directory(self, directory: Path) -> list[Chunk]:
-        """Process all markdown files in a directory."""
-        chunks = []
-        if directory.exists() and directory.is_dir():
-            for file_path in directory.rglob("*.md"):
-                try:
-                    with open(file_path, encoding="utf-8") as f:
-                        content = f.read()
-                    file_chunks = self.chunking_engine.chunk_document(content, source=file_path)
-                    chunks.extend(file_chunks)
-                except Exception as e:
-                    logger.error(f"Error processing file {file_path}: {e!s}")
-        return chunks
-
-    def run(self, **kwargs: Any) -> None:
-        """Run the command.
-
-        Args:
-            **kwargs: Command arguments
-                text: Input text or directory path
-                output_dir: Output directory for vector store
-        """
-        text = kwargs["text"]
-        output_dir = kwargs["output_dir"]
-        output_path = Path(output_dir)
-
-        try:
-            # Create output directory
-            output_path.mkdir(parents=True, exist_ok=True)
-
-            # Initialize vector store if not provided
-            if self.vector_store is None:
-                # Create new vector store
-                self.vector_store = VectorStore(str(output_path))
-                logger.info("Initialized vector store")
-
-            # Handle empty text
-            if not text:
-                logger.info("Empty text provided, no chunks to store")
-                return
-
-            # Process input
-            input_path = Path(text)
-            chunks = (
-                self._process_directory(input_path)
-                if input_path.exists() and input_path.is_dir()
-                else self._process_text(text)
-            )
-
-            # Store chunks if any were created
-            if chunks:
-                self.process_chunks(chunks)
-            else:
-                logger.info("No chunks to store")
-
-        except Exception as e:
-            logger.error(f"Failed to process vectors: {e!s}")
-            raise click.Abort()
-
-    def process_chunks(self, chunks: list[Chunk]) -> None:
-        """Process chunks and store them in the vector store."""
-        if not self.vector_store:
-            raise RuntimeError("Vector store not initialized")
-
-        logger.info(f"Processing {len(chunks)} chunks")
-
-        with tqdm(total=len(chunks), desc="Adding chunks to vector store", unit="chunk") as pbar:
-            for chunk in chunks:
-                try:
-                    # Add chunk with proper metadata
-                    metadata = {
-                        "source": str(chunk.source) if chunk.source else "",
-                        "heading_text": chunk.heading_text,
-                        "heading_level": chunk.heading_level,
-                        "tags": json.dumps(chunk.tags),
-                        "attachments": json.dumps(
-                            [{"type": att["type"], "path": att["path"]} for att in chunk.attachments]
-                        ),
-                        "chunk_id": chunk.chunk_id,
-                    }
-                    self.vector_store.add_chunk(chunk, metadata=metadata)
-                    pbar.update(1)
-                except Exception as e:
-                    logger.error(f"Error processing chunk: {e}")
-                    continue
-
-        logger.info(f"Stored {len(chunks)} chunks in vector store")
+    help = "Process text files or Bear notes into vector chunks"
 
     def create_command(self) -> click.Command:
-        """Create the Click command.
+        """Create the click command.
 
         Returns:
-            click.Command: The Click command
+            The click command instance
         """
+        @click.command(name=self.name, help=self.help)
+        @click.option(
+            "--input-dir",
+            type=click.Path(exists=True, file_okay=False, dir_okay=True),
+            help="Input directory containing text files",
+            required=True,
+        )
+        @click.option(
+            "--output-dir",
+            type=click.Path(file_okay=False, dir_okay=True),
+            help="Output directory for vector store",
+            required=False,
+        )
+        @click.option(
+            "--bear-notes",
+            is_flag=True,
+            help="Process input directory as Bear notes",
+            default=False,
+        )
+        def command(input_dir: str, output_dir: Optional[str] = None, bear_notes: bool = False) -> None:
+            """Process text files into vector chunks.
 
-        @click.command(name="process-vectors")
-        @click.option("--text", required=True, help="Input text or directory path")
-        @click.option("--output-dir", required=True, help="Output directory for vector store")
-        def process_vectors(text: str, output_dir: str) -> None:
-            """Process text or markdown files into vector embeddings."""
-            self.run(text=text, output_dir=output_dir)
+            Args:
+                input_dir: Input directory containing text files
+                output_dir: Optional output directory for vector store
+                bear_notes: Whether to process input directory as Bear notes
+            """
+            self.run(input_dir=input_dir, output_dir=output_dir, bear_notes=bear_notes)
 
-        return process_vectors
+        return command
+
+    def _process_directory(self, directory: Path, bear_notes: bool = False) -> List[Chunk]:
+        """Process files in a directory.
+
+        Args:
+            directory: Directory containing files to process
+            bear_notes: Whether to process as Bear notes
+
+        Returns:
+            List of chunks created from files
+
+        Raises:
+            Exception: If there is an error processing any file
+        """
+        if not directory.exists():
+            raise click.UsageError(f"Directory not found: {directory}")
+
+        if bear_notes:
+            return self._process_bear_notes(directory)
+        else:
+            return self._process_markdown_files(directory)
+
+    def _process_bear_notes(self, directory: Path) -> List[Chunk]:
+        """Process Bear notes in a directory.
+
+        Args:
+            directory: Directory containing Bear notes
+
+        Returns:
+            List of chunks created from Bear notes
+        """
+        # Use BearNoteProcessing to get documents
+        processor = BearNoteProcessing(input_dir=directory)
+        documents = processor.process_bear_notes()
+
+        # Process each document into chunks
+        chunks: List[Chunk] = []
+        for doc in documents:
+            try:
+                # Create chunks using chunking engine
+                file_chunks = self.chunking_engine.chunk_document(
+                    text=doc.content,
+                    source=Path(doc.origin) if doc.origin else None
+                )
+                chunks.extend(file_chunks)
+            except Exception as e:
+                error_msg = f"Error processing document {doc.name}: {e!s}"
+                logger.error(error_msg)
+                self.monitor.record_rebuild_error(error_msg)
+                continue
+
+        return chunks
+
+    def _process_markdown_files(self, directory: Path) -> List[Chunk]:
+        """Process markdown files in a directory.
+
+        Args:
+            directory: Directory containing markdown files
+
+        Returns:
+            List of chunks created from markdown files
+        """
+        chunks: List[Chunk] = []
+        for file_path in directory.glob("**/*.md"):
+            try:
+                # Read the file content
+                try:
+                    text = file_path.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    # If UTF-8 fails, try Latin-1
+                    try:
+                        text = file_path.read_text(encoding="latin-1")
+                        logger.warning(f"File {file_path} contains non-UTF-8 characters")
+                    except Exception as e:
+                        error_msg = f"Error reading file {file_path}: {e!s}"
+                        logger.error(error_msg)
+                        self.monitor.record_rebuild_error(error_msg)
+                        continue
+                except Exception as e:
+                    error_msg = f"Error reading file {file_path}: {e!s}"
+                    logger.error(error_msg)
+                    self.monitor.record_rebuild_error(error_msg)
+                    continue
+
+                # Check for null bytes
+                if "\x00" in text:
+                    error_msg = f"File {file_path} contains null bytes"
+                    logger.error(error_msg)
+                    self.monitor.record_rebuild_error(error_msg)
+                    continue
+
+                # Process the file content
+                file_chunks = self.chunking_engine.chunk_document(text, source=file_path)
+                if not file_chunks:
+                    error_msg = f"No chunks created from file {file_path}"
+                    logger.warning(error_msg)
+                    self.monitor.record_rebuild_error(error_msg)
+                chunks.extend(file_chunks)
+
+            except Exception as e:
+                error_msg = f"Error processing file {file_path}: {e!s}"
+                logger.error(error_msg)
+                self.monitor.record_rebuild_error(error_msg)
+
+        return chunks

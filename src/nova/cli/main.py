@@ -6,6 +6,9 @@ uses a plugin-based architecture to discover and register commands.
 
 import logging
 import sys
+from pathlib import Path
+import os
+from typing import Any
 
 import click
 from rich.console import Console
@@ -15,14 +18,16 @@ from nova.cli.commands import (
     CleanProcessingCommand,
     CleanVectorsCommand,
     MonitorCommand,
-    ProcessBearVectorsCommand,
     ProcessNotesCommand,
     ProcessVectorsCommand,
     SearchCommand,
-    StartMCPCommand,
 )
 from nova.cli.utils.command import NovaCommand
 from nova.config import load_config
+from nova.monitoring.logs import LogManager
+from nova.monitoring.session import SessionMonitor
+from nova.monitoring.persistent import PersistentMonitor
+from nova.vector_store.store import VectorStore
 
 # Initialize console with stderr to avoid buffering issues
 console = Console(stderr=True)
@@ -30,7 +35,9 @@ console = Console(stderr=True)
 
 def setup_logging() -> None:
     """Set up logging configuration."""
-    print("DEBUG: Setting up logging")  # Debug print
+    # Disable PostHog analytics
+    os.environ["POSTHOG_DISABLED"] = "1"
+
     config = load_config()
     log_file = config.paths.logs_dir / "nova.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -41,6 +48,7 @@ def setup_logging() -> None:
         show_path=False,
         omit_repeated_times=False,
         show_time=True,
+        level=logging.INFO,  # Show INFO and above
     )
 
     # Configure file handler for log file
@@ -48,17 +56,35 @@ def setup_logging() -> None:
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
+    file_handler.setLevel(logging.INFO)  # Log more details to file
 
     # Set up root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(logging.INFO)  # Set root logger to INFO
     root_logger.addHandler(rich_handler)
     root_logger.addHandler(file_handler)
 
     # Disable other handlers to prevent duplicate output
     logging.getLogger("sentence_transformers").handlers = []
     logging.getLogger("chromadb").handlers = []
-    print("DEBUG: Logging setup complete")  # Debug print
+
+    # Set specific loggers to WARNING
+    for logger_name in [
+        "sentence_transformers",
+        "chromadb",
+        "pypandoc",
+        "html2text",
+        "posthog",  # Silence PostHog analytics
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+    # Set Nova loggers to INFO
+    for logger_name in [
+        "nova.cli",
+        "nova.vector_store",
+        "nova.monitoring",
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.INFO)
 
 
 class NovaCLI:
@@ -66,29 +92,43 @@ class NovaCLI:
 
     def __init__(self) -> None:
         """Initialize the CLI dispatcher."""
-        print("DEBUG: Initializing NovaCLI")  # Debug print
-        self.commands: dict[str, type[NovaCommand]] = {}  # type: ignore
+        # Load configuration
+        self.config = load_config()
+
+        # Create shared components
+        vector_store_dir = str(self.config.paths.vector_store_dir)
+        self.vector_store = VectorStore(base_path=vector_store_dir)
+
+        state_dir = self.config.paths.state_dir
+        self.persistent_monitor = PersistentMonitor(base_path=state_dir)
+
+        # Create shared session monitor
+        self.session_monitor = SessionMonitor(
+            vector_store=self.vector_store,
+            log_manager=self.persistent_monitor,
+            monitor=self.persistent_monitor,
+            nova_dir=state_dir
+        )
+
+        self.commands: dict[str, NovaCommand] = {}
         self._register_commands()
 
     def _register_commands(self) -> None:
         """Register all available commands."""
-        print("DEBUG: Registering commands")  # Debug print
         command_classes = [
             CleanProcessingCommand,
             CleanVectorsCommand,
             MonitorCommand,
-            ProcessBearVectorsCommand,
             ProcessNotesCommand,
             ProcessVectorsCommand,
             SearchCommand,
-            StartMCPCommand,
         ]
+
         for cmd_class in command_classes:
-            print(f"DEBUG: Registering command class: {cmd_class.__name__}")  # Debug print
-            if not isinstance(cmd_class, type) or not issubclass(cmd_class, NovaCommand):
-                raise TypeError(f"Invalid command class: {cmd_class}")
-            self.commands[cmd_class.name] = cmd_class  # type: ignore
-        print("DEBUG: Command registration complete")  # Debug print
+            cmd = cmd_class()
+            if isinstance(cmd, MonitorCommand):
+                cmd.set_dependencies(vector_store=self.vector_store)
+            self.commands[cmd.name] = cmd
 
     def create_cli(self) -> click.Group:
         """Create the CLI application.
@@ -96,29 +136,22 @@ class NovaCLI:
         Returns:
             The Click command group for the CLI.
         """
-        print("DEBUG: Creating CLI")  # Debug print
-
         @click.group()
         def cli() -> None:
             """Nova - Your AI-powered note management system."""
-            print("DEBUG: Running CLI setup")  # Debug print
             setup_logging()
 
         # Register all discovered commands
-        for cmd_name, cmd_class in self.commands.items():
-            print(f"DEBUG: Adding command to CLI: {cmd_name}")  # Debug print
-            cli.add_command(cmd_class().create_command())
+        for cmd_name, cmd in self.commands.items():
+            cli.add_command(cmd.create_command())
 
-        print("DEBUG: CLI creation complete")  # Debug print
         return cli
 
 
 def main() -> None:
     """Main entry point for the nova CLI."""
-    print("DEBUG: Starting main")  # Debug print
     try:
         cli = NovaCLI().create_cli()
-        print("DEBUG: Running CLI")  # Debug print
         cli()
     except Exception as e:
         console.print(f"[red]ERROR:[/red] {e!s}")

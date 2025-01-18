@@ -1,176 +1,57 @@
-# Nova Rebuild Script Implementation Plan
+# Code Refactoring Plan [IN PROGRESS]
 
-## Phase 1: Foundation Setup (Week 1)
+Below is a multi-step plan to refactor and unify the Nova codebase. After each step, run the tests (uv run pytest -v) to ensure that changes are stable before moving on.
 
-[ ] Initial Project Structure
-    [ ] Create nova/rebuild package structure
-    [ ] Add dependencies to pyproject.toml
-        - Rich for UI
-        - Loguru for logging
-        - Psutil for monitoring
-    [ ] Setup basic CLI command structure
-    [ ] Create initial test framework
+## Step 1: Consolidate Bear Note Parsing and Processing [✓]
+- [✓] Created BearNoteProcessing module (nova/bear_parser/processing.py) with a single process_bear_notes() method
+- [✓] Moved file-copying logic into the new module with proper error handling
+- [✓] Removed redundant process_notes.py and consolidated into BearParser logic
+- [✓] Created comprehensive test suite in tests/bear_parser/test_processing.py
+- [✓] Milestone: All tests passing, confirming Bear note processing works as expected
 
-[ ] Core Logging System
-    [ ] Create nova/rebuild/logging.py
-        [ ] Implement LoggingManager class
-        [ ] Add dynamic log level control
-        [ ] Setup log formatters
-        [ ] Configure log handlers
-    [ ] Create nova/cli/utils/logging.py
-        [ ] Add CLI logging utilities
-        [ ] Implement log level parsing
-    [ ] Add logging tests
-        [ ] Test level switching
-        [ ] Test formatting
-        [ ] Test handlers
+## Step 2: Merge Partial Document Conversion Paths [✓]
+- [✓] Designated DocumentConverter (nova/docling/document_converter.py) as the single conversion entry point
+- [✓] Removed duplicate converter implementation
+- [✓] Removed unused formats (DOCX, XLSX, PPTX, CSV)
+- [✓] Updated and merged test cases in tests/docling/test_document_converter.py
+- [✓] Milestone: All document converter tests passing
 
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Verify logging system works with basic CLI integration
+## Step 3: Cleanup in nova/cli/commands Directory [✓]
+- [✓] Merged process_vectors.py and process_bear_vectors.py into single command with --bear-notes flag
+- [✓] Removed redundant start_mcp.py (functionality in nova_mcp_server.py)
+- [✓] Verified no monitor.py conflicts with monitor/command.py
+- [✓] Updated __init__.py to reflect command consolidation
+- [✓] Milestone: CLI commands unified and redundancy removed
 
-## Phase 2: Core Components (Week 1-2)
+## Step 4: Vector Store & Search Refactoring [✓]
+- [✓] Fixed tag extraction in Bear notes to handle hyphens and complex tags
+- [✓] Fixed attachment handling with proper type handling (AttachmentDict)
+- [✓] Fixed metadata serialization with JSON handling for tags and attachments
+- [✓] Fixed vector store clear operation using get/delete by IDs
+- [✓] Simplified vector store by removing batch processing and caching
+- [✓] Standardized on DefaultEmbeddingFunction for embeddings
+- [✓] Fixed ChromaDB integration and JSON handling in search results
+- [✓] Fixed environment variable substitution in config paths
+- [✓] Fixed search command to handle both string and list tag formats
+- [✓] Milestone: Vector store operations and search functionality working correctly
 
-[ ] Progress Tracking System
-    [ ] Create nova/rebuild/progress.py
-        [ ] Implement ProgressManager class
-        [ ] Add progress bar utilities
-        [ ] Setup time tracking
-    [ ] Create nova/cli/utils/progress.py
-        [ ] Add progress formatting
-        [ ] Implement progress indicators
-    [ ] Add progress tests
-        [ ] Test progress tracking
-        [ ] Test time estimation
+## Step 5: Removal of Old Tools in src/nova/cli/*.py [✓]
+- [✓] Prune unused CLI modules (e.g., start_echo, start_mcp) if not in final usage
+- [✓] Combine similar commands (process_vectors vs. process_bear_vectors) or keep only the relevant approach
+- [✓] Update main CLI entry point (nova/cli/main.py) to reference only the final set of commands
+- [✓] Remove or unify any test files in tests/cli/ for old commands
+- [✓] Milestone: All tests passing with no broken references
 
-[ ] Statistics Collection
-    [ ] Create nova/rebuild/stats.py
-        [ ] Implement StatsCollector class
-        [ ] Add vector store stats
-        [ ] Setup system monitoring
-    [ ] Create nova/cli/utils/stats.py
-        [ ] Add stats formatting
-        [ ] Implement stats display
-    [ ] Add statistics tests
-        [ ] Test collection
-        [ ] Test formatting
+## Step 6: General Lint & Cleanup [IN PROGRESS]
+- [✓] Remove references to older "Claude Desktop" logs or partial code in nova/cli/commands/nova_mcp_server.py if unused
+- [✓] Verify updated logs in test_logging.py only reference current logging approach
+- [✓] Confirm no stale references remain in any config or example scripts
+- [ ] Milestone: Run tests and also run lint checks to confirm code style consistency
 
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Verify core components work together
+## Step 7: Final Verification and Integration [ ]
+- [ ] Review the entire codebase for leftover references or partial merges
+- [ ] Check that all example commands and docs (README, docs/*) reflect the final consolidated commands
+- [ ] Confirm that each test file is up-to-date with the final code paths
+- [ ] Perform a final test run (uv run pytest -v) to ensure full coverage and stable integration
 
-## Phase 3: Process Management (Week 2)
-
-[ ] Health Checking System
-    [ ] Create nova/rebuild/health.py
-        [ ] Implement HealthChecker class
-        [ ] Add component verification
-        [ ] Setup health reporting
-    [ ] Add health check tests
-        [ ] Test component checks
-        [ ] Test reporting
-
-[ ] Rebuild Manager
-    [ ] Create nova/rebuild/manager.py
-        [ ] Implement RebuildManager class
-        [ ] Add component coordination
-        [ ] Setup process flow
-    [ ] Add manager tests
-        [ ] Test coordination
-        [ ] Test process flow
-
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Verify process management works end-to-end
-
-## Phase 4: CLI Integration (Week 3)
-
-[ ] Command Structure
-    [ ] Update nova/cli/commands/rebuild.py
-        [ ] Add new command options
-        [ ] Implement logging controls
-        [ ] Setup progress display
-    [ ] Add command tests
-        [ ] Test options
-        [ ] Test integration
-
-[ ] User Interface
-    [ ] Create nova/cli/utils/formatting.py
-        [ ] Add color schemes
-        [ ] Implement status banners
-        [ ] Setup interactive elements
-    [ ] Add UI tests
-        [ ] Test formatting
-        [ ] Test interaction
-
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Verify CLI interface works smoothly
-
-## Phase 5: Error Handling (Week 3-4)
-
-[ ] Error System
-    [ ] Create nova/rebuild/errors.py
-        [ ] Define error hierarchy
-        [ ] Add recovery strategies
-        [ ] Setup error reporting
-    [ ] Add error handling tests
-        [ ] Test recovery
-        [ ] Test reporting
-
-[ ] User Interaction
-    [ ] Update nova/cli/utils/interaction.py
-        [ ] Add confirmation prompts
-        [ ] Implement error responses
-        [ ] Setup recovery options
-    [ ] Add interaction tests
-        [ ] Test prompts
-        [ ] Test responses
-
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Verify error handling works reliably
-
-## Phase 6: Polish & Documentation (Week 4)
-
-[ ] Final Integration
-    [ ] Update scripts/rebuild.sh
-        [ ] Add new features
-        [ ] Implement full workflow
-        [ ] Setup completion reporting
-    [ ] Add integration tests
-        [ ] Test full workflow
-        [ ] Test edge cases
-
-[ ] Documentation
-    [ ] Update API docs
-        [ ] Document classes
-        [ ] Document methods
-    [ ] Create usage guide
-        [ ] Add examples
-        [ ] Document options
-    [ ] Add troubleshooting guide
-        [ ] Document common issues
-        [ ] Add solutions
-
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Verify documentation is complete and accurate
-
-## Final Steps
-
-[ ] Quality Assurance
-    [ ] Run full test suite
-    [ ] Check code coverage
-    [ ] Verify documentation
-    [ ] Test all scenarios
-
-[ ] Release Preparation
-    [ ] Update version
-    [ ] Create changelog
-    [ ] Prepare release notes
-    [ ] Final testing
-
-[MILESTONE] Run tests: uv run pytest -v
-[MILESTONE] Ready for release
-
-## Notes
-- All Python commands MUST use uv
-- All files MUST be under 250 lines
-- All system files MUST be in .nova directory
-- Tests MUST run without approval
-- Type checking MUST run before tests
+Once all steps are complete and tests pass, we will have a streamlined, unified codebase, significantly reduced duplication, and a clear test suite that verifies each major feature in a single, consistent location.

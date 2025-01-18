@@ -5,9 +5,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from fastmcp.utilities.logging import configure_logging as configure_fastmcp_logging
-from fastmcp.utilities.logging import get_logger
-
 
 class LogLevel(str, Enum):
     """Log levels."""
@@ -27,7 +24,7 @@ def get_component_logger(name: str) -> logging.Logger:
     Returns:
         Logger for the component
     """
-    return get_logger(f"nova.{name}")
+    return logging.getLogger(f"nova.{name}")
 
 
 def log_error(logger: logging.Logger, message: str, error: Exception | None = None) -> None:
@@ -58,24 +55,31 @@ def log_tool_call(logger: logging.Logger, tool_name: str, args: dict[str, Any]) 
 def configure_logging() -> None:
     """Configure logging.
 
-    Uses FastMCP's logging configuration for console output and adds file output
-    to .nova/logs/nova.log.
+    Sets up console output and file output to .nova/logs/nova.log.
     """
     # Ensure .nova/logs exists
     log_dir = Path(".nova/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Configure FastMCP logging for console output
-    configure_fastmcp_logging()
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
 
-    # Add file handler for Nova's logging
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter("%(levelname)s %(name)s: %(message)s")
+    console_handler.setFormatter(console_formatter)
+    root_logger.addHandler(console_handler)
+
+    # File handler for Nova's logging
     file_handler = logging.FileHandler(log_dir / "nova.log")
     file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s", datefmt="%H:%M:%S")
-    file_handler.setFormatter(formatter)
+    file_formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s", datefmt="%H:%M:%S")
+    file_handler.setFormatter(file_formatter)
 
     # Add handler to Nova logger
-    nova_logger = logging.getLogger("FastMCP.nova")
+    nova_logger = logging.getLogger("nova")
     nova_logger.setLevel(logging.INFO)
     nova_logger.addHandler(file_handler)
-    nova_logger.propagate = True  # Still propagate to FastMCP's console handler
+    nova_logger.propagate = True  # Propagate to root logger's console handler

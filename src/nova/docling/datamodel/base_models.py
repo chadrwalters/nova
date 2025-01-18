@@ -3,25 +3,20 @@
 from enum import Enum, auto
 
 
-class InputFormat(Enum):
+class InputFormat(str, Enum):
     """Input format enum."""
 
-    MD = auto()
-    HTML = auto()
-    PDF = auto()
-    DOCX = auto()
-    XLSX = auto()
-    PPTX = auto()
-    RST = auto()
-    ASCIIDOC = auto()
-    ORG = auto()
-    WIKI = auto()
-    LATEX = auto()
-    TEXT = auto()
-
-    def __str__(self) -> str:
-        """Return string representation."""
-        return self.name.lower()
+    MD = "md"
+    HTML = "html"
+    PDF = "pdf"
+    TEXT = "txt"
+    JSON = "json"
+    JPEG = "jpeg"
+    HEIC = "heic"
+    PNG = "png"
+    GIF = "gif"
+    WEBP = "webp"
+    SVG = "svg"
 
 
 # Format to MIME type mapping
@@ -29,15 +24,14 @@ FORMAT_TO_MIME = {
     InputFormat.MD: "text/markdown",
     InputFormat.HTML: "text/html",
     InputFormat.PDF: "application/pdf",
-    InputFormat.DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    InputFormat.XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    InputFormat.PPTX: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    InputFormat.RST: "text/x-rst",
-    InputFormat.ASCIIDOC: "text/asciidoc",
-    InputFormat.ORG: "text/org",
-    InputFormat.WIKI: "text/wiki",
-    InputFormat.LATEX: "text/latex",
     InputFormat.TEXT: "text/plain",
+    InputFormat.JSON: "application/json",
+    InputFormat.JPEG: "image/jpeg",
+    InputFormat.HEIC: "image/heic",
+    InputFormat.PNG: "image/png",
+    InputFormat.GIF: "image/gif",
+    InputFormat.WEBP: "image/webp",
+    InputFormat.SVG: "image/svg+xml",
 }
 
 # Format to file extension mapping
@@ -45,15 +39,14 @@ FORMAT_TO_EXT = {
     InputFormat.MD: ".md",
     InputFormat.HTML: ".html",
     InputFormat.PDF: ".pdf",
-    InputFormat.DOCX: ".docx",
-    InputFormat.XLSX: ".xlsx",
-    InputFormat.PPTX: ".pptx",
-    InputFormat.RST: ".rst",
-    InputFormat.ASCIIDOC: ".asciidoc",
-    InputFormat.ORG: ".org",
-    InputFormat.WIKI: ".wiki",
-    InputFormat.LATEX: ".tex",
     InputFormat.TEXT: ".txt",
+    InputFormat.JSON: ".json",
+    InputFormat.JPEG: ".jpg",
+    InputFormat.HEIC: ".heic",
+    InputFormat.PNG: ".png",
+    InputFormat.GIF: ".gif",
+    InputFormat.WEBP: ".webp",
+    InputFormat.SVG: ".svg",
 }
 
 # MIME type to format mapping

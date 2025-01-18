@@ -16,7 +16,7 @@ class Document:
         """
         self.name = name
         self.text = ""
-        self.metadata: dict[str, Any] = {}
+        self.metadata: dict[str, str] = {}
         self.pictures: list[Any] = []
 
     def save(self, path: Path) -> None:

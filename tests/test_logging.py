@@ -43,7 +43,7 @@ def test_get_component_logger() -> None:
     """Test getting a component logger."""
     logger = get_component_logger("test")
     assert isinstance(logger, logging.Logger)
-    assert logger.name == "FastMCP.nova.test"  # FastMCP prefixes logger names
+    assert logger.name == "nova.test"  # Nova prefixes logger names
 
 
 def test_log_error(configured_logging: None, tmp_path: Path) -> None:

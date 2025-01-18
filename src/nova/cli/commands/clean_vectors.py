@@ -10,6 +10,7 @@ import chromadb
 
 from nova.cli.utils.command import NovaCommand
 from nova.vector_store.store import VectorStore
+from nova.config import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -20,42 +21,62 @@ class CleanVectorsCommand(NovaCommand):
     name = "clean-vectors"
     help = "Clean the vector store"
 
-    def run(self, **kwargs: Any) -> None:
-        """Run the command.
+    def __init__(self) -> None:
+        """Initialize clean vectors command."""
+        super().__init__()
+        self.config = load_config()
+
+    async def run_async(self, **kwargs: Any) -> None:
+        """Run the clean-vectors command asynchronously.
 
         Args:
             **kwargs: Command arguments
                 force: Whether to force deletion
         """
         force = kwargs.get("force", False)
+        vector_dir = self.config.paths.vector_store_dir
+
+        if not vector_dir.exists():
+            self.log_info("Vector store directory does not exist")
+            return
+
         if not force:
-            logger.warning("Use --force to actually delete the vector store")
+            self.log_warning("Use --force to actually delete the vector store")
             return
 
         try:
             # Clean up ChromaDB collection
             try:
-                vector_dir = Path(".nova/vectors")
                 client = chromadb.PersistentClient(path=str(vector_dir))
                 client.delete_collection(VectorStore.COLLECTION_NAME)
-                logger.info("✨ Reset ChromaDB database")
+                self.log_info("Vector store collection deleted")
             except Exception as e:
-                logger.info(f"No ChromaDB collection to clean up: {e}")
+                self.log_info(f"No ChromaDB collection to clean up: {e}")
 
             # Delete vector store directory
-            vector_dir = Path(".nova/vectors")
-            if vector_dir.exists():
-                shutil.rmtree(vector_dir)
-                logger.info("🗑️  Vector store deleted successfully")
-            else:
-                logger.info("Vector store directory does not exist")
+            shutil.rmtree(vector_dir)
+            self.log_info("Vector store deleted successfully")
 
+        except PermissionError as e:
+            msg = f"Failed to delete vector store: {e}"
+            self.log_error(msg)
+            raise click.Abort(msg)
         except Exception as e:
-            logger.error(f"Failed to clean vector store: {e}")
-            raise click.Abort()
+            msg = f"Failed to delete vector store: {e}"
+            self.log_error(msg)
+            raise click.Abort(msg)
+
+    def run(self, **kwargs: Any) -> None:
+        """Run the command.
+
+        Args:
+            **kwargs: Command arguments
+        """
+        import asyncio
+        asyncio.run(self.run_async(**kwargs))
 
     def create_command(self) -> click.Command:
-        """Create the Click command.
+        """Create the clean-vectors command.
 
         Returns:
             click.Command: The Click command
@@ -65,10 +86,14 @@ class CleanVectorsCommand(NovaCommand):
         @click.option(
             "--force",
             is_flag=True,
-            help="Force deletion of vector store",
+            help="Force deletion without confirmation",
         )
         def clean_vectors(force: bool) -> None:
-            """Clean the vector store."""
+            """Clean the vector store.
+
+            This command deletes the vector store and all its contents.
+            Use with caution as this operation cannot be undone.
+            """
             self.run(force=force)
 
         return clean_vectors

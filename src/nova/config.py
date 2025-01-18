@@ -8,6 +8,14 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 
+def _substitute_env_vars(value: Any) -> Any:
+    """Substitute environment variables in string values."""
+    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+        env_var = value[2:-1]
+        return os.environ.get(env_var, value)
+    return value
+
+
 class NovaConfig(BaseModel):
     """Nova configuration model with validation."""
 
@@ -89,6 +97,11 @@ def load_config(config_path: str | None = None) -> NovaConfig:
         if path.exists():
             with open(path) as f:
                 config_data = yaml.safe_load(f) or {}
+
+                # Substitute environment variables in loaded config
+                if "paths" in config_data:
+                    for key, value in config_data["paths"].items():
+                        config_data["paths"][key] = _substitute_env_vars(value)
             break
 
     # Override with environment variables
@@ -98,6 +111,7 @@ def load_config(config_path: str | None = None) -> NovaConfig:
     if "NOVA_PATHS_INPUT_DIR" in os.environ:
         config_data.setdefault("paths", {})["input_dir"] = os.environ["NOVA_PATHS_INPUT_DIR"]
 
+    # Create and validate config
     return NovaConfig(**config_data)
 
 

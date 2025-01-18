@@ -1,52 +1,45 @@
 # Nova Examples
 
-This directory contains example implementations and demonstrations of Nova's features.
+This directory contains example code demonstrating various Nova features and integrations.
 
-## MCP Examples
+## MCP Server Examples
 
-### Echo Server
-Location: `mcp/echo_server.py`
+### Echo Server (`mcp/echo_server.py`)
+A minimal MCP server that demonstrates basic server setup and tool registration. This server:
+- Uses FastAPI for the server implementation
+- Provides a simple echo tool
+- Shows proper logging configuration
+- Demonstrates error handling
 
-A minimal FastMCP server that demonstrates Claude Desktop integration. This server:
-- Uses FastMCP's high-level features
-- Shows proper tool registration
-- Implements structured logging
-- Handles errors gracefully
+### Nova Server (`cli/commands/nova_mcp_server.py`)
+The main Nova MCP server implementation that provides Nova's core functionality. This server:
+- Exposes Nova's vector search capabilities
+- Provides system monitoring tools
+- Handles session management
+- Implements proper logging and error handling
 
-#### Setup and Configuration
+## Usage
 
-##### 1. Shell Script
-The server is started via `scripts/start_echo.sh`, which:
-- Sets up the Python environment correctly
-- Configures PYTHONPATH
-- Ensures proper working directory
-- Runs the server with uv
+To run any of the example servers:
 
-##### 2. Claude Desktop Configuration
-Edit your `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "echo": {
-      "command": "/Users/chadwalters/source/nova/scripts/start_echo.sh",
-      "cwd": "/Users/chadwalters/source/nova"
-    }
-  }
-}
+```bash
+# From Nova project root
+uv run python -m nova.examples.mcp.echo_server  # For echo server
+uv run python -m nova.cli nova_mcp_server       # For Nova server
 ```
 
-#### Verifying Setup
-1. Start a new conversation in Claude Desktop
-2. The "echo" tool should appear in Claude's capabilities
-3. Try using it with: "Use the echo tool to send 'hello world'"
-4. Check logs at `.nova/logs/mcp_echo.log` for server activity
+The servers will start and be available at:
+- Echo Server: http://127.0.0.1:8766
+- Nova Server: http://127.0.0.1:8765
 
-#### Troubleshooting
-- If tool doesn't appear:
-  - Verify server is running (`ps aux | grep echo_server`)
-  - Check logs for startup errors
-  - Restart Claude Desktop
-- If connection fails:
-  - Check if start_echo.sh is executable (`chmod +x scripts/start_echo.sh`)
-  - Verify paths in start_echo.sh are correct
-  - Look for connection errors in Claude Desktop developer console
+## API Documentation
+
+Once a server is running, you can view its API documentation at:
+- Echo Server: http://127.0.0.1:8766/docs
+- Nova Server: http://127.0.0.1:8765/docs
+
+The documentation includes:
+- Available endpoints
+- Request/response models
+- Example requests
+- Error responses

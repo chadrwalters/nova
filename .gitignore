@@ -86,3 +86,6 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Local environment overrides
+.env.local

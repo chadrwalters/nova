@@ -1,152 +1,234 @@
-"""Session monitoring for Nova MCP server.
-
-This module handles real-time monitoring during active Claude Desktop
-sessions. It tracks performance metrics, health status, and errors while
-the server is running.
-"""
+"""Session monitoring for Nova system."""
 
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Optional, Dict, Any, List
 
-import psutil
+from nova.monitoring.memory import MemoryManager, MemoryLimits
+from nova.monitoring.persistent import PersistentMonitor
+from nova.monitoring.profiler import Profiler
+from nova.vector_store.store import VectorStore
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SessionMetrics:
-    """Metrics collected during a session."""
-
-    start_time: datetime
-    queries_processed: int = 0
-    total_query_time: float = 0.0
-    peak_memory_mb: float = 0.0
-    errors_encountered: int = 0
-    last_error_time: datetime | None = None
-    last_error_message: str | None = None
-
-
 class SessionMonitor:
-    """Monitors system health and performance during a Claude Desktop
-    session."""
+    """Monitors Nova system session."""
 
-    def __init__(self, base_path: Path):
+    def __init__(
+        self,
+        vector_store: Optional[VectorStore] = None,
+        log_manager: Optional[PersistentMonitor] = None,
+        monitor: Optional[PersistentMonitor] = None,
+        nova_dir: Optional[Path] = None,
+    ):
         """Initialize session monitor.
 
         Args:
-            base_path: Base path for Nova system
+            vector_store: Optional vector store instance
+            log_manager: Optional log manager instance
+            monitor: Optional persistent monitor instance
+            nova_dir: Optional Nova system directory
         """
-        self.base_path = base_path
-        self.metrics = SessionMetrics(start_time=datetime.now())
-        self.process = psutil.Process()
+        logger.info("Initializing SessionMonitor with:")
+        logger.info(f"  vector_store: {vector_store}")
+        logger.info(f"  log_manager: {log_manager}")
+        logger.info(f"  monitor: {monitor}")
+        logger.info(f"  nova_dir: {nova_dir}")
 
-    def check_health(self) -> dict[str, Any]:
-        """Perform quick health check of system components.
+        self.vector_store = vector_store
+        self.log_manager = log_manager
+        self.monitor = monitor
+        self.nova_dir = nova_dir or Path(".nova")
+        logger.info(f"Using nova_dir: {self.nova_dir}")
+
+        logger.info("Creating MemoryManager")
+        self.memory = MemoryManager(base_path=self.nova_dir)
+        logger.info("Creating Profiler")
+        self.profiler = Profiler(base_path=self.nova_dir)
+        self.session_start = datetime.now()
+        self.total_chunks = 0
+        self.chunks_processed = 0
+        self.processing_time = 0.0
+        self.rebuild_errors: List[str] = []
+        logger.info("SessionMonitor initialization complete")
+
+    def check_health(self) -> Dict[str, Any]:
+        """Check system health.
 
         Returns:
-            Dict containing health status of components
+            Dict containing health status and metrics
         """
-        vector_store_path = self.base_path / "vectors"
-        processing_path = self.base_path / "processing"
-        logs_path = self.base_path / "logs"
+        # Check memory first
+        memory_status = self.memory.check_memory()
+
+        # Check vector store
+        vector_store_status = "healthy"
+        if self.vector_store:
+            try:
+                self.vector_store.check_health()
+            except Exception as e:
+                vector_store_status = f"error: {str(e)}"
+
+        # Check persistent monitor
+        monitor_status = "healthy"
+        if self.monitor:
+            try:
+                self.monitor.check_health()
+            except Exception as e:
+                monitor_status = f"error: {str(e)}"
+
+        # Check log manager
+        log_status = "healthy"
+        if self.log_manager:
+            try:
+                self.log_manager.check_health()
+            except Exception as e:
+                log_status = f"error: {str(e)}"
 
         return {
-            "status": "active",
-            "uptime_seconds": (datetime.now() - self.metrics.start_time).total_seconds(),
-            "components": {
-                "vector_store": {
-                    "status": "healthy" if vector_store_path.exists() else "missing",
-                    "path": str(vector_store_path),
-                    "permissions": oct(vector_store_path.stat().st_mode)[-3:]
-                    if vector_store_path.exists()
-                    else None,
-                },
-                "processing": {
-                    "status": "healthy" if processing_path.exists() else "missing",
-                    "path": str(processing_path),
-                },
-                "logs": {
-                    "status": "healthy" if logs_path.exists() else "missing",
-                    "path": str(logs_path),
-                },
-            },
-            "resources": {
-                "memory_mb": self.process.memory_info().rss / 1024 / 1024,
-                "cpu_percent": self.process.cpu_percent(),
-                "disk_usage_percent": psutil.disk_usage(str(self.base_path)).percent,
-            },
+            "memory": memory_status,
+            "vector_store": vector_store_status,
+            "monitor": monitor_status,
+            "logs": log_status,
+            "session_uptime": (datetime.now() - self.session_start).total_seconds(),
+            "status": (
+                "critical"
+                if memory_status["status"] == "critical"
+                or any(
+                    "error" in status
+                    for status in [vector_store_status, monitor_status, log_status]
+                )
+                else "warning"
+                if memory_status["status"] == "warning"
+                else "healthy"
+            ),
         }
 
-    def record_query(self, query_time: float) -> None:
-        """Record metrics for a processed query.
+    def get_stats(self) -> Dict[str, Any]:
+        """Get system statistics.
+
+        Returns:
+            Dict containing system statistics
+        """
+        stats = {
+            "memory": self.memory.get_memory_stats(),
+            "session": {
+                "start_time": self.session_start.isoformat(),
+                "uptime": (datetime.now() - self.session_start).total_seconds(),
+            },
+            "profiles": self.profiler.get_profiles(),
+        }
+
+        if self.vector_store:
+            stats["vector_store"] = self.vector_store.get_stats()
+
+        if self.monitor:
+            stats["monitor"] = self.monitor.get_stats()
+
+        if self.log_manager:
+            stats["logs"] = self.log_manager.get_stats()
+
+        return stats
+
+    def enforce_limits(self) -> None:
+        """Enforce system limits."""
+        self.memory.enforce_limits()
+
+    def cleanup(self) -> None:
+        """Perform system cleanup."""
+        self.memory.cleanup_memory()
+        self.profiler.cleanup_old_profiles()
+        if self.vector_store:
+            self.vector_store.cleanup()
+        if self.monitor:
+            self.monitor.cleanup()
+        if self.log_manager:
+            self.log_manager.cleanup()
+
+    def configure_memory_limits(self, limits: MemoryLimits) -> None:
+        """Configure memory limits.
 
         Args:
-            query_time: Time taken to process query in seconds
+            limits: Memory limits configuration
         """
-        self.metrics.queries_processed += 1
-        self.metrics.total_query_time += query_time
+        self.memory.limits = limits
 
-        # Update peak memory
-        current_memory = self.process.memory_info().rss / 1024 / 1024
-        self.metrics.peak_memory_mb = max(self.metrics.peak_memory_mb, current_memory)
-
-    def record_error(self, error_message: str) -> None:
-        """Record an error occurrence.
+    def start_profile(self, name: str) -> Any:
+        """Start profiling a code block.
 
         Args:
-            error_message: Error message to record
-        """
-        self.metrics.errors_encountered += 1
-        self.metrics.last_error_time = datetime.now()
-        self.metrics.last_error_message = error_message
+            name: Profile name
 
-    def get_session_stats(self) -> dict[str, Any]:
-        """Get statistics for the current session.
+        Returns:
+            Profile context manager
+        """
+        return self.profiler.profile(name)
+
+    def get_profiles(self) -> List[Dict[str, Any]]:
+        """Get list of available profiles.
+
+        Returns:
+            List of profile information
+        """
+        return self.profiler.get_profiles()
+
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get current session statistics.
 
         Returns:
             Dict containing session statistics
         """
-        uptime = (datetime.now() - self.metrics.start_time).total_seconds()
-
         return {
             "session": {
-                "start_time": self.metrics.start_time.isoformat(),
-                "uptime_seconds": uptime,
-                "queries_processed": self.metrics.queries_processed,
-                "avg_query_time": (self.metrics.total_query_time / self.metrics.queries_processed)
-                if self.metrics.queries_processed > 0
-                else 0.0,
-                "peak_memory_mb": self.metrics.peak_memory_mb,
-                "current_memory_mb": self.process.memory_info().rss / 1024 / 1024,
+                "start_time": self.session_start.isoformat(),
+                "uptime": (datetime.now() - self.session_start).total_seconds(),
+                "chunks_processed": self.chunks_processed,
+                "total_chunks": self.total_chunks,
+                "processing_time": self.processing_time,
                 "errors": {
-                    "count": self.metrics.errors_encountered,
-                    "last_error_time": self.metrics.last_error_time.isoformat()
-                    if self.metrics.last_error_time
-                    else None,
-                    "last_error_message": self.metrics.last_error_message,
-                },
-            },
-            "resources": {
-                "cpu_percent": self.process.cpu_percent(),
-                "memory_percent": self.process.memory_percent(),
-                "disk_usage_percent": psutil.disk_usage(str(self.base_path)).percent,
-            },
+                    "count": len(self.rebuild_errors),
+                    "last_error_time": self.rebuild_errors[-1] if self.rebuild_errors else None,
+                    "last_error_message": self.rebuild_errors[-1] if self.rebuild_errors else None,
+                }
+            }
         }
 
-    def get_performance_metrics(self) -> dict[str, float]:
-        """Get current performance metrics.
+    def track_rebuild_progress(self, total_chunks: int) -> None:
+        """Track progress of vector store rebuild.
 
-        Returns:
-            Dict containing performance metrics
+        Args:
+            total_chunks: Total number of chunks to process
         """
-        return {
-            "cpu_percent": self.process.cpu_percent(),
-            "memory_mb": self.process.memory_info().rss / 1024 / 1024,
-            "memory_percent": self.process.memory_percent(),
-            "avg_query_time": (self.metrics.total_query_time / self.metrics.queries_processed)
-            if self.metrics.queries_processed > 0
-            else 0.0,
-        }
+        logger.info(f"Starting rebuild with {total_chunks} chunks")
+        self.total_chunks = total_chunks
+        self.chunks_processed = 0
+        self.processing_time = 0.0
+        self.rebuild_errors = []
+
+    def update_rebuild_progress(self, chunks_processed: int, processing_time: float) -> None:
+        """Update rebuild progress.
+
+        Args:
+            chunks_processed: Number of chunks processed
+            processing_time: Total processing time in seconds
+        """
+        self.chunks_processed = chunks_processed
+        self.processing_time = processing_time
+        logger.info(f"Processed {chunks_processed}/{self.total_chunks} chunks in {processing_time:.1f}s")
+
+    def record_rebuild_error(self, error_msg: str) -> None:
+        """Record an error during rebuild.
+
+        Args:
+            error_msg: Error message
+        """
+        logger.error(f"Rebuild error: {error_msg}")
+        self.rebuild_errors.append(error_msg)
+
+    def complete_rebuild(self) -> None:
+        """Mark rebuild as complete."""
+        logger.info(f"Rebuild complete: {self.chunks_processed} chunks in {self.processing_time:.1f}s")
+        if self.monitor:
+            self.monitor.record_session_end(self.get_session_stats())

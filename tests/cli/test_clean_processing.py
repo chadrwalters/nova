@@ -9,6 +9,35 @@ import pytest
 from nova.cli.commands.clean_processing import CleanProcessingCommand
 
 
+@pytest.fixture(autouse=True)
+def setup_logging(caplog: pytest.LogCaptureFixture):
+    """Configure logging for tests."""
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Configure caplog
+    caplog.set_level(logging.INFO)
+
+    # Configure nova loggers
+    for logger_name in ["nova.cli", "nova.vector_store", "nova.monitoring"]:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.INFO)
+        logger.propagate = True
+
+    # Clear any existing handlers
+    root_logger.handlers = []
+
+    # Add a basic stream handler
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(message)s')
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+
+    return root_logger
+
+
 @pytest.fixture
 def mock_processing_dir(tmp_path: Path) -> Path:
     """Create a mock processing directory for testing.
@@ -32,6 +61,7 @@ def mock_processing_dir(tmp_path: Path) -> Path:
 def test_clean_processing_without_force(
     mock_processing_dir: Path,
     caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test clean-processing command without force flag.
@@ -39,10 +69,9 @@ def test_clean_processing_without_force(
     Args:
         mock_processing_dir: Mock processing directory fixture
         caplog: Pytest log capture fixture
+        capsys: Pytest stdout/stderr capture fixture
         monkeypatch: Pytest monkeypatch fixture
     """
-    caplog.set_level(logging.WARNING)
-
     # Change to the directory containing the mock processing dir
     monkeypatch.chdir(mock_processing_dir.parent.parent)
 
@@ -51,12 +80,14 @@ def test_clean_processing_without_force(
 
     # Processing directory should still exist
     assert mock_processing_dir.exists()
-    assert "Use --force to actually delete the processing directory" in caplog.text
+    captured = capsys.readouterr()
+    assert "Use --force to actually delete the processing directory" in captured.err
 
 
 def test_clean_processing_with_force(
     mock_processing_dir: Path,
     caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test clean-processing command with force flag.
@@ -64,10 +95,9 @@ def test_clean_processing_with_force(
     Args:
         mock_processing_dir: Mock processing directory fixture
         caplog: Pytest log capture fixture
+        capsys: Pytest stdout/stderr capture fixture
         monkeypatch: Pytest monkeypatch fixture
     """
-    caplog.set_level(logging.INFO)
-
     # Change to the directory containing the mock processing dir
     monkeypatch.chdir(mock_processing_dir.parent.parent)
 
@@ -76,33 +106,38 @@ def test_clean_processing_with_force(
 
     # Processing directory should be deleted
     assert not mock_processing_dir.exists()
-    assert "Processing directory deleted successfully" in caplog.text
+    captured = capsys.readouterr()
+    assert "Processing directory deleted successfully" in captured.err
 
 
 def test_clean_processing_nonexistent_dir(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test clean-processing command with nonexistent directory.
 
     Args:
         tmp_path: Pytest temporary path fixture
         caplog: Pytest log capture fixture
+        capsys: Pytest stdout/stderr capture fixture
         monkeypatch: Pytest monkeypatch fixture
     """
-    caplog.set_level(logging.INFO)
-
     # Change to the temporary directory
     monkeypatch.chdir(tmp_path)
 
     command = CleanProcessingCommand()
     command.run(force=True)
 
-    assert "Processing directory does not exist" in caplog.text
+    captured = capsys.readouterr()
+    assert "Processing directory does not exist" in captured.err
 
 
 def test_clean_processing_permission_error(
     mock_processing_dir: Path,
     caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test clean-processing command with permission error.
@@ -110,10 +145,9 @@ def test_clean_processing_permission_error(
     Args:
         mock_processing_dir: Mock processing directory fixture
         caplog: Pytest log capture fixture
+        capsys: Pytest stdout/stderr capture fixture
         monkeypatch: Pytest monkeypatch fixture
     """
-    caplog.set_level(logging.ERROR)
-
     # Change to the directory containing the mock processing dir
     monkeypatch.chdir(mock_processing_dir.parent.parent)
 
@@ -130,4 +164,5 @@ def test_clean_processing_permission_error(
 
     # Processing directory should still exist
     assert mock_processing_dir.exists()
-    assert "Failed to delete processing directory: Permission denied" in caplog.text
+    captured = capsys.readouterr()
+    assert "Failed to delete processing directory: Permission denied" in captured.err

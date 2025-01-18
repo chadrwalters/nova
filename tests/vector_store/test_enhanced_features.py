@@ -2,8 +2,11 @@
 
 import json
 import os
+import shutil
 import time
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,7 +15,7 @@ from nova.vector_store.store import VectorStore
 
 
 @pytest.fixture
-def vector_store(tmp_path):
+def vector_store(tmp_path: Path) -> Generator[VectorStore, None, None]:
     """Create a test vector store."""
     vector_dir = tmp_path / ".nova" / "vectors"
     vector_dir.mkdir(parents=True)
@@ -30,17 +33,20 @@ def vector_store(tmp_path):
 
     store = VectorStore(str(vector_dir))
     yield store
-    store.cleanup()
+    try:
+        shutil.rmtree(str(store.base_path))
+    except Exception:  # nosec
+        pass  # Ignore cleanup errors in tests
 
 
 @pytest.fixture
-def chunking_engine():
+def chunking_engine() -> ChunkingEngine:
     """Create a test chunking engine."""
     return ChunkingEngine()
 
 
 @pytest.mark.skip(reason="ChromaDB filter format needs to be updated for tag hierarchy search")
-def test_tag_hierarchy_search(vector_store, chunking_engine):
+def test_tag_hierarchy_search(vector_store: VectorStore, chunking_engine: ChunkingEngine) -> None:
     """Test searching with hierarchical tags."""
     # Create test document with hierarchical tags
     chunk = Chunk(
@@ -48,9 +54,9 @@ def test_tag_hierarchy_search(vector_store, chunking_engine):
         source=Path("test.md"),
         heading_text="Main Heading",
         heading_level=1,
-        tags=["category/subcategory"],
-        attachments=[],
     )
+    chunk._tags = ["category/subcategory"]
+    chunk._attachments = []
 
     # Add chunk to store
     vector_store.add_chunk(
@@ -59,8 +65,8 @@ def test_tag_hierarchy_search(vector_store, chunking_engine):
             "source": str(chunk.source) if chunk.source else "",
             "heading_text": chunk.heading_text,
             "heading_level": chunk.heading_level,
-            "tags": json.dumps(chunk.tags),
-            "attachments": json.dumps(chunk.attachments),
+            "tags": json.dumps(chunk._tags),
+            "attachments": json.dumps([f"{att['type']}:{att['path']}" for att in chunk._attachments]),
             "chunk_id": chunk.chunk_id,
         },
     )
@@ -77,17 +83,16 @@ def test_tag_hierarchy_search(vector_store, chunking_engine):
 
 
 @pytest.mark.skip(reason="ChromaDB filter format needs to be updated for attachment filtering")
-def test_attachment_filtering(vector_store, chunking_engine):
+def test_attachment_filtering(vector_store: VectorStore, chunking_engine: ChunkingEngine) -> None:
     """Test filtering by attachment type."""
     # Create test document with attachments
     chunk = Chunk(
         text="Content with image attachment",
         source=Path("test.md"),
         heading_text="Main Heading",
-        heading_level=1,
-        tags=[],
-        attachments=[{"type": "image", "path": "test.jpg"}],
+        heading_level=1
     )
+    chunk._attachments = [{"type": "image", "path": "test.jpg"}]
 
     # Add chunk to store
     vector_store.add_chunk(
@@ -96,8 +101,8 @@ def test_attachment_filtering(vector_store, chunking_engine):
             "source": str(chunk.source) if chunk.source else "",
             "heading_text": chunk.heading_text,
             "heading_level": chunk.heading_level,
-            "tags": json.dumps(chunk.tags),
-            "attachments": json.dumps(chunk.attachments),
+            "tags": json.dumps(chunk._tags),
+            "attachments": json.dumps([f"{att['type']}:{att['path']}" for att in chunk._attachments]),
             "chunk_id": chunk.chunk_id,
         },
     )
@@ -109,48 +114,35 @@ def test_attachment_filtering(vector_store, chunking_engine):
     results = vector_store.search("content", attachment_type="image")
     assert len(results) > 0  # nosec
     assert all(  # nosec
-        any(
-            attachment["type"] == "image"
-            for attachment in json.loads(result["metadata"]["attachments"])
-        )
+        any("image:" in att for att in json.loads(result["metadata"]["attachments"]))
         for result in results
     )
 
 
-def test_combined_filtering(vector_store, chunking_engine):
+def test_combined_filtering(vector_store: VectorStore, chunking_engine: ChunkingEngine) -> None:
     """Test combining tag and attachment filters."""
-    # Create test document with both tags and attachments
+    # Create chunks with different tags and attachments
     chunk = Chunk(
-        text="Content with tag and image",
+        text="Test document with multiple tags",
         source=Path("test.md"),
         heading_text="Main Heading",
-        heading_level=1,
-        tags=["test_tag"],
-        attachments=[{"type": "image", "path": "test.jpg"}],
+        heading_level=1
     )
+    chunk._tags = ["documentation", "test"]
+    chunk._attachments = [{"type": "image", "path": "test.jpg"}]
 
     # Add chunk to store
-    vector_store.add_chunk(
-        chunk,
-        {
-            "source": str(chunk.source) if chunk.source else "",
-            "heading_text": chunk.heading_text,
-            "heading_level": chunk.heading_level,
-            "tags": json.dumps(chunk.tags),
-            "attachments": json.dumps(chunk.attachments),
-            "chunk_id": chunk.chunk_id,
-        },
-    )
+    vector_store.add_chunk(chunk)
 
     # Wait for ChromaDB to persist the data
     time.sleep(0.1)
 
     # Search with both filters
-    results = vector_store.search("content", tag_filter="test_tag", attachment_type="image")
+    results = vector_store.search("test document", tag_filter="documentation", attachment_type="image")
     assert len(results) > 0  # nosec
     for result in results:
         metadata = result["metadata"]
-        tags = json.loads(metadata["tags"])
-        attachments = json.loads(metadata["attachments"])
-        assert "test_tag" in tags  # nosec
-        assert any(attachment["type"] == "image" for attachment in attachments)  # nosec
+        # Check if the tag flag is present
+        assert metadata.get("tag_documentation") is True  # nosec
+        # Check if the attachment type flag is present
+        assert metadata.get("attachment_type_image") is True  # nosec

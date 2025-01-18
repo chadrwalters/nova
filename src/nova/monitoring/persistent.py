@@ -2,12 +2,13 @@
 
 This module handles cross-session metrics, logging, and system health
 tracking. Data is stored in the .nova directory to persist between
-Claude Desktop sessions.
+sessions.
 """
 
 import logging
 import shutil
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -25,13 +26,19 @@ class PersistentMonitor:
         Args:
             base_path: Base path for Nova system
         """
+        logger.info(f"Initializing PersistentMonitor with base_path: {base_path}")
+        logger.info(f"base_path type: {type(base_path)}")
+
         self.base_path = base_path
         self.metrics_path = base_path / "metrics"
+        logger.info(f"Creating metrics directory at: {self.metrics_path}")
         self.metrics_path.mkdir(exist_ok=True)
 
         # Initialize SQLite database for metrics
         self.db_path = self.metrics_path / "metrics.db"
+        logger.info(f"Database path: {self.db_path}")
         self._init_database()
+        logger.info("PersistentMonitor initialization complete")
 
     def _init_database(self) -> None:
         """Initialize SQLite database for metrics storage."""
@@ -69,8 +76,12 @@ class PersistentMonitor:
             )
 
     @contextmanager
-    def _get_db(self):
-        """Context manager for database connections."""
+    def _get_db(self) -> Iterator[sqlite3.Connection]:
+        """Context manager for database connections.
+
+        Returns:
+            SQLite database connection
+        """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
@@ -85,8 +96,10 @@ class PersistentMonitor:
         Args:
             session_metrics: Metrics from the session
         """
+        logger.info(f"Recording session end metrics: {session_metrics}")
         with self._get_db() as conn:
             # Insert session record
+            session_data = session_metrics["session"]
             cursor = conn.execute(
                 """
                 INSERT INTO sessions (
@@ -95,19 +108,25 @@ class PersistentMonitor:
                 ) VALUES (?, ?, ?, ?, ?, ?)
             """,
                 (
-                    session_metrics["session"]["start_time"],
+                    session_data["start_time"],
                     datetime.now().isoformat(),
-                    session_metrics["session"]["queries_processed"],
-                    session_metrics["session"]["avg_query_time"],
-                    session_metrics["session"]["peak_memory_mb"],
-                    session_metrics["session"]["errors"]["count"],
+                    session_data.get(
+                        "chunks_processed", 0
+                    ),  # Use chunks_processed instead of queries_processed
+                    session_data.get(
+                        "processing_time", 0.0
+                    ),  # Use processing_time instead of avg_query_time
+                    session_data.get("peak_memory_mb", 0.0),
+                    session_data.get("errors", {}).get(
+                        "count", 0
+                    ),  # Get error count from nested dict
                 ),
             )
 
             session_id = cursor.lastrowid
 
             # Record final error if exists
-            if session_metrics["session"]["errors"]["last_error_time"]:
+            if session_data.get("errors", {}).get("last_error_message"):
                 conn.execute(
                     """
                     INSERT INTO errors (session_id, timestamp, error_message)
@@ -115,8 +134,8 @@ class PersistentMonitor:
                 """,
                     (
                         session_id,
-                        session_metrics["session"]["errors"]["last_error_time"],
-                        session_metrics["session"]["errors"]["last_error_message"],
+                        session_data.get("errors", {}).get("last_error_time"),
+                        session_data.get("errors", {}).get("last_error_message"),
                     ),
                 )
 
@@ -131,9 +150,9 @@ class PersistentMonitor:
                 (
                     session_id,
                     datetime.now().isoformat(),
-                    session_metrics["resources"]["cpu_percent"],
-                    session_metrics["session"]["current_memory_mb"],
-                    session_metrics["resources"]["disk_usage_percent"],
+                    0.0,  # CPU percent not tracked currently
+                    session_data.get("peak_memory_mb", 0.0),
+                    0.0,  # Disk usage not tracked currently
                 ),
             )
 
@@ -333,3 +352,124 @@ class PersistentMonitor:
                 for row in common_errors
             ],
         }
+
+    def check_health(self) -> None:
+        """Check monitor health.
+
+        Raises:
+            Exception: If monitor is not healthy
+        """
+        if not self.base_path.exists():
+            raise Exception("Monitor directory does not exist")
+        if not self.base_path.is_dir():
+            raise Exception("Monitor path is not a directory")
+        if not self.db_path.exists():
+            raise Exception("Monitor database does not exist")
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM sessions")
+                cursor.fetchone()
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            raise Exception(f"Monitor database error: {e}")
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get monitor statistics.
+
+        Returns:
+            Dict containing monitor statistics
+        """
+        stats: dict[str, Any] = {
+            "path": str(self.base_path),
+            "db_path": str(self.db_path),
+            "exists": self.base_path.exists(),
+            "is_dir": self.base_path.is_dir() if self.base_path.exists() else False,
+            "db_exists": self.db_path.exists(),
+        }
+
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM sessions")
+                stats["total_sessions"] = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM errors")
+                stats["total_errors"] = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM metrics")
+                stats["total_metrics"] = cursor.fetchone()[0]
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            stats["db_error"] = str(e)
+
+        return stats
+
+    def cleanup(self) -> None:
+        """Clean up monitor resources."""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            try:
+                cursor = conn.cursor()
+                # Delete sessions older than 30 days
+                cursor.execute(
+                    """
+                    DELETE FROM sessions
+                    WHERE start_time < datetime('now', '-30 days')
+                """
+                )
+                # Delete orphaned errors and metrics
+                cursor.execute(
+                    """
+                    DELETE FROM errors
+                    WHERE session_id NOT IN (SELECT id FROM sessions)
+                """
+                )
+                cursor.execute(
+                    """
+                    DELETE FROM metrics
+                    WHERE session_id NOT IN (SELECT id FROM sessions)
+                """
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass  # Ignore cleanup errors
+
+    def tail_logs(self, n: int = 10) -> list[dict[str, Any]]:
+        """Get the last n log entries.
+
+        Args:
+            n: Number of log entries to return
+
+        Returns:
+            List of log entries
+        """
+        with self._get_db() as conn:
+            # Get recent errors
+            logs = conn.execute(
+                """
+                SELECT
+                    e.timestamp,
+                    'ERROR' as level,
+                    'system' as component,
+                    e.error_message as message
+                FROM errors e
+                ORDER BY e.timestamp DESC
+                LIMIT ?
+            """,
+                (n,),
+            ).fetchall()
+
+            return [
+                {
+                    "timestamp": row["timestamp"],
+                    "level": row["level"],
+                    "component": row["component"],
+                    "message": row["message"],
+                }
+                for row in logs
+            ]
