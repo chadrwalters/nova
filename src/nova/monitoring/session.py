@@ -3,9 +3,9 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any
 
-from nova.monitoring.memory import MemoryManager, MemoryLimits
+from nova.monitoring.memory import MemoryLimits, MemoryManager
 from nova.monitoring.persistent import PersistentMonitor
 from nova.monitoring.profiler import Profiler
 from nova.vector_store.store import VectorStore
@@ -18,10 +18,10 @@ class SessionMonitor:
 
     def __init__(
         self,
-        vector_store: Optional[VectorStore] = None,
-        log_manager: Optional[PersistentMonitor] = None,
-        monitor: Optional[PersistentMonitor] = None,
-        nova_dir: Optional[Path] = None,
+        vector_store: VectorStore | None = None,
+        log_manager: PersistentMonitor | None = None,
+        monitor: PersistentMonitor | None = None,
+        nova_dir: Path | None = None,
     ):
         """Initialize session monitor.
 
@@ -51,10 +51,10 @@ class SessionMonitor:
         self.total_chunks = 0
         self.chunks_processed = 0
         self.processing_time = 0.0
-        self.rebuild_errors: List[str] = []
+        self.rebuild_errors: list[str] = []
         logger.info("SessionMonitor initialization complete")
 
-    def check_health(self) -> Dict[str, Any]:
+    def check_health(self) -> dict[str, Any]:
         """Check system health.
 
         Returns:
@@ -69,7 +69,7 @@ class SessionMonitor:
             try:
                 self.vector_store.check_health()
             except Exception as e:
-                vector_store_status = f"error: {str(e)}"
+                vector_store_status = f"error: {e!s}"
 
         # Check persistent monitor
         monitor_status = "healthy"
@@ -77,7 +77,7 @@ class SessionMonitor:
             try:
                 self.monitor.check_health()
             except Exception as e:
-                monitor_status = f"error: {str(e)}"
+                monitor_status = f"error: {e!s}"
 
         # Check log manager
         log_status = "healthy"
@@ -85,7 +85,7 @@ class SessionMonitor:
             try:
                 self.log_manager.check_health()
             except Exception as e:
-                log_status = f"error: {str(e)}"
+                log_status = f"error: {e!s}"
 
         return {
             "memory": memory_status,
@@ -106,7 +106,7 @@ class SessionMonitor:
             ),
         }
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get system statistics.
 
         Returns:
@@ -166,7 +166,7 @@ class SessionMonitor:
         """
         return self.profiler.profile(name)
 
-    def get_profiles(self) -> List[Dict[str, Any]]:
+    def get_profiles(self) -> list[dict[str, Any]]:
         """Get list of available profiles.
 
         Returns:
@@ -174,7 +174,7 @@ class SessionMonitor:
         """
         return self.profiler.get_profiles()
 
-    def get_session_stats(self) -> Dict[str, Any]:
+    def get_session_stats(self) -> dict[str, Any]:
         """Get current session statistics.
 
         Returns:
@@ -191,7 +191,7 @@ class SessionMonitor:
                     "count": len(self.rebuild_errors),
                     "last_error_time": self.rebuild_errors[-1] if self.rebuild_errors else None,
                     "last_error_message": self.rebuild_errors[-1] if self.rebuild_errors else None,
-                }
+                },
             }
         }
 
@@ -216,7 +216,9 @@ class SessionMonitor:
         """
         self.chunks_processed = chunks_processed
         self.processing_time = processing_time
-        logger.info(f"Processed {chunks_processed}/{self.total_chunks} chunks in {processing_time:.1f}s")
+        logger.info(
+            f"Processed {chunks_processed}/{self.total_chunks} chunks in {processing_time:.1f}s"
+        )
 
     def record_rebuild_error(self, error_msg: str) -> None:
         """Record an error during rebuild.
@@ -229,6 +231,8 @@ class SessionMonitor:
 
     def complete_rebuild(self) -> None:
         """Mark rebuild as complete."""
-        logger.info(f"Rebuild complete: {self.chunks_processed} chunks in {self.processing_time:.1f}s")
+        logger.info(
+            f"Rebuild complete: {self.chunks_processed} chunks in {self.processing_time:.1f}s"
+        )
         if self.monitor:
             self.monitor.record_session_end(self.get_session_stats())

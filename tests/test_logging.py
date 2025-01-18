@@ -2,13 +2,12 @@
 
 import logging
 import os
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import pytest
 
 from nova.logging import (
-    LogLevel,
     configure_logging,
     get_component_logger,
     log_error,

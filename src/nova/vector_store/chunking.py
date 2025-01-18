@@ -2,10 +2,9 @@
 
 import logging
 import re
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple
-import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +14,11 @@ class Chunk:
     """A chunk of text with metadata."""
 
     text: str
-    source: Optional[Path] = None
+    source: Path | None = None
     heading_text: str = ""
     heading_level: int = 0
-    _tags: List[str] = field(default_factory=list)  # Internal list of tags
-    _attachments: List[dict] = field(default_factory=list)  # Internal list of attachment dicts
+    _tags: list[str] = field(default_factory=list)  # Internal list of tags
+    _attachments: list[dict] = field(default_factory=list)  # Internal list of attachment dicts
     chunk_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def __post_init__(self) -> None:
@@ -28,12 +27,12 @@ class Chunk:
             self.chunk_id = str(uuid.uuid4())
 
     @property
-    def tags(self) -> List[str]:
+    def tags(self) -> list[str]:
         """Get tags as a list."""
         return self._tags
 
     @tags.setter
-    def tags(self, value: str | List[str]) -> None:
+    def tags(self, value: str | list[str]) -> None:
         """Set tags from either a comma-separated string or list."""
         if isinstance(value, str):
             self._tags = [t.strip() for t in value.split(",")] if value else []
@@ -41,12 +40,12 @@ class Chunk:
             self._tags = list(value)
 
     @property
-    def attachments(self) -> List[dict]:
+    def attachments(self) -> list[dict]:
         """Get attachments as a list of dicts."""
         return self._attachments
 
     @attachments.setter
-    def attachments(self, value: str | List[str | dict]) -> None:
+    def attachments(self, value: str | list[str | dict]) -> None:
         """Set attachments from either a comma-separated string or list."""
         if isinstance(value, str):
             # Parse string format "type:path,type:path"
@@ -84,7 +83,7 @@ class Chunk:
             "heading_level": str(self.heading_level),
             "tags": ",".join(self._tags),
             "attachments": ",".join(f"{att['type']}:{att['path']}" for att in self._attachments),
-            "chunk_id": self.chunk_id
+            "chunk_id": self.chunk_id,
         }
 
 
@@ -100,8 +99,8 @@ class ChunkingEngine:
         """
         self.min_chunk_size = min_chunk_size
         self.max_chunk_size = max_chunk_size
-        self.tag_pattern = re.compile(r'#([a-zA-Z][a-zA-Z0-9_/]*)')  # Must start with letter
-        self.attachment_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+        self.tag_pattern = re.compile(r"#([a-zA-Z][a-zA-Z0-9_/]*)")  # Must start with letter
+        self.attachment_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
     def chunk_document(self, text: str, source: Path | None = None) -> list[Chunk]:
         """Chunk a document into smaller pieces."""
@@ -110,13 +109,13 @@ class ChunkingEngine:
 
         chunks = []
         lines = text.split("\n")
-        current_chunk: List[str] = []
+        current_chunk: list[str] = []
         current_size = 0
         current_heading = ""
         current_level = 0
-        consecutive_headings: List[Tuple[str, int]] = []  # Store both heading text and level
+        consecutive_headings: list[tuple[str, int]] = []  # Store both heading text and level
 
-        def create_chunk_from_text(text_lines: List[str], heading: str, level: int) -> None:
+        def create_chunk_from_text(text_lines: list[str], heading: str, level: int) -> None:
             """Helper to create a chunk from text lines."""
             if not text_lines:
                 return
@@ -199,7 +198,7 @@ class ChunkingEngine:
             create_chunk_from_text(
                 [f"{'#' * h[1]} {h[0]}" for h in consecutive_headings],
                 current_heading,
-                current_level
+                current_level,
             )
 
         # If no chunks were created, create one from the entire text
@@ -235,9 +234,9 @@ class ChunkingEngine:
         for match in matches:
             tag = match.group(1)
             # Only add valid tags (no special characters or numbers at start)
-            if tag and not re.match(r'^[0-9#@/]', tag):
+            if tag and not re.match(r"^[0-9#@/]", tag):
                 # Handle hierarchical tags
-                if '/' in tag:
+                if "/" in tag:
                     # Only add the full hierarchical tag
                     tags.add(tag)
                 else:
@@ -261,11 +260,11 @@ class ChunkingEngine:
             type_ = "image"  # Default to image
 
             # Map common extensions to types
-            if ext in {'.mp4', '.mov', '.avi', '.webm'}:
+            if ext in {".mp4", ".mov", ".avi", ".webm"}:
                 type_ = "video"
-            elif ext in {'.mp3', '.wav', '.m4a', '.ogg'}:
+            elif ext in {".mp3", ".wav", ".m4a", ".ogg"}:
                 type_ = "audio"
-            elif ext in {'.pdf', '.doc', '.docx', '.txt'}:
+            elif ext in {".pdf", ".doc", ".docx", ".txt"}:
                 type_ = "document"
 
             # Add to attachments list
@@ -274,12 +273,13 @@ class ChunkingEngine:
         # Add attachments to chunk
         chunk._attachments = attachments
 
-    def _split_text(self, text: str) -> List[str]:
-        """Split text into smaller chunks at sentence boundaries or line breaks."""
+    def _split_text(self, text: str) -> list[str]:
+        """Split text into smaller chunks at sentence boundaries or line
+        breaks."""
         # First try to split at sentence boundaries
-        sentences = re.split(r'([.!?]+\s+)', text)
+        sentences = re.split(r"([.!?]+\s+)", text)
         chunks = []
-        current_chunk: List[str] = []
+        current_chunk: list[str] = []
         current_size = 0
 
         for i in range(0, len(sentences), 2):
@@ -304,7 +304,7 @@ class ChunkingEngine:
                     if line_size > self.max_chunk_size:
                         # If line is too large, split at word boundaries
                         words = line.split()
-                        line_chunk: List[str] = []
+                        line_chunk: list[str] = []
                         line_size = 0
                         for word in words:
                             word_size = len(word) + 1  # +1 for space

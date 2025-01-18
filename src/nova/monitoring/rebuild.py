@@ -50,7 +50,9 @@ class RebuildMonitor:
 
         # Get disk usage only if base path exists
         try:
-            disk_usage = psutil.disk_usage(str(self.base_path)).percent if self.base_path.exists() else 0.0
+            disk_usage = (
+                psutil.disk_usage(str(self.base_path)).percent if self.base_path.exists() else 0.0
+            )
         except Exception:
             disk_usage = 0.0
 

@@ -2,15 +2,14 @@
 
 import json
 import logging
+import shutil
 import sys
 import time
 from collections.abc import Generator
 from pathlib import Path
-import shutil
+from unittest.mock import patch
 
 import pytest
-import asyncio
-from unittest.mock import patch
 
 from nova.cli.commands.nova_mcp_server import search as mcp_search
 from nova.cli.commands.search import SearchCommand
@@ -140,7 +139,9 @@ async def test_search_consistency(
         mcp_results = await mcp_search(query=query, limit=limit)
 
         # Get CLI results
-        await cli_command.run_async(query=query, vector_dir=str(vector_store.base_path), limit=limit)
+        await cli_command.run_async(
+            query=query, vector_dir=str(vector_store.base_path), limit=limit
+        )
         cli_output = capsys.readouterr().out
 
         # Verify results exist

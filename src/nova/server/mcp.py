@@ -1,16 +1,15 @@
 """Nova MCP server."""
 
-import json
 import logging
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from nova.vector_store.chunking import Chunk
-from nova.vector_store.store import VectorStore
 from nova.vector_store.stats import VectorStoreStats
+from nova.vector_store.store import VectorStore
 
 # Initialize logging
 logger = logging.getLogger(__name__)
@@ -68,8 +67,10 @@ class AddChunkRequest(BaseModel):
     source: str = Field(default="", description="Source file path")
     heading_text: str = Field(default="", description="Heading text")
     heading_level: int = Field(default=1, description="Heading level")
-    tags: Union[str, list[str]] = Field(default_factory=list, description="Tags as string or list")
-    attachments: Union[str, list[Union[str, dict[str, Any]]]] = Field(default_factory=list, description="Attachments as string or list")
+    tags: str | list[str] = Field(default_factory=list, description="Tags as string or list")
+    attachments: str | list[str | dict[str, Any]] = Field(
+        default_factory=list, description="Attachments as string or list"
+    )
 
 
 @app.post("/add_chunk")
@@ -83,11 +84,17 @@ async def add_chunk(request: AddChunkRequest) -> dict[str, Any]:
             heading_text=request.heading_text,
             heading_level=request.heading_level,
         )
-        chunk._tags = request.tags if isinstance(request.tags, list) else [t.strip() for t in request.tags.split(",")]
+        chunk._tags = (
+            request.tags
+            if isinstance(request.tags, list)
+            else [t.strip() for t in request.tags.split(",")]
+        )
 
         # Convert attachments to proper format
         if isinstance(request.attachments, str):
-            chunk._attachments = [{"type": "unknown", "path": a.strip()} for a in request.attachments.split(",")]
+            chunk._attachments = [
+                {"type": "unknown", "path": a.strip()} for a in request.attachments.split(",")
+            ]
         else:
             chunk._attachments = [
                 att if isinstance(att, dict) else {"type": "unknown", "path": str(att)}

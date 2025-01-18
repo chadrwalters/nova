@@ -1,9 +1,9 @@
 """Document model for docling."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from datetime import date, datetime
-from typing import Any, Optional, Sequence, Union
+from pathlib import Path
 
 from .base_models import InputFormat
 
@@ -24,7 +24,7 @@ class Document:
     tags: list[str] = field(default_factory=list)
     """The document tags."""
 
-    metadata: dict[str, Union[str, date, datetime, list[str]]] = field(default_factory=dict)
+    metadata: dict[str, str | date | datetime | list[str]] = field(default_factory=dict)
     """Additional metadata."""
 
     source_path: Path | None = None
@@ -34,10 +34,10 @@ class Document:
         self,
         content: str,
         format: InputFormat,
-        title: Optional[str] = None,
-        tags: Optional[Sequence[str]] = None,
-        metadata: Optional[dict[str, Union[str, date, datetime, list[str]]]] = None,
-        source_path: Optional[Path] = None,
+        title: str | None = None,
+        tags: Sequence[str] | None = None,
+        metadata: dict[str, str | date | datetime | list[str]] | None = None,
+        source_path: Path | None = None,
     ):
         self.content = content
         self.format = format

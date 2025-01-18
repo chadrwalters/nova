@@ -6,11 +6,12 @@ This module handles memory tracking, cleanup, and OOM protection.
 import gc
 import logging
 import os
-import psutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class MemoryLimits:
 class MemoryManager:
     """Manages memory usage and cleanup."""
 
-    def __init__(self, base_path: Path, limits: Optional[MemoryLimits] = None):
+    def __init__(self, base_path: Path, limits: MemoryLimits | None = None):
         """Initialize memory manager.
 
         Args:
@@ -39,10 +40,10 @@ class MemoryManager:
         self.limits = limits or MemoryLimits()
         self.process = psutil.Process()
         self.peak_memory_mb = 0.0
-        self.last_cleanup_time: Optional[datetime] = None
+        self.last_cleanup_time: datetime | None = None
         self._memory_warnings = 0
 
-    def check_memory(self) -> Dict[str, Any]:
+    def check_memory(self) -> dict[str, Any]:
         """Check current memory usage.
 
         Returns:
@@ -138,7 +139,7 @@ class MemoryManager:
                 logger.error(error_msg)
                 raise MemoryError(error_msg)
 
-    def get_memory_stats(self) -> Dict[str, Any]:
+    def get_memory_stats(self) -> dict[str, Any]:
         """Get memory statistics.
 
         Returns:
@@ -152,7 +153,9 @@ class MemoryManager:
                 "current_memory_mb": current_memory,
                 "peak_memory_mb": self.peak_memory_mb,
                 "warning_count": self._memory_warnings,
-                "last_cleanup": self.last_cleanup_time.isoformat() if self.last_cleanup_time else None,
+                "last_cleanup": self.last_cleanup_time.isoformat()
+                if self.last_cleanup_time
+                else None,
             },
             "limits": {
                 "max_memory_mb": self.limits.max_memory_mb,

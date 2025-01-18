@@ -1,17 +1,13 @@
 """Tests for monitor command."""
 
-import pytest
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, Any, List, Generator, cast
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import MagicMock, Mock, call
 
-from rich.table import Table
+import pytest
 
 from nova.cli.commands.monitor import MonitorCommand
+from nova.monitoring.logs import LogManager
 from nova.monitoring.session import SessionMonitor
 from nova.vector_store.store import VectorStore
-from nova.monitoring.logs import LogManager
 
 
 @pytest.fixture
@@ -50,7 +46,7 @@ def test_check_health(command: MonitorCommand, mock_monitor: Mock) -> None:
         "monitor": "healthy",
         "logs": "healthy",
         "session_uptime": 123.45,
-        "status": "healthy"
+        "status": "healthy",
     }
 
     # Run health check
@@ -65,33 +61,15 @@ def test_show_stats(command: MonitorCommand, mock_monitor: Mock) -> None:
     # Setup mock stats data
     mock_monitor.get_stats.return_value = {
         "memory": {
-            "process": {
-                "current_memory_mb": 100.5,
-                "peak_memory_mb": 150.2,
-                "warning_count": 0
-            }
+            "process": {"current_memory_mb": 100.5, "peak_memory_mb": 150.2, "warning_count": 0}
         },
-        "session": {
-            "start_time": "2024-01-01 12:00:00",
-            "uptime": 3600.5
-        },
+        "session": {"start_time": "2024-01-01 12:00:00", "uptime": 3600.5},
         "profiles": [
-            {
-                "name": "test_profile",
-                "timestamp": "2024-01-01 12:30:00",
-                "duration": 30.5
-            }
+            {"name": "test_profile", "timestamp": "2024-01-01 12:30:00", "duration": 30.5}
         ],
-        "vector_store": {
-            "total_chunks": 1000,
-            "total_documents": 50
-        },
-        "monitor": {
-            "active_sessions": 1
-        },
-        "logs": {
-            "total_entries": 500
-        }
+        "vector_store": {"total_chunks": 1000, "total_documents": 50},
+        "monitor": {"active_sessions": 1},
+        "logs": {"total_entries": 500},
     }
 
     # Run stats display
@@ -109,14 +87,14 @@ def test_show_logs(command: MonitorCommand, mock_monitor: Mock, mock_log_manager
             "timestamp": "2024-01-01 12:00:00",
             "level": "INFO",
             "component": "test",
-            "message": "Test message"
+            "message": "Test message",
         },
         {
             "timestamp": "2024-01-01 12:01:00",
             "level": "ERROR",
             "component": "test",
-            "message": "Error message"
-        }
+            "message": "Error message",
+        },
     ]
 
     # Run log display
@@ -136,7 +114,7 @@ def test_show_profiles(command: MonitorCommand, mock_monitor: Mock) -> None:
             "timestamp": "2024-01-01 12:00:00",
             "duration": 30.5,
             "stats_file": "stats.json",
-            "profile_file": "profile.prof"
+            "profile_file": "profile.prof",
         }
     ]
 
@@ -205,7 +183,9 @@ def test_stats_error_handling(command: MonitorCommand, mock_monitor: Mock) -> No
         command.show_stats()
 
 
-def test_logs_error_handling(command: MonitorCommand, mock_monitor: Mock, mock_log_manager: Mock) -> None:
+def test_logs_error_handling(
+    command: MonitorCommand, mock_monitor: Mock, mock_log_manager: Mock
+) -> None:
     """Test log display error handling."""
     # Setup mock to raise exception
     mock_log_manager.tail_logs.side_effect = Exception("Test error")

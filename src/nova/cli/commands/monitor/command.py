@@ -1,42 +1,52 @@
 """Monitor command for Nova system."""
 
 import logging
-from pathlib import Path
-from typing import Optional, Dict, Any, List, NoReturn, cast, Callable, TypeVar, Union, TypedDict, Sequence
+from collections.abc import Callable
 from datetime import datetime
+from typing import (
+    Any,
+    TypedDict,
+    TypeVar,
+    cast,
+)
 
 import click
-from click.decorators import FC
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, TaskID
 
 from nova.cli.utils.command import NovaCommand
-from nova.monitoring.session import SessionMonitor
-from nova.vector_store.store import VectorStore
+from nova.config import load_config
 from nova.monitoring.logs import LogManager
 from nova.monitoring.persistent import PersistentMonitor
-from nova.config import load_config
+from nova.monitoring.session import SessionMonitor
+from nova.vector_store.store import VectorStore
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 # Type variable for click command function
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
+
 
 # Type definitions for monitoring data
 class MemoryStatus(TypedDict):
     """Memory status information."""
+
     status: str
     current_mb: float
     peak_mb: float
     warning_count: int
 
+
 class ComponentStatus(TypedDict):
     """Component status information."""
+
     status: str
+
 
 class HealthStatus(TypedDict):
     """System health status information."""
+
     memory: MemoryStatus
     vector_store: str
     monitor: str
@@ -44,44 +54,57 @@ class HealthStatus(TypedDict):
     session_uptime: float
     status: str
 
+
 class ProcessStats(TypedDict):
     """Process statistics."""
+
     current_memory_mb: float
     peak_memory_mb: float
     warning_count: int
 
+
 class MemoryStats(TypedDict):
     """Memory statistics."""
+
     process: ProcessStats
+
 
 class SessionStats(TypedDict):
     """Session statistics."""
+
     start_time: str
     uptime: float
 
+
 class SystemStats(TypedDict):
     """System statistics."""
+
     memory: MemoryStats
     session: SessionStats
-    profiles: List[Dict[str, Any]]
-    vector_store: Dict[str, Any]
-    monitor: Dict[str, Any]
-    logs: Dict[str, int]
+    profiles: list[dict[str, Any]]
+    vector_store: dict[str, Any]
+    monitor: dict[str, Any]
+    logs: dict[str, int]
+
 
 class LogEntry(TypedDict):
     """Log entry information."""
+
     timestamp: str
     level: str
     component: str
     message: str
 
+
 class ProfileInfo(TypedDict):
     """Profile information."""
+
     name: str
     timestamp: str
     duration: float
     stats_file: str
     profile_file: str
+
 
 class MonitorCommand(NovaCommand):
     """Monitor command for nova CLI."""
@@ -104,6 +127,7 @@ class MonitorCommand(NovaCommand):
         Returns:
             click.Command: The Click command group
         """
+
         @click.group(name=self.name, help=self.help)
         def monitor() -> None:
             """Monitor system status and performance."""
@@ -132,7 +156,7 @@ class MonitorCommand(NovaCommand):
             help="Filter logs by level",
             required=False,
         )
-        def logs(component: Optional[str], level: Optional[str]) -> None:
+        def logs(component: str | None, level: str | None) -> None:
             """View system logs."""
             self.view_logs(component, level)
 
@@ -177,9 +201,13 @@ class MonitorCommand(NovaCommand):
         memory_table = Table(title="Memory Statistics")
         memory_table.add_column("Metric", style="cyan")
         memory_table.add_column("Value", style="green")
-        memory_table.add_row("Current Memory", f"{stats['memory']['process']['current_memory_mb']:.2f} MB")
-        memory_table.add_row("Peak Memory", f"{stats['memory']['process']['peak_memory_mb']:.2f} MB")
-        memory_table.add_row("Warning Count", str(stats['memory']['process']['warning_count']))
+        memory_table.add_row(
+            "Current Memory", f"{stats['memory']['process']['current_memory_mb']:.2f} MB"
+        )
+        memory_table.add_row(
+            "Peak Memory", f"{stats['memory']['process']['peak_memory_mb']:.2f} MB"
+        )
+        memory_table.add_row("Warning Count", str(stats["memory"]["process"]["warning_count"]))
         self.console.print(memory_table)
         self.console.print()
 
@@ -187,7 +215,7 @@ class MonitorCommand(NovaCommand):
         session_table = Table(title="Session Statistics")
         session_table.add_column("Metric", style="cyan")
         session_table.add_column("Value", style="green")
-        session_table.add_row("Start Time", stats['session']['start_time'])
+        session_table.add_row("Start Time", stats["session"]["start_time"])
         session_table.add_row("Uptime", f"{stats['session']['uptime']:.2f}s")
         self.console.print(session_table)
         self.console.print()
@@ -196,7 +224,7 @@ class MonitorCommand(NovaCommand):
         vector_table = Table(title="Vector Store Statistics")
         vector_table.add_column("Metric", style="cyan")
         vector_table.add_column("Value", style="green")
-        for key, value in stats['vector_store'].items():
+        for key, value in stats["vector_store"].items():
             vector_table.add_row(key, str(value))
         self.console.print(vector_table)
         self.console.print()
@@ -205,7 +233,7 @@ class MonitorCommand(NovaCommand):
         monitor_table = Table(title="Monitor Statistics")
         monitor_table.add_column("Metric", style="cyan")
         monitor_table.add_column("Value", style="green")
-        for key, value in stats['monitor'].items():
+        for key, value in stats["monitor"].items():
             monitor_table.add_row(key, str(value))
         self.console.print(monitor_table)
         self.console.print()
@@ -214,11 +242,11 @@ class MonitorCommand(NovaCommand):
         log_table = Table(title="Log Statistics")
         log_table.add_column("Metric", style="cyan")
         log_table.add_column("Value", style="green")
-        for key, value in stats['logs'].items():
+        for key, value in stats["logs"].items():
             log_table.add_row(key, str(value))
         self.console.print(log_table)
 
-    def view_logs(self, component: Optional[str], level: Optional[str]) -> None:
+    def view_logs(self, component: str | None, level: str | None) -> None:
         """View system logs.
 
         Args:
@@ -241,12 +269,7 @@ class MonitorCommand(NovaCommand):
         table.add_column("Message", style="white")
 
         for log in logs:
-            table.add_row(
-                log["timestamp"],
-                log["level"],
-                log["component"],
-                log["message"]
-            )
+            table.add_row(log["timestamp"], log["level"], log["component"], log["message"])
 
         self.console.print(table)
 
@@ -285,7 +308,10 @@ class MonitorCommand(NovaCommand):
         session_uptime = (datetime.now() - self.monitor.session_start).total_seconds()
 
         # Determine overall status
-        if all(s == "OK" for s in [memory_status["status"], vector_store_status, monitor_status, logs_status]):
+        if all(
+            s == "OK"
+            for s in [memory_status["status"], vector_store_status, monitor_status, logs_status]
+        ):
             overall_status = "Healthy"
         else:
             overall_status = "Degraded"
@@ -296,7 +322,7 @@ class MonitorCommand(NovaCommand):
             "monitor": monitor_status,
             "logs": logs_status,
             "session_uptime": session_uptime,
-            "status": overall_status
+            "status": overall_status,
         }
 
     def _get_system_stats(self) -> SystemStats:
@@ -310,20 +336,20 @@ class MonitorCommand(NovaCommand):
         memory_stats: ProcessStats = {
             "current_memory_mb": memory_check["current_mb"],
             "peak_memory_mb": memory_check["peak_mb"],
-            "warning_count": memory_check["warning_count"]
+            "warning_count": memory_check["warning_count"],
         }
 
         # Get session stats
         session_stats: SessionStats = {
             "start_time": self.monitor.session_start.isoformat(),
-            "uptime": (datetime.now() - self.monitor.session_start).total_seconds()
+            "uptime": (datetime.now() - self.monitor.session_start).total_seconds(),
         }
 
         # Get persistent stats
         persistent_stats = self.persistent_monitor.get_stats()
-        profiles = cast(List[Dict[str, Any]], persistent_stats.get("profiles", []))
-        vector_store = cast(Dict[str, Any], persistent_stats.get("vector_store", {}))
-        monitor = cast(Dict[str, Any], persistent_stats.get("monitor", {}))
+        profiles = cast(list[dict[str, Any]], persistent_stats.get("profiles", []))
+        vector_store = cast(dict[str, Any], persistent_stats.get("vector_store", {}))
+        monitor = cast(dict[str, Any], persistent_stats.get("monitor", {}))
 
         # Get log stats
         log_stats = self.log_manager.get_stats()
@@ -334,14 +360,10 @@ class MonitorCommand(NovaCommand):
             "profiles": profiles,
             "vector_store": vector_store,
             "monitor": monitor,
-            "logs": log_stats
+            "logs": log_stats,
         }
 
-    def _get_logs(
-        self,
-        component: Optional[str] = None,
-        level: Optional[str] = None
-    ) -> List[LogEntry]:
+    def _get_logs(self, component: str | None = None, level: str | None = None) -> list[LogEntry]:
         """Get system logs.
 
         Args:
@@ -355,13 +377,13 @@ class MonitorCommand(NovaCommand):
         raw_logs = self.log_manager.tail_logs(n=100)
 
         # Convert and filter logs
-        filtered_logs: List[LogEntry] = []
+        filtered_logs: list[LogEntry] = []
         for raw_log in raw_logs:
             log_entry: LogEntry = {
                 "timestamp": raw_log["timestamp"],
                 "level": raw_log["level"],
                 "component": raw_log["component"],
-                "message": raw_log["message"]
+                "message": raw_log["message"],
             }
             if component and log_entry["component"] != component:
                 continue

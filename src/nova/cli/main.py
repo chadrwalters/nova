@@ -5,10 +5,8 @@ uses a plugin-based architecture to discover and register commands.
 """
 
 import logging
-import sys
-from pathlib import Path
 import os
-from typing import Any
+import sys
 
 import click
 from rich.console import Console
@@ -24,9 +22,8 @@ from nova.cli.commands import (
 )
 from nova.cli.utils.command import NovaCommand
 from nova.config import load_config
-from nova.monitoring.logs import LogManager
-from nova.monitoring.session import SessionMonitor
 from nova.monitoring.persistent import PersistentMonitor
+from nova.monitoring.session import SessionMonitor
 from nova.vector_store.store import VectorStore
 
 # Initialize console with stderr to avoid buffering issues
@@ -107,7 +104,7 @@ class NovaCLI:
             vector_store=self.vector_store,
             log_manager=self.persistent_monitor,
             monitor=self.persistent_monitor,
-            nova_dir=state_dir
+            nova_dir=state_dir,
         )
 
         self.commands: dict[str, NovaCommand] = {}
@@ -136,6 +133,7 @@ class NovaCLI:
         Returns:
             The Click command group for the CLI.
         """
+
         @click.group()
         def cli() -> None:
             """Nova - Your AI-powered note management system."""

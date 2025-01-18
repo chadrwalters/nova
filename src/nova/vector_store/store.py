@@ -1,19 +1,16 @@
 """Vector store module.
 
-This module provides a vector store implementation using ChromaDB. It handles document storage,
-retrieval, and semantic search functionality.
+This module provides a vector store implementation using ChromaDB. It
+handles document storage, retrieval, and semantic search functionality.
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, cast, Sequence
+from typing import Any
 
 import chromadb
 from chromadb.config import Settings
-from chromadb.api.types import (
-    QueryResult, Include, Documents, Metadatas, Where, EmbeddingFunction, Embeddable
-)
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from nova.vector_store.chunking import Chunk
@@ -24,7 +21,7 @@ logger = logging.getLogger(__name__)
 INCLUDE_FIELDS = ["documents", "metadatas", "distances"]
 
 
-def _convert_metadata_value(value: Any) -> Union[str, int, float, bool]:
+def _convert_metadata_value(value: Any) -> str | int | float | bool:
     """Convert metadata value to a type supported by ChromaDB."""
     if isinstance(value, (str, int, float, bool)):
         return value
@@ -49,17 +46,13 @@ class VectorStore:
 
         # Initialize ChromaDB client
         if use_memory:
-            settings = Settings(
-                anonymized_telemetry=False,
-                allow_reset=True,
-                is_persistent=False
-            )
+            settings = Settings(anonymized_telemetry=False, allow_reset=True, is_persistent=False)
         else:
             settings = Settings(
                 anonymized_telemetry=False,
                 allow_reset=True,
                 is_persistent=True,
-                persist_directory=str(self.base_path / "chroma")
+                persist_directory=str(self.base_path / "chroma"),
             )
 
         # Create client and collection with default embedding function
@@ -67,10 +60,10 @@ class VectorStore:
         self._collection = self._client.get_or_create_collection(
             name=self.COLLECTION_NAME,
             metadata={"hnsw_space": "cosine"},
-            embedding_function=DefaultEmbeddingFunction()
+            embedding_function=DefaultEmbeddingFunction(),
         )
 
-    def add_chunk(self, chunk: Chunk, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def add_chunk(self, chunk: Chunk, metadata: dict[str, Any] | None = None) -> None:
         """Add a chunk to the store.
 
         Args:
@@ -83,15 +76,11 @@ class VectorStore:
                 metadata = chunk.to_metadata()
 
             # Convert metadata values to supported types
-            processed_metadata = {
-                k: _convert_metadata_value(v) for k, v in metadata.items()
-            }
+            processed_metadata = {k: _convert_metadata_value(v) for k, v in metadata.items()}
 
             # Add chunk directly to collection
             self._collection.add(
-                ids=[chunk.chunk_id],
-                documents=[chunk.text],
-                metadatas=[processed_metadata]
+                ids=[chunk.chunk_id], documents=[chunk.text], metadatas=[processed_metadata]
             )
 
         except Exception as e:
@@ -106,7 +95,7 @@ class VectorStore:
             # Delete all documents by ID
             self._collection.delete(ids=results["ids"])
 
-    def search(self, query: str, limit: int = 5) -> list[Dict[str, Any]]:
+    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
         """Search for chunks similar to the query.
 
         Args:
@@ -118,13 +107,11 @@ class VectorStore:
         """
         # Perform search
         results = self._collection.query(
-            query_texts=[query],
-            n_results=limit,
-            include=INCLUDE_FIELDS
+            query_texts=[query], n_results=limit, include=INCLUDE_FIELDS
         )
 
         # Convert to search result format
-        search_results: list[Dict[str, Any]] = []
+        search_results: list[dict[str, Any]] = []
 
         # Get result lists
         documents = results.get("documents", [])
@@ -141,7 +128,7 @@ class VectorStore:
         dists = distances[0] if distances else []
 
         # Process results
-        for doc, meta, dist in zip(docs, metas, dists):
+        for doc, meta, dist in zip(docs, metas, dists, strict=False):
             if doc is not None and meta is not None and dist is not None:
                 # Parse JSON-encoded metadata fields
                 processed_meta = {}
@@ -154,10 +141,12 @@ class VectorStore:
                     else:
                         processed_meta[k] = v
 
-                search_results.append({
-                    "text": str(doc),
-                    "score": 1.0 - float(dist),  # Convert distance to similarity score
-                    "metadata": processed_meta
-                })
+                search_results.append(
+                    {
+                        "text": str(doc),
+                        "score": 1.0 - float(dist),  # Convert distance to similarity score
+                        "metadata": processed_meta,
+                    }
+                )
 
         return search_results

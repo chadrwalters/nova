@@ -5,12 +5,12 @@ from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import Mock, create_autospec
 
-import pytest
 import click
+import pytest
 
 from nova.cli.commands.process_vectors import ProcessVectorsCommand
-from nova.vector_store.store import VectorStore
 from nova.monitoring.session import SessionMonitor
+from nova.vector_store.store import VectorStore
 
 
 @pytest.fixture
@@ -24,14 +24,16 @@ def input_dir() -> Generator[Path, None, None]:
         file1.write_text("# Test Document 1\nThis is a test document about machine learning.")
 
         file2 = temp_path / "test2.md"
-        file2.write_text("""# First Section
+        file2.write_text(
+            """# First Section
 This is the first section about Python programming.
 
 # Second Section
 This is about machine learning with Python.
 
 # Third Section
-This discusses JavaScript and web development.""")
+This discusses JavaScript and web development."""
+        )
 
         yield temp_path
 
@@ -114,7 +116,9 @@ def test_process_vectors_empty_directory(output_dir: Path, mock_store: Mock) -> 
         assert len(results) == 0
 
 
-def test_process_vectors_multiple_files(input_dir: Path, output_dir: Path, store: VectorStore) -> None:
+def test_process_vectors_multiple_files(
+    input_dir: Path, output_dir: Path, store: VectorStore
+) -> None:
     """Test processing multiple markdown files."""
     command = ProcessVectorsCommand(vector_store=store)
 
@@ -174,7 +178,9 @@ def test_process_vectors_no_markdown_files(output_dir: Path, store: VectorStore)
         assert len(results) == 0
 
 
-def test_process_vectors_with_monitor(input_dir: Path, output_dir: Path, store: VectorStore, mock_monitor: Mock) -> None:
+def test_process_vectors_with_monitor(
+    input_dir: Path, output_dir: Path, store: VectorStore, mock_monitor: Mock
+) -> None:
     """Test vector processing with session monitoring."""
     command = ProcessVectorsCommand(vector_store=store)
     command.monitor = mock_monitor
@@ -187,7 +193,9 @@ def test_process_vectors_with_monitor(input_dir: Path, output_dir: Path, store: 
     mock_monitor.complete_rebuild.assert_called_once()
 
 
-def test_process_vectors_with_errors(input_dir: Path, output_dir: Path, store: VectorStore, mock_monitor: Mock) -> None:
+def test_process_vectors_with_errors(
+    input_dir: Path, output_dir: Path, store: VectorStore, mock_monitor: Mock
+) -> None:
     """Test vector processing with errors."""
     command = ProcessVectorsCommand(vector_store=store)
     command.monitor = mock_monitor

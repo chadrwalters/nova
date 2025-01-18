@@ -1,12 +1,10 @@
 """Tests for the nova CLI command base class."""
 
-from typing import Any
 import time
+from typing import Any
 
 import click
-import pytest
 from click.testing import CliRunner
-from rich.progress import Progress, TaskID
 
 from nova.cli.utils.command import NovaCommand
 

@@ -2,15 +2,15 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import click
 
+from nova.bear_parser.processing import BearNoteProcessing
 from nova.cli.commands.base_vector_command import BaseVectorCommand
 from nova.vector_store.chunking import Chunk
-from nova.bear_parser.processing import BearNoteProcessing
 
 logger = logging.getLogger(__name__)
+
 
 class ProcessVectorsCommand(BaseVectorCommand):
     """Process vectors command."""
@@ -24,6 +24,7 @@ class ProcessVectorsCommand(BaseVectorCommand):
         Returns:
             The click command instance
         """
+
         @click.command(name=self.name, help=self.help)
         @click.option(
             "--input-dir",
@@ -43,7 +44,9 @@ class ProcessVectorsCommand(BaseVectorCommand):
             help="Process input directory as Bear notes",
             default=False,
         )
-        def command(input_dir: str, output_dir: Optional[str] = None, bear_notes: bool = False) -> None:
+        def command(
+            input_dir: str, output_dir: str | None = None, bear_notes: bool = False
+        ) -> None:
             """Process text files into vector chunks.
 
             Args:
@@ -55,7 +58,7 @@ class ProcessVectorsCommand(BaseVectorCommand):
 
         return command
 
-    def _process_directory(self, directory: Path, bear_notes: bool = False) -> List[Chunk]:
+    def _process_directory(self, directory: Path, bear_notes: bool = False) -> list[Chunk]:
         """Process files in a directory.
 
         Args:
@@ -76,7 +79,7 @@ class ProcessVectorsCommand(BaseVectorCommand):
         else:
             return self._process_markdown_files(directory)
 
-    def _process_bear_notes(self, directory: Path) -> List[Chunk]:
+    def _process_bear_notes(self, directory: Path) -> list[Chunk]:
         """Process Bear notes in a directory.
 
         Args:
@@ -90,13 +93,12 @@ class ProcessVectorsCommand(BaseVectorCommand):
         documents = processor.process_bear_notes()
 
         # Process each document into chunks
-        chunks: List[Chunk] = []
+        chunks: list[Chunk] = []
         for doc in documents:
             try:
                 # Create chunks using chunking engine
                 file_chunks = self.chunking_engine.chunk_document(
-                    text=doc.content,
-                    source=Path(doc.origin) if doc.origin else None
+                    text=doc.content, source=Path(doc.origin) if doc.origin else None
                 )
                 chunks.extend(file_chunks)
             except Exception as e:
@@ -107,7 +109,7 @@ class ProcessVectorsCommand(BaseVectorCommand):
 
         return chunks
 
-    def _process_markdown_files(self, directory: Path) -> List[Chunk]:
+    def _process_markdown_files(self, directory: Path) -> list[Chunk]:
         """Process markdown files in a directory.
 
         Args:
@@ -116,7 +118,7 @@ class ProcessVectorsCommand(BaseVectorCommand):
         Returns:
             List of chunks created from markdown files
         """
-        chunks: List[Chunk] = []
+        chunks: list[Chunk] = []
         for file_path in directory.glob("**/*.md"):
             try:
                 # Read the file content

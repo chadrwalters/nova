@@ -4,7 +4,6 @@ This server provides Nova's core functionality through MCP. It exposes
 tools for searching vectors and monitoring system health.
 """
 
-import asyncio
 import atexit
 import logging
 from datetime import datetime
@@ -33,7 +32,7 @@ logging.basicConfig(
     level=logging.WARNING,
     format="%(message)s",
     datefmt="[%X]",
-    handlers=[RichHandler(console=console, show_path=False, show_time=False)]
+    handlers=[RichHandler(console=console, show_path=False, show_time=False)],
 )
 
 # Disable noisy third-party loggers
@@ -53,6 +52,7 @@ session_monitor = SessionMonitor(vector_store=vector_store)
 persistent_monitor = PersistentMonitor(base_path)
 log_manager = LogManager(str(base_path))
 
+
 # Register cleanup on exit
 @atexit.register
 def cleanup() -> None:
@@ -71,6 +71,7 @@ def cleanup() -> None:
     except Exception as e:
         logger.error("Failed to save session metrics: %s", str(e))
 
+
 def main() -> None:
     """Run the MCP server."""
     # Ensure required directories exist
@@ -82,7 +83,9 @@ def main() -> None:
     # Start the server
     logger.info("Starting Nova MCP server")
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8765)
+
 
 class SearchRequest(BaseModel):
     """Search request model."""

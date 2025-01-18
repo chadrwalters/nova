@@ -1,16 +1,11 @@
 """Tests for vector store functionality."""
 
-import json
-import os
-import tempfile
-import time
+import uuid
 from collections.abc import Generator
 from pathlib import Path
-from typing import cast, Dict, Any, List, Union
-import uuid
+from typing import cast
 
 import pytest
-from chromadb.api.types import Where
 
 from nova.vector_store.chunking import Chunk
 from nova.vector_store.store import VectorStore
@@ -26,10 +21,7 @@ def output_dir(tmp_path: Path) -> Generator[Path, None, None]:
 def store(output_dir: Path) -> Generator[VectorStore, None, None]:
     """Initialize a test vector store."""
     test_collection = f"test_{uuid.uuid4()}"
-    store = VectorStore(
-        base_path=str(output_dir / ".nova" / "vectors"),
-        use_memory=True
-    )
+    store = VectorStore(base_path=str(output_dir / ".nova" / "vectors"), use_memory=True)
     store.clear()  # Clear any existing data
     yield store
 
@@ -44,18 +36,28 @@ def populated_store(store: VectorStore) -> Generator[VectorStore, None, None]:
                 text="Frontend developer position available for web development",
                 source=Path("jobs.md"),
                 heading_text="Job Postings",
-                heading_level=1
+                heading_level=1,
             ),
-            {"source": "jobs.md", "tags": "frontend,developer", "heading_text": "Job Postings", "heading_level": 1}
+            {
+                "source": "jobs.md",
+                "tags": "frontend,developer",
+                "heading_text": "Job Postings",
+                "heading_level": 1,
+            },
         ),
         (
             Chunk(
                 text="Backend developer needed for Python project",
                 source=Path("jobs.md"),
                 heading_text="Job Postings",
-                heading_level=1
+                heading_level=1,
             ),
-            {"source": "jobs.md", "tags": "backend,developer", "heading_text": "Job Postings", "heading_level": 1}
+            {
+                "source": "jobs.md",
+                "tags": "backend,developer",
+                "heading_text": "Job Postings",
+                "heading_level": 1,
+            },
         ),
     ]
     for chunk, metadata in job_chunks:
@@ -69,27 +71,37 @@ def populated_store(store: VectorStore) -> Generator[VectorStore, None, None]:
                 text="Machine learning algorithms use neural networks and deep learning for pattern recognition and data analysis",
                 source=Path("tech.md"),
                 heading_text="Tech Topics",
-                heading_level=1
+                heading_level=1,
             ),
-            {"source": "tech.md", "tags": "ml,ai", "heading_text": "Tech Topics", "heading_level": 1}
+            {
+                "source": "tech.md",
+                "tags": "ml,ai",
+                "heading_text": "Tech Topics",
+                "heading_level": 1,
+            },
         ),
         (
             Chunk(
                 text="Artificial intelligence and machine learning models process large datasets to make predictions",
                 source=Path("tech.md"),
                 heading_text="Tech Topics",
-                heading_level=1
+                heading_level=1,
             ),
-            {"source": "tech.md", "tags": "ml,ai", "heading_text": "Tech Topics", "heading_level": 1}
+            {
+                "source": "tech.md",
+                "tags": "ml,ai",
+                "heading_text": "Tech Topics",
+                "heading_level": 1,
+            },
         ),
         (
             Chunk(
                 text="Growing tomatoes and herbs in your garden, plus delicious recipes for homemade pasta sauce",
                 source=Path("random.md"),
                 heading_text="Random",
-                heading_level=1
+                heading_level=1,
             ),
-            {"source": "random.md", "tags": "", "heading_text": "Random", "heading_level": 1}
+            {"source": "random.md", "tags": "", "heading_text": "Random", "heading_level": 1},
         ),
     ]
     for chunk, metadata in tech_chunks:
@@ -124,7 +136,9 @@ def test_semantic_search(populated_store: VectorStore) -> None:
         "programmer" in result["text"].lower() or "developer" in result["text"].lower()
         for result in results
     )
-    assert all(result["score"] > 0.5 for result in results)  # Reasonable scores for semantic matches
+    assert all(
+        result["score"] > 0.5 for result in results
+    )  # Reasonable scores for semantic matches
 
 
 def test_relevance_ordering(populated_store: VectorStore) -> None:
@@ -184,21 +198,21 @@ def test_combined_filters(populated_store: VectorStore) -> None:
         text="Test document with multiple tags",
         source=Path("test.md"),
         heading_text="Main Heading",
-        heading_level=1
+        heading_level=1,
     )
     # Set tags and attachments using property setters
-    chunk1._tags = cast(List[str], ["documentation", "frontend"])  # type: ignore
-    chunk1._attachments = cast(List[Dict[str, str]], [{"type": "image", "path": "test.jpg"}])  # type: ignore
+    chunk1._tags = cast(list[str], ["documentation", "frontend"])  # type: ignore
+    chunk1._attachments = cast(list[dict[str, str]], [{"type": "image", "path": "test.jpg"}])  # type: ignore
 
     chunk2 = Chunk(
         text="Another test document",
         source=Path("test.md"),
         heading_text="Main Heading",
-        heading_level=1
+        heading_level=1,
     )
     # Set tags and attachments using property setters
-    chunk2._tags = cast(List[str], ["documentation", "backend"])  # type: ignore
-    chunk2._attachments = cast(List[Dict[str, str]], [{"type": "code", "path": "test.py"}])  # type: ignore
+    chunk2._tags = cast(list[str], ["documentation", "backend"])  # type: ignore
+    chunk2._attachments = cast(list[dict[str, str]], [{"type": "code", "path": "test.py"}])  # type: ignore
 
     # Add chunks to store
     populated_store.add_chunk(chunk1)
@@ -206,9 +220,7 @@ def test_combined_filters(populated_store: VectorStore) -> None:
 
     # Search with combined filters
     results = populated_store.search(
-        query="test",
-        tag_filter="documentation",
-        attachment_type="image"
+        query="test", tag_filter="documentation", attachment_type="image"
     )
 
     assert len(results) == 1

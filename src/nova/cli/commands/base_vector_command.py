@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import List, Optional, Any
+from typing import Any
 
 import click
 
@@ -15,13 +15,14 @@ from nova.vector_store.store import VectorStore
 
 logger = logging.getLogger(__name__)
 
+
 class BaseVectorCommand(NovaCommand):
     """Base class for vector processing commands."""
 
     def __init__(
         self,
-        vector_store: Optional[VectorStore] = None,
-        monitor: Optional[SessionMonitor] = None,
+        vector_store: VectorStore | None = None,
+        monitor: SessionMonitor | None = None,
     ) -> None:
         """Initialize the command.
 
@@ -40,6 +41,7 @@ class BaseVectorCommand(NovaCommand):
         Returns:
             The click command instance
         """
+
         @click.command(name=self.name, help=self.help)
         @click.option(
             "--input-dir",
@@ -53,7 +55,7 @@ class BaseVectorCommand(NovaCommand):
             help="Output directory for vector store",
             required=False,
         )
-        def command(input_dir: str, output_dir: Optional[str] = None) -> None:
+        def command(input_dir: str, output_dir: str | None = None) -> None:
             """Process text files into vector chunks.
 
             Args:
@@ -130,7 +132,7 @@ class BaseVectorCommand(NovaCommand):
                     error_msg = f"Error adding chunk to vector store: {e!s}"
                     logger.error(error_msg)
                     self.monitor.record_rebuild_error(error_msg)
-                    if hasattr(chunk, 'source'):
+                    if hasattr(chunk, "source"):
                         logger.error(f"Error occurred while processing {chunk.source}")
 
             # Complete rebuild
@@ -141,7 +143,7 @@ class BaseVectorCommand(NovaCommand):
             self.monitor.record_rebuild_error(error_msg)
             raise click.UsageError(error_msg)
 
-    def _process_directory(self, directory: Path) -> List[Chunk]:
+    def _process_directory(self, directory: Path) -> list[Chunk]:
         """Process all files in a directory.
 
         This method should be implemented by subclasses to handle specific file types.

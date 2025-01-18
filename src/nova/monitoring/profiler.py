@@ -1,6 +1,7 @@
 """Performance profiling for Nova system.
 
-This module provides profiling capabilities for CPU, memory, and I/O operations.
+This module provides profiling capabilities for CPU, memory, and I/O
+operations.
 """
 
 import cProfile
@@ -8,12 +9,12 @@ import io
 import json
 import logging
 import pstats
-import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, cast
+from typing import Any, cast
 
 import psutil
 from psutil import Process
@@ -26,15 +27,15 @@ class ProfileStats:
     """Profile statistics."""
 
     start_time: datetime
-    end_time: Optional[datetime] = None
+    end_time: datetime | None = None
     duration: float = 0.0
     cpu_percent: float = 0.0
     memory_mb: float = 0.0
     io_read_mb: float = 0.0
     io_write_mb: float = 0.0
-    profile_stats: Optional[pstats.Stats] = None
+    profile_stats: pstats.Stats | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert stats to dictionary.
 
         Returns:
@@ -70,8 +71,8 @@ class Profiler:
         self.profiles_dir = base_path / "profiles"
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
         self.process = cast(Process, psutil.Process())
-        self._current_profile: Optional[ProfileStats] = None
-        self._profiler: Optional[cProfile.Profile] = None
+        self._current_profile: ProfileStats | None = None
+        self._profiler: cProfile.Profile | None = None
 
     @contextmanager
     def profile(self, name: str) -> Generator[ProfileStats, None, None]:
@@ -107,11 +108,17 @@ class Profiler:
             if self._current_profile:
                 # Update stats
                 self._current_profile.end_time = end_time
-                self._current_profile.duration = (end_time - self._current_profile.start_time).total_seconds()
+                self._current_profile.duration = (
+                    end_time - self._current_profile.start_time
+                ).total_seconds()
                 self._current_profile.cpu_percent = self.process.cpu_percent()
                 self._current_profile.memory_mb = self.process.memory_info().rss / 1024 / 1024
-                self._current_profile.io_read_mb = (io_end.read_bytes - io_start.read_bytes) / 1024 / 1024
-                self._current_profile.io_write_mb = (io_end.write_bytes - io_start.write_bytes) / 1024 / 1024
+                self._current_profile.io_read_mb = (
+                    (io_end.read_bytes - io_start.read_bytes) / 1024 / 1024
+                )
+                self._current_profile.io_write_mb = (
+                    (io_end.write_bytes - io_start.write_bytes) / 1024 / 1024
+                )
 
                 # Save profile data
                 self._save_profile(name, self._current_profile)
@@ -149,7 +156,7 @@ class Profiler:
         except Exception as e:
             logger.error(f"Error saving profile data: {e}")
 
-    def get_profiles(self) -> List[Dict[str, Any]]:
+    def get_profiles(self) -> list[dict[str, Any]]:
         """Get list of available profiles.
 
         Returns:
@@ -160,13 +167,15 @@ class Profiler:
             try:
                 stats = json.loads(stats_file.read_text())
                 name = stats_file.stem.rsplit("_", 1)[0]
-                profiles.append({
-                    "name": name,
-                    "timestamp": stats["timing"]["start_time"],
-                    "duration": stats["timing"]["duration"],
-                    "stats_file": str(stats_file),
-                    "profile_file": str(stats_file.with_suffix(".prof")),
-                })
+                profiles.append(
+                    {
+                        "name": name,
+                        "timestamp": stats["timing"]["start_time"],
+                        "duration": stats["timing"]["duration"],
+                        "stats_file": str(stats_file),
+                        "profile_file": str(stats_file.with_suffix(".prof")),
+                    }
+                )
             except Exception as e:
                 logger.error(f"Error reading profile {stats_file}: {e}")
 

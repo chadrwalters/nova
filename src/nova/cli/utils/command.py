@@ -6,27 +6,26 @@ commands.
 
 import asyncio
 import inspect
-import psutil
-from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict, cast, Callable, TypeVar, List
 import logging
-import sys
+from abc import ABC
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import click
+import psutil
 from rich.console import Console
 from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
+    TaskProgressColumn,
     TextColumn,
     TimeRemainingColumn,
-    BarColumn,
-    TaskProgressColumn,
-    MofNCompleteColumn,
-    TaskID,
 )
-from rich.logging import RichHandler
 
-from nova.cli.utils.errors import RebuildError, is_recoverable_error, get_recovery_strategy
+from nova.cli.utils.errors import RebuildError
 from nova.config import load_config
 from nova.vector_store.store import VectorStore
 
@@ -34,7 +33,7 @@ from nova.vector_store.store import VectorStore
 console = Console(stderr=True)
 
 # Type variable for click command function
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class NovaCommand(ABC):
@@ -47,7 +46,7 @@ class NovaCommand(ABC):
         """Initialize the base command."""
         self.config = load_config()
 
-    def set_dependencies(self, vector_store: Optional[VectorStore] = None) -> None:
+    def set_dependencies(self, vector_store: VectorStore | None = None) -> None:
         """Set command dependencies.
 
         Args:
@@ -107,10 +106,12 @@ class NovaCommand(ABC):
         Returns:
             The click command instance
         """
+
         @click.command(name=self.name, help=self.help)
         def command(**kwargs: Any) -> None:
             """Execute command with given arguments."""
             self.run(**kwargs)
+
         return command
 
     def log_info(self, message: str) -> None:
@@ -166,7 +167,8 @@ class NovaCommand(ABC):
         )
 
     def update_progress_stats(self, progress: Progress, task_id: TaskID, advance: int = 1) -> None:
-        """Update progress statistics including processing rate and memory usage.
+        """Update progress statistics including processing rate and memory
+        usage.
 
         Args:
             progress: The Progress instance to update

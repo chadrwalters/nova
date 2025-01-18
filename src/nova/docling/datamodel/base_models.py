@@ -1,6 +1,6 @@
 """Base models for docling."""
 
-from enum import Enum, auto
+from enum import Enum
 
 
 class InputFormat(str, Enum):

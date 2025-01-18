@@ -6,7 +6,7 @@ from pathlib import Path
 
 import magic
 
-from .datamodel import InputFormat, MIME_TO_FORMAT, EXT_TO_FORMAT
+from .datamodel import EXT_TO_FORMAT, MIME_TO_FORMAT, InputFormat
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)  # Set to WARNING to reduce noise

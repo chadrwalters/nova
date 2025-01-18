@@ -2,27 +2,27 @@
 
 import json
 import logging
-import os
-from datetime import datetime, date
+import xml.etree.ElementTree as ET
+from datetime import date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast, TypedDict, NotRequired, Union
+from typing import Any, NotRequired, TypedDict, cast
 
 import chardet
 import frontmatter  # type: ignore
 import pdfplumber
-import pypandoc
-from PIL import Image, ExifTags, UnidentifiedImageError
-import pillow_heif
 import piexif
-import xml.etree.ElementTree as ET
+import pillow_heif
+import pypandoc
+from PIL import ExifTags, Image
 
-from .datamodel.base_models import InputFormat, FORMAT_TO_MIME
+from .datamodel.base_models import InputFormat
 from .datamodel.document import Document
 
 
 class DocumentConversionError(Exception):
     """Exception raised when document conversion fails."""
+
     pass
 
 
@@ -32,6 +32,7 @@ logger.setLevel(logging.WARNING)  # Set to WARNING to reduce noise
 
 class ImageMetadata(TypedDict, total=False):
     """Type hints for image metadata."""
+
     format: str
     mode: str
     size: str
@@ -41,6 +42,7 @@ class ImageMetadata(TypedDict, total=False):
 
 class SVGDimensions(TypedDict):
     """Type hints for SVG dimensions."""
+
     x: str
     y: str
     width: str
@@ -49,6 +51,7 @@ class SVGDimensions(TypedDict):
 
 class SVGMetadata(TypedDict):
     """Type hints for SVG metadata."""
+
     viewBox: NotRequired[str]
     dimensions: NotRequired[SVGDimensions]
     width: NotRequired[str]
@@ -56,7 +59,7 @@ class SVGMetadata(TypedDict):
     version: NotRequired[str]
 
 
-def _normalize_path(file_path: Path, relative_to: Optional[Path] = None) -> str:
+def _normalize_path(file_path: Path, relative_to: Path | None = None) -> str:
     """Normalize a file path.
 
     Args:
@@ -81,11 +84,11 @@ def _normalize_path(file_path: Path, relative_to: Optional[Path] = None) -> str:
     return normalized.replace("\\", "/")
 
 
-def _convert_image_to_markdown(image_path: Path, converter: 'DocumentConverter') -> Document:
+def _convert_image_to_markdown(image_path: Path, converter: "DocumentConverter") -> Document:
     """Convert an image file to markdown format."""
     try:
         image = Image.open(image_path)
-        metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+        metadata: dict[str, str | date | datetime | list[str]] = {
             "format": str(image.format).lower(),
             "mode": str(image.mode),
             "size": f"{image.width}x{image.height}",
@@ -114,7 +117,7 @@ def _convert_image_to_markdown(image_path: Path, converter: 'DocumentConverter')
 
                                 if isinstance(value, bytes):
                                     try:
-                                        value = value.decode('utf-8')
+                                        value = value.decode("utf-8")
                                     except UnicodeDecodeError:
                                         value = value.hex()
                                 metadata[f"exif_{tag_name}"] = str(value)
@@ -124,7 +127,9 @@ def _convert_image_to_markdown(image_path: Path, converter: 'DocumentConverter')
                 logger.warning(f"Error extracting EXIF data: {e}")
         elif image.format == "WEBP":
             # Properly handle WebP metadata
-            is_lossless = image.info.get("lossless") is True or (image.mode == "RGB" and "transparency" not in image.info)
+            is_lossless = image.info.get("lossless") is True or (
+                image.mode == "RGB" and "transparency" not in image.info
+            )
             metadata["webp_lossless"] = "True" if is_lossless else "False"
             metadata["webp_quality"] = "100" if is_lossless else str(image.info.get("quality", 0))
             if "loop" in image.info:
@@ -173,7 +178,7 @@ def _convert_svg_to_markdown(file_path: Path) -> Document:
         root = tree.getroot()
 
         # Extract metadata
-        metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+        metadata: dict[str, str | date | datetime | list[str]] = {
             "format": "svg",
             "xmlns": root.get("xmlns", "http://www.w3.org/2000/svg"),
             "width": root.get("width", ""),
@@ -194,7 +199,7 @@ def _convert_svg_to_markdown(file_path: Path) -> Document:
         # Count SVG elements
         element_counts: dict[str, int] = {}
         for elem in root.iter():
-            tag = elem.tag.split('}')[-1]  # Remove namespace
+            tag = elem.tag.split("}")[-1]  # Remove namespace
             element_counts[tag] = element_counts.get(tag, 0) + 1
         metadata["element_counts"] = json.dumps(element_counts)
 
@@ -204,14 +209,14 @@ def _convert_svg_to_markdown(file_path: Path) -> Document:
         return Document(
             content=content,
             format=InputFormat.SVG,
-            metadata=cast(dict[str, Union[str, date, datetime, list[str]]], metadata),
-            source_path=file_path
+            metadata=cast(dict[str, str | date | datetime | list[str]], metadata),
+            source_path=file_path,
         )
     except Exception as e:
-        raise DocumentConversionError(f"Error converting SVG file {file_path}: {str(e)}")
+        raise DocumentConversionError(f"Error converting SVG file {file_path}: {e!s}")
 
 
-def _convert_metadata(raw_metadata: dict[str, Any]) -> dict[str, Union[str, date, datetime, list[str]]]:
+def _convert_metadata(raw_metadata: dict[str, Any]) -> dict[str, str | date | datetime | list[str]]:
     """Convert metadata values to strings.
 
     Args:
@@ -220,7 +225,7 @@ def _convert_metadata(raw_metadata: dict[str, Any]) -> dict[str, Union[str, date
     Returns:
         Dictionary with all values converted to strings.
     """
-    result: dict[str, Union[str, date, datetime, list[str]]] = {}
+    result: dict[str, str | date | datetime | list[str]] = {}
     for key, value in raw_metadata.items():
         if isinstance(value, (date, datetime)):
             result[str(key)] = value
@@ -249,11 +254,11 @@ class MetadataParser(HTMLParser):
         self.in_title = False
         self.current_meta = None
 
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "title":
             self.in_title = True
         elif tag == "meta":
-            attrs_dict = dict((k, v) for k, v in attrs if v is not None)
+            attrs_dict = {k: v for k, v in attrs if v is not None}
             name = attrs_dict.get("name", "")
             content = attrs_dict.get("content", "")
 
@@ -330,7 +335,7 @@ class DocumentConverter:
         else:
             return InputFormat.TEXT  # Default to text for unknown extensions
 
-    def convert(self, file_path: Path, fmt: Optional[InputFormat] = None) -> Document:
+    def convert(self, file_path: Path, fmt: InputFormat | None = None) -> Document:
         """Convert a file to markdown format.
 
         Args:
@@ -388,17 +393,14 @@ def _convert_markdown_to_markdown(file_path: Path) -> Document:
     """
     try:
         # Parse frontmatter and content
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             post = frontmatter.load(f)
 
         # Extract metadata
         metadata = _convert_metadata(post.metadata)
 
         return Document(
-            content=post.content,
-            format=InputFormat.MD,
-            metadata=metadata,
-            source_path=file_path
+            content=post.content, format=InputFormat.MD, metadata=metadata, source_path=file_path
         )
     except Exception as e:
         raise DocumentConversionError(f"Error converting markdown file {file_path}: {e}")
@@ -418,24 +420,21 @@ def _convert_json_to_markdown(file_path: Path) -> Document:
     """
     try:
         # Read and parse JSON
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # Format as markdown
         content = json.dumps(data, indent=2)
 
         # Extract metadata
-        metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+        metadata: dict[str, str | date | datetime | list[str]] = {
             "format": "json",
             "size": str(file_path.stat().st_size),
-            "modified": datetime.fromtimestamp(file_path.stat().st_mtime_ns / 1e9)
+            "modified": datetime.fromtimestamp(file_path.stat().st_mtime_ns / 1e9),
         }
 
         return Document(
-            content=content,
-            format=InputFormat.JSON,
-            metadata=metadata,
-            source_path=file_path
+            content=content, format=InputFormat.JSON, metadata=metadata, source_path=file_path
         )
     except Exception as e:
         raise DocumentConversionError(f"Error converting JSON file {file_path}: {e}")
@@ -455,27 +454,20 @@ def _convert_html_to_markdown(file_path: Path) -> Document:
     """
     try:
         # Parse metadata first
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             html_content = f.read()
 
         parser = MetadataParser()
         parser.feed(html_content)
-        metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+        metadata: dict[str, str | date | datetime | list[str]] = {
             k: v for k, v in parser.metadata.items()
         }
 
         # Convert HTML to markdown using pandoc
-        output = pypandoc.convert_file(
-            str(file_path),
-            'markdown',
-            format='html'
-        )
+        output = pypandoc.convert_file(str(file_path), "markdown", format="html")
 
         return Document(
-            content=output,
-            format=InputFormat.HTML,
-            metadata=metadata,
-            source_path=file_path
+            content=output, format=InputFormat.HTML, metadata=metadata, source_path=file_path
         )
     except Exception as e:
         raise DocumentConversionError(f"Error converting HTML file {file_path}: {e}")
@@ -495,17 +487,17 @@ def _convert_text_to_markdown(file_path: Path) -> Document:
     """
     try:
         # Detect encoding
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             raw = f.read()
             result = chardet.detect(raw)
-            encoding = result['encoding'] or 'utf-8'
+            encoding = result["encoding"] or "utf-8"
 
         # Read file with detected encoding
-        with open(file_path, 'r', encoding=encoding) as f:
+        with open(file_path, encoding=encoding) as f:
             content = f.read()
 
         # Extract basic metadata
-        metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+        metadata: dict[str, str | date | datetime | list[str]] = {
             "format": "text",
             "encoding": encoding,
             "size": str(len(content)),
@@ -513,10 +505,7 @@ def _convert_text_to_markdown(file_path: Path) -> Document:
         }
 
         return Document(
-            content=content,
-            format=InputFormat.TEXT,
-            metadata=metadata,
-            source_path=file_path
+            content=content, format=InputFormat.TEXT, metadata=metadata, source_path=file_path
         )
     except Exception as e:
         raise DocumentConversionError(f"Error converting text file {file_path}: {e}")
@@ -538,7 +527,7 @@ def _convert_pdf_to_markdown(file_path: Path) -> Document:
         # Extract text and metadata using pdfplumber
         with pdfplumber.open(file_path) as pdf:
             # Extract metadata
-            metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+            metadata: dict[str, str | date | datetime | list[str]] = {
                 "format": "pdf",
                 "pages": str(len(pdf.pages)),
                 "size": str(file_path.stat().st_size),
@@ -569,7 +558,7 @@ def _convert_pdf_to_markdown(file_path: Path) -> Document:
             content="\n".join(content),
             format=InputFormat.PDF,
             metadata=metadata,
-            source_path=file_path
+            source_path=file_path,
         )
     except Exception as e:
         raise DocumentConversionError(f"Error converting PDF file {file_path}: {e}")
@@ -604,7 +593,7 @@ def _convert_heic_to_markdown(file_path: Path) -> Document:
         )
 
         # Extract metadata
-        metadata: dict[str, Union[str, date, datetime, list[str]]] = {
+        metadata: dict[str, str | date | datetime | list[str]] = {
             "format": "heic",
             "mode": str(image.mode),
             "size": f"{image.width}x{image.height}",
@@ -633,10 +622,7 @@ def _convert_heic_to_markdown(file_path: Path) -> Document:
         content += f"- Size: {metadata['size']}\n"
 
         return Document(
-            content=content,
-            format=InputFormat.HEIC,
-            metadata=metadata,
-            source_path=file_path
+            content=content, format=InputFormat.HEIC, metadata=metadata, source_path=file_path
         )
     except Exception as e:
         raise DocumentConversionError(f"Error converting HEIC file {file_path}: {e}")

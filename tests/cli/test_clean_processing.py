@@ -31,7 +31,7 @@ def setup_logging(caplog: pytest.LogCaptureFixture):
     # Add a basic stream handler
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(message)s')
+    formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
 

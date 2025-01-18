@@ -6,7 +6,6 @@ import shutil
 import time
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -66,7 +65,9 @@ def test_tag_hierarchy_search(vector_store: VectorStore, chunking_engine: Chunki
             "heading_text": chunk.heading_text,
             "heading_level": chunk.heading_level,
             "tags": json.dumps(chunk._tags),
-            "attachments": json.dumps([f"{att['type']}:{att['path']}" for att in chunk._attachments]),
+            "attachments": json.dumps(
+                [f"{att['type']}:{att['path']}" for att in chunk._attachments]
+            ),
             "chunk_id": chunk.chunk_id,
         },
     )
@@ -90,7 +91,7 @@ def test_attachment_filtering(vector_store: VectorStore, chunking_engine: Chunki
         text="Content with image attachment",
         source=Path("test.md"),
         heading_text="Main Heading",
-        heading_level=1
+        heading_level=1,
     )
     chunk._attachments = [{"type": "image", "path": "test.jpg"}]
 
@@ -102,7 +103,9 @@ def test_attachment_filtering(vector_store: VectorStore, chunking_engine: Chunki
             "heading_text": chunk.heading_text,
             "heading_level": chunk.heading_level,
             "tags": json.dumps(chunk._tags),
-            "attachments": json.dumps([f"{att['type']}:{att['path']}" for att in chunk._attachments]),
+            "attachments": json.dumps(
+                [f"{att['type']}:{att['path']}" for att in chunk._attachments]
+            ),
             "chunk_id": chunk.chunk_id,
         },
     )
@@ -126,7 +129,7 @@ def test_combined_filtering(vector_store: VectorStore, chunking_engine: Chunking
         text="Test document with multiple tags",
         source=Path("test.md"),
         heading_text="Main Heading",
-        heading_level=1
+        heading_level=1,
     )
     chunk._tags = ["documentation", "test"]
     chunk._attachments = [{"type": "image", "path": "test.jpg"}]
@@ -138,7 +141,9 @@ def test_combined_filtering(vector_store: VectorStore, chunking_engine: Chunking
     time.sleep(0.1)
 
     # Search with both filters
-    results = vector_store.search("test document", tag_filter="documentation", attachment_type="image")
+    results = vector_store.search(
+        "test document", tag_filter="documentation", attachment_type="image"
+    )
     assert len(results) > 0  # nosec
     for result in results:
         metadata = result["metadata"]

@@ -1,10 +1,10 @@
 """Search command."""
 
 import asyncio
+import json
 import logging
 from pathlib import Path
-from typing import Any, Optional, List
-import json
+from typing import Any
 
 import click
 
@@ -23,7 +23,7 @@ class SearchCommand(NovaCommand):
     def __init__(self) -> None:
         """Initialize command."""
         super().__init__()
-        self._vector_store: Optional[VectorStore] = None
+        self._vector_store: VectorStore | None = None
 
     async def run_async(self, **kwargs: Any) -> None:
         """Run the command asynchronously.
@@ -54,7 +54,7 @@ class SearchCommand(NovaCommand):
                 text = result["text"]
 
                 # Parse tags from metadata
-                tags: List[str] = []
+                tags: list[str] = []
                 if "tags" in metadata:
                     tags_value = metadata["tags"]
                     if isinstance(tags_value, str):

@@ -1,14 +1,13 @@
 """Tests for Bear note processing."""
 
-import shutil
 from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from nova.bear_parser.processing import BearNoteProcessing
 from nova.bear_parser.parser import BearDocument
+from nova.bear_parser.processing import BearNoteProcessing
 
 
 @pytest.fixture

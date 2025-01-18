@@ -1,7 +1,7 @@
 """Tests for session monitoring functionality."""
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

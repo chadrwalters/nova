@@ -2,15 +2,14 @@
 
 import logging
 import shutil
-from pathlib import Path
 from typing import Any
 
-import click
 import chromadb
+import click
 
 from nova.cli.utils.command import NovaCommand
-from nova.vector_store.store import VectorStore
 from nova.config import load_config
+from nova.vector_store.store import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +72,7 @@ class CleanVectorsCommand(NovaCommand):
             **kwargs: Command arguments
         """
         import asyncio
+
         asyncio.run(self.run_async(**kwargs))
 
     def create_command(self) -> click.Command:

@@ -29,11 +29,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",
     datefmt="[%X]",
-    handlers=[RichHandler(console=console, show_path=False, show_time=False)]
+    handlers=[RichHandler(console=console, show_path=False, show_time=False)],
 )
 
 # Create server
 app = FastAPI(title="Echo Server", description="Simple MCP echo server", version="0.1.0")
+
 
 class EchoRequest(BaseModel):
     """Echo request model."""
@@ -56,11 +57,7 @@ async def echo(request: EchoRequest) -> dict[str, Any]:
     """
     try:
         logger.info("Echoing text: %s", request.text)
-        return {
-            "text": request.text,
-            "length": len(request.text),
-            "status": "success"
-        }
+        return {"text": request.text, "length": len(request.text), "status": "success"}
     except Exception as e:
         logger.error("Echo failed: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))
@@ -70,4 +67,5 @@ def main() -> None:
     """Run the MCP server."""
     logger.info("Starting MCP echo server")
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8766)

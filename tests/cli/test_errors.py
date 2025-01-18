@@ -1,21 +1,19 @@
 """Tests for error handling functionality."""
 
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import click
 import pytest
 from click.testing import CliRunner
 
+from nova.cli.main import NovaCLI
 from nova.cli.utils.command import NovaCommand
 from nova.cli.utils.errors import (
-    RebuildError,
     RebuildErrorType,
     create_rebuild_error,
-    is_recoverable_error,
     get_recovery_strategy,
+    is_recoverable_error,
 )
-from nova.cli.main import NovaCLI
 
 
 class ErrorTestCommand(NovaCommand):
@@ -27,9 +25,9 @@ class ErrorTestCommand(NovaCommand):
     def __init__(self) -> None:
         """Initialize test command."""
         super().__init__()
-        self.error_type: Optional[str] = None
+        self.error_type: str | None = None
         self.is_recoverable: bool = False
-        self.recovery_hint: Optional[str] = None
+        self.recovery_hint: str | None = None
 
     def run(self, **kwargs: Any) -> None:
         """Run the test command."""

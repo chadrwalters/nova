@@ -75,7 +75,9 @@ def configure_logging() -> None:
     # File handler for Nova's logging
     file_handler = logging.FileHandler(log_dir / "nova.log")
     file_handler.setLevel(logging.INFO)
-    file_formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s", datefmt="%H:%M:%S")
+    file_formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s", datefmt="%H:%M:%S"
+    )
     file_handler.setFormatter(file_formatter)
 
     # Add handler to Nova logger

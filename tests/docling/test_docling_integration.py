@@ -1,12 +1,12 @@
 """Test docling integration with Nova."""
 from collections.abc import Generator
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from nova.cli.commands.process_notes import ProcessNotesCommand
-from nova.docling import Document, DocumentConverter, FormatDetector, InputFormat
+from nova.docling import Document, DocumentConverter, FormatDetector
 
 
 @pytest.fixture
@@ -60,10 +60,12 @@ def test_format_detection(test_files: Path) -> None:
 
     # Test markdown with frontmatter
     md_with_meta = test_files / "meta.md"
-    md_with_meta.write_text("""---
+    md_with_meta.write_text(
+        """---
 title: Test
 ---
-# Content""")
+# Content"""
+    )
     meta_format = detector.detect_format(md_with_meta)
     assert meta_format is not None
     assert meta_format.name == "MD"

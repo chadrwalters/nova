@@ -1,15 +1,17 @@
 """Test document converter functionality."""
 
 import json
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
-from PIL import Image, ImageDraw, ExifTags, PngImagePlugin
-import pytest
-import xml.etree.ElementTree as ET
+
 import piexif
 import piexif.helper
+import pytest
+from PIL import Image, PngImagePlugin
 
-from nova.docling.document_converter import DocumentConverter, _convert_image_to_markdown, _convert_svg_to_markdown
+from nova.docling.document_converter import (
+    DocumentConverter,
+)
 
 
 @pytest.fixture
@@ -20,47 +22,47 @@ def test_files(tmp_path: Path) -> Generator[Path, None, None]:
 
     # Create test PNG with metadata
     png_file = test_dir / "test.png"
-    img = Image.new('RGB', (100, 100), color='red')
-    img.info['gamma'] = 2.2
-    img.info['srgb'] = 1
-    img.info['comment'] = "Test comment"
+    img = Image.new("RGB", (100, 100), color="red")
+    img.info["gamma"] = 2.2
+    img.info["srgb"] = 1
+    img.info["comment"] = "Test comment"
     # Save with pnginfo to preserve metadata
     pnginfo = PngImagePlugin.PngInfo()
-    pnginfo.add_text('gamma', str(img.info['gamma']))
-    pnginfo.add_text('srgb', str(img.info['srgb']))
-    pnginfo.add_text('comment', img.info['comment'])
-    img.save(png_file, format='PNG', pnginfo=pnginfo)
+    pnginfo.add_text("gamma", str(img.info["gamma"]))
+    pnginfo.add_text("srgb", str(img.info["srgb"]))
+    pnginfo.add_text("comment", img.info["comment"])
+    img.save(png_file, format="PNG", pnginfo=pnginfo)
 
     # Create test JPEG with EXIF data
     jpeg_file = test_dir / "test.jpg"
-    img = Image.new('RGB', (100, 100), color='blue')
+    img = Image.new("RGB", (100, 100), color="blue")
 
     # Create EXIF data
     exif_dict = {
         "0th": {
             piexif.ImageIFD.Make: "Test Camera",
             piexif.ImageIFD.Model: "Test Model",
-            piexif.ImageIFD.DateTime: "2024:01:15 12:00:00"
+            piexif.ImageIFD.DateTime: "2024:01:15 12:00:00",
         }
     }
     exif_bytes = piexif.dump(exif_dict)
-    img.save(jpeg_file, format='JPEG', exif=exif_bytes)
+    img.save(jpeg_file, format="JPEG", exif=exif_bytes)
 
     # Create test WebP
     webp_file = test_dir / "test.webp"
-    img = Image.new('RGB', (100, 100), color='green')
+    img = Image.new("RGB", (100, 100), color="green")
     # Set WebP-specific parameters
-    img.save(webp_file, format='WEBP', lossless=True, quality=100, method=6)
+    img.save(webp_file, format="WEBP", lossless=True, quality=100, method=6)
 
     # Create test SVG
     svg_file = test_dir / "test.svg"
-    svg_content = '''<?xml version="1.0" encoding="UTF-8"?>
+    svg_content = """<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="100" height="100" viewBox="0 0 100 100">
   <title>Test SVG</title>
   <desc>Test description</desc>
   <rect x="10" y="10" width="80" height="80" fill="blue"/>
   <circle cx="50" cy="50" r="30" fill="red"/>
-</svg>'''
+</svg>"""
     svg_file.write_text(svg_content)
 
     yield test_dir

@@ -1,7 +1,6 @@
 """Process notes command."""
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -9,9 +8,9 @@ import click
 
 from nova.bear_parser.processing import BearNoteProcessing
 from nova.cli.utils.command import NovaCommand
-from nova.monitoring.session import SessionMonitor
 from nova.cli.utils.errors import RebuildErrorType, create_rebuild_error
 from nova.config import load_config
+from nova.monitoring.session import SessionMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +31,16 @@ class ProcessNotesCommand(NovaCommand):
         config = load_config()
 
         # Get input directory
-        input_dir = Path(kwargs.get("input_dir", "")) if kwargs.get("input_dir") else config.paths.input_dir
+        input_dir = (
+            Path(kwargs.get("input_dir", "")) if kwargs.get("input_dir") else config.paths.input_dir
+        )
 
         # Get output directory
-        output_dir = Path(kwargs.get("output_dir", "")) if kwargs.get("output_dir") else config.paths.processing_dir
+        output_dir = (
+            Path(kwargs.get("output_dir", ""))
+            if kwargs.get("output_dir")
+            else config.paths.processing_dir
+        )
 
         if not input_dir.exists():
             error = create_rebuild_error(
@@ -59,7 +64,7 @@ class ProcessNotesCommand(NovaCommand):
             # Update monitoring
             monitor.track_rebuild_progress(total_chunks=len(documents))
             for i in range(len(documents)):
-                monitor.update_rebuild_progress(chunks_processed=i+1, processing_time=0.1)
+                monitor.update_rebuild_progress(chunks_processed=i + 1, processing_time=0.1)
             monitor.complete_rebuild()
 
             self.log_success(f"Processed {len(documents)} notes from {input_dir} to {output_dir}")
@@ -81,6 +86,7 @@ class ProcessNotesCommand(NovaCommand):
         Returns:
             The click command instance
         """
+
         @click.command(name=self.name, help=self.help)
         @click.option(
             "--input-dir",

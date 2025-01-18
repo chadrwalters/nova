@@ -2,11 +2,9 @@
 
 import logging
 import shutil
-from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
-from .parser import BearNote, BearParser, BearDocument, InputFormat
+from .parser import BearDocument, BearParser
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +12,7 @@ logger = logging.getLogger(__name__)
 class BearNoteProcessing:
     """Unified Bear note processing class."""
 
-    def __init__(self, input_dir: str | Path, output_dir: Optional[str | Path] = None) -> None:
+    def __init__(self, input_dir: str | Path, output_dir: str | Path | None = None) -> None:
         """Initialize Bear note processor.
 
         Args:
@@ -25,7 +23,7 @@ class BearNoteProcessing:
         self.output_dir = Path(output_dir) if output_dir else None
         self.parser = BearParser(input_dir=self.input_dir)
 
-    def process_bear_notes(self) -> List[BearDocument]:
+    def process_bear_notes(self) -> list[BearDocument]:
         """Process all Bear notes in the input directory.
 
         Returns:
@@ -77,7 +75,11 @@ class BearNoteProcessing:
                         # Copy entire attachment directory
                         output_attachment_dir = self.output_dir / attachment_dir.name
                         shutil.copytree(attachment_dir, output_attachment_dir, dirs_exist_ok=True)
-                        logger.debug("Copied attachments from %s to %s", attachment_dir, output_attachment_dir)
+                        logger.debug(
+                            "Copied attachments from %s to %s",
+                            attachment_dir,
+                            output_attachment_dir,
+                        )
                     except Exception as e:
                         logger.error("Failed to copy attachments from %s: %s", attachment_dir, e)
                         continue

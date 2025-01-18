@@ -31,7 +31,7 @@ def setup_logging(caplog: pytest.LogCaptureFixture):
     # Add a basic stream handler
     handler = logging.StreamHandler()
     handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(message)s')
+    formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
 
@@ -157,9 +157,7 @@ def test_clean_vectors_permission_error(
     monkeypatch.setattr("shutil.rmtree", mock_rmtree)
 
     command = CleanVectorsCommand()
-    with pytest.raises(
-        click.Abort, match="Failed to delete vector store: Permission denied"
-    ):
+    with pytest.raises(click.Abort, match="Failed to delete vector store: Permission denied"):
         command.run(force=True)
 
     # Vector store should still exist

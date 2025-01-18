@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class RebuildErrorType(Enum):
@@ -31,9 +31,9 @@ class RebuildError(Exception):
 
     error_type: RebuildErrorType
     message: str
-    context: Dict[str, Any]
+    context: dict[str, Any]
     is_recoverable: bool = False
-    recovery_hint: Optional[str] = None
+    recovery_hint: str | None = None
 
     def __str__(self) -> str:
         """Get string representation of the error.
@@ -52,9 +52,9 @@ class RebuildError(Exception):
 def create_rebuild_error(
     error_type: RebuildErrorType,
     message: str,
-    context: Dict[str, Any],
+    context: dict[str, Any],
     is_recoverable: bool = False,
-    recovery_hint: Optional[str] = None,
+    recovery_hint: str | None = None,
 ) -> RebuildError:
     """Create a RebuildError with the given parameters.
 
@@ -98,7 +98,7 @@ def is_recoverable_error(error: Exception) -> bool:
     return isinstance(error, recoverable_errors)
 
 
-def get_recovery_strategy(error: RebuildError) -> Optional[str]:
+def get_recovery_strategy(error: RebuildError) -> str | None:
     """Get recovery strategy for a rebuild error.
 
     Args:

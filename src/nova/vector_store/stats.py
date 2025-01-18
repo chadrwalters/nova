@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +24,15 @@ class VectorStoreStats:
         self.total_results = 0
 
         # Content stats
-        self.unique_sources: Set[str] = set()
-        self.unique_tags: Set[str] = set()
+        self.unique_sources: set[str] = set()
+        self.unique_tags: set[str] = set()
         self.total_attachments = 0
-        self.attachment_types: Dict[str, int] = {}
+        self.attachment_types: dict[str, int] = {}
 
         # Date tracking
-        self.earliest_date: Optional[str] = None
-        self.latest_date: Optional[str] = None
-        self.last_update: Optional[str] = None
+        self.earliest_date: str | None = None
+        self.latest_date: str | None = None
+        self.last_update: str | None = None
 
         # Load existing stats if available
         self._load_stats()
@@ -43,7 +43,7 @@ class VectorStoreStats:
             return
 
         try:
-            with open(self.stats_file, "r", encoding="utf-8") as f:
+            with open(self.stats_file, encoding="utf-8") as f:
                 stats = json.load(f)
                 # Basic stats
                 self.total_chunks = stats.get("total_chunks", 0)
@@ -76,13 +76,11 @@ class VectorStoreStats:
                 "total_searches": self.total_searches,
                 "total_errors": self.total_errors,
                 "total_results": self.total_results,
-
                 # Content stats
                 "unique_sources": list(self.unique_sources),
                 "unique_tags": list(self.unique_tags),
                 "total_attachments": self.total_attachments,
                 "attachment_types": self.attachment_types,
-
                 # Date tracking
                 "earliest_date": self.earliest_date,
                 "latest_date": self.latest_date,
@@ -97,7 +95,7 @@ class VectorStoreStats:
         except Exception as e:
             logger.error(f"Failed to save stats: {e}")
 
-    def record_chunk_added(self, metadata: Dict[str, Any]) -> None:
+    def record_chunk_added(self, metadata: dict[str, Any]) -> None:
         """Record that a chunk was added with its metadata."""
         self.total_chunks += 1
 
@@ -148,20 +146,21 @@ class VectorStoreStats:
             "total_searches": self.total_searches,
             "total_errors": self.total_errors,
             "total_results": self.total_results,
-
             # Content stats
             "unique_sources": len(self.unique_sources),
             "unique_tags": len(self.unique_tags),
             "total_attachments": self.total_attachments,
             "attachment_types": self.attachment_types,
-
             # Date tracking
             "earliest_date": self.earliest_date,
             "latest_date": self.latest_date,
             "last_update": self.last_update,
-
             # Additional metrics
-            "avg_results_per_search": round(self.total_results / self.total_searches, 2) if self.total_searches > 0 else 0,
-            "error_rate": round((self.total_errors / self.total_chunks * 100), 2) if self.total_chunks > 0 else 0,
+            "avg_results_per_search": round(self.total_results / self.total_searches, 2)
+            if self.total_searches > 0
+            else 0,
+            "error_rate": round((self.total_errors / self.total_chunks * 100), 2)
+            if self.total_chunks > 0
+            else 0,
             "tags_list": sorted(list(self.unique_tags)),
         }
