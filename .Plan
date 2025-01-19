@@ -1,57 +1,172 @@
-# Code Refactoring Plan [IN PROGRESS]
+# Nova Monitor Command Refactor Plan
 
-Below is a multi-step plan to refactor and unify the Nova codebase. After each step, run the tests (uv run pytest -v) to ensure that changes are stable before moving on.
+## Phase 1: Core System Health Monitoring ✓
+[x] Create new SystemHealthMonitor class
+    - [x] Implement memory usage tracking (current and peak)
+    - [x] Add CPU usage monitoring
+    - [x] Add disk space monitoring
+    - [x] Add directory health checks
+    - [x] Add unit tests for each metric
 
-## Step 1: Consolidate Bear Note Parsing and Processing [✓]
-- [✓] Created BearNoteProcessing module (nova/bear_parser/processing.py) with a single process_bear_notes() method
-- [✓] Moved file-copying logic into the new module with proper error handling
-- [✓] Removed redundant process_notes.py and consolidated into BearParser logic
-- [✓] Created comprehensive test suite in tests/bear_parser/test_processing.py
-- [✓] Milestone: All tests passing, confirming Bear note processing works as expected
+## Phase 2: Enhanced Vector Store Statistics ✓
+[x] Create VectorStoreStats class
+    - [x] Add document statistics
+        - [x] Total document count
+        - [x] Document types breakdown
+        - [x] Document size statistics
+    - [x] Add chunk statistics
+        - [x] Total chunks
+        - [x] Average chunks per document
+        - [x] Chunk size distribution
+    - [x] Add temporal statistics
+        - [x] Date range tracking (earliest/latest)
+        - [x] Document age distribution
+        - [x] Last update timestamp
+    - [x] Add metadata statistics
+        - [x] Tag frequency analysis
+        - [x] Tag co-occurrence patterns
+        - [x] Missing metadata tracking
+    - [x] Add attachment tracking
+        - [x] Count by type (images, PDFs, etc.)
+        - [x] Size statistics by type
+        - [x] Unsupported format tracking
+    - [x] Implement caching for performance
+        - [x] Cache statistics with TTL
+        - [x] Incremental updates
+    - [x] Add unit tests for statistics
+        - [x] Test with various document types
+        - [x] Test edge cases
+        - [x] Test cache behavior
 
-## Step 2: Merge Partial Document Conversion Paths [✓]
-- [✓] Designated DocumentConverter (nova/docling/document_converter.py) as the single conversion entry point
-- [✓] Removed duplicate converter implementation
-- [✓] Removed unused formats (DOCX, XLSX, PPTX, CSV)
-- [✓] Updated and merged test cases in tests/docling/test_document_converter.py
-- [✓] Milestone: All document converter tests passing
+## Phase 3: Warning System Implementation ✓
+[x] Create HealthWarningSystem class
+    - [x] Define warning thresholds
+        - [x] Memory usage thresholds (warning/critical)
+        - [x] Disk space thresholds (warning/critical)
+        - [x] CPU usage thresholds (warning/critical)
+        - [x] Vector store size thresholds
+    - [x] Implement warning detection
+        - [x] Memory usage warnings
+            - [x] Peak memory tracking
+            - [x] Sustained high usage detection
+        - [x] Directory status warnings
+            - [x] Missing directories
+            - [x] Permission issues
+            - [x] Space availability
+        - [x] Vector store warnings
+            - [x] Size limits approaching
+            - [x] High error rates
+            - [x] Performance degradation
+        - [x] Metadata warnings
+            - [x] Missing required metadata
+            - [x] Tag consistency issues
+            - [x] Date range anomalies
+    - [x] Add warning severity levels
+        - [x] Info level warnings
+        - [x] Warning level alerts
+        - [x] Critical level alerts
+    - [x] Implement warning aggregation
+        - [x] Group related warnings
+        - [x] Track warning history
+        - [x] Detect recurring issues
+    - [x] Add warning persistence
+        - [x] Save warnings to .nova/warnings.json
+        - [x] Track warning resolution
+        - [x] Warning history cleanup
+        - [x] Add unit tests
+            - [x] Test threshold detection
+            - [x] Test warning generation
+            - [x] Test persistence
+            - [x] Test aggregation logic
 
-## Step 3: Cleanup in nova/cli/commands Directory [✓]
-- [✓] Merged process_vectors.py and process_bear_vectors.py into single command with --bear-notes flag
-- [✓] Removed redundant start_mcp.py (functionality in nova_mcp_server.py)
-- [✓] Verified no monitor.py conflicts with monitor/command.py
-- [✓] Updated __init__.py to reflect command consolidation
-- [✓] Milestone: CLI commands unified and redundancy removed
+## Phase 4: CLI Command Refactor ✓
+[x] Create new MonitorCommand class
+    - [x] Implement subcommands
+        - [x] health: Show system health status
+            - [x] Memory usage and trends
+            - [x] CPU usage and trends
+            - [x] Disk space and trends
+            - [x] Directory status
+        - [x] stats: Show vector store statistics
+            - [x] Document statistics
+            - [x] Chunk statistics
+            - [x] Tag statistics
+            - [x] Performance metrics
+        - [x] warnings: Show active warnings
+            - [x] Filter by category
+            - [x] Filter by severity
+            - [x] Show warning history
+    - [x] Add command options
+        - [x] --format: Output format (text/json)
+        - [x] --watch: Monitor mode with refresh
+        - [x] --no-color: Disable colored output
+        - [x] --verbose: Show detailed information
+    - [x] Implement output formatting
+        - [x] Create rich console layouts
+        - [x] Add progress indicators
+        - [x] Add color-coded status
+        - [x] Add warning indicators
+    - [x] Add integration tests
+        - [x] Test each subcommand
+        - [x] Test command options
+        - [x] Test error handling
+        - [x] Test output formats
 
-## Step 4: Vector Store & Search Refactoring [✓]
-- [✓] Fixed tag extraction in Bear notes to handle hyphens and complex tags
-- [✓] Fixed attachment handling with proper type handling (AttachmentDict)
-- [✓] Fixed metadata serialization with JSON handling for tags and attachments
-- [✓] Fixed vector store clear operation using get/delete by IDs
-- [✓] Simplified vector store by removing batch processing and caching
-- [✓] Standardized on DefaultEmbeddingFunction for embeddings
-- [✓] Fixed ChromaDB integration and JSON handling in search results
-- [✓] Fixed environment variable substitution in config paths
-- [✓] Fixed search command to handle both string and list tag formats
-- [✓] Milestone: Vector store operations and search functionality working correctly
+## Phase 5: Output Formatting ✓
+[x] Implement structured output formatting
+    - [x] Create SystemHealthFormatter class
+        - [x] Define base formatter interface
+        - [x] Implement text formatter
+        - [x] Implement JSON formatter
+        - [x] Add color scheme configuration
+    - [x] Add section-based output structure
+        - [x] Define section templates
+        - [x] Add section customization options
+        - [x] Implement section ordering
+    - [x] Implement warning summary formatting
+        - [x] Add severity-based formatting
+        - [x] Add category grouping
+        - [x] Add trend indicators
+    - [x] Add unit tests for formatters
+        - [x] Test text output
+        - [x] Test JSON output
+        - [x] Test color schemes
+        - [x] Test custom templates
 
-## Step 5: Removal of Old Tools in src/nova/cli/*.py [✓]
-- [✓] Prune unused CLI modules (e.g., start_echo, start_mcp) if not in final usage
-- [✓] Combine similar commands (process_vectors vs. process_bear_vectors) or keep only the relevant approach
-- [✓] Update main CLI entry point (nova/cli/main.py) to reference only the final set of commands
-- [✓] Remove or unify any test files in tests/cli/ for old commands
-- [✓] Milestone: All tests passing with no broken references
+## Phase 6: Testing & Documentation
+[ ] Comprehensive testing
+    - [ ] Add end-to-end tests
+        - [ ] Test full monitoring workflow
+        - [ ] Test error scenarios
+        - [ ] Test performance under load
+    - [ ] Update documentation
+        - [ ] Add command reference
+        - [ ] Add configuration guide
+        - [ ] Add troubleshooting section
+    - [ ] Add example outputs to docs
+        - [ ] Health check examples
+        - [ ] Warning examples
+        - [ ] Statistics examples
+    - [ ] Create usage examples
+        - [ ] Basic monitoring
+        - [ ] Advanced filtering
+        - [ ] Custom formatting
 
-## Step 6: General Lint & Cleanup [IN PROGRESS]
-- [✓] Remove references to older "Claude Desktop" logs or partial code in nova/cli/commands/nova_mcp_server.py if unused
-- [✓] Verify updated logs in test_logging.py only reference current logging approach
-- [✓] Confirm no stale references remain in any config or example scripts
-- [ ] Milestone: Run tests and also run lint checks to confirm code style consistency
+## Milestones
+1. ✓ Core monitoring functionality working
+2. ✓ Vector store statistics complete
+3. ✓ Warning system operational
+4. ✓ CLI command unified
+5. ✓ Output formatting complete
+6. [ ] Documentation updated
 
-## Step 7: Final Verification and Integration [ ]
-- [ ] Review the entire codebase for leftover references or partial merges
-- [ ] Check that all example commands and docs (README, docs/*) reflect the final consolidated commands
-- [ ] Confirm that each test file is up-to-date with the final code paths
-- [ ] Perform a final test run (uv run pytest -v) to ensure full coverage and stable integration
+## Dependencies
+- psutil for system monitoring
+- rich for formatted output
+- pytest for testing
 
-Once all steps are complete and tests pass, we will have a streamlined, unified codebase, significantly reduced duplication, and a clear test suite that verifies each major feature in a single, consistent location.
+## Notes
+- Keep all file sizes under 250 lines
+- Store all system files in .nova directory
+- Use type hints throughout
+- Follow existing logging patterns

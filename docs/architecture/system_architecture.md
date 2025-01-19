@@ -116,81 +116,30 @@ Nova is a Python-based system for processing, storing, and searching notes and d
 - Error messages
 - Metadata
 
-## 4. Monitoring
+## 4. System Health
 
-### Health System
+### Components
+- Memory Monitor:
+  - Usage tracking and trends
+  - Peak detection
+  - Warning thresholds
+- Disk Monitor:
+  - Space utilization
+  - Directory health
+- Vector Store Monitor:
+  - Document statistics
+  - Chunk distribution
+  - Performance metrics
+- Process Monitor:
+  - CPU usage
+  - Response times
+  - Error rates
 
-#### Components
-- Memory monitor
-- Disk usage
-- Process stats
-- Error tracking
-
-#### Metrics
-- Search latency
-- Cache hits
-- Error rates
-- Resource usage
-
-### Logging System
-
-#### Features
-- Structured logging
-- Log rotation
-- Level filtering
-- Context tracking
-
-#### Management
-- Archive size management
-- Log file organization
-- Space utilization monitoring
-
-### Backend Services
-
-#### Nova Server (`nova.cli.commands.nova_mcp_server`):
-- Complete implementation with all operations
-- Search and monitoring tools
-- Strict access control
-- Port 8765 (chosen to avoid common service conflicts)
-- Optimized logging configuration
-- Safe import structure
-- Automatic startup
-
-#### Core Tools
-- monitor_tool:
-  - Health Command:
-    - Real-time component status
-    - Resource availability
-    - System integrity checks
-  - Stats Command:
-    - Session statistics
-    - Performance metrics
-    - Query patterns
-  - Logs Command:
-    - Log analysis and filtering
-    - Error summaries
-    - Warning detection
-  - Errors Command:
-    - Error trend analysis
-    - Common error patterns
-    - Recovery suggestions
-
-### Integration Points
-- Session Cleanup:
-  - Automatic metrics recording
-  - Log rotation on exit
-  - Resource cleanup
-  - State persistence
-- Health Reporting:
-  - Real-time status updates
-  - Cross-session trends
-  - System recommendations
-  - Performance insights
-- Error Management:
-  - Structured error tracking
-  - Pattern analysis
-  - Recovery procedures
-  - Prevention strategies
+### Statistics Collection
+- Document metrics
+- Processing performance
+- Search efficiency
+- Resource utilization
 
 ## 5. Testing Infrastructure
 

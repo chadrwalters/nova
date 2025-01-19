@@ -14,6 +14,61 @@ from nova.monitoring.session import SessionMonitor
 from nova.vector_store.store import VectorStore
 
 
+@pytest.fixture(autouse=True)
+def cleanup_nova_dirs(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+    """Clean up .nova directories after each test.
+
+    This prevents the "Directory not empty" warnings from pytest.
+    """
+    yield
+
+    # Get the temporary directory from the request
+    if hasattr(request, "node") and hasattr(request.node, "funcargs"):
+        if "tmp_path" in request.node.funcargs:
+            tmp_path = request.node.funcargs["tmp_path"]
+
+            # Force garbage collection to close any open file handles
+            import gc
+
+            gc.collect()
+
+            def remove_path(path: Path) -> None:
+                """Remove a path and its contents."""
+                try:
+                    if path.is_file():
+                        os.chmod(path, 0o666)
+                        path.unlink()
+                    elif path.is_dir():
+                        for item in path.iterdir():
+                            remove_path(item)
+                        os.chmod(path, 0o777)
+                        path.rmdir()
+                except (OSError, PermissionError):
+                    import shutil
+
+                    try:
+                        shutil.rmtree(path, ignore_errors=True)
+                    except:
+                        pass
+
+            # Find all .nova directories recursively
+            for nova_dir in tmp_path.rglob(".nova"):
+                if nova_dir.exists():
+                    # Try to remove the .nova directory and its contents
+                    remove_path(nova_dir)
+
+                    # Clean up parent directories if they're empty
+                    try:
+                        parent = nova_dir.parent
+                        while parent != tmp_path:
+                            if not any(parent.iterdir()):
+                                os.chmod(parent, 0o777)
+                                parent.rmdir()
+                            parent = parent.parent
+                    except (OSError, PermissionError):
+                        pass
+
+
 @pytest.fixture
 def configured_logging(tmp_path: Path) -> Generator[None, None, None]:
     """Configure logging for tests.

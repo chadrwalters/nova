@@ -44,13 +44,27 @@ class CleanVectorsCommand(NovaCommand):
             return
 
         try:
+            # Initialize vector store and clear it first
+            store = VectorStore(str(vector_dir))
+            store.clear()
+            self.log_info("Vector store cleared")
+
             # Clean up ChromaDB collection
             try:
-                client = chromadb.PersistentClient(path=str(vector_dir))
-                client.delete_collection(VectorStore.COLLECTION_NAME)
-                self.log_info("Vector store collection deleted")
+                # Reset the client to ensure clean state
+                client = chromadb.PersistentClient(path=str(vector_dir / "chroma"))
+                client.reset()
+                self.log_info("ChromaDB client reset")
+
+                # Delete the collection if it exists
+                try:
+                    client.delete_collection(VectorStore.COLLECTION_NAME)
+                    self.log_info("Vector store collection deleted")
+                except Exception as e:
+                    self.log_info(f"No ChromaDB collection to delete: {e}")
+
             except Exception as e:
-                self.log_info(f"No ChromaDB collection to clean up: {e}")
+                self.log_info(f"Error cleaning up ChromaDB: {e}")
 
             # Delete vector store directory
             shutil.rmtree(vector_dir)

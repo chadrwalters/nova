@@ -5,21 +5,27 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import (
     Any,
-    TypedDict,
     TypeVar,
+    Union,
     cast,
 )
 
 import click
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.live import Live
+from rich.panel import Panel
 from rich.table import Table
 
 from nova.cli.utils.command import NovaCommand
 from nova.config import load_config
 from nova.monitoring.logs import LogManager
 from nova.monitoring.persistent import PersistentMonitor
-from nova.monitoring.session import SessionMonitor
+from nova.monitoring.session import SessionHealthData, SessionMonitor
+from nova.monitoring.warnings import (
+    HealthWarningSystem,
+    WarningCategory,
+    WarningSeverity,
+)
 from nova.vector_store.store import VectorStore
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -27,83 +33,76 @@ logger: logging.Logger = logging.getLogger(__name__)
 # Type variable for click command function
 F = TypeVar("F", bound=Callable[..., Any])
 
+# Type hints for health status dictionaries
+MemoryStatus = dict[str, str | float]
+DiskStatus = dict[str, str | float]
+DirectoryStatus = dict[str, str]
+HealthStatus = dict[str, str | float | dict[str, str | float] | dict[str, str]]
 
-# Type definitions for monitoring data
-class MemoryStatus(TypedDict):
-    """Memory status information."""
-
-    status: str
-    current_mb: float
-    peak_mb: float
-    warning_count: int
-
-
-class ComponentStatus(TypedDict):
-    """Component status information."""
-
-    status: str
+# Type hints for conversion functions
+ConvertibleToFloat = Union[str, int, float]
+ConvertibleToInt = Union[str, int, float]
 
 
-class HealthStatus(TypedDict):
-    """System health status information."""
+def get_float(value: ConvertibleToFloat) -> float:
+    """Convert a value to float.
 
-    memory: MemoryStatus
-    vector_store: str
-    monitor: str
-    logs: str
-    session_uptime: float
-    status: str
+    Args:
+        value: Value to convert
 
-
-class ProcessStats(TypedDict):
-    """Process statistics."""
-
-    current_memory_mb: float
-    peak_memory_mb: float
-    warning_count: int
+    Returns:
+        float: Converted value
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float(value)
 
 
-class MemoryStats(TypedDict):
-    """Memory statistics."""
+def get_int(value: ConvertibleToInt) -> int:
+    """Convert a value to int.
 
-    process: ProcessStats
+    Args:
+        value: Value to convert
 
-
-class SessionStats(TypedDict):
-    """Session statistics."""
-
-    start_time: str
-    uptime: float
-
-
-class SystemStats(TypedDict):
-    """System statistics."""
-
-    memory: MemoryStats
-    session: SessionStats
-    profiles: list[dict[str, Any]]
-    vector_store: dict[str, Any]
-    monitor: dict[str, Any]
-    logs: dict[str, int]
+    Returns:
+        int: Converted value
+    """
+    if isinstance(value, int):
+        return value
+    return int(float(value))
 
 
-class LogEntry(TypedDict):
-    """Log entry information."""
+def get_dict_value(d: dict[str, Any], key: str) -> str | int | float:
+    """Get a value from a dictionary, ensuring it's a primitive type.
 
-    timestamp: str
-    level: str
-    component: str
-    message: str
+    Args:
+        d: Dictionary to get value from
+        key: Key to get value for
+
+    Returns:
+        Union[str, int, float]: The value
+    """
+    value = d[key]
+    if isinstance(value, (str, int, float)):
+        return value
+    raise ValueError(f"Value for key {key} is not a primitive type: {type(value)}")
 
 
-class ProfileInfo(TypedDict):
-    """Profile information."""
+def get_collection_info(collection: dict[str, Any]) -> dict[str, Any]:
+    """Get collection information.
 
-    name: str
-    timestamp: str
-    duration: float
-    stats_file: str
-    profile_file: str
+    Args:
+        collection: Collection data
+
+    Returns:
+        Dict[str, Any]: Collection information
+    """
+    return {
+        "name": collection.get("name", "unknown"),
+        "count": collection.get("count", 0),
+        "embeddings": collection.get("embeddings", 0),
+        "size": collection.get("size", 0),
+    }
 
 
 class MonitorCommand(NovaCommand):
@@ -117,8 +116,16 @@ class MonitorCommand(NovaCommand):
         super().__init__()
         self.config = load_config()
         self.console = Console()
-        self.monitor = SessionMonitor(nova_dir=self.config.paths.state_dir)
+
+        # Initialize vector store with correct path
+        self.vector_store = VectorStore(base_path=str(self.config.paths.vector_store_dir))
+
+        # Initialize system monitor with vector store
+        self.system_monitor = SessionMonitor(vector_store=self.vector_store)
         self.persistent_monitor = PersistentMonitor(base_path=self.config.paths.state_dir)
+        self.warning_system = HealthWarningSystem(base_path=self.config.paths.state_dir)
+
+        # Initialize monitors
         self.log_manager = LogManager(log_dir=str(self.config.paths.logs_dir))
 
     def create_command(self) -> click.Command:
@@ -134,261 +141,358 @@ class MonitorCommand(NovaCommand):
             pass
 
         @monitor.command()
-        def health() -> None:
-            """Check system health."""
-            self.check_health()
-
-        @monitor.command()
-        def stats() -> None:
-            """Display system statistics."""
-            self.display_stats()
+        @click.option(
+            "--watch",
+            is_flag=True,
+            help="Watch mode: continuously update health status",
+        )
+        @click.option(
+            "--no-color",
+            is_flag=True,
+            help="Disable colored output",
+        )
+        @click.option(
+            "--format",
+            type=click.Choice(["text", "json"]),
+            default="text",
+            help="Output format",
+        )
+        @click.option(
+            "--verbose",
+            is_flag=True,
+            help="Show detailed statistics and health information",
+        )
+        def health(watch: bool, no_color: bool, format: str, verbose: bool) -> None:
+            """Show system health status and statistics."""
+            if watch:
+                with Live(
+                    self._get_health_panel(verbose=verbose),
+                    refresh_per_second=2,
+                    console=self.console,
+                ) as live:
+                    try:
+                        while True:
+                            live.update(self._get_health_panel(verbose=verbose))
+                    except KeyboardInterrupt:
+                        pass
+            else:
+                self.check_health(no_color=no_color, format=format, verbose=verbose)
 
         @monitor.command()
         @click.option(
-            "--component",
-            type=str,
-            help="Filter logs by component",
-            required=False,
+            "--category",
+            type=click.Choice([c.value for c in WarningCategory]),
+            help="Filter warnings by category",
         )
         @click.option(
-            "--level",
-            type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
-            help="Filter logs by level",
-            required=False,
+            "--severity",
+            type=click.Choice([s.value for s in WarningSeverity]),
+            help="Filter warnings by severity",
         )
-        def logs(component: str | None, level: str | None) -> None:
-            """View system logs."""
-            self.view_logs(component, level)
+        @click.option(
+            "--history",
+            is_flag=True,
+            help="Show warning history",
+        )
+        @click.option(
+            "--limit",
+            type=int,
+            default=10,
+            help="Maximum number of warnings to show",
+        )
+        def warnings(
+            category: str | None,
+            severity: str | None,
+            history: bool,
+            limit: int,
+        ) -> None:
+            """Show system warnings."""
+            self.show_warnings(
+                category=WarningCategory(category) if category else None,
+                severity=WarningSeverity(severity) if severity else None,
+                show_history=history,
+                limit=limit,
+            )
 
         return monitor
 
-    def check_health(self) -> None:
-        """Check system health."""
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.console,
-        ) as progress:
-            task_id = progress.add_task("Checking system health...", total=None)
-            health_status = self._get_health_status()
-            progress.remove_task(task_id)
-
-        table = Table(title="System Health Status")
-        table.add_column("Component", style="cyan")
-        table.add_column("Status", style="green")
-
-        table.add_row("Memory", health_status["memory"]["status"])
-        table.add_row("Vector Store", health_status["vector_store"])
-        table.add_row("Monitor", health_status["monitor"])
-        table.add_row("Logs", health_status["logs"])
-        table.add_row("Session Uptime", f"{health_status['session_uptime']:.2f}s")
-        table.add_row("Overall Status", health_status["status"])
-
-        self.console.print(table)
-
-    def display_stats(self) -> None:
-        """Display system statistics."""
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.console,
-        ) as progress:
-            task_id = progress.add_task("Gathering system statistics...", total=None)
-            stats = self._get_system_stats()
-            progress.remove_task(task_id)
-
-        # Memory stats
-        memory_table = Table(title="Memory Statistics")
-        memory_table.add_column("Metric", style="cyan")
-        memory_table.add_column("Value", style="green")
-        memory_table.add_row(
-            "Current Memory", f"{stats['memory']['process']['current_memory_mb']:.2f} MB"
-        )
-        memory_table.add_row(
-            "Peak Memory", f"{stats['memory']['process']['peak_memory_mb']:.2f} MB"
-        )
-        memory_table.add_row("Warning Count", str(stats["memory"]["process"]["warning_count"]))
-        self.console.print(memory_table)
-        self.console.print()
-
-        # Session stats
-        session_table = Table(title="Session Statistics")
-        session_table.add_column("Metric", style="cyan")
-        session_table.add_column("Value", style="green")
-        session_table.add_row("Start Time", stats["session"]["start_time"])
-        session_table.add_row("Uptime", f"{stats['session']['uptime']:.2f}s")
-        self.console.print(session_table)
-        self.console.print()
-
-        # Vector store stats
-        vector_table = Table(title="Vector Store Statistics")
-        vector_table.add_column("Metric", style="cyan")
-        vector_table.add_column("Value", style="green")
-        for key, value in stats["vector_store"].items():
-            vector_table.add_row(key, str(value))
-        self.console.print(vector_table)
-        self.console.print()
-
-        # Monitor stats
-        monitor_table = Table(title="Monitor Statistics")
-        monitor_table.add_column("Metric", style="cyan")
-        monitor_table.add_column("Value", style="green")
-        for key, value in stats["monitor"].items():
-            monitor_table.add_row(key, str(value))
-        self.console.print(monitor_table)
-        self.console.print()
-
-        # Log stats
-        log_table = Table(title="Log Statistics")
-        log_table.add_column("Metric", style="cyan")
-        log_table.add_column("Value", style="green")
-        for key, value in stats["logs"].items():
-            log_table.add_row(key, str(value))
-        self.console.print(log_table)
-
-    def view_logs(self, component: str | None, level: str | None) -> None:
-        """View system logs.
+    def _get_health_panel(self, verbose: bool = False) -> Panel:
+        """Get health status panel.
 
         Args:
-            component: Filter logs by component
-            level: Filter logs by level
-        """
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=self.console,
-        ) as progress:
-            task_id = progress.add_task("Loading logs...", total=None)
-            logs = self._get_logs(component, level)
-            progress.remove_task(task_id)
-
-        table = Table(title="System Logs")
-        table.add_column("Timestamp", style="cyan")
-        table.add_column("Level", style="green")
-        table.add_column("Component", style="blue")
-        table.add_column("Message", style="white")
-
-        for log in logs:
-            table.add_row(log["timestamp"], log["level"], log["component"], log["message"])
-
-        self.console.print(table)
-
-    def _get_health_status(self) -> HealthStatus:
-        """Get system health status.
+            verbose: Whether to include verbose output
 
         Returns:
-            HealthStatus: System health status information
+            Panel containing health status
         """
-        # Get memory status from monitor
-        health_status = self.monitor.check_health()
-        memory_status = cast(MemoryStatus, health_status["memory"])
+        logger.info("Getting current statistics")
+        health_status = self.system_monitor.check_health()
+        grid = Table.grid()
 
-        # Check vector store
-        try:
-            vector_store = VectorStore(base_path=str(self.config.paths.vector_store_dir))
-            vector_store_status = "OK"
-        except Exception as e:
-            vector_store_status = f"Error: {e}"
+        # Add health table
+        grid.add_row(self._create_health_table(cast(dict[str, Any], health_status)))
 
-        # Check monitor
-        try:
-            self.persistent_monitor.check_health()
-            monitor_status = "OK"
-        except Exception as e:
-            monitor_status = f"Error: {e}"
+        # Add stats table if verbose
+        if verbose:
+            grid.add_row(self._create_stats_table(cast(dict[str, Any], health_status)))
 
-        # Check logs
-        try:
-            self.log_manager.rotate_logs()
-            logs_status = "OK"
-        except Exception as e:
-            logs_status = f"Error: {e}"
+        return Panel(
+            grid,
+            title="System Health",
+            subtitle=f"Last checked: {datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}",
+        )
 
-        # Get session uptime
-        session_uptime = (datetime.now() - self.monitor.session_start).total_seconds()
+    def check_health(
+        self, no_color: bool = False, format: str = "text", verbose: bool = False
+    ) -> None:
+        """Check and display system health status.
 
-        # Determine overall status
-        if all(
-            s == "OK"
-            for s in [memory_status["status"], vector_store_status, monitor_status, logs_status]
-        ):
-            overall_status = "Healthy"
+        Args:
+            no_color: Whether to disable colored output
+            format: Output format (text/json)
+            verbose: Whether to show detailed statistics
+        """
+        # Get health data
+        health_data = self._get_health_data(verbose=verbose)
+
+        if format == "json":
+            self.console.print_json(data=health_data)
         else:
-            overall_status = "Degraded"
+            self.console.print(self._get_health_panel(verbose=verbose))
 
-        return {
-            "memory": memory_status,
-            "vector_store": vector_store_status,
-            "monitor": monitor_status,
-            "logs": logs_status,
-            "session_uptime": session_uptime,
-            "status": overall_status,
-        }
-
-    def _get_system_stats(self) -> SystemStats:
-        """Get system statistics.
-
-        Returns:
-            SystemStats: System statistics information
-        """
-        # Get memory stats
-        memory_check = self.monitor.memory.check_memory()
-        memory_stats: ProcessStats = {
-            "current_memory_mb": memory_check["current_mb"],
-            "peak_memory_mb": memory_check["peak_mb"],
-            "warning_count": memory_check["warning_count"],
-        }
-
-        # Get session stats
-        session_stats: SessionStats = {
-            "start_time": self.monitor.session_start.isoformat(),
-            "uptime": (datetime.now() - self.monitor.session_start).total_seconds(),
-        }
-
-        # Get persistent stats
-        persistent_stats = self.persistent_monitor.get_stats()
-        profiles = cast(list[dict[str, Any]], persistent_stats.get("profiles", []))
-        vector_store = cast(dict[str, Any], persistent_stats.get("vector_store", {}))
-        monitor = cast(dict[str, Any], persistent_stats.get("monitor", {}))
-
-        # Get log stats
-        log_stats = self.log_manager.get_stats()
-
-        return {
-            "memory": {"process": memory_stats},
-            "session": session_stats,
-            "profiles": profiles,
-            "vector_store": vector_store,
-            "monitor": monitor,
-            "logs": log_stats,
-        }
-
-    def _get_logs(self, component: str | None = None, level: str | None = None) -> list[LogEntry]:
-        """Get system logs.
+    def _create_health_table(self, health_status: dict[str, Any]) -> Table:
+        """Create health status table.
 
         Args:
-            component: Filter logs by component
-            level: Filter logs by level
+            health_status: Health status information
 
         Returns:
-            List[LogEntry]: List of log entries
+            Rich table with health status
         """
-        # Get last 100 logs
-        raw_logs = self.log_manager.tail_logs(n=100)
+        table = Table(title="System Health Status")
+        table.add_column("Component")
+        table.add_column("Status")
+        table.add_column("Details")
 
-        # Convert and filter logs
-        filtered_logs: list[LogEntry] = []
-        for raw_log in raw_logs:
-            log_entry: LogEntry = {
-                "timestamp": raw_log["timestamp"],
-                "level": raw_log["level"],
-                "component": raw_log["component"],
-                "message": raw_log["message"],
-            }
-            if component and log_entry["component"] != component:
-                continue
-            if level and log_entry["level"] != level:
-                continue
-            filtered_logs.append(log_entry)
+        # Memory status
+        memory = health_status["memory"]
+        memory_details = (
+            f"Current: {memory['current_memory_mb']:.2f}MB, "
+            f"Peak: {memory['peak_memory_mb']:.2f}MB, "
+            f"Available: {memory['available_memory_mb']:.2f}MB"
+        )
+        table.add_row("Memory", self._format_status(memory["status"]), memory_details)
 
-        return filtered_logs
+        # Vector store status
+        vector_details = []
+        if "collection" in health_status:
+            count = health_status["collection"].get("count", 0)
+            vector_details.append(f"Documents: {count}")
+            if health_status["collection"].get("exists", False):
+                vector_details.append("Collection: exists")
+            else:
+                vector_details.append("Collection: missing")
+
+        # Get vector store status
+        vector_status = "healthy"
+        if health_status.get("status") == "error":
+            vector_status = "error"
+            if "error" in health_status:
+                vector_details.append(f"Error: {health_status['error']}")
+
+        table.add_row(
+            "Vector Store",
+            self._format_status(vector_status),
+            ", ".join(vector_details) if vector_details else "",
+        )
+
+        # Monitor status
+        table.add_row("Monitor", self._format_status(health_status["monitor"]), "")
+
+        # Logs status
+        table.add_row("Logs", self._format_status(health_status["logs"]), "")
+
+        # Overall status
+        overall_status = "healthy"
+        if vector_status == "error":
+            overall_status = "error"
+
+        table.add_row(
+            "Overall",
+            self._format_status(overall_status),
+            f"Session uptime: {health_status['session_uptime']:.1f}s",
+        )
+
+        return table
+
+    def _create_stats_table(self, health_status: dict[str, Any]) -> Table:
+        """Create a table showing document statistics."""
+        grid = Table.grid()
+
+        # Get repository stats
+        repository = health_status.get("repository", {})
+        collection = health_status.get("collection", {})
+
+        # Document Statistics
+        doc_table = Table(title="Document Statistics")
+        doc_table.add_column("Metric")
+        doc_table.add_column("Value")
+
+        # Add database status with error if present
+        status = "disconnected"
+        if health_status.get("status") == "healthy":
+            status = "connected"
+        elif health_status.get("status") == "error":
+            status = f"error: {health_status.get('error', 'Unknown error')}"
+        elif collection.get("exists", False):
+            status = "connected"
+        doc_table.add_row("Database Status", status)
+
+        # Add basic document stats
+        doc_table.add_row("Total Documents", str(collection.get("count", 0)))
+        doc_table.add_row("Document Types", str(repository.get("file_types", {})))
+        doc_table.add_row("Size Distribution", "Calculated on demand")
+        doc_table.add_row("Average Size", "Calculated on demand")
+
+        # Chunk Statistics
+        chunk_table = Table(title="Chunk Statistics")
+        chunk_table.add_column("Metric")
+        chunk_table.add_column("Value")
+
+        chunk_table.add_row("Total Chunks", str(repository.get("total_chunks", 0)))
+        chunk_table.add_row("Unique Sources", str(repository.get("unique_sources", 0)))
+        chunk_table.add_row("File Types", str(repository.get("file_types", {})))
+
+        # Tag Statistics
+        tag_table = Table(title="Tag Statistics")
+        tag_table.add_column("Metric")
+        tag_table.add_column("Value")
+
+        tag_stats = repository.get("tags", {})
+        tag_table.add_row("Total Tags", str(tag_stats.get("total", 0)))
+        tag_table.add_row("Unique Tags", str(tag_stats.get("unique", 0)))
+        tag_table.add_row("Tag List", str(tag_stats.get("list", [])))
+
+        grid.add_row(doc_table)
+        grid.add_row(chunk_table)
+        grid.add_row(tag_table)
+
+        return grid
+
+    def _format_status(self, status: str) -> str:
+        """Format status string with appropriate color.
+
+        Args:
+            status: Status string to format
+
+        Returns:
+            Formatted status string
+        """
+        status = status.lower()
+        if status in ["healthy", "ok"]:
+            return "[green]healthy[/green]"
+        elif status in ["warning", "degraded"]:
+            return "[yellow]degraded[/yellow]"
+        elif "error" in status:
+            return f"[red]{status}[/red]"
+        else:
+            return "[red]critical[/red]"
+
+    def show_warnings(
+        self,
+        category: WarningCategory | None = None,
+        severity: WarningSeverity | None = None,
+        show_history: bool = False,
+        limit: int = 10,
+    ) -> None:
+        """Show system warnings.
+
+        Args:
+            category: Filter warnings by category
+            severity: Filter warnings by severity
+            show_history: Show warning history
+            limit: Maximum number of warnings to show
+        """
+        if show_history:
+            warnings = self.warning_system.get_warning_history(
+                category=category,
+                severity=severity,
+                limit=limit,
+            )
+            title = "Warning History"
+        else:
+            warnings = self.warning_system.get_active_warnings(
+                category=category,
+                severity=severity,
+            )
+            title = "Active Warnings"
+
+        if not warnings:
+            self.console.print(
+                f"[green]No {title.lower()} found with the specified filters.[/green]"
+            )
+            return
+
+        warning_table = Table(title=title)
+        warning_table.add_column("Timestamp", style="cyan")
+        warning_table.add_column("Severity", style="red")
+        warning_table.add_column("Category", style="yellow")
+        warning_table.add_column("Message", style="white")
+        warning_table.add_column("Details", style="blue")
+        if show_history:
+            warning_table.add_column("Resolution", style="green")
+
+        for warning in warnings:
+            if warning.timestamp is None:
+                continue
+
+            row = [
+                warning.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                warning.severity.value.upper(),
+                warning.category.value,
+                warning.message,
+                ", ".join(f"{k}={v}" for k, v in (warning.details or {}).items()),
+            ]
+            if show_history:
+                resolution = "Active"
+                if warning.resolved and warning.resolved_at is not None:
+                    resolution = f"Resolved at {warning.resolved_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                row.append(resolution)
+            warning_table.add_row(*row)
+
+        self.console.print(warning_table)
+
+    def _get_health_data(self, verbose: bool = False) -> dict[str, Any]:
+        """Get health data for all components."""
+        # Get memory stats from session monitor
+        session_health = cast(SessionHealthData, self.system_monitor.check_health())
+        vector_health = self.vector_store.check_health()
+
+        health_data = {
+            "status": "healthy",  # Overall status
+            "memory": session_health["memory"],
+            "vector_store": vector_health,  # Return full vector health data
+            "monitor": {
+                "status": "healthy",
+                "last_check": datetime.now().isoformat(),
+            },
+            "logs": {
+                "status": "healthy",
+                "directory": str(self.config.paths.logs_dir),
+            },
+            "session_uptime": session_health.get("uptime", 0.0),
+        }
+
+        # Update overall status based on component health
+        if any(
+            component.get("status", "healthy") != "healthy"
+            for component in [
+                session_health["memory"],
+                vector_health,
+                health_data["monitor"],
+                health_data["logs"],
+            ]
+        ):
+            health_data["status"] = "degraded"
+
+        return health_data

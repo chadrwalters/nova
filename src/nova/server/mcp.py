@@ -23,13 +23,13 @@ vector_stats = VectorStoreStats(vector_dir=str(Path(".nova/vectors")))
 
 
 # Initialize CLI commands
-class SearchRequest(BaseModel):
-    """Search request model."""
+class SearchRequest:
+    """Search request."""
 
     query: str
-    limit: int | None = 5
-    tag_filter: str | None = None
-    attachment_type: str | None = None
+    limit: int = 10
+    tag_filter: list[str] = Field(default_factory=list)
+    attachment_type: list[str] = Field(default_factory=list)
 
 
 class SearchResponse(BaseModel):
@@ -42,18 +42,28 @@ class SearchResponse(BaseModel):
 
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest) -> SearchResponse:
-    """Search for documents."""
+    """Search for documents.
+
+    Args:
+        request: Search request
+
+    Returns:
+        SearchResponse: Search results
+    """
     try:
         # Perform search
-        results = vector_store.search(
+        results = await vector_store.search(
             query=request.query,
-            limit=request.limit or 5,
-            tag_filter=request.tag_filter,
-            attachment_type=request.attachment_type,
+            limit=request.limit,
+            filters={"tags": request.tag_filter, "attachment_types": request.attachment_type},
         )
 
         # Return results
-        return SearchResponse(results=results, total=len(results), query=request.query)
+        return SearchResponse(
+            results=[{"text": r.text, "score": r.score, "metadata": r.metadata} for r in results],
+            total=len(results),
+            query=request.query,
+        )
 
     except Exception as e:
         logger.error(f"Error during search: {e}")

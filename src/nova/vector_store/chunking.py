@@ -5,6 +5,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,9 @@ class Chunk:
     heading_text: str = ""
     heading_level: int = 0
     _tags: list[str] = field(default_factory=list)  # Internal list of tags
-    _attachments: list[dict] = field(default_factory=list)  # Internal list of attachment dicts
+    _attachments: list[dict[str, str]] = field(
+        default_factory=list
+    )  # Internal list of attachment dicts
     chunk_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def __post_init__(self) -> None:
@@ -40,29 +43,37 @@ class Chunk:
             self._tags = list(value)
 
     @property
-    def attachments(self) -> list[dict]:
+    def attachments(self) -> list[dict[str, str]]:
         """Get attachments as a list of dicts."""
         return self._attachments
 
     @attachments.setter
-    def attachments(self, value: str | list[str | dict]) -> None:
-        """Set attachments from either a comma-separated string or list."""
-        if isinstance(value, str):
+    def attachments(self, value: str | list[Any]) -> None:
+        """Set attachments from either a comma-separated string or list.
+
+        Args:
+            value: Either a comma-separated string of 'type:path' pairs,
+                  or a list of strings/dicts with type and path information.
+        """
+        self._attachments = []
+        if isinstance(value, str) and value:
             # Parse string format "type:path,type:path"
-            self._attachments = []
-            if value:
-                for att in value.split(","):
-                    type_, path = att.strip().split(":", 1)
-                    self._attachments.append({"type": type_, "path": path})
-        else:
+            for att in value.split(","):
+                type_, path = att.strip().split(":", 1)
+                self._attachments.append({"type": type_, "path": path})
+        elif isinstance(value, list):
             # Convert list items to dicts if needed
-            self._attachments = []
-            for att in value:
-                if isinstance(att, str):
-                    type_, path = att.strip().split(":", 1)
+            for item in value:
+                if isinstance(item, str):
+                    type_, path = item.strip().split(":", 1)
                     self._attachments.append({"type": type_, "path": path})
-                else:
-                    self._attachments.append(dict(att))
+                elif isinstance(item, dict):
+                    self._attachments.append(
+                        {
+                            "type": str(item.get("type", "unknown")),
+                            "path": str(item.get("path", "")),
+                        }
+                    )
 
     def add_tag(self, tag: str) -> None:
         """Add a tag to the chunk."""
@@ -77,12 +88,27 @@ class Chunk:
 
     def to_metadata(self) -> dict:
         """Convert chunk metadata to a format suitable for ChromaDB."""
+        # Generate a document ID from the source path if available
+        doc_id = str(self.source) if self.source else self.chunk_id
+
+        # Get document type from source extension or default to unknown
+        doc_type = self.source.suffix[1:] if self.source else "unknown"
+
+        # Get document size from source file if available
+        doc_size = (
+            self.source.stat().st_size if self.source and self.source.exists() else len(self.text)
+        )
+
         return {
-            "source": str(self.source) if self.source else "",
+            "document_id": doc_id,
+            "document_type": doc_type,
+            "document_size": doc_size,
+            "text": self.text,
+            "date": None,  # Date will be set by the caller if available
+            "tags": self._tags,
+            "attachments": self._attachments,
             "heading_text": self.heading_text,
-            "heading_level": str(self.heading_level),
-            "tags": ",".join(self._tags),
-            "attachments": ",".join(f"{att['type']}:{att['path']}" for att in self._attachments),
+            "heading_level": self.heading_level,
             "chunk_id": self.chunk_id,
         }
 
@@ -275,7 +301,8 @@ class ChunkingEngine:
 
     def _split_text(self, text: str) -> list[str]:
         """Split text into smaller chunks at sentence boundaries or line
-        breaks."""
+        breaks.
+        """
         # First try to split at sentence boundaries
         sentences = re.split(r"([.!?]+\s+)", text)
         chunks = []

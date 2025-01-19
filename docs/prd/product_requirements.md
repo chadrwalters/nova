@@ -366,85 +366,113 @@ Nova
 
 ### 4.5 Monitoring System [IMPLEMENTED]
 
-#### Session-based Monitoring
-- Real-time Performance Tracking:
-  - Query response time measurement
-  - Memory usage monitoring (peak and current)
+#### Health Monitoring Requirements
+- Real-time system health tracking:
+  - Memory usage monitoring
+    - Current usage tracking
+    - Peak usage detection
+    - Warning thresholds
   - CPU utilization tracking
-  - Active processing status updates
-- Health Checks:
-  - Component connectivity validation
-  - Resource availability monitoring
-  - System integrity verification
-  - Real-time status reporting
-- Error Management:
-  - Real-time error detection and logging
-  - Error context preservation
-  - Recovery guidance
-  - Session error statistics
+    - Usage percentage
+    - Load monitoring
+    - Performance metrics
+  - Disk space monitoring
+    - Space utilization
+    - Free space tracking
+    - Directory health
+  - Directory health checks
+    - Path validation
+    - Permission checks
+    - Structure verification
 
-#### Persistent Monitoring
-- Metrics Storage:
-  - SQLite-based persistence in .nova/metrics
-  - Cross-session data retention
-  - Performance trend tracking
-  - Error pattern analysis
-- Health Tracking:
-  - Component status history
-  - Resource utilization patterns
-  - Storage space monitoring
-  - System recommendations
-- Performance Analysis:
-  - Daily and hourly metrics
-  - Query pattern analysis
-  - Resource usage trends
-  - Optimization insights
+#### Warning System Requirements
+- Comprehensive warning management:
+  - Warning categories
+    - Memory warnings
+    - Disk warnings
+    - CPU warnings
+    - Directory warnings
+    - Vector store warnings
+    - Metadata warnings
+  - Severity levels
+    - Info level for notifications
+    - Warning level for attention
+    - Critical level for urgent issues
+  - Warning features
+    - Warning persistence
+    - History tracking
+    - Resolution tracking
+    - Category filtering
+    - Severity filtering
 
-#### Log Management
-- Automated Operations:
-  - Size-based log rotation (10MB default)
-  - Age-based archival (7 days default)
-  - Compressed storage (.gz format)
-  - Archive cleanup (50 files max)
-- Analysis Capabilities:
-  - Structured log parsing
-  - Error pattern detection
-  - Warning frequency analysis
-  - Performance anomaly identification
-- Storage Optimization:
-  - Configurable retention settings
-  - Space utilization monitoring
-  - Archive management
-  - Directory organization
-
-#### Integration Features
-- Claude Desktop Integration:
-  - READ-ONLY monitoring tools
-  - Health check endpoints
+#### Statistics Requirements
+- Vector store statistics:
+  - Document statistics
+    - Total document count
+    - Document types breakdown
+    - Size distribution analysis
+  - Chunk statistics
+    - Total chunk count
+    - Average per document
+    - Size distribution
+  - Tag statistics
+    - Total tag count
+    - Unique tag analysis
+    - Tag relationships
   - Performance metrics
-  - Log analysis capabilities
-- Cleanup Procedures:
-  - Automatic session cleanup
-  - Metric persistence
-  - Log rotation
-  - Resource release
-- Error Handling:
+    - Search performance
+    - Error rates
+    - Response times
+
+#### Output Format Requirements
+- Text output format:
+  - Rich console integration
+    - Color-coded status
+    - Progress indicators
+    - Formatted tables
+  - Style configuration
+    - Color schemes
+    - Status indicators
+    - Text styling
+- JSON output format:
+  - Machine-readable structure
+    - Nested data format
+    - Type safety
+    - Schema validation
+  - Format features
+    - Pretty printing
+    - Syntax highlighting
+    - Error handling
+
+#### Command Interface Requirements
+- Monitor command structure:
+  - health subcommand
+    - Watch mode support
+    - Color output control
+    - Format selection
+    - Verbose mode for statistics
+    - Health status display
+    - Performance metrics
+    - Document statistics
+    - Chunk statistics
+    - Tag statistics
+  - warnings subcommand
+    - Category filtering
+    - Severity filtering
+    - History viewing
+    - Limit control
+
+#### Integration Requirements
+- System integration:
+  - Automatic metrics recording
+  - Resource cleanup
+  - State persistence
+  - Cross-session tracking
+- Error management:
   - Structured error tracking
   - Pattern analysis
   - Recovery procedures
   - Prevention strategies
-
-#### Core Tools
-- monitor_tool Commands:
-  - health: System component status
-  - stats: Performance metrics
-  - logs: Log analysis and filtering
-  - errors: Error tracking and analysis
-- Features:
-  - Real-time monitoring
-  - Cross-session analysis
-  - Trend visualization
-  - Health recommendations
 
 ## 5. Non-Functional Requirements
 

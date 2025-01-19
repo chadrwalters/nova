@@ -5,34 +5,31 @@ build-backend = "hatchling.build"
 [project]
 name = "nova"
 version = "0.1.0"
-description = "Nova - AI-powered note processing and search"
+description = "Nova note processing system"
 authors = [{ name = "Chad Walters", email = "chad@walters.io" }]
 dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "websockets>=12.0",
-    "python-magic>=0.4.27",
-    "markdown2>=2.4.10",
-    "html2text>=2020.1.16",
-    "docutils>=0.20.1",
-    "asciidoc>=10.2.0",
-    "pypandoc>=1.12",
-    "pdfplumber>=0.10.3",
-    "openpyxl>=3.1.2",
-    "python-pptx>=0.6.22",
     "aiofiles>=23.2.1",
-    "chromadb>=0.4.18",
-    "sentence-transformers>=2.2.2",
-    "mcp>=1.2.0",
-    "uv>=0.1.12",
-    "rich>=13.7.0",
-    "click>=8.1.7",
-    "pyyaml>=6.0.1",
-    "numpy>=1.26.2",
-    "psutil>=5.9.8",
-    "docling-core>=2.14.0",
+    "asciidoc>=10.2.0",
     "chardet>=5.2.0",
+    "chromadb>=0.4.22",
+    "docutils>=0.20.1",
+    "fastapi>=0.109.0",
+    "html2text>=2020.1.16",
+    "python-magic>=0.4.27",
+    "markdown2>=2.4.12",
+    "matplotlib>=3.8.0",
+    "openpyxl>=3.1.2",
+    "pandas>=2.2.0",
+    "pdfplumber>=0.10.3",
     "pillow-heif>=0.15.0",
+    "python-pptx>=0.6.21",
+    "pypandoc>=1.12",
+    "seaborn>=0.13.0",
+    "sentence-transformers>=2.2.2",
+    "types-Pillow",
+    "pandas-stubs",
+    "types-requests",
+    "types-setuptools",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
@@ -92,32 +89,26 @@ dev-dependencies = [
 ]
 
 [tool.pytest.ini_options]
-log_cli = false
-log_cli_level = "WARNING"
-log_cli_format = "%(message)s"
-addopts = "--verbosity=2 --showlocals --no-header"
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
 
 [tool.pytest]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-check_untyped_defs = true
+ignore_missing_imports = true
 disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
+check_untyped_defs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
+warn_return_any = true
+strict_optional = true
 
 [[tool.mypy.overrides]]
 module = [
-    "magic.*",
+    "python-magic.*",
     "markdown2.*",
     "html2text.*",
     "docutils.*",
@@ -125,15 +116,18 @@ module = [
     "pypandoc.*",
     "pdfplumber.*",
     "openpyxl.*",
-    "pptx.*",
+    "python-pptx.*",
     "aiofiles.*",
     "chromadb.*",
     "sentence_transformers.*",
     "mcp.*",
     "chardet.*",
     "pillow_heif.*",
+    "matplotlib.*",
+    "seaborn.*",
+    "pandas.*",
+    "wordcloud.*",
 ]
-ignore_missing_imports = true
 
 [tool.ruff]
 select = [

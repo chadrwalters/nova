@@ -1,10 +1,10 @@
-"""Persistent monitoring for Nova system.
+"""Persistent monitoring module.
 
-This module handles cross-session metrics, logging, and system health
-tracking. Data is stored in the .nova directory to persist between
-sessions.
+This module handles persistent monitoring data across sessions,
+including metrics, logging, and health tracking.
 """
 
+import json
 import logging
 import shutil
 import sqlite3
@@ -156,85 +156,86 @@ class PersistentMonitor:
                 ),
             )
 
-    def get_system_health(self) -> dict[str, Any]:
-        """Get overall system health status.
+    def get_uptime(self) -> float:
+        """Get the uptime of the current session.
 
         Returns:
-            Dict containing system health information
+            The uptime in seconds
         """
-        vector_store_path = self.base_path / "vectors"
-        processing_path = self.base_path / "processing"
-        logs_path = self.base_path / "logs"
-
-        # Get disk space info
-        disk_usage = shutil.disk_usage(str(self.base_path))
-
         with self._get_db() as conn:
-            # Get recent errors
-            recent_errors = conn.execute(
+            result = conn.execute(
                 """
-                SELECT timestamp, error_message FROM errors
-                WHERE timestamp > datetime('now', '-24 hours')
-                ORDER BY timestamp DESC
-            """
-            ).fetchall()
-
-            # Get session stats
-            session_stats = conn.execute(
-                """
-                SELECT
-                    COUNT(*) as total_sessions,
-                    AVG(queries_processed) as avg_queries,
-                    AVG(avg_query_time) as avg_query_time,
-                    AVG(peak_memory_mb) as avg_peak_memory,
-                    SUM(errors_encountered) as total_errors
-                FROM sessions
-                WHERE start_time > datetime('now', '-24 hours')
+                SELECT start_time FROM sessions
+                ORDER BY start_time DESC
+                LIMIT 1
             """
             ).fetchone()
+            if result:
+                start_time = datetime.fromisoformat(result[0])
+                return (datetime.now() - start_time).total_seconds()
+            return 0.0
+
+    def get_system_health(self) -> dict[str, Any]:
+        """Get overall system health status."""
+        # Get paths
+        vector_store_path = self.base_path / ".nova" / "vectors"
+        processing_path = self.base_path / ".nova" / "processing"
+        logs_path = self.base_path / ".nova" / "logs"
+
+        # Get stats
+        vector_store_stats = {}
+        stats_path = vector_store_path / "stats.json"
+        if stats_path.exists():
+            with open(stats_path) as f:
+                vector_store_stats = json.load(f)
+
+        # Get directory info
+        vector_store_info = self._get_dir_info(vector_store_path)
+        processing_info = self._get_dir_info(processing_path)
+        logs_info = self._get_dir_info(logs_path)
+
+        # Get recent errors
+        recent_errors = self._get_recent_errors()
+        total_errors = len(recent_errors) if recent_errors else 0
+
+        # Get session stats
+        session_stats = self._get_session_stats()
+
+        # Get storage details
+        storage_details = self._get_storage_details()
+
+        # Calculate overall status
+        memory_status = "healthy"
+        vector_store_status = "OK" if vector_store_info["status"] == "healthy" else "error"
+        monitor_status = "OK"
+        logs_status = "OK" if logs_info["status"] == "healthy" else "error"
+
+        overall_status = "healthy"
+        if any(
+            s == "error" for s in [memory_status, vector_store_status, monitor_status, logs_status]
+        ):
+            overall_status = "error"
+        elif any(
+            s == "degraded"
+            for s in [memory_status, vector_store_status, monitor_status, logs_status]
+        ):
+            overall_status = "degraded"
 
         return {
-            "components": {
-                "vector_store": {
-                    "status": "healthy" if vector_store_path.exists() else "missing",
-                    "size_mb": sum(f.stat().st_size for f in vector_store_path.rglob("*"))
-                    / 1024
-                    / 1024
-                    if vector_store_path.exists()
-                    else 0,
-                },
-                "processing": {
-                    "status": "healthy" if processing_path.exists() else "missing",
-                    "size_mb": sum(f.stat().st_size for f in processing_path.rglob("*"))
-                    / 1024
-                    / 1024
-                    if processing_path.exists()
-                    else 0,
-                },
-                "logs": {
-                    "status": "healthy" if logs_path.exists() else "missing",
-                    "size_mb": sum(f.stat().st_size for f in logs_path.rglob("*")) / 1024 / 1024
-                    if logs_path.exists()
-                    else 0,
-                },
-            },
-            "storage": {
-                "total_gb": disk_usage.total / (1024**3),
-                "used_gb": disk_usage.used / (1024**3),
-                "free_gb": disk_usage.free / (1024**3),
-                "percent_used": (disk_usage.used / disk_usage.total) * 100,
-            },
-            "recent_activity": {
-                "total_sessions": session_stats["total_sessions"],
-                "avg_queries_per_session": session_stats["avg_queries"],
-                "avg_query_time": session_stats["avg_query_time"],
-                "avg_peak_memory_mb": session_stats["avg_peak_memory"],
-                "total_errors": session_stats["total_errors"],
-                "recent_errors": [
-                    {"timestamp": row["timestamp"], "message": row["error_message"]}
-                    for row in recent_errors
-                ],
-            },
+            "memory_status": memory_status,
+            "vector_store_status": vector_store_status,
+            "monitor_status": monitor_status,
+            "logs_status": logs_status,
+            "session_uptime": session_stats["uptime"],
+            "overall_status": overall_status,
+            "vector_store": vector_store_info,
+            "processing": processing_info,
+            "logs": logs_info,
+            "storage": storage_details,
+            "recent_errors": recent_errors,
+            "total_errors": total_errors,
+            "session_stats": session_stats,
+            "vector_store_stats": vector_store_stats,
         }
 
     def get_performance_trends(self, days: int = 7) -> dict[str, Any]:
@@ -473,3 +474,77 @@ class PersistentMonitor:
                 }
                 for row in logs
             ]
+
+    def _get_dir_info(self, path: Path) -> dict[str, Any]:
+        """Get directory status and size.
+
+        Args:
+            path: Path to directory
+
+        Returns:
+            Dictionary containing directory status and size
+        """
+        if not path.exists():
+            return {"status": "missing", "size_mb": 0.00}
+        if not any(path.iterdir()):
+            return {"status": "empty", "size_mb": 0.00}
+        size_mb = sum(f.stat().st_size for f in path.glob("**/*") if f.is_file()) / 1024 / 1024
+        return {"status": "healthy", "size_mb": round(size_mb, 2)}
+
+    def _get_recent_errors(self) -> list[tuple[str, str]]:
+        """Get recent errors from database.
+
+        Returns:
+            List of tuples containing timestamp and error message
+        """
+        with self._get_db() as conn:
+            return conn.execute(
+                """
+                SELECT timestamp, error_message FROM errors
+                WHERE timestamp > datetime('now', '-24 hours')
+                ORDER BY timestamp DESC
+            """
+            ).fetchall()
+
+    def _get_session_stats(self) -> dict[str, Any]:
+        """Get session statistics from database.
+
+        Returns:
+            Dictionary containing session statistics
+        """
+        with self._get_db() as conn:
+            stats = conn.execute(
+                """
+                SELECT
+                    COUNT(*) as total_sessions,
+                    AVG(queries_processed) as avg_queries,
+                    AVG(avg_query_time) as avg_query_time,
+                    AVG(peak_memory_mb) as avg_peak_memory,
+                    SUM(errors_encountered) as total_errors
+                FROM sessions
+                WHERE start_time > datetime('now', '-24 hours')
+            """
+            ).fetchone()
+
+        return {
+            "total_sessions": stats[0] if stats else 0,
+            "avg_queries": stats[1] if stats else 0.0,
+            "avg_query_time": stats[2] if stats else 0.0,
+            "peak_memory": stats[3] if stats else 0.0,
+            "total_errors": stats[4] if stats else 0,
+            "uptime": self.get_uptime(),
+        }
+
+    def _get_storage_details(self) -> dict[str, Any]:
+        """Get storage details.
+
+        Returns:
+            Dictionary containing storage details
+        """
+        disk_usage = shutil.disk_usage(str(self.base_path))
+        return {
+            "total_gb": round(disk_usage.total / 1024 / 1024 / 1024, 2),
+            "used_gb": round(disk_usage.used / 1024 / 1024 / 1024, 2),
+            "free_gb": round(disk_usage.free / 1024 / 1024 / 1024, 2),
+            "usage_percent": round((disk_usage.used / disk_usage.total) * 100, 1),
+        }

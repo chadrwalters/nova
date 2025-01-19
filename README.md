@@ -36,9 +36,9 @@ uv pip install -e .
 mkdir -p .nova/vectors .nova/logs .nova/metrics
 ```
 
-2. Configure input directory (default: ~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput):
+2. Configure input directory:
 ```bash
-# Either create default directory:
+# Default path (recommended):
 mkdir -p ~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
 
 # Or set custom path in .env:
@@ -47,54 +47,83 @@ echo "NOVA_INPUT=/path/to/your/input/dir" > .env
 
 ## Usage
 
-### Basic Commands
+### Command Order and Flow
 
+1. Start MCP Server (Required for all operations):
 ```bash
-# Process notes from input directory
-nova process-notes --input-dir $NOVA_INPUT
-
-# Search through processed notes
-nova search "your query here"
-
-# Monitor system health
-nova monitor health
-nova monitor stats
-nova monitor logs
+uv run python -m nova.cli mcp-server
 ```
 
-### MCP Server Setup
-
-1. Start the MCP server:
+2. Process Notes:
 ```bash
-nova mcp-server
-```
-The server will start on http://127.0.0.1:8765
+# From default input directory
+uv run python -m nova.cli process-notes
 
-2. Verify server health:
-```bash
-curl http://127.0.0.1:8765/health
+# From custom directory
+uv run python -m nova.cli process-notes --input-dir /path/to/notes
 ```
 
-### Claude Integration in Cursor
+3. Monitor System (Optional but recommended):
+```bash
+# Check system health
+uv run python -m nova.cli monitor health
 
-1. Open Cursor IDE
-2. Start a new conversation with Claude
-3. The Nova MCP server will be automatically detected
-4. You can now use commands like:
-   - Search through your notes
-   - Monitor system health
-   - Process new documents
-   - View logs and metrics
+# View detailed statistics
+uv run python -m nova.cli monitor stats --verbose
+
+# Check for warnings
+uv run python -m nova.cli monitor warnings
+
+# View logs
+uv run python -m nova.cli monitor logs
+```
+
+4. Search Notes:
+```bash
+# Basic search
+uv run python -m nova.cli search "your query here"
+
+# Search with tag filter
+uv run python -m nova.cli search "your query" --tag work
+
+# Search with date filter
+uv run python -m nova.cli search "your query" --after 2024-01-01
+```
+
+### System Health Monitoring
+
+The monitoring system tracks:
+
+1. Memory Usage:
+   - Current usage and peak memory
+   - Warning thresholds
+   - Usage trends
+
+2. Vector Store Health:
+   - Document count and statistics
+   - Chunk distribution
+   - Embedding performance
+   - Cache hit rates
+
+3. Directory Health:
+   - Space utilization
+   - Permissions
+   - Structure integrity
+
+4. Performance Metrics:
+   - Search response times
+   - Processing speeds
+   - Error rates
 
 ## Development
 
 ### Running Tests
 ```bash
+# Type checking (must pass before tests)
+uv run mypy src/nova
+
 # Run all tests
 uv run pytest -v
-
-# Run type checking
-uv run mypy src/nova
 
 # Run linting
 uv run ruff src/nova
@@ -112,7 +141,7 @@ uv run mkdocs build
 ## Project Structure
 
 ```
-.nova/              # System directory
+.nova/              # System directory (all system files MUST be here)
 ├── vectors/        # Vector store data
 ├── logs/          # System logs
 └── metrics/       # Performance metrics
@@ -142,11 +171,11 @@ Comprehensive documentation is available in the `docs/` directory:
    - Check logs at .nova/logs/nova.log
 
 2. If vector search fails:
-   - Ensure notes have been processed
-   - Check vector store health with `nova monitor health`
-   - Verify ChromaDB is working correctly
+   - Ensure notes have been processed first
+   - Check vector store health: `uv run python -m nova.cli monitor health`
+   - Verify ChromaDB is working: `uv run python -m nova.cli monitor stats`
 
 3. For other issues:
-   - Check the logs: `nova monitor logs`
-   - Run health check: `nova monitor health`
+   - Check logs: `uv run python -m nova.cli monitor logs`
+   - Run health check: `uv run python -m nova.cli monitor health --verbose`
    - Verify system requirements are met
