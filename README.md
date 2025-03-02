@@ -1,5 +1,7 @@
 # Nova
 
+![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)
+
 Nova is an AI-powered note processing and search system that provides semantic search capabilities through vector embeddings and MCP integration.
 
 ## Prerequisites

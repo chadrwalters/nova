@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nova"
-version = "3.0.0"
+version = "4.0.0"
 description = "Nova note processing system"
 authors = [{ name = "Chad Walters", email = "chad@walters.io" }]
 dependencies = [
