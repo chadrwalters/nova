@@ -84,6 +84,8 @@ MagicMock/
 config.toml
 config/consolidate-markdown.toml
 !config/consolidate-markdown.template.toml
+nova.toml
+!nova.toml.template
 
 .repo*
 

@@ -8,7 +8,7 @@ Nova is built with a modular architecture that separates concerns and makes the 
 
 1. **CLI Entry Point**: Handles command-line arguments and dispatches to command handlers
 2. **Command Handlers**: Implement the logic for each command
-3. **Configuration Models**: Define and validate configuration using Pydantic
+3. **Configuration Models**: Define and validate configuration using Pydantic with a unified approach
 4. **Logging System**: Provides structured logging capabilities
 5. **Exception Handling**: Defines custom exceptions for different error scenarios
 
@@ -25,7 +25,7 @@ nova/
 ├── config/              # Configuration handling
 │   ├── __init__.py
 │   ├── loader.py        # Configuration loading utilities
-│   └── models.py        # Pydantic models for configuration
+│   └── models.py        # Pydantic models for unified configuration
 ├── utils/               # Utility functions
 │   ├── __init__.py
 │   └── logging.py       # Logging utilities
@@ -37,7 +37,7 @@ nova/
 The following diagram illustrates how the components interact:
 
 ```
-User Input → CLI Entry Point → Command Handler → Configuration Models
+User Input → CLI Entry Point → Command Handler → Unified Configuration Model
                                       ↓
                                  External APIs
                                       ↓

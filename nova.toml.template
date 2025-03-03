@@ -1,0 +1,52 @@
+# Nova Unified Configuration File
+
+# Graphlit API Configuration
+[graphlit]
+organization_id = "your-organization-id"
+environment_id = "your-environment-id"
+jwt_secret = "your-jwt-secret"
+
+# Consolidate Markdown Configuration
+[consolidate.global]
+cm_dir = ".cm"
+force_generation = false
+no_image = false
+
+# API Provider Configuration
+api_provider = "openrouter"  # Options: "openai", "openrouter"
+
+# OpenAI Configuration
+openai_key = "your-openai-key"
+openai_base_url = "https://api.openai.com/v1"
+
+# OpenRouter Configuration
+openrouter_key = "your-openrouter-key"
+openrouter_base_url = "https://openrouter.ai/api/v1"
+
+# Model Configuration
+[consolidate.models]
+default_model = "gpt-4o"  # Or your preferred model
+
+# Source Configurations
+# Example for Bear Notes
+[[consolidate.sources]]
+type = "bear"
+srcDir = "/path/to/input/bear/notes"
+destDir = "/path/to/output/bear/notes"
+
+# Example for X Bookmarks
+[[consolidate.sources]]
+type = "xbookmarks"
+srcDir = "/path/to/input/x/bookmarks"
+destDir = "/path/to/output/x/bookmarks"
+
+# Example for Claude Export
+[[consolidate.sources]]
+type = "claude"
+srcDir = "/path/to/input/claude/export"
+destDir = "/path/to/output/claude/export"
+
+# Upload Configuration
+[upload]
+# Default output directory for upload (can be overridden with --output-dir)
+output_dir = "/path/to/output/directory"

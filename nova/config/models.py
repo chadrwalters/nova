@@ -5,7 +5,7 @@ This module defines Pydantic models for configuration validation.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Any, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -41,10 +41,64 @@ class LoggingConfig(BaseModel):
         return v.upper()
 
 
+class UploadConfig(BaseModel):
+    """Pydantic model for upload configuration in the unified config file."""
+
+    output_dir: str = Field(default="output")
+
+    @field_validator("output_dir")
+    @classmethod
+    def validate_output_dir(cls, v: str) -> str:
+        """Validate that the output directory exists."""
+        path = Path(v).resolve()
+        if not path.exists():
+            raise ValueError(f"Output directory does not exist: {path}")
+        if not path.is_dir():
+            raise ValueError(f"Not a directory: {path}")
+        return str(path)
+
+
+class ConsolidateSourceConfig(BaseModel):
+    """Pydantic model for a consolidate source in the unified config file."""
+
+    type: str
+    srcDir: str
+    destDir: str
+
+
+class ConsolidateGlobalConfig(BaseModel):
+    """Pydantic model for consolidate global configuration in the unified config file."""
+
+    cm_dir: Optional[str] = None
+    force_generation: Optional[bool] = None
+    no_image: Optional[bool] = None
+    api_provider: Optional[str] = None
+    openai_key: Optional[str] = None
+    openai_base_url: Optional[str] = None
+    openrouter_key: Optional[str] = None
+    openrouter_base_url: Optional[str] = None
+
+
+class ConsolidateModelsConfig(BaseModel):
+    """Pydantic model for consolidate models configuration in the unified config file."""
+
+    default_model: Optional[str] = None
+
+
+class ConsolidateConfig(BaseModel):
+    """Pydantic model for consolidate configuration in the unified config file."""
+
+    global_: Optional[ConsolidateGlobalConfig] = Field(default=None, alias="global")
+    models: Optional[ConsolidateModelsConfig] = None
+    sources: Optional[List[ConsolidateSourceConfig]] = None
+
+
 class MainConfig(BaseModel):
     """Pydantic model for the main configuration file."""
 
     graphlit: GraphlitConfig
+    upload: Optional[UploadConfig] = None
+    consolidate: Optional[ConsolidateConfig] = None
     logging: Optional[LoggingConfig] = Field(default_factory=LoggingConfig)
 
 

@@ -36,44 +36,57 @@ uv pip install git+https://github.com/username/nova.git
 
 ## Configuration
 
-Nova uses TOML configuration files for both commands. You can specify the path to the configuration file using the `--config` option.
+Nova uses a unified TOML configuration file for all commands. By default, Nova looks for a file named `nova.toml` in the current directory, but you can specify a different path using the `--config` option.
 
-### Consolidate Markdown Configuration
+### Unified Configuration
 
-Create a file named `consolidate-markdown.toml` with the following structure:
+Create a file named `nova.toml` by copying the template:
 
-```toml
-# Directory containing source Markdown files
-source_dir = "/path/to/source"
-
-# Directory where consolidated Markdown files will be written
-output_dir = "/path/to/output"
-
-# Patterns to include (glob patterns)
-include_patterns = ["**/*.md"]
-
-# Patterns to exclude (glob patterns)
-exclude_patterns = ["**/excluded/**"]
-
-# Logging configuration
-[logging]
-level = "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+```bash
+cp nova.toml.template nova.toml
 ```
 
-### Upload Markdown Configuration
-
-Create a file named `upload-markdown.toml` with the following structure:
+Then edit it with your specific settings:
 
 ```toml
-# Graphlit API configuration
+# Nova Unified Configuration File
+
+# Graphlit API Configuration
 [graphlit]
 organization_id = "your-organization-id"
 environment_id = "your-environment-id"
 jwt_secret = "your-jwt-secret"
 
-# Logging configuration
-[logging]
-level = "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# Consolidate Markdown Configuration
+[consolidate.global]
+cm_dir = ".cm"
+force_generation = false
+no_image = false
+
+# API Provider Configuration
+api_provider = "openrouter"  # Options: "openai", "openrouter"
+
+# OpenAI Configuration
+openai_key = "your-openai-key"
+openai_base_url = "https://api.openai.com/v1"
+
+# OpenRouter Configuration
+openrouter_key = "your-openrouter-key"
+openrouter_base_url = "https://openrouter.ai/api/v1"
+
+# Model Configuration
+[consolidate.models]
+default_model = "gpt-4o"  # Or your preferred model
+
+# Source Configurations
+[[consolidate.sources]]
+type = "bear"
+srcDir = "/path/to/input/bear/notes"
+destDir = "/path/to/output/bear/notes"
+
+# Upload Configuration
+[upload]
+output_dir = "/path/to/output/directory"
 ```
 
 ## Usage
@@ -83,30 +96,44 @@ level = "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 To consolidate Markdown files:
 
 ```bash
-nova consolidate-markdown --config /path/to/consolidate-markdown.toml
+nova consolidate-markdown
+```
+
+Or with a specific configuration file:
+
+```bash
+nova consolidate-markdown --config /path/to/nova.toml
 ```
 
 This command will:
-1. Read Markdown files from the source directory
+1. Read Markdown files from the source directories specified in the configuration
 2. Process them according to the configuration
-3. Write the consolidated files to the output directory
+3. Write the consolidated files to the destination directories
 
 ### Uploading Markdown Files to Graphlit
 
 To upload Markdown files to Graphlit:
 
 ```bash
-nova upload-markdown --config /path/to/upload-markdown.toml --output-dir /path/to/output
+nova upload-markdown
+```
+
+Or with a specific configuration file:
+
+```bash
+nova upload-markdown --config /path/to/nova.toml
 ```
 
 Options:
-- `--output-dir`: Directory containing Markdown files to upload (required)
+- `--output-dir`: Override the output directory specified in the configuration (optional)
 - `--dry-run`: Simulate the upload process without actually uploading files
+- `--delete-existing`: Delete all existing content in Graphlit before uploading
 
 This command will:
 1. Connect to Graphlit using the provided credentials
-2. Find all Markdown files in the output directory
-3. Upload each file to Graphlit
+2. If `--delete-existing` is specified, delete all existing content in Graphlit
+3. Find all Markdown files in the output directory
+4. Upload each file to Graphlit
 
 ### Command-Line Help
 
@@ -126,10 +153,10 @@ This example demonstrates a complete workflow of consolidating and uploading Mar
 
 ```bash
 # Step 1: Consolidate Markdown files
-nova consolidate-markdown --config ./consolidate-markdown.toml
+nova consolidate-markdown
 
 # Step 2: Upload the consolidated files to Graphlit
-nova upload-markdown --config ./upload-markdown.toml --output-dir ./output
+nova upload-markdown
 ```
 
 ### Dry Run Example
@@ -137,8 +164,18 @@ nova upload-markdown --config ./upload-markdown.toml --output-dir ./output
 To test the upload process without actually uploading files:
 
 ```bash
-nova upload-markdown --config ./upload-markdown.toml --output-dir ./output --dry-run
+nova upload-markdown --dry-run
 ```
+
+### Delete Existing Content Example
+
+To delete all existing content in Graphlit before uploading new files:
+
+```bash
+nova upload-markdown --delete-existing
+```
+
+This is useful when you want to refresh all content in Graphlit and avoid duplicates.
 
 ## Troubleshooting
 

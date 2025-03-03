@@ -46,8 +46,8 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     consolidate_parser.add_argument(
         "--config",
-        default="config/consolidate-markdown.toml",
-        help="Path to the consolidate-markdown configuration file.",
+        default="nova.toml",
+        help="Path to the Nova configuration file.",
     )
 
     # Add upload-markdown command
@@ -56,18 +56,22 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     upload_parser.add_argument(
         "--config",
-        default="config.toml",
-        help="Path to the Graphlit configuration file.",
+        default="nova.toml",
+        help="Path to the Nova configuration file.",
     )
     upload_parser.add_argument(
         "--output-dir",
-        default="output",
-        help="Directory containing Markdown files to upload.",
+        help="Directory containing Markdown files to upload. If not provided, it will be read from the configuration file.",
     )
     upload_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="List files to upload without uploading.",
+    )
+    upload_parser.add_argument(
+        "--delete-existing",
+        action="store_true",
+        help="Delete all existing content before uploading.",
     )
 
     return parser.parse_args(args)
@@ -87,14 +91,11 @@ async def main_async(args: Optional[List[str]] = None) -> int:
 
     # Set up logging
     try:
-        if parsed_args.command == "upload-markdown":
-            # Load logging configuration from config.toml
-            config_path = Path(parsed_args.config).resolve()
-            if config_path.exists():
-                config = load_config(str(config_path), MainConfig)
-                setup_logging(level=config.logging.level)
-            else:
-                setup_logging()  # Use default logging configuration
+        # Load logging configuration from config file
+        config_path = Path(parsed_args.config).resolve()
+        if config_path.exists():
+            config = load_config(str(config_path), MainConfig)
+            setup_logging(level=config.logging.level)
         else:
             setup_logging()  # Use default logging configuration
     except Exception as e:
@@ -112,7 +113,8 @@ async def main_async(args: Optional[List[str]] = None) -> int:
         elif parsed_args.command == "upload-markdown":
             logger.info("Starting upload-markdown command")
             await upload_markdown_command(
-                parsed_args.config, parsed_args.output_dir, parsed_args.dry_run
+                parsed_args.config, parsed_args.output_dir, parsed_args.dry_run,
+                parsed_args.delete_existing
             )
             logger.info("Upload-markdown command completed successfully")
             return 0
