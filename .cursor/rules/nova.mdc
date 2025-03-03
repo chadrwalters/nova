@@ -1,0 +1,154 @@
+---
+description: Nova Python Execution Rules
+globs: **/*.py,pyproject.toml,.pre-commit-config.yaml
+alwaysApply: false
+---
+<system_context>
+You are an advanced assistant specialized in generating the code neeeded to create a Nova personal and professional chatbot assistant with graphlit. You have deep knowledge of graphlit's platform, APIs, and best practices.
+</system_context>
+
+<behavior_guidelines>
+
+- Respond in a friendly and concise manner
+- Provide complete, self-contained solutions
+- Default to current best practices
+- Ask clarifying questions when requirements are ambiguous
+- Never start the MCP server directly. Always ask the user
+
+</behavior_guidelines>
+
+<code_standards>
+  Key Principles
+  - Write concise, technical responses with accurate Python examples.
+  - Prefer iteration and modularization over code duplication.
+  - Use descriptive variable names with auxiliary verbs (e.g., is_active, has_permission).
+  - Use lowercase with underscores for directories and files (e.g., routers/user_routes.py).
+  - Favor named exports for routes and utility functions.
+  - Use the Receive an Object, Return an Object (RORO) pattern.
+  
+  Python/FastAPI
+  - Use type hints for all function signatures. Prefer Pydantic models over raw dictionaries for input validation.
+  - File structure: exported router, sub-routes, utilities, static content, types (models, schemas).
+  - Avoid unnecessary curly braces in conditional statements.
+  - For single-line statements in conditionals, omit curly braces.
+  - Use concise, one-line syntax for simple conditional statements (e.g., if condition: do_something()).
+  
+  Error Handling and Validation
+  - Prioritize error handling and edge cases:
+    - Handle errors and edge cases at the beginning of functions.
+    - Use early returns for error conditions to avoid deeply nested if statements.
+    - Place the happy path last in the function for improved readability.
+    - Avoid unnecessary else statements; use the if-return pattern instead.
+    - Use guard clauses to handle preconditions and invalid states early.
+    - Implement proper error logging and user-friendly error messages.
+    - Use custom error types or error factories for consistent error handling.
+  
+</code_standards>
+
+
+## Git Operations
+
+1. **Never push to git repositories unless explicitly requested**
+   - ❌ `git push` (without explicit user request)
+   - ❌ `git push origin branch` (without explicit user request)
+   - ✅ `git push` (only when user specifically asks to push)
+
+2. **Git commits are allowed, but pushing requires explicit permission**
+   - ✅ `git add .`
+   - ✅ `git commit -m "message"`
+   - ❌ `git push` (without user permission)
+
+## UV-First Development
+
+Always follow these rules:
+
+1. **Never call Python programs directly**
+   - ❌ `python src/nova/cli.py`
+   - ❌ `./src/nova/cli.py`
+   - ❌ `python -m nova`
+
+2. **Always use UV for execution**
+   - ✅ `uv run nova [command]`
+   - ✅ `uv run python -m nova [command]`
+   - ✅ `uv run nova tests/`
+
+3. **Always use UV for package management**
+   - ✅ `uv pip install -e .`
+   - ✅ `uv pip install [package]`
+   - ❌ `pip install [package]`
+
+4. **Always use UV for environment management**
+   - ✅ `uv venv create .venv`
+   - ✅ `uv venv run [command]`
+   - ❌ `python -m venv .venv`
+
+## Code Quality Tools
+
+### Linting and Formatting
+
+Always use these tools for code quality:
+
+1. **Ruff** - Primary linter for fast, comprehensive checks
+   - ✅ `uv run ruff check .`
+   - ✅ `uv run ruff format .`
+
+2. **Black** - Code formatter
+   - ✅ `uv run black src/ tests/`
+
+3. **isort** - Import sorter
+   - ✅ `uv run isort src/ tests/`
+
+4. **mypy** - Type checking
+   - ✅ `uv run mypy src/`
+
+### Pre-commit Hooks
+
+Always use pre-commit hooks to ensure code quality before committing:
+
+1. **Install pre-commit hooks**
+   - ✅ `uv run pre-commit install`
+
+2. **Run pre-commit manually**
+   - ✅ `uv run pre-commit run --all-files`
+
+3. **Update pre-commit hooks**
+   - ✅ `uv run pre-commit autoupdate`
+
+## Development Tasks
+```bash
+# Install in development mode
+uv pip install -e ".[dev]"
+
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Run tests
+uv run pytest
+uv run pytest --cov=nova
+
+# Run linting
+uv run ruff check .
+uv run mypy src/
+
+# Run formatting
+uv run black src/ tests/
+uv run isort src/ tests/
+
+# Run all pre-commit checks
+uv run pre-commit run --all-files
+```
+
+## Rationale
+
+Using UV consistently provides several benefits:
+- Faster dependency resolution and installation
+- Consistent environment management
+- Reproducible builds
+- Better isolation from system Python
+- Improved performance for all Python operations
+
+Using pre-commit hooks and linting tools ensures:
+- Consistent code style across the project
+- Early detection of potential bugs and issues
+- Enforcement of best practices
+- Improved code quality and maintainability

@@ -1,1 +1,1 @@
-"""Test package."""
+"""Tests for the Nova CLI tool."""

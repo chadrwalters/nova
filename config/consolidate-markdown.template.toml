@@ -1,0 +1,46 @@
+# TEMPLATE CONFIGURATION FILE
+# This is a template for the consolidate-markdown configuration.
+# Copy this file to config/consolidate-markdown.toml and customize it for your needs.
+# The config/consolidate-markdown.toml file is gitignored to prevent committing personal API keys and paths.
+
+[global]
+cm_dir = ".cm"                    # DEBUG, INFO, WARNING, ERROR
+force_generation = false         # Force reprocessing all files
+no_image = false                 # Enable image analysis with Gemini Vision
+
+# API Provider Configuration
+api_provider = "openrouter"      # Changed to OpenRouter to support Gemini
+
+# OpenAI Configuration (kept for reference)
+openai_key = "YOUR_OPENAI_KEY_HERE"
+openai_base_url = "https://api.openai.com/v1"
+
+# OpenRouter Configuration
+openrouter_key = "YOUR_OPENROUTER_KEY_HERE"
+openrouter_base_url = "https://openrouter.ai/api/v1"
+
+# Model Configuration (added as of 2024-02-01)
+[models]
+default_model = "gpt-4o"  # Our              # Kept as fallback for complex tasks
+
+
+[[sources]]
+type = "bear"
+srcDir = "/path/to/your/bear/notes" # Replace with your Bear notes path
+destDir = "/path/to/your/output/bear/notes"         # Output directory for Bear notes
+
+[[sources]]
+type = "xbookmarks"
+srcDir = "/path/to/your/xbookmarks" # Replace with your X bookmarks path
+destDir = "/path/to/your/output/xbookmarks"             # Output directory for X bookmarks
+
+[[sources]]
+type = "claude"
+srcDir = "/path/to/your/claude/exports"  # Claude export path
+destDir = "/path/to/your/output/claude/exports"          # Output directory for Claude exports
+
+# Generic source for Nova documents
+[[sources]]
+type = "bear"                    # Using bear processor for generic markdown files
+srcDir = "./input"               # Default input directory relative to Nova project
+destDir = "./output"             # Default output directory relative to Nova project

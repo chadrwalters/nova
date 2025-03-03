@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -20,10 +19,9 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environment
 .env
 .venv
-.venv-mcp
 env/
 venv/
 ENV/
@@ -33,7 +31,13 @@ ENV/
 .vscode/
 *.swp
 *.swo
-.DS_Store
+
+# Project specific
+.cm/
+config.toml
+output/
+*_backup/
+config.toml
 
 # Testing
 .coverage
@@ -42,50 +46,46 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.pdm-build/
-.benchmarks/
+coverage_html/
+conversations.json
+users.json
 
-# Nova specific
-logs/
-cache/
-output/
-.nova/
-*.log
-*.json
-config/nova.yaml
+# DS_Store
+.DS_Store
+**/.DS_Store
+
+# Rule summaries
+.cursor/rules/**/*.summary.json
+.cursor/rules/**/*.summary.md
+.cursor/rules/summaries/
+
+# Gmail to Bear specific
+credentials.json
+token.json
+token.pickle
+*.token
+config.ini
+processed_emails.txt
+*.pem
+*.key
+MagicMock/
+
+# Sensitive data
 .env
-_repomix-output.txt
-repomix.config.json
+.secrets
 
-# Jupyter Notebooks
-.ipynb_checkpoints
-*.ipynb
+# Cache files
+.cm/cache/
 
-# Local development
-*.local
-*.local.*
-.local/
+# Log files
+.cm/logs/
 
-# Temporary files
-*.tmp
-*.temp
-.~*
-*~
+# Configuration files
+config.toml
+config/consolidate-markdown.toml
+!config/consolidate-markdown.template.toml
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+.repo*
 
-# Chroma specific
-.chroma/
-vectors/
-
-# System specific
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Local environment overrides
-.env.local
+local-research/
+export/

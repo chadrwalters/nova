@@ -1,183 +1,135 @@
-# Nova
+# Nova CLI
 
-![Version](https://img.shields.io/badge/version-4.0.0-blue.svg)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Nova is an AI-powered note processing and search system that provides semantic search capabilities through vector embeddings and MCP integration.
+A command-line tool for consolidating Markdown files and uploading them to Graphlit.
 
-## Prerequisites
+## Features
 
-- Python 3.11 or higher
-- uv package manager (`pip install uv`)
-- Cursor IDE for Claude integration
+- **Consolidate Markdown**: Process and consolidate Markdown files from a source directory
+- **Upload to Graphlit**: Upload Markdown files to Graphlit with a single command
+- **Configuration-based**: Use TOML configuration files for flexible setup
+- **Structured Logging**: Comprehensive logging with configurable levels
+- **Dry Run Mode**: Test upload functionality without making actual API calls
 
 ## Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/chadwalters/nova.git
-cd nova
+# Using UV (recommended)
+uv pip install nova
+
+# Using pip
+pip install nova
 ```
 
-2. Create and activate virtual environment:
+## Quick Start
+
+### 1. Create Configuration Files
+
+Create a configuration file for consolidating Markdown files:
+
+```toml
+# consolidate-markdown.toml
+source_dir = "/path/to/source"
+output_dir = "/path/to/output"
+include_patterns = ["**/*.md"]
+exclude_patterns = ["**/excluded/**"]
+
+[logging]
+level = "INFO"
+```
+
+Create a configuration file for uploading to Graphlit:
+
+```toml
+# upload-markdown.toml
+[graphlit]
+organization_id = "your-organization-id"
+environment_id = "your-environment-id"
+jwt_secret = "your-jwt-secret"
+
+[logging]
+level = "INFO"
+```
+
+### 2. Run Commands
+
+Consolidate Markdown files:
+
 ```bash
-uv venv
-source .venv/bin/activate  # On Unix/macOS
-# or
-.venv\Scripts\activate  # On Windows
+nova consolidate-markdown --config ./consolidate-markdown.toml
 ```
 
-3. Install the package:
+Upload to Graphlit:
+
 ```bash
-uv pip install -e .
-```
-
-## Initial Setup
-
-1. Create required directories:
-```bash
-mkdir -p .nova/vectors .nova/logs .nova/metrics
-```
-
-2. Configure input directory:
-```bash
-# Default path (recommended):
-mkdir -p ~/Library/Mobile Documents/com~apple~CloudDocs/_NovaInput
-
-# Or set custom path in .env:
-echo "NOVA_INPUT=/path/to/your/input/dir" > .env
-```
-
-## Usage
-
-### Command Order and Flow
-
-1. Start MCP Server (Required for all operations):
-```bash
-uv run python -m nova.cli mcp-server
-```
-
-2. Process Notes:
-```bash
-# From default input directory
-uv run python -m nova.cli process-notes
-
-# From custom directory
-uv run python -m nova.cli process-notes --input-dir /path/to/notes
-```
-
-3. Monitor System (Optional but recommended):
-```bash
-# Check system health
-uv run python -m nova.cli monitor health
-
-# View detailed statistics
-uv run python -m nova.cli monitor stats --verbose
-
-# Check for warnings
-uv run python -m nova.cli monitor warnings
-
-# View logs
-uv run python -m nova.cli monitor logs
-```
-
-4. Search Notes:
-```bash
-# Basic search
-uv run python -m nova.cli search "your query here"
-
-# Search with tag filter
-uv run python -m nova.cli search "your query" --tag work
-
-# Search with date filter
-uv run python -m nova.cli search "your query" --after 2024-01-01
-```
-
-### System Health Monitoring
-
-The monitoring system tracks:
-
-1. Memory Usage:
-   - Current usage and peak memory
-   - Warning thresholds
-   - Usage trends
-
-2. Vector Store Health:
-   - Document count and statistics
-   - Chunk distribution
-   - Embedding performance
-   - Cache hit rates
-
-3. Directory Health:
-   - Space utilization
-   - Permissions
-   - Structure integrity
-
-4. Performance Metrics:
-   - Search response times
-   - Processing speeds
-   - Error rates
-
-## Development
-
-### Running Tests
-```bash
-# Type checking (must pass before tests)
-uv run mypy src/nova
-
-# Run all tests
-uv run pytest -v
-
-# Run linting
-uv run ruff src/nova
-```
-
-### Building Documentation
-```bash
-# Install dev dependencies
-uv pip install -e ".[dev]"
-
-# Build docs
-uv run mkdocs build
-```
-
-## Project Structure
-
-```
-.nova/              # System directory (all system files MUST be here)
-├── vectors/        # Vector store data
-├── logs/          # System logs
-└── metrics/       # Performance metrics
-
-src/nova/          # Source code
-├── cli/           # Command line interface
-├── vector_store/  # Vector storage and search
-├── monitoring/    # System monitoring
-└── examples/      # Example scripts
+nova upload-markdown --config ./upload-markdown.toml --output-dir ./output
 ```
 
 ## Documentation
 
-Comprehensive documentation is available in the `docs/` directory:
+For detailed usage instructions, see:
 
-- [Getting Started](docs/getting-started.md) - Detailed setup guide
-- [User Guide](docs/user-guide/) - Usage instructions and examples
-- [Architecture](docs/architecture/) - System design and components
-- [API Reference](docs/api/) - API documentation
-- [Development](docs/development/) - Development guide
+- [User Guide](docs/user_guide.md)
+- [Quick Reference](docs/quick_reference.md)
+- [Developer Documentation](docs/developer_guide.md)
 
-## Troubleshooting
+## Development
 
-1. If the MCP server fails to start:
-   - Check if port 8765 is available
-   - Verify .nova directory exists and is writable
-   - Check logs at .nova/logs/nova.log
+### Prerequisites
 
-2. If vector search fails:
-   - Ensure notes have been processed first
-   - Check vector store health: `uv run python -m nova.cli monitor health`
-   - Verify ChromaDB is working: `uv run python -m nova.cli monitor stats`
+- Python 3.8+
+- UV (recommended)
 
-3. For other issues:
-   - Check logs: `uv run python -m nova.cli monitor logs`
-   - Run health check: `uv run python -m nova.cli monitor health --verbose`
-   - Verify system requirements are met
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/username/nova.git
+cd nova
+
+# Create a virtual environment
+uv venv create .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install in development mode
+uv pip install -e ".[dev]"
+
+# Install pre-commit hooks
+uv run pre-commit install
+```
+
+### Testing
+
+```bash
+# Run tests
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov=nova
+```
+
+### Linting
+
+```bash
+# Run linting
+uv run ruff check .
+uv run mypy src/
+
+# Run formatting
+uv run black src/ tests/
+uv run isort src/ tests/
+
+# Run all pre-commit checks
+uv run pre-commit run --all-files
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Graphlit](https://github.com/username/graphlit) for the API client
+- [ConsolidateMarkdown](https://github.com/username/consolidate-markdown) for the Markdown processing library

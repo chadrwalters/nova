@@ -1,56 +1,44 @@
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.5.0
-  hooks:
-    - id: trailing-whitespace
-    - id: end-of-file-fixer
-    - id: check-yaml
-    - id: check-added-large-files
-      args: ['--maxkb=500']
-    - id: check-merge-conflict
-    - id: check-case-conflict
-    - id: check-docstring-first
-    - id: debug-statements
-    - id: requirements-txt-fixer
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
 
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.2.1
-  hooks:
-    - id: ruff
-      args: [--fix]
-    - id: ruff-format
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
 
-- repo: local
-  hooks:
-    - id: mypy
-      name: mypy
-      entry: uv run mypy
-      language: system
-      pass_filenames: false
-      types: [python]
-      require_serial: true
-      args: ["-p", "nova", "--config-file=pyproject.toml", "--namespace-packages"]
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.0.0
+          - types-requests>=2.28.0
+          - types-setuptools>=65.3.0
+        exclude: ^tests/
 
-- repo: https://github.com/PyCQA/bandit
-  rev: 1.7.7
-  hooks:
-    - id: bandit
-      args: ["-c", "pyproject.toml"]
-      additional_dependencies: ["bandit[toml]"]
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: isort (python)
 
-- repo: https://github.com/asottile/pyupgrade
-  rev: v3.15.0
-  hooks:
-    - id: pyupgrade
-      args: [--py310-plus]
-
-- repo: local
-  hooks:
-    - id: docformatter
-      name: docformatter
-      description: 'Formats docstrings to follow PEP 257.'
-      entry: docformatter
-      language: python
-      types: [python]
-      args: [--in-place]
-      additional_dependencies: ['docformatter==1.7.5']
+  - repo: local
+    hooks:
+      - id: uv-pip-check
+        name: UV pip check
+        entry: uv pip check
+        language: system
+        pass_filenames: false
+        always_run: true

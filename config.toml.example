@@ -1,0 +1,14 @@
+# Nova CLI Configuration
+# Rename this file to config.toml and update with your actual values
+
+[graphlit]
+# Graphlit API credentials
+# These values are required for the upload-markdown command
+organization_id = "YOUR_ORG_ID"
+environment_id = "YOUR_ENV_ID"
+jwt_secret = "YOUR_JWT_SECRET"
+
+[logging]
+# Logging configuration
+# Valid levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+level = "INFO"
